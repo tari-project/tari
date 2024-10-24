@@ -31,7 +31,7 @@ use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
 use crate::types::{PrivateKey, PublicKey};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum WalletType {
     #[default]
     DerivedKeys,
@@ -49,10 +49,11 @@ impl Display for WalletType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ProvidedKeysWallet {
     pub public_spend_key: PublicKey,
     pub private_spend_key: Option<PrivateKey>,
+    pub private_comms_key: Option<PrivateKey>,
     pub view_key: PrivateKey,
 }
 
@@ -64,9 +65,9 @@ impl Display for ProvidedKeysWallet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LedgerWallet {
-    account: u64,
+    pub account: u64,
     pub public_alpha: Option<PublicKey>,
     pub network: Network,
     pub view_key: Option<PrivateKey>,
@@ -74,8 +75,10 @@ pub struct LedgerWallet {
 
 impl Display for LedgerWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "account {}", self.account)?;
-        write!(f, "pubkey {}", self.public_alpha.is_some())?;
+        write!(f, "account '{}', ", self.account)?;
+        write!(f, "network '{}', ", self.network)?;
+        write!(f, "public_alpha '{}', ", self.public_alpha.is_some())?;
+        write!(f, "view_key '{}'", self.view_key.is_some())?;
         Ok(())
     }
 }
@@ -88,9 +91,5 @@ impl LedgerWallet {
             network,
             view_key,
         }
-    }
-
-    pub fn account_bytes(&self) -> Vec<u8> {
-        self.account.to_le_bytes().to_vec()
     }
 }

@@ -52,6 +52,7 @@ impl Vector {
             ffi_import::tari_vector_push_string(self.ptr, CString::new(s).unwrap().into_raw(), &mut error);
             if error > 0 {
                 println!("tari_vector_push_string error {}", error);
+                panic!("tari_vector_push_string error");
             }
         }
     }

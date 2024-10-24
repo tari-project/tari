@@ -57,7 +57,7 @@ mod test {
         let output_hash = output.hash();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(output_hash.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash.into())));
+        let covenant = covenant!(output_hash_eq(@hash(hash.into()))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,

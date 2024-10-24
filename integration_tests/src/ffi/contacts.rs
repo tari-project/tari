@@ -49,6 +49,7 @@ impl Contacts {
             length = ffi_import::contacts_get_length(self.ptr, &mut error);
             if error > 0 {
                 println!("contacts_get_length error {}", error);
+                panic!("contacts_get_length error");
             }
         }
         length
@@ -61,6 +62,7 @@ impl Contacts {
             ptr = ffi_import::contacts_get_at(self.ptr, position, &mut error);
             if error > 0 {
                 println!("contacts_get_at error {}", error);
+                panic!("contacts_get_at error");
             }
         }
         Contact::from_ptr(ptr)

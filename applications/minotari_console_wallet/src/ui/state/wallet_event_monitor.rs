@@ -28,6 +28,7 @@ use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
+    utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
@@ -76,6 +77,12 @@ impl WalletEventMonitor {
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
 
         let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
+        let mut utxo_scanner_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_wallet_utxo_scanner()
+            .get_event_receiver();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -213,10 +220,31 @@ impl WalletEventMonitor {
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
                 },
+                result = utxo_scanner_events.recv() => match result {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::Progress {
+                                    current_height,..
+                                }=> {
+                                    self.trigger_wallet_scanned_height_update(current_height).await;
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                    ..
+                                }=> {
+                                self.trigger_wallet_scanned_height_update(final_height).await;
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                        },
+                },
                 _ = base_node_changed.changed() => {
                     let peer = base_node_changed.borrow().as_ref().cloned();
                     if let Some(peer) = peer {
-                        self.trigger_base_node_peer_refresh(peer).await;
+                        self.trigger_base_node_peer_refresh(peer.get_current_peer()).await;
                         self.trigger_balance_refresh();
                     }
                 }
@@ -330,6 +358,14 @@ impl WalletEventMonitor {
             if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
                 warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
             }
+        }
+    }
+
+    async fn trigger_wallet_scanned_height_update(&mut self, height: u64) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.trigger_wallet_scanned_height_update(height).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }
 

@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::ffi::c_void;
+
 use log::*;
 use minotari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
 use tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, task::JoinHandle};
+
+use crate::callback_handler::Context;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
@@ -42,13 +46,14 @@ enum RecoveryEvent {
 pub async fn recovery_event_monitoring(
     mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
     recovery_join_handle: JoinHandle<Result<(), WalletError>>,
-    recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+    recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
+    context: Context,
 ) {
     loop {
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 unsafe {
-                    (recovery_progress_callback)(RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
+                    (recovery_progress_callback)(context.0, RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
                 }
                 info!(
                     target: LOG_TARGET,
@@ -58,7 +63,7 @@ pub async fn recovery_event_monitoring(
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {
                 unsafe {
-                    (recovery_progress_callback)(RecoveryEvent::ConnectedToBaseNode as u8, 0u64, 1u64);
+                    (recovery_progress_callback)(context.0, RecoveryEvent::ConnectedToBaseNode as u8, 0u64, 1u64);
                 }
                 info!(
                     target: LOG_TARGET,
@@ -75,6 +80,7 @@ pub async fn recovery_event_monitoring(
             }) => {
                 unsafe {
                     (recovery_progress_callback)(
+                        context.0,
                         RecoveryEvent::ConnectionToBaseNodeFailed as u8,
                         num_retries as u64,
                         retry_limit as u64,
@@ -92,7 +98,7 @@ pub async fn recovery_event_monitoring(
                 tip_height: total,
             }) => {
                 unsafe {
-                    (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
+                    (recovery_progress_callback)(context.0, RecoveryEvent::Progress as u8, current, total);
                 }
                 info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
             },
@@ -114,6 +120,7 @@ pub async fn recovery_event_monitoring(
                 );
                 unsafe {
                     (recovery_progress_callback)(
+                        context.0,
                         RecoveryEvent::Completed as u8,
                         num_recovered,
                         u64::from(value_recovered),
@@ -128,6 +135,7 @@ pub async fn recovery_event_monitoring(
             }) => {
                 unsafe {
                     (recovery_progress_callback)(
+                        context.0,
                         RecoveryEvent::ScanningRoundFailed as u8,
                         num_retries as u64,
                         retry_limit as u64,
@@ -140,7 +148,7 @@ pub async fn recovery_event_monitoring(
             },
             Ok(UtxoScannerEvent::ScanningFailed) => {
                 unsafe {
-                    (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 0u64, 0u64);
+                    (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 0u64, 0u64);
                 }
                 warn!(target: LOG_TARGET, "UTXO Scanner failed and exited",);
             },
@@ -159,13 +167,13 @@ pub async fn recovery_event_monitoring(
         Ok(Ok(_)) => {},
         Ok(Err(e)) => {
             unsafe {
-                (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 0u64, 1u64);
+                (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 0u64, 1u64);
             }
             error!(target: LOG_TARGET, "Recovery error: {:?}", e);
         },
         Err(e) => {
             unsafe {
-                (recovery_progress_callback)(RecoveryEvent::RecoveryFailed as u8, 1u64, 0u64);
+                (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 1u64, 0u64);
             }
             error!(target: LOG_TARGET, "Recovery error: {}", e);
         },

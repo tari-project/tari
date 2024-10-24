@@ -23,10 +23,25 @@ The recommended running versions of each network are:
 | Network   | Version        |
 |-----------|----------------|
 | Stagenet  | 1.0.0-alpha.0a |
-| Nextnet   | 1.0.0-rc.8     |
-| Esmeralda | 1.0.0-pre.16   |
+| Nextnet   | 1.7.0-rc.3     |
+| Esmeralda | 1.7.0-pre.3    |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
+
+### Running test
+Tests can be run by install Nextest with the following command:
+
+```bash
+cargo install cargo-nextest
+```
+
+Then run the tests with:
+
+```bash
+cargo ci-test
+```
+
+
 
 ### Download
 
@@ -114,8 +129,8 @@ First you'll need to make sure you have a full development environment set up:
 
 ```
 brew update
-brew install openssl cmake coreutils automake autoconf protobuf tor
-brew install --cask powershell
+brew install coreutils tor openssl \
+  cmake make libtool autoconf automake protobuf
 ```
 
 #### (macOS M1 chipset)
@@ -223,7 +238,6 @@ A successful build should output something like this:
 
 ```
    Compiling minotari_wallet v0.0.9 (.../tari/base_layer/wallet)
-   Compiling test_faucet v0.0.1 (.../tari/applications/test_faucet)
    Compiling minotari_wallet_ffi v0.0.9 (.../tari/base_layer/wallet_ffi)
    Compiling minotari_node v0.0.9 (.../tari/applications/minotari_node)
     Finished release [optimized] target(s) in 12m 24s

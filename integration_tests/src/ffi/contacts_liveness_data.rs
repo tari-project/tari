@@ -49,6 +49,7 @@ impl ContactsLivenessData {
             ptr = ffi_import::liveness_data_get_public_key(self.ptr, &mut error);
             if error > 0 {
                 println!("liveness_data_get_public_key error {}", error);
+                panic!("liveness_data_get_public_key error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -61,6 +62,7 @@ impl ContactsLivenessData {
             latency = ffi_import::liveness_data_get_latency(self.ptr, &mut error);
             if error > 0 {
                 println!("liveness_data_get_latency error {}", error);
+                panic!("liveness_data_get_latency error");
             }
         }
         latency
@@ -73,6 +75,7 @@ impl ContactsLivenessData {
             ptr = ffi_import::liveness_data_get_last_seen(self.ptr, &mut error);
             if error > 0 {
                 println!("liveness_data_get_last_seen error {}", error);
+                panic!("liveness_data_get_last_seen error");
             }
         }
         FFIString::from_ptr(ptr).as_string()
@@ -85,6 +88,7 @@ impl ContactsLivenessData {
             message_type = ffi_import::liveness_data_get_message_type(self.ptr, &mut error);
             if error > 0 {
                 println!("liveness_data_get_message_type error {}", error);
+                panic!("liveness_data_get_message_type error");
             }
         }
         message_type
@@ -97,6 +101,7 @@ impl ContactsLivenessData {
             ptr = ffi_import::liveness_data_get_online_status(self.ptr, &mut error);
             if error > 0 {
                 println!("liveness_data_get_online_status error {}", error);
+                panic!("liveness_data_get_online_status error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()

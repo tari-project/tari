@@ -74,23 +74,40 @@ impl CallbackHandler {
                 rec_message = chat_messages.recv() => {
                     match rec_message {
                         Ok(message_dispatch) => {
-                            trace!(target: LOG_TARGET, "FFI Callback monitor received a new MessageDispatch");
                             match message_dispatch.deref() {
                                 MessageDispatch::Message(m) => {
-                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Message");
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "FFI Callback monitor received a new Message ({})",
+                                        m
+                                    );
                                     self.trigger_message_received(m.clone());
                                 }
                                 MessageDispatch::DeliveryConfirmation(c) => {
-                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Delivery Confirmation");
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "FFI Callback monitor received a new Delivery Confirmation ({})",
+                                        c
+                                    );
                                     self.trigger_delivery_confirmation_received(c.clone());
                                 },
                                 MessageDispatch::ReadConfirmation(c) => {
-                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Read Confirmation");
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "FFI Callback monitor received a new Read Confirmation ({})",
+                                        c
+                                    );
                                     self.trigger_read_confirmation_received(c.clone());
                                 }
                             };
                         },
-                        Err(_) => { debug!(target: LOG_TARGET, "FFI Callback monitor had an error receiving new messages")}
+                        Err(e) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "FFI Callback monitor had an error receiving new messages ({})",
+                                e
+                            )
+                        }
                     }
                 },
 
@@ -100,18 +117,27 @@ impl CallbackHandler {
                             match liveness_event.deref() {
                                 ContactsLivenessEvent::StatusUpdated(data) => {
                                     trace!(target: LOG_TARGET,
-                                        "FFI Callback monitor received Contact Status Updated event"
+                                        "FFI Callback monitor received Contact Status Updated event ({})", data
                                     );
                                     self.trigger_contact_status_change(data.deref().clone());
                                 }
                                 ContactsLivenessEvent::NetworkSilence => {},
                             }
                         },
-                        Err(_) => { debug!(target: LOG_TARGET, "FFI Callback monitor had an error with contacts liveness")}
+                        Err(e) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "FFI Callback monitor had an error with contacts liveness ({})",
+                                e
+                            )
+                        }
                     }
                 },
                 _ = self.shutdown.wait() => {
-                    info!(target: LOG_TARGET, "ChatFFI Callback Handler shutting down because the shutdown signal was received");
+                    info!(
+                        target: LOG_TARGET,
+                        "ChatFFI Callback Handler shutting down because the shutdown signal was received"
+                    );
                     break;
                 },
             }
@@ -145,7 +171,7 @@ impl CallbackHandler {
     fn trigger_delivery_confirmation_received(&mut self, confirmation: Confirmation) {
         debug!(
             target: LOG_TARGET,
-            "Calling DeliveryConfirmationReceived callback function for message {:?}",
+            "Calling DeliveryConfirmationReceived callback function for message {}",
             confirmation.message_id,
         );
 
@@ -157,7 +183,7 @@ impl CallbackHandler {
     fn trigger_read_confirmation_received(&mut self, confirmation: Confirmation) {
         debug!(
             target: LOG_TARGET,
-            "Calling ReadConfirmationReceived callback function for message {:?}",
+            "Calling ReadConfirmationReceived callback function for message {}",
             confirmation.message_id,
         );
 

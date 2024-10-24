@@ -29,22 +29,21 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PublicKey, Signature};
+use tari_max_size::MaxSizeBytes;
 
 use super::OutputFeaturesVersion;
-use crate::{
-    consensus::{MaxSizeBytes, MaxSizeString},
-    transactions::transaction_components::{
-        range_proof_type::RangeProofType,
-        side_chain::SideChainFeature,
-        BuildInfo,
-        CodeTemplateRegistration,
-        ConfidentialOutputData,
-        OutputType,
-        TemplateType,
-        ValidatorNodeRegistration,
-        ValidatorNodeSignature,
-    },
+use crate::transactions::transaction_components::{
+    range_proof_type::RangeProofType,
+    side_chain::SideChainFeature,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    OutputType,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
+
+/// Coinbase outputs are allowed to have metadata, but it has the following length limit
+pub type CoinBaseExtra = MaxSizeBytes<256>;
 
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
@@ -60,7 +59,8 @@ pub struct OutputFeatures {
     ///
     /// For coinbase outputs, the maximum length of this field is determined by the consensus constant,
     /// `coinbase_output_features_extra_max_length`.
-    pub coinbase_extra: Vec<u8>,
+    #[serde(with = "tari_utilities::serde::hex")]
+    pub coinbase_extra: CoinBaseExtra,
     /// Features that are specific to a side chain
     pub sidechain_feature: Option<SideChainFeature>,
     /// The type of range proof used in the output
@@ -72,7 +72,7 @@ impl OutputFeatures {
         version: OutputFeaturesVersion,
         output_type: OutputType,
         maturity: u64,
-        coinbase_extra: Vec<u8>,
+        coinbase_extra: CoinBaseExtra,
         sidechain_feature: Option<SideChainFeature>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
@@ -89,7 +89,7 @@ impl OutputFeatures {
     pub fn new_current_version(
         flags: OutputType,
         maturity: u64,
-        coinbase_extra: Vec<u8>,
+        coinbase_extra: CoinBaseExtra,
         sidechain_feature: Option<SideChainFeature>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
@@ -105,7 +105,7 @@ impl OutputFeatures {
 
     pub fn create_coinbase(
         maturity_height: u64,
-        extra: Option<Vec<u8>>,
+        extra: Option<CoinBaseExtra>,
         range_proof_type: RangeProofType,
     ) -> OutputFeatures {
         let coinbase_extra = extra.unwrap_or_default();
@@ -173,36 +173,6 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_code_template_registration(
-        author_public_key: PublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
-    ) -> OutputFeatures {
-        OutputFeatures {
-            output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(CodeTemplateRegistration {
-                author_public_key,
-                author_signature,
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-                sidechain_id,
-                sidechain_id_knowledge_proof,
-            })),
-            ..Default::default()
-        }
-    }
-
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
         self.sidechain_feature
             .as_ref()
@@ -228,7 +198,13 @@ impl OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures::new_current_version(OutputType::default(), 0, vec![], None, RangeProofType::default())
+        OutputFeatures::new_current_version(
+            OutputType::default(),
+            0,
+            CoinBaseExtra::default(),
+            None,
+            RangeProofType::default(),
+        )
     }
 }
 

@@ -31,36 +31,40 @@ use crate::error::KeyManagerError as KMError;
 /// Error enum for the [KeyManagerService]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerServiceError {
-    #[error("Branch does not exist")]
-    UnknownKeyBranch,
+    #[error("Key manager branch not supported: `{0}`")]
+    BranchNotSupported(String),
+    #[error("Branch does not exist: `{0}`")]
+    UnknownKeyBranch(String),
     #[error("Key ID without an index, most likely `Imported`")]
-    KyeIdWithoutIndex,
+    KeyIdWithoutIndex,
+    #[error("Key ID without a branch, most likely `Imported`")]
+    KeyIdWithoutBranch,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
     KeyNotFoundInKeyChain,
     #[error("Storage error: `{0}`")]
     KeyManagerStorageError(#[from] KeyManagerStorageError),
+    #[error("Could not be serialized from string")]
+    KeySerializationError,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
     RangeProofError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
-    #[error("Schnorr signature error: `{0}`")]
-    SchnorrSignatureError(String),
     #[error("Unknown error: `{0}`")]
     UnknownError(String),
     #[error("Ledger error: `{0}`")]
     LedgerError(String),
-    #[error("The Ledger private key cannot be accessed or read")]
-    LedgerPrivateKeyInaccessible,
-    #[error("The Ledger view key cannot be accessed or read")]
-    LedgerViewKeyInaccessible,
+    #[error("The Ledger private key cannot be accessed or read: `{0}`")]
+    LedgerPrivateKeyInaccessible(String),
+    #[error("The Ledger view key cannot be accessed or read: `{0}`")]
+    LedgerViewKeyInaccessible(String),
     #[error("Tari Key Manager storage error: `{0}`")]
     StorageError(#[from] StorageError),
-    #[error("The imported private key cannot be accessed or read")]
-    ImportedPrivateKeyInaccessible,
+    #[error("The imported private key cannot be accessed or read: `{0}")]
+    ImportedPrivateKeyInaccessible(String),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

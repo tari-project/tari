@@ -34,6 +34,7 @@ use crate::{
     proof_of_work::PowError,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
+    MrHashError,
 };
 
 #[derive(Debug, Error)]
@@ -141,6 +142,8 @@ pub enum ChainStorageError {
     SMTError(#[from] SMTError),
     #[error("Invalid ChainMetaData: {0}")]
     InvalidChainMetaData(#[from] ChainMetaDataError),
+    #[error("Block header error: `{0}`")]
+    MrHashError(#[from] MrHashError),
 }
 
 impl ChainStorageError {
@@ -193,7 +196,8 @@ impl ChainStorageError {
             _err @ ChainStorageError::CompositeKeyLengthExceeded |
             _err @ ChainStorageError::FromKeyBytesFailed(_) |
             _err @ ChainStorageError::InvalidChainMetaData(_) |
-            _err @ ChainStorageError::OutOfRange => None,
+            _err @ ChainStorageError::OutOfRange |
+            _err @ ChainStorageError::MrHashError(_) => None,
         }
     }
 }

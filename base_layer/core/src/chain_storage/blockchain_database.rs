@@ -89,6 +89,9 @@ use crate::{
         ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_pruned_mmr,
+    output_mr_hash_from_smt,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
@@ -103,7 +106,7 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     ValidatorNodeBMT,
-    ValidatorNodeSmtHasherBlake256,
+    ValidatorNodeMerkleHasherBlake256,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -248,14 +251,22 @@ where B: BlockchainBackend
             txn = DbTransaction::new();
             blockchain_db.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
-            let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+            let input_sum = body
+                .inputs()
+                .iter()
+                .map(|k| k.commitment())
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .sum::<Commitment>();
+            let output_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+            let total_utxo_sum = &output_sum - &input_sum;
             let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
                 kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(kernel_sum, utxo_sum);
+            txn.set_horizon_data(kernel_sum, total_utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
@@ -1418,10 +1429,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
-        (
-            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes)?)?,
-            validator_nodes.len(),
-        )
+        (calculate_validator_node_mr(&validator_nodes)?, validator_nodes.len())
     } else {
         // MR is unchanged except for epoch boundary
         let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
@@ -1429,10 +1437,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     };
 
     let mmr_roots = MmrRoots {
-        kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
+        kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
-        input_mr: FixedHash::try_from(input_mmr.get_merkle_root()?)?,
-        output_mr: FixedHash::try_from(output_smt.hash().as_slice())?,
+        input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
+        output_mr: output_mr_hash_from_smt(output_smt)?,
         output_smt_size: output_smt.size(),
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
@@ -1473,7 +1481,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
 pub fn calculate_validator_node_mr(
     validator_nodes: &[ValidatorNodeRegistrationInfo],
-) -> Result<tari_mmr::Hash, ChainStorageError> {
+) -> Result<FixedHash, ChainStorageError> {
     fn hash_node((pk, s): &(&PublicKey, &[u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
             .chain(pk)
@@ -1491,28 +1499,28 @@ pub fn calculate_validator_node_mr(
     {
         hash_map
             .entry(sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
-            .or_insert_with(|| Vec::with_capacity(1))
+            .or_insert_with(Vec::new)
             .push((pk, shard_key));
     }
     let mut roots = HashMap::new();
     for (validator_network, set) in hash_map {
-        let mut sorted_set = set.clone();
-        sorted_set.sort_unstable_by(|a, b| a.0.to_vec().cmp(&b.0.to_vec()));
+        let mut sorted_set = set;
+        sorted_set.sort_unstable_by(|(pk1, _), (pk2, _)| pk1.as_bytes().cmp(pk2.as_bytes()));
 
-        let vn_bmt = ValidatorNodeBMT::create(sorted_set.iter().map(hash_node).collect::<Vec<_>>());
+        let vn_bmt = ValidatorNodeBMT::create(sorted_set.iter().map(hash_node).collect());
         roots.insert(validator_network, vn_bmt.get_merkle_root());
     }
 
     let mut keys = roots.keys().cloned().collect::<Vec<_>>();
     keys.sort();
-    let mut root_mt = SparseMerkleTree::<ValidatorNodeSmtHasherBlake256>::new();
+    let mut root_mt = SparseMerkleTree::<ValidatorNodeMerkleHasherBlake256>::new();
     for key in keys {
         let node_key = NodeKey::try_from(key.as_slice())?;
         let value_hash = ValueHash::try_from(roots[&key].as_slice())?;
         root_mt.insert(node_key, value_hash)?;
     }
 
-    Ok(Vec::from(root_mt.hash().as_slice()))
+    Ok(FixedHash::try_from(root_mt.hash().as_slice())?)
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {

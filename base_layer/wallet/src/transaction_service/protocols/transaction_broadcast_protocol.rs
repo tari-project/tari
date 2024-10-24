@@ -136,10 +136,12 @@ where
             loop {
                 tokio::select! {
                     _ = current_base_node_watcher.changed() => {
-                            if let Some(peer) = &*current_base_node_watcher.borrow() {
+                            if let Some(selected_peer) = &*current_base_node_watcher.borrow() {
                                 info!(
                                     target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})", self.tx_id, peer.public_key, peer.node_id
+                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})",
+                                    self.tx_id, selected_peer.get_current_peer().public_key,
+                                    selected_peer.get_current_peer().node_id,
                                 );
                             }
                             self.last_rejection = None;
@@ -154,7 +156,10 @@ where
                             },
                             TxBroadcastMode::TransactionQuery => {
                                 if result? {
-                                    debug!(target: LOG_TARGET, "Transaction broadcast, transaction validation protocol will continue from here");
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Transaction broadcast, transaction validation protocol will continue from here"
+                                    );
                                     return Ok(self.tx_id)
                                 }
                             },

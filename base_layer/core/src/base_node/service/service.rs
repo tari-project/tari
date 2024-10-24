@@ -649,7 +649,7 @@ async fn handle_outbound_block(
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), CommsInterfaceError> {
     let result = outbound_message_service
-        .flood(
+        .propagate(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,

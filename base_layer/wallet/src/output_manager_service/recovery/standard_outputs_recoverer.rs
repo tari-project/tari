@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Instant;
+use std::{str::FromStr, time::Instant};
 
 use log::*;
 use tari_common_types::{
@@ -28,7 +28,7 @@ use tari_common_types::{
     types::{FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TransactionKeyManagerLabel},
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -73,18 +73,18 @@ where
     /// them to the database and increment the key manager index
     pub async fn scan_and_recover_outputs(
         &mut self,
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, Option<TxId>)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
-        let push_pub_key_script = script!(PushPubKey(Box::default()));
-        for output in outputs {
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash, Option<TxId>)> = Vec::new();
+        let push_pub_key_script = script!(PushPubKey(Box::default()))?;
+        for (output, tx_id) in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
-            if output.script != script!(Nop) &&
+            if output.script != script!(Nop)? &&
                 known_script_index.is_none() &&
                 !output.script.pattern_match(&push_pub_key_script)
             {
@@ -122,7 +122,7 @@ where
                 payment_id,
             );
 
-            rewound_outputs.push((uo, known_script_index.is_some(), hash));
+            rewound_outputs.push((uo, known_script_index.is_some(), hash, tx_id));
         }
 
         let rewind_time = start.elapsed();
@@ -134,7 +134,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, has_known_script, hash) in &mut rewound_outputs {
+        for (output, has_known_script, hash, tx_id) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.master_key_manager,
@@ -144,7 +144,10 @@ where
                 None,
             )
             .await?;
-            let tx_id = TxId::new_random();
+            let tx_id = match tx_id {
+                Some(id) => *id,
+                None => TxId::new_random(),
+            };
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                 match e {
@@ -201,14 +204,10 @@ where
         known_script_index: Option<usize>,
         known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
-        let (input_data, script_key) = if script == &script!(Nop) {
+        let (input_data, script_key) = if script == &script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = if let Some(index) = spending_key.managed_index() {
-                KeyId::Derived {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    label: TransactionKeyManagerLabel::ScriptKey.get_branch_key(),
-                    index,
-                }
+            let key = if let KeyId::Derived { key } = spending_key {
+                TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());
                 self.master_key_manager.import_key(private_key).await?

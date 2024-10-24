@@ -30,11 +30,11 @@ use tokio::{
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing::{debug, error, warn};
 // Reexport
-pub use yamux::ConnectionError;
 use yamux::Mode;
 
 use crate::{
     connection_manager::ConnectionDirection,
+    multiplexing::YamuxControlError,
     stream_id,
     stream_id::StreamId,
     utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
@@ -134,24 +134,18 @@ impl Control {
     }
 
     /// Open a new stream to the remote.
-    pub async fn open_stream(&mut self) -> Result<Substream, ConnectionError> {
+    pub async fn open_stream(&mut self) -> Result<Substream, YamuxControlError> {
         let (reply, reply_rx) = oneshot::channel();
-        self.request_tx
-            .send(YamuxRequest::OpenStream { reply })
-            .await
-            .map_err(|_| ConnectionError::Closed)?;
-        let stream = reply_rx.await.map_err(|_| ConnectionError::Closed)??;
+        self.request_tx.send(YamuxRequest::OpenStream { reply }).await?;
+        let stream = reply_rx.await??;
         Ok(stream)
     }
 
     /// Close the connection.
-    pub async fn close(&mut self) -> Result<(), ConnectionError> {
+    pub async fn close(&mut self) -> Result<(), YamuxControlError> {
         let (reply, reply_rx) = oneshot::channel();
-        self.request_tx
-            .send(YamuxRequest::Close { reply })
-            .await
-            .map_err(|_| ConnectionError::Closed)?;
-        reply_rx.await.map_err(|_| ConnectionError::Closed)?
+        self.request_tx.send(YamuxRequest::Close { reply }).await?;
+        Ok(reply_rx.await??)
     }
 }
 

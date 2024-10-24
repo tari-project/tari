@@ -156,8 +156,8 @@ event_channel_size = 3500
 
 [wallet.base_node]
 # Configuration for the wallet's base node service
-# The refresh interval (default = 3 s)
-#base_node_monitor_max_refresh_interval = 3
+# The refresh interval
+#base_node_monitor_max_refresh_interval = 30
 # The RPC client pool size  (default = 5)
 #base_node_rpc_pool_size = 5
 # This is the size of the event channel used to communicate base node events to the wallet. (default = 250).
@@ -168,7 +168,7 @@ event_channel_size = 3500
 # peers can find you.
 # _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
 # automatically configured
-#public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+#public_addresses = ["/ip4/172.2.3.4/tcp/18188",]
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -239,9 +239,9 @@ event_channel_size = 3500
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is
 # made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported. (e.g. ["/dns4/my-foo-base-node/tcp/9998"])
 #tor.proxy_bypass_addresses = []
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for
-# better privacy
-#tor.proxy_bypass_for_outbound_tcp = false
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to 'true' for
+# better network performance for TCP nodes; set it to 'false' for better privacy.
+#tor.proxy_bypass_for_outbound_tcp = true
 # If set, instructs tor to forward traffic the provided address. (e.g. "/ip4/127.0.0.1/tcp/0") (default = )
 #tor.forward_address =
 
@@ -347,8 +347,6 @@ network_discovery.initial_peer_sync_delay = 25
 #ban_duration = 21_600 # 6 * 60 * 60
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
 #ban_duration_short = 3_600 # 60 * 60
-# This allows the use of test addresses in the network like 127.0.0.1. Default: false
-#allow_test_addresses = false
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
@@ -360,3 +358,9 @@ network_discovery.initial_peer_sync_delay = 25
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
 # peers that were previously tried. Default: 2 hours
 #offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
+# Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
+#   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`
+#                or
+#   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
+excluded_dial_addresses = []

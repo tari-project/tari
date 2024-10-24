@@ -37,7 +37,7 @@ pub const CUSTOM_BASE_NODE_ADDRESS_KEY: &str = "console_wallet_custom_base_node_
 
 /// This helper function will attempt to read a stored base node public key and address from the wallet database.
 /// If both are found they are used to construct and return a Peer.
-pub fn get_custom_base_node_peer_from_db(wallet: &mut WalletSqlite) -> Option<Peer> {
+pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> {
     let custom_base_node_peer_pubkey = match wallet
         .db
         .get_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())

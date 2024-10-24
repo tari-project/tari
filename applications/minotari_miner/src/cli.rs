@@ -42,10 +42,23 @@ pub struct Cli {
 }
 
 impl ConfigOverrideProvider for Cli {
-    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)> {
-        let mut overrides = self.common.get_config_property_overrides(network);
-        *network = self.common.network.unwrap_or(*network);
-        overrides.push(("miner.network".to_string(), network.to_string()));
+    /// Get the configuration property overrides for the given network. In case of duplicates, the final override
+    /// added to the list will have preference.
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
+        // Config file overrides
+        let mut overrides = vec![("miner.network".to_string(), network.to_string())];
+        // Command-line overrides
+        let command_line_overrides = self.common.get_config_property_overrides(network);
+        command_line_overrides.iter().for_each(|(k, v)| {
+            replace_or_add_override(&mut overrides, k, v);
+        });
         overrides
     }
+}
+
+fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
+        overrides.remove(index);
+    }
+    overrides.push((key.to_string(), value.to_string()));
 }

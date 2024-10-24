@@ -24,7 +24,6 @@ use std::mem::size_of;
 
 use chacha20poly1305::{
     aead::{Aead, Payload},
-    Tag,
     XChaCha20Poly1305,
     XNonce,
 };
@@ -56,13 +55,10 @@ pub fn decrypt_bytes_integral_nonce(
     domain: Vec<u8>,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, String> {
-    // We need at least a nonce and tag, or there's no point in attempting decryption
-    if ciphertext.len() < size_of::<XNonce>() + size_of::<Tag>() {
-        return Err("Ciphertext is too short".to_string());
-    }
-
     // Extract the nonce
-    let (nonce, ciphertext) = ciphertext.split_at(size_of::<XNonce>());
+    let (nonce, ciphertext) = ciphertext
+        .split_at_checked(size_of::<XNonce>())
+        .ok_or("Ciphertext is too short".to_string())?;
     let nonce_ga = XNonce::from_slice(nonce);
 
     let payload = Payload {
@@ -109,7 +105,7 @@ pub fn encrypt_bytes_integral_nonce(
 
 #[cfg(test)]
 mod test {
-    use chacha20poly1305::{Key, KeyInit};
+    use chacha20poly1305::{Key, KeyInit, Tag};
 
     use super::*;
 

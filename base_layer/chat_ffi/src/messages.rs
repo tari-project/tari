@@ -65,11 +65,13 @@ pub unsafe extern "C" fn get_chat_messages(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     if address.is_null() {
         error = LibChatError::from(InterfaceError::NullError("address".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let mlimit = u64::from(limit);
@@ -192,13 +194,13 @@ mod test {
 
     #[test]
     fn test_retrieving_messages_from_vector() {
-        let m = MessageBuilder::new().message("hello 2".to_string()).build();
+        let m = MessageBuilder::new().message("hello 2".to_string()).unwrap().build();
         let messages = MessageVector(vec![
-            MessageBuilder::new().message("hello 0".to_string()).build(),
-            MessageBuilder::new().message("hello 1".to_string()).build(),
+            MessageBuilder::new().message("hello 0".to_string()).unwrap().build(),
+            MessageBuilder::new().message("hello 1".to_string()).unwrap().build(),
             m.clone(),
-            MessageBuilder::new().message("hello 3".to_string()).build(),
-            MessageBuilder::new().message("hello 4".to_string()).build(),
+            MessageBuilder::new().message("hello 3".to_string()).unwrap().build(),
+            MessageBuilder::new().message("hello 4".to_string()).unwrap().build(),
         ]);
 
         let messages_len = messages.0.len();
@@ -218,7 +220,7 @@ mod test {
                 message_id.push(chat_byte_vector_get_at(message_byte_vector, i, error_out));
             }
 
-            assert_eq!(m.message_id, message_id);
+            assert_eq!(m.message_id.to_vec(), message_id);
 
             destroy_message_vector(message_vector_ptr);
             destroy_chat_message(message_ptr);

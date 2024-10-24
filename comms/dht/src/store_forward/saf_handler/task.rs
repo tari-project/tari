@@ -330,7 +330,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             target: LOG_TARGET,
             "Received {} stored messages of type {} from peer `{}` (Trace: {})",
             response.messages().len(),
-            SafResponseType::from_i32(response.response_type)
+            SafResponseType::try_from(response.response_type).ok()
                 .as_ref()
                 .map(|t| format!("{:?}", t))
                 .unwrap_or_else(|| "<Invalid>".to_string()),

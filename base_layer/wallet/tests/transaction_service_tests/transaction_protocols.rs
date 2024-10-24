@@ -26,7 +26,7 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
 use minotari_wallet::{
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    connectivity_service::{create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityMock},
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
@@ -174,6 +174,7 @@ pub async fn setup() -> (
     );
     let interactive_tari_address =
         TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+    let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -192,6 +193,7 @@ pub async fn setup() -> (
             ..TransactionServiceConfig::default()
         },
         shutdown_signal: shutdown.to_signal(),
+        wallet_type,
     };
 
     (
@@ -275,7 +277,8 @@ async fn tx_broadcast_protocol_submit_success() {
     ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -361,7 +364,8 @@ async fn tx_broadcast_protocol_submit_rejection() {
 
     add_transaction_to_database(1u64.into(), 1 * T, None, resources.db.clone()).await;
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -443,7 +447,8 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     });
 
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
 
     // Now we add the connection
     let mut connection = mock_rpc_server
@@ -528,7 +533,8 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
 
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
 
     // Now we add the connection
     let mut connection = mock_rpc_server
@@ -622,7 +628,8 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     });
 
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -693,7 +700,8 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     });
 
     let timeout_update_watch = Watch::new(Duration::from_secs(1));
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![server_node_identity.to_peer()]).unwrap());
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -737,7 +745,8 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     });
 
     // Change Base Node
-    wallet_connectivity.notify_base_node_set(new_server_node_identity.to_peer());
+    wallet_connectivity
+        .notify_base_node_set(BaseNodePeerManager::new(0, vec![new_server_node_identity.to_peer()]).unwrap());
 
     // Wait for 1 query
     let _schnorr_signatures = new_rpc_service_state

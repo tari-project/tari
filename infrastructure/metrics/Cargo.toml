@@ -1,8 +1,8 @@
 [package]
 name = "tari_metrics"
 description = "Tari metrics"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
@@ -16,7 +16,10 @@ prometheus = "0.13.0"
 
 futures = { version = "0.3.15", default-features = false, optional = true }
 reqwest = { version = "0.11.4", default-features = false, optional = true }
-tokio = { version = "1", optional = true, features = ["time", "rt-multi-thread"] }
+tokio = { version = "1", optional = true, features = [
+    "time",
+    "rt-multi-thread",
+] }
 warp = { version = "0.3.1", optional = true, default-features = false }
 thiserror = "1.0.25"
 anyhow = { version = "1.0.53", optional = true }

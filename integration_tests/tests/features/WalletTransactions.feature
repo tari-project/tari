@@ -167,7 +167,7 @@ Feature: Wallet Transactions
     Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   @critical
-  Scenario: Wallet imports faucet UTXO
+  Scenario: Wallet imports pre_mine UTXO
     Given I have a seed node NODE
     When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
@@ -183,7 +183,7 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
     When I wait 15 seconds
-    Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
+    Then I import WALLET_B unspent outputs as pre_mine outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     When I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     When mining node MINER mines 6 blocks
@@ -211,7 +211,7 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
-    @missing-steps
+  @missing-steps
   # Scenario: Wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -264,7 +264,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
-   @missing-steps
+  @missing-steps
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED
@@ -291,7 +291,7 @@ Feature: Wallet Transactions
     #Then wallet WALLET_B detects all transactions are at least Pending
 
 
-      @missing-steps
+  @missing-steps
   # Scenario: Short wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:

@@ -122,21 +122,21 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
 #[when(expr = "I wait for {word} to have {int} connections")]
 async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
     let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
-
+    let mut connected_peers = 0;
     for _i in 0..100 {
         let res = match node_client {
             NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
             NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
         };
         let res = res.into_inner();
-
+        connected_peers = res.connected_peers.len();
         if res.connected_peers.len() >= num_connections {
             return;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
-    panic!("Peer was not connected in time");
+    panic!("Peer was not connected in time, connected to {} peers", connected_peers);
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]
@@ -514,7 +514,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     let mut peer_node_client = world.get_node_client(&peer_node).await.unwrap();
     let req = Empty {};
     let mut expected_height = peer_node_client
-        .get_tip_info(req.clone())
+        .get_tip_info(req)
         .await
         .unwrap()
         .into_inner()
@@ -529,7 +529,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     'outer: for _ in 0..12 {
         'inner: for _ in 0..num_retries {
             current_height = base_node_client
-                .get_tip_info(req.clone())
+                .get_tip_info(req)
                 .await
                 .unwrap()
                 .into_inner()
@@ -544,7 +544,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
         }
 
         expected_height = peer_node_client
-            .get_tip_info(req.clone())
+            .get_tip_info(req)
             .await
             .unwrap()
             .into_inner()
@@ -553,7 +553,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
             .best_block_height;
 
         current_height = base_node_client
-            .get_tip_info(req.clone())
+            .get_tip_info(req)
             .await
             .unwrap()
             .into_inner()
@@ -747,7 +747,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
     let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
 
     let block_template = template_response.new_block_template.clone().unwrap();
-    let miner_data = template_response.miner_data.clone().unwrap();
+    let miner_data = template_response.miner_data.unwrap();
     let amount = miner_data.reward + miner_data.total_fees;
     let request = GetNewBlockWithCoinbasesRequest {
         new_template: Some(block_template),

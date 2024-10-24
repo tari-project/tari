@@ -264,7 +264,7 @@ impl Sub<Minotari> for MicroMinotari {
 }
 
 /// A convenience struct for representing full Tari.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd)]
 pub struct Minotari(MicroMinotari);
 
 newtype_ops! { [Minotari] {add sub mul div} {:=} Self Self }
@@ -307,6 +307,11 @@ impl Minotari {
         // UNWRAP: MAX_I128_REPR > u64::MAX and scale is within bounds (see Decimal::from_parts)
         let d = Decimal::from_parts(u128::from(self.0.as_u64()), 6, false).unwrap();
         format!("{} T", format_currency(&d.to_string(), sep))
+    }
+
+    #[allow(non_snake_case)]
+    pub fn uT(&self) -> MicroMinotari {
+        self.0
     }
 }
 

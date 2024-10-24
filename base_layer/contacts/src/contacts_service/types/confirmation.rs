@@ -20,28 +20,45 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::contacts_service::proto;
+use std::{convert::TryFrom, fmt::Display};
+
+use tari_max_size::MaxSizeBytes;
+use tari_utilities::ByteArray;
+
+use crate::contacts_service::{error::ContactsServiceError, proto, types::MessageId};
 
 #[derive(Clone, Debug, Default)]
 pub struct Confirmation {
-    pub message_id: Vec<u8>,
+    pub message_id: MessageId,
     pub timestamp: u64,
 }
 
-impl From<proto::Confirmation> for Confirmation {
-    fn from(confirmation: proto::Confirmation) -> Self {
-        Self {
-            message_id: confirmation.message_id,
+impl TryFrom<proto::Confirmation> for Confirmation {
+    type Error = ContactsServiceError;
+
+    fn try_from(confirmation: proto::Confirmation) -> Result<Self, Self::Error> {
+        Ok(Self {
+            message_id: MaxSizeBytes::try_from(confirmation.message_id)?,
             timestamp: confirmation.timestamp,
-        }
+        })
     }
 }
 
 impl From<Confirmation> for proto::Confirmation {
     fn from(confirmation: Confirmation) -> Self {
         Self {
-            message_id: confirmation.message_id,
+            message_id: confirmation.message_id.to_vec(),
             timestamp: confirmation.timestamp,
         }
+    }
+}
+
+impl Display for Confirmation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Confirmation: message_id: {}, timestamp: {}",
+            self.message_id, self.timestamp
+        )
     }
 }

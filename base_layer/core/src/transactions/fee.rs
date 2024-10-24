@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::max;
-
 use super::{tari_amount::MicroMinotari, weight::TransactionWeight};
 use crate::transactions::aggregated_body::AggregateBody;
 
@@ -29,8 +27,6 @@ use crate::transactions::aggregated_body::AggregateBody;
 pub struct Fee(TransactionWeight);
 
 impl Fee {
-    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroMinotari = MicroMinotari(101);
-
     pub fn new(weight: TransactionWeight) -> Self {
         Self(weight)
     }
@@ -60,11 +56,6 @@ impl Fee {
     pub fn calculate_body(&self, fee_per_gram: MicroMinotari, body: &AggregateBody) -> std::io::Result<MicroMinotari> {
         let weight = self.weighting().calculate_body(body)?;
         Ok(MicroMinotari::from(weight) * fee_per_gram)
-    }
-
-    /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
-    pub fn normalize(fee: MicroMinotari) -> MicroMinotari {
-        max(Self::MINIMUM_TRANSACTION_FEE, fee)
     }
 
     pub fn weighting(&self) -> &TransactionWeight {

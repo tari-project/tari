@@ -15,7 +15,7 @@ hash_domain!(
     0
 );
 hash_domain!(
-    ValidatorNodeBmtHashDomain,
+    ValidatorNodeMerkleHashDomain,
     "com.tari.base_layer.core.validator_node_mmr",
     1
 );

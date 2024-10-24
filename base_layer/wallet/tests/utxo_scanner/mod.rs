@@ -297,6 +297,7 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 

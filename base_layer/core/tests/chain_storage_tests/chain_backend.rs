@@ -126,7 +126,7 @@ fn test_utxo_order() {
     let mut utxos = Vec::with_capacity(2000);
     let version = TransactionOutputVersion::V0;
     let features = OutputFeatures::default();
-    let script = script!(Nop);
+    let script = script!(Nop).unwrap();
     let proof = RangeProof::default();
     let sig = ComAndPubSignature::default();
     let covenant = Covenant::default();

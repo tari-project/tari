@@ -30,10 +30,11 @@ use chrono::NaiveDateTime;
 use log::*;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
+use tari_utilities::ByteArray;
 
 use crate::contacts_service::{
     error::ContactsServiceStorageError,
-    types::{Contact, Message},
+    types::{Contact, Message, MessageId},
 };
 
 const LOG_TARGET: &str = "contacts::contacts_service::database";
@@ -187,9 +188,9 @@ where T: ContactsBackend + 'static
         }
     }
 
-    pub fn get_message(&self, message_id: Vec<u8>) -> Result<Message, ContactsServiceStorageError> {
+    pub fn get_message(&self, message_id: MessageId) -> Result<Message, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
-        fetch!(db_clone, message_id, Message)
+        fetch!(db_clone, message_id.to_vec(), Message)
     }
 
     pub fn save_message(&self, message: Message) -> Result<(), ContactsServiceStorageError> {
@@ -201,7 +202,7 @@ where T: ContactsBackend + 'static
 
     pub fn confirm_message(
         &self,
-        message_id: Vec<u8>,
+        message_id: MessageId,
         delivery_confirmation: Option<u64>,
         read_confirmation: Option<u64>,
     ) -> Result<(), ContactsServiceStorageError> {
@@ -225,7 +226,9 @@ where T: ContactsBackend + 'static
 
         self.db
             .write(WriteOperation::Upsert(Box::new(DbKeyValuePair::MessageConfirmations(
-                message_id, delivery, read,
+                message_id.to_vec(),
+                delivery,
+                read,
             ))))?;
 
         Ok(())

@@ -31,6 +31,8 @@ pub enum WalletConnectivityError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Service is terminated and can no longer response to requests")]
     ServiceTerminated,
+    #[error("Preferred peer index is out of bounds: {0}")]
+    PeerIndexOutOfBounds(String),
 }
 
 impl From<mpsc::SendError> for WalletConnectivityError {

@@ -31,7 +31,11 @@ service ShaP2Pool {
   rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
 }
 
-message GetNewBlockRequest {}
+message GetNewBlockRequest {
+  tari.rpc.PowAlgo pow = 1;
+  string coinbase_extra = 2;
+  string wallet_payment_address = 3;
+}
 
 message GetNewBlockResponse {
   tari.rpc.GetNewBlockResult block = 1;

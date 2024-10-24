@@ -48,7 +48,8 @@ impl WalletAddress {
         unsafe {
             ptr = ffi_import::tari_address_from_base58(CString::new(address).unwrap().into_raw(), &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {}", error);
+                panic!("wallet_get_tari_interactive_address error");
             }
         }
         Self { ptr }
@@ -61,7 +62,8 @@ impl WalletAddress {
         unsafe {
             ptr = ffi_import::emoji_id_to_tari_address(CString::new(emoji_id).unwrap().into_raw(), &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {}", error);
+                panic!("wallet_get_tari_interactive_address error");
             }
         }
         Self { ptr }
@@ -73,7 +75,8 @@ impl WalletAddress {
         unsafe {
             ptr = ffi_import::tari_address_get_bytes(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {}", error);
+                panic!("wallet_get_tari_interactive_address error");
             }
         }
         FFIBytes::from_ptr(ptr)
@@ -86,6 +89,7 @@ impl WalletAddress {
             ptr = ffi_import::tari_address_to_emoji_id(self.ptr, &mut error);
             if error > 0 {
                 println!("tari_address_to_emoji_id error {}", error);
+                panic!("tari_address_to_emoji_id error");
             }
         }
         FFIString::from_ptr(ptr)

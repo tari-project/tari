@@ -24,17 +24,12 @@
 
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
-#[cfg(feature = "ledger")]
-use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use digest::crypto_common::rand_core::OsRng;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
 #[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::ledger_wallet::LedgerCommands;
-#[cfg(feature = "ledger")]
-use minotari_ledger_wallet_comms::{
-    error::LedgerDeviceError,
-    ledger_wallet::{get_transport, Instruction},
-};
+use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::database::OutputManagerDatabase,
@@ -47,6 +42,7 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use rand::prelude::SliceRandom;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_common::{
@@ -58,8 +54,9 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
+    key_branches::TransactionKeyManagerBranch,
     types::{PrivateKey, PublicKey},
-    wallet_types::{LedgerWallet, WalletType},
+    wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -69,13 +66,21 @@ use tari_comms::{
 };
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::{transaction_components::TransactionError, CryptoFactories},
+    transactions::{
+        key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
+        transaction_components::TransactionError,
+        CryptoFactories,
+    },
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
-use tari_p2p::{peer_seeds::SeedPeer, TransportType};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
+    mnemonic::MnemonicLanguage,
+};
+use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::{hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
 use crate::{
@@ -96,6 +101,7 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
+    ViewAndSpendKey,
 }
 
 /// Get and confirm a passphrase from the user, with feedback
@@ -258,7 +264,9 @@ pub async fn change_password(
     non_interactive_mode: bool,
 ) -> Result<(), ExitError> {
     let mut wallet = init_wallet(
-        config,
+        &config.wallet,
+        config.auto_update.clone(),
+        config.peer_seeds.clone(),
         existing.clone(),
         None,
         None,
@@ -286,13 +294,13 @@ pub async fn change_password(
 /// 3. The detected local base node if any
 /// 4. The service peers defined in config they exist
 /// 5. The peer seeds defined in config
-pub async fn get_base_node_peer_config(
-    config: &ApplicationConfig,
+pub async fn set_peer_and_get_base_node_peer_config(
+    config: &WalletConfig,
     wallet: &mut WalletSqlite,
     non_interactive_mode: bool,
 ) -> Result<PeerConfig, ExitError> {
     let mut use_custom_base_node_peer = false;
-    let mut selected_base_node = match config.wallet.custom_base_node {
+    let mut selected_base_node = match config.custom_base_node {
         Some(ref custom) => SeedPeer::from_str(custom)
             .map(|node| Some(Peer::from(node)))
             .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
@@ -307,8 +315,8 @@ pub async fn get_base_node_peer_config(
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.wallet.custom_base_node.is_none() && !use_custom_base_node_peer {
-        if let Some(detected_node) = detect_local_base_node(config.wallet.network).await {
+    if !non_interactive_mode && config.custom_base_node.is_none() && !use_custom_base_node_peer {
+        if let Some(detected_node) = detect_local_base_node(config.network).await {
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
                     // Skip asking because it's already set
@@ -345,10 +353,8 @@ pub async fn get_base_node_peer_config(
             format!("Could net get seed peers from peer manager: {}", err),
         )
     })?;
-
     // config
     let base_node_peers = config
-        .wallet
         .base_node_service_peers
         .iter()
         .map(|s| SeedPeer::from_str(s))
@@ -390,7 +396,9 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
 /// Set up the app environment and state for use by the UI
 #[allow(clippy::too_many_lines)]
 pub async fn init_wallet(
-    config: &ApplicationConfig,
+    config: &WalletConfig,
+    auto_update: AutoUpdateConfig,
+    peer_seeds: PeerSeedsConfig,
     arg_password: SafePassword,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
@@ -400,47 +408,46 @@ pub async fn init_wallet(
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         config
-            .wallet
             .db_file
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
-    fs::create_dir_all(&config.wallet.p2p.datastore_path)
+    fs::create_dir_all(&config.p2p.datastore_path)
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    let db_path = &config.wallet.db_file;
+    let db_path = &config.db_file;
 
     // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
-        initialize_sqlite_database_backends(db_path, arg_password, config.wallet.db_connection_pool_size)?;
+        initialize_sqlite_database_backends(db_path, arg_password, config.db_connection_pool_size)?;
 
     let wallet_db = WalletDatabase::new(wallet_backend);
     let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    let node_addresses = if config.wallet.p2p.public_addresses.is_empty() {
+    let node_addresses = if config.p2p.public_addresses.is_empty() {
         match wallet_db.get_node_address()? {
             Some(addr) => MultiaddrList::from(vec![addr]),
             None => MultiaddrList::default(),
         }
     } else {
-        config.wallet.p2p.public_addresses.clone()
+        config.p2p.public_addresses.clone()
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
 
     let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
-    let mut wallet_config = config.wallet.clone();
-    if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
+    let mut wallet_config = config.clone();
+    if let TransportType::Tor = config.p2p.transport.transport_type {
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
-    let consensus_manager = ConsensusManager::builder(config.wallet.network)
+    let consensus_manager = ConsensusManager::builder(config.network)
         .build()
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
     let factories = CryptoFactories::default();
@@ -449,8 +456,8 @@ pub async fn init_wallet(
     let user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
     let mut wallet = Wallet::start(
         wallet_config,
-        config.peer_seeds.clone(),
-        config.auto_update.clone(),
+        peer_seeds,
+        auto_update,
         node_identity,
         consensus_manager,
         factories,
@@ -565,18 +572,29 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
 pub async fn start_wallet(
     wallet: &mut WalletSqlite,
-    base_node: &Peer,
+    base_nodes: &[Peer],
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Setting base node peer");
 
-    let net_address = base_node
+    if base_nodes.is_empty() {
+        return Err(ExitError::new(
+            ExitCode::WalletError,
+            "No base nodes configured to connect to",
+        ));
+    }
+    let selected_base_node = base_nodes.choose(&mut OsRng).expect("base_nodes is not empty");
+    let net_address = selected_base_node
         .addresses
         .best()
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), Some(net_address.address().clone()))
+        .set_base_node_peer(
+            selected_base_node.public_key.clone(),
+            Some(net_address.address().clone()),
+            Some(base_nodes.to_vec()),
+        )
         .await
         .map_err(|e| {
             ExitError::new(
@@ -729,6 +747,10 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
         return Ok(WalletBoot::Recovery);
     }
 
+    if !wallet_exists && cli.view_private_key.is_some() && cli.spend_key.is_some() {
+        return Ok(WalletBoot::ViewAndSpendKey);
+    }
+
     if wallet_exists {
         // normal startup of existing wallet
         Ok(WalletBoot::Existing)
@@ -751,7 +773,8 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
 
         loop {
             println!("1. Create a new wallet.");
-            println!("2. Recover wallet from seed words.");
+            println!("2. Recover wallet from seed words or hardware device.");
+            println!("3. Create a read-only wallet using a view key.");
             let readline = rl.readline(">> ");
             match readline {
                 Ok(line) => {
@@ -763,6 +786,9 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                         "2" | "r" | "s" | "recover" => {
                             // recover wallet
                             return Ok(WalletBoot::Recovery);
+                        },
+                        "3" => {
+                            return Ok(WalletBoot::ViewAndSpendKey);
                         },
                         _ => continue,
                     }
@@ -804,6 +830,10 @@ pub(crate) fn boot_with_password(
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
+        WalletBoot::ViewAndSpendKey => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
+            get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
+        },
     };
 
     Ok((boot_mode, password))
@@ -813,12 +843,45 @@ pub fn prompt_wallet_type(
     boot_mode: WalletBoot,
     wallet_config: &WalletConfig,
     non_interactive: bool,
+    view_private_key: Option<String>,
+    spend_key: Option<String>,
 ) -> Option<WalletType> {
-    if non_interactive {
+    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey) {
         return Some(WalletType::default());
     }
 
     match boot_mode {
+        WalletBoot::ViewAndSpendKey => {
+            let view_key = if let Some(vk) = view_private_key {
+                match PrivateKey::from_hex(&vk) {
+                    Ok(pk) => pk,
+                    Err(_) => {
+                        println!("Invalid view key provided");
+                        panic!("Invalid view key provided");
+                    },
+                }
+            } else {
+                prompt_private_key("Enter view key: ").expect("View key provided was invalid")
+            };
+            let spend_key = if let Some(sk) = spend_key {
+                match PublicKey::from_hex(&sk) {
+                    Ok(pk) => pk,
+                    Err(_) => {
+                        println!("Invalid spend key provided");
+                        panic!("Invalid spend key provided");
+                    },
+                }
+            } else {
+                prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
+            };
+
+            Some(WalletType::ProvidedKeys(ProvidedKeysWallet {
+                view_key,
+                public_spend_key: spend_key,
+                private_spend_key: None,
+                private_comms_key: None,
+            }))
+        },
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
             return Some(WalletType::default());
@@ -833,66 +896,19 @@ pub fn prompt_wallet_type(
                 };
                 if prompt(connected_hardware_msg) {
                     print!("Scanning for connected Ledger hardware device... ");
-                    match get_transport() {
-                        Ok(hid) => {
-                            println!("Device found.");
-                            let account = prompt_ledger_account(boot_mode).expect("An account value");
-                            let ledger = LedgerWallet::new(account, wallet_config.network, None, None);
-                            match ledger
-                                .build_command(Instruction::GetPublicAlpha, vec![])
-                                .execute_with_transport(&hid)
-                            {
-                                Ok(result) => {
-                                    debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                    if result.data().len() < 33 {
-                                        debug!(target: LOG_TARGET, "result less than 33");
-                                        panic!(
-                                            "'get_public_key' insufficient data - expected 33 got {} bytes ({:?})",
-                                            result.data().len(),
-                                            result
-                                        );
-                                    }
-
-                                    let public_alpha = match PublicKey::from_canonical_bytes(&result.data()[1..33]) {
-                                        Ok(k) => k,
-                                        Err(e) => panic!("{}", e),
-                                    };
-
-                                    match ledger
-                                        .build_command(Instruction::GetViewKey, vec![])
-                                        .execute_with_transport(&hid)
-                                    {
-                                        Ok(result) => {
-                                            debug!(target: LOG_TARGET, "result length: {}, data: {:?}", result.data().len(), result.data());
-                                            if result.data().len() < 33 {
-                                                debug!(target: LOG_TARGET, "result less than 33");
-                                                panic!(
-                                                    "'get_view_key' insufficient data - expected 33 got {} bytes \
-                                                     ({:?})",
-                                                    result.data().len(),
-                                                    result
-                                                );
-                                            }
-
-                                            let view_key = match PrivateKey::from_canonical_bytes(&result.data()[1..33])
-                                            {
-                                                Ok(k) => k,
-                                                Err(e) => panic!("{}", e),
-                                            };
-
-                                            let ledger = LedgerWallet::new(
-                                                account,
-                                                wallet_config.network,
-                                                Some(public_alpha),
-                                                Some(view_key),
-                                            );
-                                            Some(WalletType::Ledger(ledger))
-                                        },
-                                        Err(e) => panic!("{}", e),
-                                    }
-                                },
-                                Err(e) => panic!("{}", e),
-                            }
+                    let account = prompt_ledger_account(boot_mode).expect("An account value");
+                    match ledger_get_public_spend_key(account) {
+                        Ok(public_alpha) => match ledger_get_view_key(account) {
+                            Ok(view_key) => {
+                                let ledger = LedgerWallet::new(
+                                    account,
+                                    wallet_config.network,
+                                    Some(public_alpha),
+                                    Some(view_key),
+                                );
+                                Some(WalletType::Ledger(ledger))
+                            },
+                            Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
                     }
@@ -920,6 +936,46 @@ pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
     match input.parse() {
         Ok(num) => Some(num),
         Err(_e) => Some(1),
+    }
+}
+
+pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
+    // see what we type, as we type it
+    let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
+    disable_raw_mode().expect("Could not disable raw mode");
+
+    println!("{} (hex)", prompt);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim();
+    if must_re_enable_raw_mode {
+        enable_raw_mode().expect("Could not enable raw mode");
+    }
+    match PrivateKey::from_canonical_bytes(&Vec::<u8>::from_hex(input).expect("Bad hex data")) {
+        Ok(pk) => Some(pk),
+        Err(e) => {
+            panic!("Bad private key: {}", e)
+        },
+    }
+}
+
+pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
+    // see what we type, as we type it
+    let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
+    disable_raw_mode().expect("Could not disable raw mode");
+    println!("{} (hex or base58)", prompt);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    if must_re_enable_raw_mode {
+        enable_raw_mode().expect("Could not enable raw mode");
+    }
+    let input = input.trim();
+    match PublicKey::from_hex(input) {
+        Ok(pk) => Some(pk),
+        Err(_) => match PublicKey::from_monero_base58(input) {
+            Ok(pk) => Some(pk),
+            Err(_) => None,
+        },
     }
 }
 

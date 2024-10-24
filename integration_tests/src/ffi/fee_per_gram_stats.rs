@@ -48,6 +48,7 @@ impl FeePerGramStats {
             length = ffi_import::fee_per_gram_stats_get_length(self.ptr, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stats_get_length error {}", error);
+                panic!("fee_per_gram_stats_get_length error");
             }
         }
         length
@@ -60,6 +61,7 @@ impl FeePerGramStats {
             ptr = ffi_import::fee_per_gram_stats_get_at(self.ptr, position, &mut error);
             if error > 0 {
                 println!("fee_per_gram_stats_get_at error {}", error);
+                panic!("fee_per_gram_stats_get_at error");
             }
         }
         FeePerGramStat::from_ptr(ptr)

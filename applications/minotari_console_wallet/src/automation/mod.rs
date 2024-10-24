@@ -39,46 +39,84 @@ use tari_core::transactions::{
 };
 use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
 
-// Outputs for self with `FaucetCreatePartyDetails`
+// Step 1 outputs for all with `PreMineSpendSessionInfo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step1SessionInfo {
+struct PreMineSpendStep1SessionInfo {
     session_id: String,
     fee_per_gram: MicroMinotari,
-    commitment_to_spend: String,
-    output_hash: String,
+    recipient_info: Vec<RecipientInfo>,
+    use_pre_mine_input_file: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct RecipientInfo {
+    output_to_be_spend: usize,
     recipient_address: TariAddress,
 }
 
-// Outputs for self with `FaucetCreatePartyDetails`
+impl SessionId for PreMineSpendStep1SessionInfo {
+    fn session_id(&self) -> String {
+        self.session_id.clone()
+    }
+}
+
+// Step 2 outputs for self with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step2OutputsForSelf {
+struct PreMineSpendStep2OutputsForSelf {
+    outputs_for_self: Vec<Step2OutputsForSelf>,
     alias: String,
-    wallet_spend_key_id: TariKeyId,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Step2OutputsForSelf {
+    output_index: usize,
+    recipient_address: TariAddress,
     script_nonce_key_id: TariKeyId,
     sender_offset_key_id: TariKeyId,
     sender_offset_nonce_key_id: TariKeyId,
+    pre_mine_script_key_id: TariKeyId,
 }
 
-// Outputs for leader with `FaucetCreatePartyDetails`
+// Step 2 outputs for leader with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-struct Step2OutputsForLeader {
+struct PreMineSpendStep2OutputsForLeader {
+    outputs_for_leader: Vec<Step2OutputsForLeader>,
+    alias: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Step2OutputsForLeader {
+    output_index: usize,
+    recipient_address: TariAddress,
     script_input_signature: CheckSigSchnorrSignature,
-    wallet_public_spend_key: PublicKey,
     public_script_nonce_key: PublicKey,
     public_sender_offset_key: PublicKey,
     public_sender_offset_nonce_key: PublicKey,
     dh_shared_secret_public_key: PublicKey,
+    pre_mine_public_script_key: PublicKey,
 }
 
-// Outputs for self with `FaucetEncumberAggregateUtxo`
+// Step 3 outputs for self with `PreMineSpendEncumberAggregateUtxo`
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct PreMineSpendStep3OutputsForSelf {
+    outputs_for_self: Vec<Step3OutputsForSelf>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step3OutputsForSelf {
+    output_index: usize,
     tx_id: TxId,
 }
 
-// Outputs for parties with `FaucetEncumberAggregateUtxo`
+// Step 3 outputs for parties with `PreMineSpendEncumberAggregateUtxo`
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct PreMineSpendStep3OutputsForParties {
+    outputs_for_parties: Vec<Step3OutputsForParties>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step3OutputsForParties {
+    output_index: usize,
     input_stack: ExecutionStack,
     input_script: TariScript,
     total_script_key: PublicKey,
@@ -90,12 +128,24 @@ struct Step3OutputsForParties {
     metadata_signature_ephemeral_pubkey: PublicKey,
     encrypted_data: EncryptedData,
     output_features: OutputFeatures,
+    shared_secret: PublicKey,
 }
 
-// Outputs for leader with `FaucetCreateScriptSig` and `FaucetCreateMetaSig`
+// Step 4 outputs for leader with `PreMineSpendInputOutputSigs`
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+struct PreMineSpendStep4OutputsForLeader {
+    outputs_for_leader: Vec<Step4OutputsForLeader>,
+    alias: String,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step4OutputsForLeader {
+    output_index: usize,
     script_signature: Signature,
     metadata_signature: Signature,
     script_offset: PrivateKey,
+}
+
+trait SessionId {
+    fn session_id(&self) -> String;
 }

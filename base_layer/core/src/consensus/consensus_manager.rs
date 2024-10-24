@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 use tari_common::configuration::Network;
 use thiserror::Error;
@@ -240,7 +240,7 @@ impl ConsensusManagerBuilder {
             self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].inflation_bips,
             self.consensus_constants[0].tail_epoch_length,
-            self.consensus_constants[0].faucet_value(),
+            self.consensus_constants[0].pre_mine_value(),
         );
 
         let inner = ConsensusManagerInner {

@@ -89,24 +89,15 @@ impl PeerConfig {
 
     /// Get the prioritised base node peer from the PeerConfig.
     /// 1. Custom Base Node
-    /// 2. First configured Base Node Peer
-    /// 3. Random configured Peer Seed
-    pub fn get_base_node_peer(&self) -> Result<Peer, ExitError> {
+    /// 2. All configured Base Node Peers (a random node will be prioritised)
+    /// 3. All configured Peer Seeds (a random node will be prioritised)
+    pub fn get_base_node_peers(&self) -> Result<Vec<Peer>, ExitError> {
         if let Some(base_node) = self.base_node_custom.clone() {
-            Ok(base_node)
+            Ok(vec![base_node])
         } else if !self.base_node_peers.is_empty() {
-            Ok(self
-                .base_node_peers
-                .first()
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node peer has no address!"))?
-                .clone())
+            Ok(self.base_node_peers.clone())
         } else if !self.peer_seeds.is_empty() {
-            // pick a random peer seed
-            Ok(self
-                .peer_seeds
-                .choose(&mut OsRng)
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Peer seeds was empty."))?
-                .clone())
+            Ok(self.peer_seeds.clone())
         } else {
             Err(ExitError::new(
                 ExitCode::ConfigError,
@@ -149,7 +140,7 @@ pub(crate) fn command_mode(
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(config, vec![command.clone()], wallet.clone()))?;
+    let exit_override = handle.block_on(command_runner(config, vec![command.clone()], wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Command mode completed)";
@@ -157,24 +148,34 @@ pub(crate) fn command_mode(
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
+    let (force_exit, force_interactive) = if exit_override {
+        (true, false)
+    } else {
+        force_exit_for_pre_mine_commands(&command)
+    };
     wallet_or_exit(
         handle,
         cli,
         config,
         base_node_config,
         wallet,
-        force_exit_for_faucet_commands(&command),
+        force_exit,
+        force_interactive,
     )
 }
 
-fn force_exit_for_faucet_commands(command: &CliCommands) -> bool {
-    matches!(
-        command,
-        CliCommands::FaucetGenerateSessionInfo(_) |
-            CliCommands::FaucetEncumberAggregateUtxo(_) |
-            CliCommands::FaucetSpendAggregateUtxo(_) |
-            CliCommands::FaucetCreatePartyDetails(_) |
-            CliCommands::FaucetCreateInputOutputSigs(_)
+fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
+    (
+        matches!(
+            command,
+            CliCommands::PreMineSpendGetOutputStatus |
+                CliCommands::PreMineSpendSessionInfo(_) |
+                CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
+                CliCommands::PreMineSpendPartyDetails(_) |
+                CliCommands::PreMineSpendInputOutputSigs(_) |
+                CliCommands::PreMineSpendBackupUtxo(_)
+        ),
+        matches!(command, CliCommands::PreMineSpendAggregateTransaction(_)),
     )
 }
 
@@ -222,16 +223,17 @@ pub(crate) fn script_mode(
 
     println!("Parsing commands...");
     let commands = parse_command_file(script)?;
-    let mut exit_wallet = false;
+    let mut force_exit = false;
+    let mut force_interactive = false;
     for command in &commands {
-        if force_exit_for_faucet_commands(command) {
-            println!("Faucet commands may not run in script mode!");
-            exit_wallet = true;
+        (force_exit, force_interactive) = force_exit_for_pre_mine_commands(command);
+        if force_exit || force_interactive {
+            println!("Pre-mine command '{:?}' may not run in script mode!", command);
             break;
         }
     }
 
-    if !exit_wallet {
+    if !force_exit {
         println!("{} commands parsed successfully.", commands.len());
 
         // Do not remove this println!
@@ -239,7 +241,11 @@ pub(crate) fn script_mode(
         println!("{}", CUCUMBER_TEST_MARKER_A);
 
         println!("Starting the command runner!");
-        handle.block_on(command_runner(config, commands, wallet.clone()))?;
+        let exit_override = handle.block_on(command_runner(config, commands, wallet.clone()))?;
+        if exit_override {
+            force_exit = true;
+            force_interactive = false;
+        }
 
         // Do not remove this println!
         const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Script mode completed)";
@@ -248,7 +254,15 @@ pub(crate) fn script_mode(
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
 
-    wallet_or_exit(handle, cli, config, base_node_config, wallet, exit_wallet)
+    wallet_or_exit(
+        handle,
+        cli,
+        config,
+        base_node_config,
+        wallet,
+        force_exit,
+        force_interactive,
+    )
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -259,36 +273,42 @@ fn wallet_or_exit(
     base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     force_exit: bool,
+    force_interactive: bool,
 ) -> Result<(), ExitError> {
-    if cli.command_mode_auto_exit {
-        info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
-        return Ok(());
-    }
-    if force_exit {
-        info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
-        return Ok(());
-    }
-
-    if cli.non_interactive_mode {
-        info!(target: LOG_TARGET, "Starting GRPC server.");
-        grpc_mode(handle, config, wallet)
+    if force_interactive {
+        info!(target: LOG_TARGET, "Starting TUI.");
+        tui_mode(handle.clone(), config, base_node_config, wallet.clone())
     } else {
-        debug!(target: LOG_TARGET, "Prompting for run or exit key.");
-        println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
-        let mut buf = String::new();
-        std::io::stdin()
-            .read_line(&mut buf)
-            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+        if cli.command_mode_auto_exit {
+            info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
+            return Ok(());
+        }
+        if force_exit {
+            info!(target: LOG_TARGET, "Forced exit argument supplied by process - exiting.");
+            return Ok(());
+        }
 
-        match buf.as_str().trim() {
-            "quit" | "q" | "exit" => {
-                info!(target: LOG_TARGET, "Exiting.");
-                Ok(())
-            },
-            _ => {
-                info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(handle, config, base_node_config, wallet)
-            },
+        if cli.non_interactive_mode {
+            info!(target: LOG_TARGET, "Starting GRPC server.");
+            grpc_mode(handle, config, wallet)
+        } else {
+            debug!(target: LOG_TARGET, "Prompting for run or exit key.");
+            println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
+            let mut buf = String::new();
+            std::io::stdin()
+                .read_line(&mut buf)
+                .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+
+            match buf.as_str().trim() {
+                "quit" | "q" | "exit" => {
+                    info!(target: LOG_TARGET, "Exiting.");
+                    Ok(())
+                },
+                _ => {
+                    info!(target: LOG_TARGET, "Starting TUI.");
+                    tui_mode(handle, config, base_node_config, wallet)
+                },
+            }
         }
     }
 }
@@ -346,7 +366,7 @@ pub fn tui_mode(
     let base_node_selected;
     if let Some(peer) = base_node_config.base_node_custom.clone() {
         base_node_selected = peer;
-    } else if let Some(peer) = get_custom_base_node_peer_from_db(&mut wallet) {
+    } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
@@ -529,21 +549,27 @@ mod test {
             
             burn-minotari --message Ups_these_funds_will_be_burned! 100T
 
-            faucet-generate-session-info --fee-per-gram 2 --commitment \
-             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --output-hash \
-             f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665 --recipient-address \
+            pre-mine-spend-get-output-status
+
+            pre-mine-spend-session-info --fee-per-gram 2 \
+             --recipient-info=[1,123,313]:\
              f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
-             --verify-unspent-outputs
+             --verify-unspent-outputs --use-pre-mine-input-file
 
-            faucet-create-party-details --input-file ./step_1_session_info.txt --alias alice
+            pre-mine-spend-party-details --input-file ./step_1_session_info.txt --alias alice \
+             --recipient-info=[1,123,313]:\
+             f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
+             --pre-mine-file-path ./pre_mine_file.txt
 
-            faucet-encumber-aggregate-utxo --session-id ee1643655c --input-file-names=step_2_for_leader_from_alice.txt \
-             --input-file-names=step_2_for_leader_from_bob.txt --input-file-names=step_2_for_leader_from_carol.txt
+            pre-mine-spend-encumber-aggregate-utxo --session-id ee1643655c \
+             --input-file-names=step_2_for_leader_from_alice.txt --input-file-names=step_2_for_leader_from_bob.txt \
+             --input-file-names=step_2_for_leader_from_carol.txt
 
-            faucet-create-input-output-sigs --session-id ee1643655c
+            pre-mine-spend-input-output-sigs --session-id ee1643655c
 
-            faucet-spend-aggregate-utxo --session-id ee1643655c --input-file-names=step_4_for_leader_from_alice.txt \
-             --input-file-names=step_4_for_leader_from_bob.txt --input-file-names=step_4_for_leader_from_carol.txt
+            pre-mine-spend-aggregate-transaction --session-id ee1643655c \
+             --input-file-names=step_4_for_leader_from_alice.txt --input-file-names=step_4_for_leader_from_bob.txt \
+             --input-file-names=step_4_for_leader_from_carol.txt
 
             coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
@@ -564,11 +590,12 @@ mod test {
         let mut get_balance = false;
         let mut send_tari = false;
         let mut burn_tari = false;
-        let mut faucet_generate_session_info = false;
-        let mut faucet_encumber_aggregate_utxo = false;
-        let mut faucet_spend_aggregate_utxo = false;
-        let mut faucet_create_party_details = false;
-        let mut faucet_create_input_output_sigs = false;
+        let mut pre_mine_spend_get_output_status = false;
+        let mut pre_mine_spend_session_info = false;
+        let mut pre_mine_spend_encumber_aggregate_utxo = false;
+        let mut pre_mine_spend_aggregate_transaction = false;
+        let mut pre_mine_spend_party_details = false;
+        let mut pre_mine_spend_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
         let mut discover_peer = false;
@@ -580,17 +607,19 @@ mod test {
                 CliCommands::GetBalance => get_balance = true,
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
-                CliCommands::FaucetGenerateSessionInfo(_) => faucet_generate_session_info = true,
-                CliCommands::FaucetEncumberAggregateUtxo(_) => faucet_encumber_aggregate_utxo = true,
-                CliCommands::FaucetSpendAggregateUtxo(_) => faucet_spend_aggregate_utxo = true,
-                CliCommands::FaucetCreatePartyDetails(_) => faucet_create_party_details = true,
-                CliCommands::FaucetCreateInputOutputSigs(_) => faucet_create_input_output_sigs = true,
+                CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
+                CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
+                CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
+                CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
+                CliCommands::PreMineSpendInputOutputSigs(_) => pre_mine_spend_input_output_sigs = true,
+                CliCommands::PreMineSpendAggregateTransaction(_) => pre_mine_spend_aggregate_transaction = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
                 CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
+                CliCommands::ImportPaperWallet(_) => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true
@@ -612,17 +641,21 @@ mod test {
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
+                CliCommands::PreMineSpendBackupUtxo(_) => {},
+                CliCommands::Sync(_) => {},
+                CliCommands::ExportViewKeyAndSpendKey(_) => {},
             }
         }
         assert!(
             get_balance &&
                 send_tari &&
                 burn_tari &&
-                faucet_generate_session_info &&
-                faucet_encumber_aggregate_utxo &&
-                faucet_spend_aggregate_utxo &&
-                faucet_create_party_details &&
-                faucet_create_input_output_sigs &&
+                pre_mine_spend_get_output_status &&
+                pre_mine_spend_session_info &&
+                pre_mine_spend_encumber_aggregate_utxo &&
+                pre_mine_spend_aggregate_transaction &&
+                pre_mine_spend_party_details &&
+                pre_mine_spend_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
                 discover_peer &&

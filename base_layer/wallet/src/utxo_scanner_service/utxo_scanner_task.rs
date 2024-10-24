@@ -32,6 +32,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::HashOutput,
+    wallet_types::WalletType,
 };
 use tari_comms::{
     peer_manager::NodeId,
@@ -47,7 +48,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{TransactionOutput, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
@@ -204,9 +205,10 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
-        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
+        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
         let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
             // Use the wallet connectivity service so that RPC pools are correctly managed
@@ -264,7 +266,17 @@ where
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
-                let birthday_height_hash = self.get_birthday_header_height_hash(&mut client).await?;
+                let birthday_height_hash = match self.resources.db.get_wallet_type()? {
+                    Some(WalletType::ProvidedKeys(_)) => {
+                        let header_proto = client.get_header_by_height(0).await?;
+                        let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
+                        HeightHash {
+                            height: 0,
+                            header_hash: header.hash(),
+                        }
+                    },
+                    _ => self.get_birthday_header_height_hash(&mut client).await?,
+                };
 
                 ScannedBlock {
                     height: birthday_height_hash.height,
@@ -567,7 +579,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_for_recoverable_outputs(outputs.clone())
+                .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -593,7 +605,7 @@ where
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone())
+                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -638,9 +650,10 @@ where
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
             } else {
-                // Because we do not know the source public key we are making it the default key of zeroes to make it
-                // clear this value is a placeholder.
-                TariAddress::default()
+                match &wo.payment_id {
+                    PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => address.clone(),
+                    _ => TariAddress::default(),
+                }
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(

@@ -42,7 +42,7 @@ use tari_core::{
         generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, RangeProofType, WalletOutput},
+        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
     },
 };
 use tonic::transport::Channel;
@@ -93,13 +93,13 @@ impl MinerProcess {
             .await
             .expect("wallet grpc client");
 
-        let wallet_public_key = &wallet_client
+        let wallet_adress = &wallet_client
             .get_address(grpc::Empty {})
             .await
             .unwrap()
             .into_inner()
-            .address;
-        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
+            .interactive_address;
+        let wallet_payment_address = TariAddress::from_bytes(wallet_adress).unwrap();
 
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let temp_dir = world
@@ -117,7 +117,7 @@ impl MinerProcess {
                 base_path: data_dir_str,
                 config: config_path.into_os_string().into_string().unwrap(),
                 log_config: None,
-                log_level: None,
+                log_path: None,
                 config_property_overrides: vec![
                     (
                         "miner.base_node_grpc_address".to_string(),
@@ -289,7 +289,7 @@ async fn create_block_template_with_coinbase(
         MicroMinotari::from(fee),
         MicroMinotari::from(reward),
         height,
-        &[],
+        &CoinBaseExtra::default(),
         key_manager,
         script_key_id,
         wallet_payment_address,

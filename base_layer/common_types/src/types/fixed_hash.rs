@@ -167,6 +167,9 @@ impl DerefMut for FixedHash {
 
 impl Display for FixedHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_hex())
+        for b in self.0 {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
     }
 }

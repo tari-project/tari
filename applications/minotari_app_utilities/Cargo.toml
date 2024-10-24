@@ -13,7 +13,9 @@ tari_utilities = { workspace = true }
 minotari_app_grpc = { workspace = true, optional = true }
 
 clap = { version = "3.2", features = ["derive", "env"] }
-futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+futures = { version = "^0.3.16", default-features = false, features = [
+    "alloc",
+] }
 json5 = "0.4"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.8"
@@ -21,8 +23,7 @@ tokio = { version = "1.36", features = ["signal"] }
 serde = "1.0.126"
 thiserror = "^1.0.26"
 dialoguer = { version = "0.10" }
-tonic = "0.8.3"
-
+tonic = "0.12.3"
 
 [build-dependencies]
 tari_common = { workspace = true, features = ["build", "static-application-info"] }

@@ -25,7 +25,9 @@ use tokio::{sync::mpsc, time::error::Elapsed};
 
 use crate::{
     connection_manager::PeerConnectionRequest,
+    multiplexing::YamuxControlError,
     noise,
+    noise::NoiseError,
     peer_manager::PeerManagerError,
     peer_validator::PeerValidatorError,
     protocol::{IdentityProtocolError, ProtocolError},
@@ -64,10 +66,14 @@ pub enum ConnectionManagerError {
     },
     #[error("The noise transport failed to provide a valid static public key for the peer")]
     InvalidStaticPublicKey,
-    // This is a String because we need this error to be clonable so that we can
+    // This is a String because we need this error to be clone-able so that we can
     // send the same response to multiple requesters
-    #[error("Noise error: {0}")]
-    NoiseError(String),
+    #[error("Noise snow error: {0}")]
+    NoiseSnowError(String),
+    // This is a String because we need this error to be clone-able so that we can
+    // send the same response to multiple requesters
+    #[error("Noise handshake error: {0}")]
+    NoiseHandshakeError(String),
     #[error("Peer is banned, denying connection")]
     PeerBanned,
     #[error("Identity protocol failed: {0}")]
@@ -84,6 +90,10 @@ pub enum ConnectionManagerError {
     PeerValidationError(#[from] PeerValidatorError),
     #[error("No contactable addresses for peer {0} left")]
     NoContactableAddressesForPeer(String),
+    #[error("All peer addresses are excluded for peer {0}")]
+    AllPeerAddressesAreExcluded(String),
+    #[error("Yamux error: {0}")]
+    YamuxControlError(#[from] YamuxControlError),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {
@@ -94,7 +104,10 @@ impl From<yamux::ConnectionError> for ConnectionManagerError {
 
 impl From<noise::NoiseError> for ConnectionManagerError {
     fn from(err: noise::NoiseError) -> Self {
-        ConnectionManagerError::NoiseError(err.to_string())
+        match err {
+            NoiseError::SnowError(e) => ConnectionManagerError::NoiseSnowError(e.to_string()),
+            NoiseError::HandshakeFailed(e) => ConnectionManagerError::NoiseHandshakeError(e.to_string()),
+        }
     }
 }
 
@@ -107,8 +120,8 @@ impl From<PeerConnectionError> for ConnectionManagerError {
 /// Error type for PeerConnection
 #[derive(Debug, Error)]
 pub enum PeerConnectionError {
-    #[error("Yamux connection error: {0}")]
-    YamuxConnectionError(#[from] yamux::ConnectionError),
+    #[error("Yamux error: {0}")]
+    YamuxControlError(#[from] YamuxControlError),
     #[error("Internal oneshot reply channel was unexpectedly cancelled")]
     InternalReplyCancelled,
     #[error("Failed to send internal request: {0}")]

@@ -25,7 +25,6 @@ fi
 #   applications/minotari_app_utilities
 #   applications/minotari_console_wallet
 #   applications/minotari_merge_mining_proxy
-#   applications/test_faucet
 
 function update_versions {
     packages=${@:-'
@@ -56,7 +55,6 @@ function update_versions {
    applications/minotari_merge_mining_proxy
    applications/minotari_miner
    applications/tari_validator_node
-   applications/test_faucet
 '}
 
   p_arr=($packages)

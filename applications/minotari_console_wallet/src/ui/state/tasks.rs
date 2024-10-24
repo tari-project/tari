@@ -33,14 +33,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{FixedHash, PrivateKey, PublicKey},
 };
-use tari_core::{
-    consensus::{MaxSizeBytes, MaxSizeString},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
 
@@ -360,7 +358,7 @@ pub async fn send_register_template_transaction_task(
             return;
         },
     };
-    let binary_sha = match MaxSizeBytes::<32>::try_from(binary_sha) {
+    let binary_sha = match FixedHash::from_hex(&binary_sha) {
         Ok(binary_sha) => binary_sha,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
@@ -382,7 +380,7 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
-    let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash) {
+    let repository_commit_hash = match MaxSizeBytes::<32>::from_hex(&repository_commit_hash) {
         Ok(repository_commit_hash) => repository_commit_hash,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {}", e);
@@ -398,24 +396,15 @@ pub async fn send_register_template_transaction_task(
 
     let result = transaction_service_handle
         .register_code_template(
-            template_name.to_string(),
+            template_name,
             template_version,
             template_type,
             BuildInfo {
                 repo_url: repository_url,
                 commit_hash: repository_commit_hash,
             },
-            match FixedHash::try_from(binary_sha.into_vec()) {
-                Ok(hash) => hash,
-                Err(e) => {
-                    error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
-                    result_tx
-                        .send(UiTransactionSendStatus::Error(format!("Binary checksum error: {}", e)))
-                        .unwrap();
-                    return;
-                },
-            },
-            binary_url.to_string(),
+            binary_sha,
+            binary_url,
             fee_per_gram,
             sidechain_id_key.cloned(),
         )

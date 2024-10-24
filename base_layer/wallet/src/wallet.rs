@@ -85,7 +85,13 @@ use tari_utilities::{hex::Hex, ByteArray};
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::WalletConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
+    connectivity_service::{
+        BaseNodePeerManager,
+        WalletConnectivityHandle,
+        WalletConnectivityInitializer,
+        WalletConnectivityInterface,
+    },
+    consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -136,7 +142,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub db: WalletDatabase<T>,
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
-    wallet_type: WalletType,
+    wallet_type: Arc<WalletType>,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -169,7 +175,7 @@ where
         wallet_type: Option<WalletType>,
         user_agent: String,
     ) -> Result<Self, WalletError> {
-        let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_database)?;
+        let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
@@ -179,14 +185,7 @@ where
             target: LOG_TARGET,
             "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
-        trace!(
-            target: LOG_TARGET,
-            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}",
-            config.base_node_service_config,
-            config.output_manager_service_config,
-            config.transaction_service_config,
-            config.buffer_size,
-        );
+        trace!(target: LOG_TARGET, "Wallet config: {:?}", config);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
@@ -217,6 +216,7 @@ where
                 consensus_manager,
                 factories.clone(),
                 wallet_database.clone(),
+                wallet_type.clone(),
             ))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
@@ -339,7 +339,7 @@ where
 
         // storing current network and version
         if let Err(e) = wallet_database
-            .set_last_network_and_version(config.network.to_string(), env!("CARGO_PKG_VERSION").to_string())
+            .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
         {
             warn!("failed to store network and version: {:#?}", e);
         }
@@ -379,13 +379,14 @@ where
         &mut self,
         public_key: CommsPublicKey,
         address: Option<Multiaddr>,
+        backup_peers: Option<Vec<Peer>>,
     ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {:?}.",
             public_key, address
         );
 
-        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
             self.comms
                 .connectivity()
                 .remove_peer_from_allow_list(current_node)
@@ -394,6 +395,7 @@ where
 
         let peer_manager = self.comms.peer_manager();
         let mut connectivity = self.comms.connectivity();
+        let mut backup_peers = backup_peers.unwrap_or_default();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
             if address.is_some() {
@@ -413,7 +415,13 @@ where
             connectivity
                 .add_peer_to_allow_list(current_peer.node_id.clone())
                 .await?;
-            self.wallet_connectivity.set_base_node(current_peer);
+            let mut peer_list = vec![current_peer];
+            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
+                backup_peers.remove(pos);
+            }
+            peer_list.append(&mut backup_peers);
+            self.wallet_connectivity
+                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         } else {
             let node_id = NodeId::from_key(&public_key);
             if address.is_none() {
@@ -428,7 +436,7 @@ where
                 });
             }
             let peer = Peer::new(
-                public_key,
+                public_key.clone(),
                 node_id,
                 MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
                 PeerFlags::empty(),
@@ -438,7 +446,13 @@ where
             );
             peer_manager.add_peer(peer.clone()).await?;
             connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-            self.wallet_connectivity.set_base_node(peer);
+            let mut peer_list = vec![peer];
+            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
+                backup_peers.remove(pos);
+            }
+            peer_list.append(&mut backup_peers);
+            self.wallet_connectivity
+                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         }
 
         Ok(())
@@ -483,7 +497,7 @@ where
     pub async fn get_wallet_interactive_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
         let view_key = self.key_manager_service.get_view_key().await?;
         let comms_key = self.key_manager_service.get_comms_key().await?;
-        let features = match self.wallet_type {
+        let features = match *self.wallet_type {
             WalletType::DerivedKeys => TariAddressFeatures::default(),
             WalletType::Ledger(_) | WalletType::ProvidedKeys(_) => TariAddressFeatures::create_interactive_only(),
         };

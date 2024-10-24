@@ -1,23 +1,23 @@
 [package]
 name = "tari_comms_dht"
-version.workspace = true
+version = "1.7.0-pre.3"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-edition.workspace = true
+edition = "2021"
 
 [dependencies]
-tari_comms = { workspace = true, features = ["rpc"] }
-tari_common = { workspace = true }
-tari_comms_rpc_macros = { workspace = true }
-tari_crypto = { workspace = true }
-tari_utilities = { workspace = true }
-tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
-tari_common_sqlite = { workspace = true }
+tari_comms = { path = "../core", features = ["rpc"], version = "1.7.0-pre.3" }
+tari_common = { path = "../../common", version = "1.7.0-pre.3" }
+tari_comms_rpc_macros = { path = "../rpc_macros", version = "1.7.0-pre.3" }
+tari_crypto = { version = "0.21.0" }
+tari_utilities = { version = "0.8" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.3" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.7.0-pre.3" }
+tari_common_sqlite = { path = "../../common_sqlite", version = "1.7.0-pre.3" }
 
 anyhow = "1.0.53"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -25,13 +25,18 @@ blake2 = "0.10"
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false }
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "numeric"] }
-diesel_migrations = "2.0.0"
+diesel = { version = "2.2.4", features = [
+    "sqlite",
+    "serde_json",
+    "chrono",
+    "numeric",
+] }
+diesel_migrations = "2.2.0"
 digest = "0.10"
 futures = "^0.3.1"
 log = "0.4.8"
 log-mdc = "0.1.0"
-prost = "=0.11.9"
+prost = "0.13.3"
 rand = "0.8"
 serde = "1.0.90"
 thiserror = "1.0.26"
@@ -48,7 +53,7 @@ tokio = { version = "1.36", features = ["rt", "macros"] }
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = { workspace = true }
+tari_test_utils = { path = "../../infrastructure/test_utils" }
 
 env_logger = "0.10"
 futures-test = { version = "0.3.5" }
@@ -62,7 +67,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = { workspace = true }
+tari_common = { path = "../../common", version = "1.7.0-pre.3" }
 
 [features]
 test-mocks = []

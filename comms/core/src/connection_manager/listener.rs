@@ -244,7 +244,7 @@ where
             #[cfg(feature = "metrics")]
             metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
-                Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
+                Ok(WireMode::Comms(byte)) if byte == config.network_info.network_wire_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
                     let result = Self::perform_socket_upgrade_procedure(
                         &node_identity,
@@ -290,7 +290,7 @@ where
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
-                        config.network_info.network_byte,
+                        config.network_info.network_wire_byte,
                         byte,
                     );
                     let _result = socket.shutdown().await;
@@ -320,7 +320,7 @@ where
                         "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
                          byte {:x?} not received. Error: {}",
                         peer_addr,
-                        config.network_info.network_byte,
+                        config.network_info.network_wire_byte,
                         LIVENESS_WIRE_MODE,
                         err
                     );
@@ -348,22 +348,34 @@ where
         config: &ConnectionManagerConfig,
     ) -> Result<PeerConnection, ConnectionManagerError> {
         const CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Starting noise protocol upgrade for peer at address '{}'", peer_addr
+            "Listen - starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
         let timer = Instant::now();
-        let mut noise_socket = noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await?;
+        let mut noise_socket = noise_config
+            .upgrade_socket(socket, CONNECTION_DIRECTION)
+            .await
+            .map_err(|err| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Listen - failed to upgrade noise: {} on address: {} ({})",
+                    node_identity.node_id(),
+                    peer_addr,
+                    err
+                );
+                err
+            })?;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
         let latency = timer.elapsed();
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Noise socket upgrade completed in {:.2?} with public key '{}'",
+            "Listen - noise socket upgrade completed in {:.2?} with public key '{}'",
             latency,
             authenticated_public_key
         );
@@ -371,9 +383,10 @@ where
         // Check if we know the peer and if it is banned
         let known_peer = common::find_unbanned_peer(peer_manager, &authenticated_public_key).await?;
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
+            "Listen - starting peer identity exchange for peer with public key '{}'",
+            authenticated_public_key
         );
 
         let peer_identity_result = common::perform_identity_exchange(

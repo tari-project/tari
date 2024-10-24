@@ -25,12 +25,17 @@ use std::fmt::{Display, Error, Formatter};
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::hex::Hex;
 
 use crate::proof_of_work::PowAlgorithm;
 
 #[allow(dead_code)]
 pub trait AchievedDifficulty {}
+
+/// This is the maximum size of the proof of work data that can be included in a block header. This is used to prev
+pub const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
+pub type PowData = MaxSizeBytes<{ NOT_BEFORE_PROOF_BYTES_SIZE }>;
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
 /// to make serialization more straightforward
@@ -40,14 +45,15 @@ pub struct ProofOfWork {
     pub pow_algo: PowAlgorithm,
     /// Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
     /// required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
-    pub pow_data: Vec<u8>,
+    #[serde(with = "tari_utilities::serde::hex")]
+    pub pow_data: PowData,
 }
 
 impl Default for ProofOfWork {
     fn default() -> Self {
         Self {
             pow_algo: PowAlgorithm::Sha3x,
-            pow_data: vec![],
+            pow_data: PowData::default(),
         }
     }
 }
@@ -64,7 +70,7 @@ impl ProofOfWork {
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     #[allow(deprecated)]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(256);
+        let mut buf = Vec::with_capacity(self.pow_data.len() + 1);
         buf.put_u8(self.pow_algo as u8);
         buf.put_slice(&self.pow_data);
         buf

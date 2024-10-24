@@ -92,7 +92,7 @@ pub struct ConsensusConstants {
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
-    faucet_value: MicroMinotari,
+    pre_mine_value: MicroMinotari,
     /// Transaction Weight params
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
@@ -157,9 +157,10 @@ pub struct PowAlgorithmConstants {
     pub target_time: u64,
 }
 
-const FAUCET_VALUE: u64 = 0; // 6_030_157_777_181_012;
+const PRE_MINE_VALUE: u64 = 0; // 6_030_157_777_181_012;
 const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
 const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
+pub const MAINNET_PRE_MINE_VALUE: MicroMinotari = MicroMinotari((21_000_000_000 - 14_700_000_000) * 1_000_000);
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -241,7 +242,9 @@ impl ConsensusConstants {
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
+            output_features.get_serialized_size()? +
+                max_extra_size +
+                script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()?,
         );
         Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
     }
@@ -287,9 +290,9 @@ impl ConsensusConstants {
         }
     }
 
-    /// This will return the value of the genesis block faucets
-    pub fn faucet_value(&self) -> MicroMinotari {
-        self.faucet_value
+    /// This will return the value of the genesis block pre-mine
+    pub fn pre_mine_value(&self) -> MicroMinotari {
+        self.pre_mine_value
     }
 
     pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
@@ -399,10 +402,10 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: 0.into(),
+            pre_mine_value: 0.into(),
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 512,
-            max_extra_encrypted_data_byte_size: 256,
+            max_extra_encrypted_data_byte_size: 240,
             input_version_range,
             output_version_range,
             kernel_version_range,
@@ -464,7 +467,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: 0.into(), // IGOR_FAUCET_VALUE.into(),
+            pre_mine_value: 0.into(), // IGOR_PRE_MINE_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -522,7 +525,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: 40_000_000_000.into(),
+            pre_mine_value: MAINNET_PRE_MINE_VALUE,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -553,7 +556,7 @@ impl ConsensusConstants {
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -579,7 +582,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: FAUCET_VALUE.into(),
+            pre_mine_value: PRE_MINE_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -630,7 +633,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: FAUCET_VALUE.into(),
+            pre_mine_value: PRE_MINE_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -657,7 +660,7 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -669,21 +672,21 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 1,
-            blockchain_version: 1,
+            coinbase_min_maturity: 720,
+            blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
-            max_block_transaction_weight: 19500,
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 10_000_000.into(),
+            emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
             inflation_bips: 100,
             tail_epoch_length: ANNUAL_BLOCKS,
-            max_randomx_seed_height: u64::MAX,
+            max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: MicroMinotari::from(0),
+            pre_mine_value: MAINNET_PRE_MINE_VALUE,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -852,8 +855,8 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_faucet_value(mut self, value: MicroMinotari) -> Self {
-        self.consensus.faucet_value = value;
+    pub fn with_pre_mine_value(mut self, value: MicroMinotari) -> Self {
+        self.consensus.pre_mine_value = value;
         self
     }
 
@@ -927,7 +930,7 @@ mod test {
             esmeralda[0].emission_decay,
             esmeralda[0].inflation_bips,
             esmeralda[0].tail_epoch_length,
-            esmeralda[0].faucet_value(),
+            esmeralda[0].pre_mine_value(),
         );
         // No genesis block coinbase
         assert_eq!(schedule.block_reward(0), MicroMinotari(0));
@@ -937,14 +940,14 @@ mod test {
         assert_eq!(first_reward, esmeralda[0].emission_initial);
         assert_eq!(
             schedule.supply_at_block(coinbase_offset),
-            first_reward + esmeralda[0].faucet_value()
+            first_reward + esmeralda[0].pre_mine_value()
         );
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
+        // 'half_life_block' at approximately '(total supply - pre-mine value) / 2'
         #[allow(clippy::cast_possible_truncation)]
         let half_life_block = 365 * 24 * 30 * 3;
         assert_eq!(
             schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_935_818_494_624_306 * uT + esmeralda[0].faucet_value()
+            7_935_818_494_624_306 * uT + esmeralda[0].pre_mine_value()
         );
         // 21 billion
         let mut rewards = schedule
@@ -952,16 +955,16 @@ mod test {
             .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3255553 + coinbase_offset);
-        assert_eq!(reward, 800_000_415 * uT);
-        assert_eq!(supply, 14_969_882_222_638_857 * uT);
+        assert_eq!(reward, 806000000 * uT);
+        assert_eq!(supply, 21269867877433906 * uT);
         let (_, reward, _) = rewards.next().unwrap();
-        assert_eq!(reward, 799_999_715 * uT);
+        assert_eq!(reward, 806000000 * uT);
         // Inflating tail emission
         let mut rewards = schedule.iter().skip(3259845);
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3259846);
-        assert_eq!(reward, 796_998_899.into());
-        assert_eq!(supply, 14_973_309_379_635_607 * uT);
+        assert_eq!(reward, 806000000.into());
+        assert_eq!(supply, 21273327229433906 * uT);
     }
 
     #[test]
@@ -972,7 +975,7 @@ mod test {
             nextnet[0].emission_decay,
             nextnet[0].inflation_bips,
             nextnet[0].tail_epoch_length,
-            nextnet[0].faucet_value(),
+            nextnet[0].pre_mine_value(),
         );
         // No genesis block coinbase
         assert_eq!(schedule.block_reward(0), MicroMinotari(0));
@@ -982,14 +985,14 @@ mod test {
         assert_eq!(first_reward, nextnet[0].emission_initial * uT);
         assert_eq!(
             schedule.supply_at_block(coinbase_offset),
-            first_reward + nextnet[0].faucet_value()
+            first_reward + nextnet[0].pre_mine_value()
         );
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
+        // 'half_life_block' at approximately '(total supply - pre-mine value) / 2'
         #[allow(clippy::cast_possible_truncation)]
         let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
         assert_eq!(
             schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_483_280_506_356_578 * uT + nextnet[0].faucet_value()
+            7_483_280_506_356_578 * uT + nextnet[0].pre_mine_value()
         );
         // Tail emission
         let mut rewards = schedule.iter().skip(3259845);
@@ -1007,7 +1010,7 @@ mod test {
             stagenet[0].emission_decay,
             stagenet[0].inflation_bips,
             stagenet[0].tail_epoch_length,
-            stagenet[0].faucet_value(),
+            stagenet[0].pre_mine_value(),
         );
         // No genesis block coinbase
         assert_eq!(schedule.block_reward(0), MicroMinotari(0));
@@ -1017,14 +1020,14 @@ mod test {
         assert_eq!(first_reward, stagenet[0].emission_initial * uT);
         assert_eq!(
             schedule.supply_at_block(coinbase_offset),
-            first_reward + stagenet[0].faucet_value()
+            first_reward + stagenet[0].pre_mine_value()
         );
-        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
+        // 'half_life_block' at approximately '(total supply - pre-mine value) / 2'
         #[allow(clippy::cast_possible_truncation)]
         let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
         assert_eq!(
             schedule.supply_at_block(half_life_block + coinbase_offset),
-            7_483_280_506_356_578 * uT + stagenet[0].faucet_value()
+            7_483_280_506_356_578 * uT + stagenet[0].pre_mine_value()
         );
         // Tail emission
         let mut rewards = schedule.iter().skip(3259845);
@@ -1042,7 +1045,7 @@ mod test {
             igor[0].emission_decay,
             igor[0].inflation_bips,
             igor[0].tail_epoch_length,
-            igor[0].faucet_value(),
+            igor[0].pre_mine_value(),
         );
         // No genesis block coinbase
         assert_eq!(schedule.block_reward(0), MicroMinotari(0));

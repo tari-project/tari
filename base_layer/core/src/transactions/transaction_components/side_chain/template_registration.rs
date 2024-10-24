@@ -24,11 +24,12 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{FixedHash, PublicKey, Signature};
 use tari_hashing::TransactionHashDomain;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::ByteArray;
 
-use crate::consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString};
+use crate::consensus::DomainSeparatedConsensusHasher;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {
@@ -38,7 +39,7 @@ pub struct CodeTemplateRegistration {
     pub template_version: u16,
     pub template_type: TemplateType,
     pub build_info: BuildInfo,
-    pub binary_sha: MaxSizeBytes<32>,
+    pub binary_sha: FixedHash,
     pub binary_url: MaxSizeString<255>,
     pub sidechain_id: Option<PublicKey>,
     pub sidechain_id_knowledge_proof: Option<Signature>,

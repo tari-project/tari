@@ -49,9 +49,6 @@ pub use transport::{Socks5TransportConfig, TcpTransportConfig, TorTransportConfi
 
 pub use self::config::{P2pConfig, PeerSeedsConfig};
 
-/// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
-pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";
-
 /// Major network version. Peers will refuse connections if this value differs
 pub const MAJOR_NETWORK_VERSION: u8 = 0;
 /// Minor network version. This should change with each time the network protocol has changed in a backward-compatible

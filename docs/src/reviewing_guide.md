@@ -122,4 +122,4 @@ Here is a good example of nice semantic rust code, but the code has the potentia
 
 #### Behind-the-scenes panics
 
-Not all methods in the standard and other libraries that return values are guaranteed not to panic, for example, `pub const fn split_at(&self, mid: usize) -> (&[T], &[T])` will panic if `mid` > `self.len()`. Create custom wrappers that will return an error before the underlying function will panic, for example, `pub fn split_at_checked<T>(vec: &[T], n: usize) -> Result<(&[T], &[T]), Error>`.
+Not all methods in the standard and other libraries that return values are guaranteed not to panic. Create custom wrappers that will return an error before the underlying function will panic.

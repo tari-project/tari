@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{ops::Deref, time::Duration};
 
 use log::*;
+use markup5ever::{local_name, namespace_url, ns, QualName};
 use scraper::{Html, Selector};
 use tokio::time::timeout;
 use url::Url;
@@ -32,7 +33,7 @@ use crate::error::MmProxyError;
 const LOG_TARGET: &str = "minotari_mm_proxy::monero_detect";
 
 /// Monero public server information
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct MonerodEntry {
     /// The type of address
     pub address_type: String,
@@ -66,6 +67,14 @@ pub async fn get_monerod_info(
     monero_fail_url: &str,
 ) -> Result<Vec<MonerodEntry>, MmProxyError> {
     let document = get_monerod_html(monero_fail_url).await?;
+    let table_structure = extract_table_structure(&document);
+    let expected_structure = get_expected_table_structure();
+    if table_structure != expected_structure {
+        return Err(MmProxyError::HtmlParseError(format!(
+            "Unexpected table structure: {:?}, expected: {:?}",
+            table_structure, expected_structure
+        )));
+    }
 
     // The HTML table definition and an example entry looks like this:
     //   <table class="pure-table pure-table-horizontal pure-table-striped js-sort-table">
@@ -211,16 +220,42 @@ pub async fn get_monerod_info(
     entries.sort_by(|a, b| b.height.cmp(&a.height));
     // Determine connection times - use slightly more nodes than requested
     entries.truncate(number_of_entries + 10);
+
+    let entries = order_and_select_monerod_info(number_of_entries, connection_test_timeout, &entries).await?;
+
+    if entries.is_empty() {
+        return Err(MmProxyError::HtmlParseError(
+            "No public monero servers available".to_string(),
+        ));
+    }
+    Ok(entries)
+}
+
+pub async fn order_and_select_monerod_info(
+    number_of_entries: usize,
+    connection_test_timeout: Duration,
+    entries: &[MonerodEntry],
+) -> Result<Vec<MonerodEntry>, MmProxyError> {
+    let mut entries = entries.to_vec();
     for entry in &mut entries {
-        let uri = format!("{}/getheight", entry.url).parse::<Url>()?;
-        let start = std::time::Instant::now();
-        if (timeout(connection_test_timeout, reqwest::get(uri.clone())).await).is_ok() {
-            entry.response_time = Some(start.elapsed());
-            debug!(target: LOG_TARGET, "Response time '{:.2?}' for Monerod server at: {}", entry.response_time, uri.as_str());
-        } else {
-            debug!(target: LOG_TARGET, "Response time 'n/a' for Monerod server at: {}, timed out", uri.as_str());
+        if let Ok(url) = format!("{}/getheight", entry.url).parse::<Url>() {
+            let start = std::time::Instant::now();
+            if (timeout(connection_test_timeout, reqwest::get(url.clone())).await).is_ok() {
+                entry.response_time = Some(start.elapsed());
+                debug!(
+                    target: LOG_TARGET, "Response time '{:.2?}' for Monerod server at: {}",
+                    entry.response_time, url.as_str()
+                );
+            } else {
+                debug!(
+                    target: LOG_TARGET, "Response time 'n/a' for Monerod server at: {}, timed out",
+                    url.as_str()
+                );
+            }
         }
     }
+    // Remove entries with no response time
+    entries.retain(|entry| entry.response_time.is_some());
     // Sort by response time
     entries.sort_by(|a, b| {
         a.response_time
@@ -229,12 +264,6 @@ pub async fn get_monerod_info(
     });
     // Truncate to the requested number of entries
     entries.truncate(number_of_entries);
-
-    if entries.is_empty() {
-        return Err(MmProxyError::HtmlParseError(
-            "No public monero servers available".to_string(),
-        ));
-    }
     Ok(entries)
 }
 
@@ -256,25 +285,99 @@ async fn get_monerod_html(url: &str) -> Result<Html, MmProxyError> {
     Ok(Html::parse_document(&body))
 }
 
+// Function to extract table structure from the document
+fn extract_table_structure(html_document: &Html) -> Vec<&str> {
+    let mut table_structure = Vec::new();
+    if let Some(table) = html_document.tree.root().descendants().find(|n| {
+        n.value().is_element() &&
+            n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("table"))
+    }) {
+        if let Some(thead) = table.descendants().find(|n| {
+            n.value().is_element() &&
+                n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("thead"))
+        }) {
+            if let Some(tr) = thead.descendants().find(|n| {
+                n.value().is_element() &&
+                    n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("tr"))
+            }) {
+                for th in tr.descendants().filter(|n| {
+                    n.value().is_element() &&
+                        n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("th"))
+                }) {
+                    for child in th.children() {
+                        if let Some(text) = child.value().as_text() {
+                            table_structure.push(text.deref().trim());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    table_structure
+}
+
+fn get_expected_table_structure<'a>() -> Vec<&'a str> {
+    vec![
+        "Type",
+        "URL",
+        "Height",
+        "Up",
+        "Web",
+        "Compatible",
+        "Network",
+        "Last Checked",
+        "History",
+    ]
+}
+
 #[cfg(test)]
 mod test {
-    use std::{ops::Deref, time::Duration};
-
-    use markup5ever::{local_name, namespace_url, ns, QualName};
-    use scraper::Html;
+    use std::time::Duration;
 
     use crate::{
         config::MergeMiningProxyConfig,
-        monero_fail::{get_monerod_html, get_monerod_info},
+        error::MmProxyError::HtmlParseError,
+        monero_fail::{
+            extract_table_structure,
+            get_expected_table_structure,
+            get_monerod_html,
+            get_monerod_info,
+            order_and_select_monerod_info,
+            MonerodEntry,
+        },
     };
+
+    async fn get_monerod_info_if_online(
+        number_of_entries: usize,
+        connection_test_timeout: Duration,
+        monero_fail_url: &str,
+    ) -> Vec<MonerodEntry> {
+        match get_monerod_info(number_of_entries, connection_test_timeout, monero_fail_url).await {
+            Ok(val) => val,
+            Err(HtmlParseError(val)) => {
+                if val.contains("No public monero servers available") {
+                    println!("Cannot complete test: {}", val);
+                    vec![]
+                } else {
+                    panic!("Unexpected error: {}", val);
+                }
+            },
+            Err(err) => {
+                if err.to_string().contains("Failed to send request to monerod") {
+                    println!("Cannot complete test: {}", err);
+                    vec![]
+                } else {
+                    panic!("Unexpected error: {}", err);
+                }
+            },
+        }
+    }
 
     #[tokio::test]
     async fn test_get_monerod_info() {
         // Monero mainnet
         let config = MergeMiningProxyConfig::default();
-        let entries = get_monerod_info(5, Duration::from_secs(2), &config.monero_fail_url)
-            .await
-            .unwrap();
+        let entries = get_monerod_info_if_online(5, Duration::from_secs(2), &config.monero_fail_url).await;
         for (i, entry) in entries.iter().enumerate() {
             assert!(entry.up && entry.up_history.iter().all(|&v| v));
             if i > 0 {
@@ -283,14 +386,13 @@ mod test {
                         entries[i - 1].response_time.unwrap_or_else(|| Duration::from_secs(100))
                 );
             }
+            assert_eq!(entry.network, "mainnet");
             println!("{}: {:?}", i, entry);
         }
 
         // Monero stagenet
         const MONERO_FAIL_STAGNET_URL: &str = "https://monero.fail/?chain=monero&network=stagenet&all=true";
-        let entries = get_monerod_info(5, Duration::from_secs(2), MONERO_FAIL_STAGNET_URL)
-            .await
-            .unwrap();
+        let entries = get_monerod_info_if_online(5, Duration::from_secs(2), MONERO_FAIL_STAGNET_URL).await;
         for (i, entry) in entries.iter().enumerate() {
             assert!(entry.up && entry.up_history.iter().all(|&v| v));
             if i > 0 {
@@ -304,9 +406,7 @@ mod test {
 
         // Monero testnet
         const MONERO_FAIL_TESTNET_URL: &str = "https://monero.fail/?chain=monero&network=testnet&all=true";
-        let entries = get_monerod_info(5, Duration::from_secs(2), MONERO_FAIL_TESTNET_URL)
-            .await
-            .unwrap();
+        let entries = get_monerod_info_if_online(5, Duration::from_secs(2), MONERO_FAIL_TESTNET_URL).await;
         for (i, entry) in entries.iter().enumerate() {
             assert!(entry.up && entry.up_history.iter().all(|&v| v));
             if i > 0 {
@@ -320,56 +420,91 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_table_structure() {
+    async fn test_default_monerod_list() {
         let config = MergeMiningProxyConfig::default();
-        let html_content = get_monerod_html(&config.monero_fail_url).await.unwrap();
 
-        let table_structure = extract_table_structure(&html_content);
+        // Use the default monerod list
+        let mut entries = Vec::new();
+        for url in config.monerod_url.clone().into_vec() {
+            entries.push(MonerodEntry {
+                url,
+                ..Default::default()
+            });
+        }
+        let ordered_entries = order_and_select_monerod_info(10, Duration::from_secs(5), &entries)
+            .await
+            .unwrap();
+        for (i, entry) in ordered_entries.iter().enumerate() {
+            if i > 0 {
+                assert!(
+                    entry.response_time.unwrap_or_else(|| Duration::from_secs(100)) >=
+                        ordered_entries[i - 1]
+                            .response_time
+                            .unwrap_or_else(|| Duration::from_secs(100))
+                );
+            }
+            println!("{}: {:?}", i, entry);
+        }
 
-        let expected_structure = vec![
-            "Type",
-            "URL",
-            "Height",
-            "Up",
-            "Web",
-            "Compatible",
-            "Network",
-            "Last Checked",
-            "History",
-        ];
-
-        // Compare the actual and expected table structures
-        assert_eq!(table_structure, expected_structure);
+        // Use the previously qualified monerod list, but invalidate some URLs
+        let ordered_entries = ordered_entries
+            .iter()
+            .filter(|entry| entry.url.contains(":18"))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut entries = Vec::new();
+        for (i, entry) in ordered_entries.iter().take(5).enumerate() {
+            entries.push(MonerodEntry {
+                url: if i >= 2 {
+                    entry.url.replace(":18", ":123")
+                } else {
+                    entry.url.clone()
+                },
+                ..Default::default()
+            });
+        }
+        let ordered_entries = order_and_select_monerod_info(15, Duration::from_secs(5), &entries)
+            .await
+            .unwrap();
+        for (i, entry) in ordered_entries.iter().enumerate() {
+            if i > 0 {
+                assert!(
+                    entry.response_time.unwrap_or_else(|| Duration::from_secs(100)) >=
+                        ordered_entries[i - 1]
+                            .response_time
+                            .unwrap_or_else(|| Duration::from_secs(100))
+                );
+            }
+            println!("{}: {:?}", i, entry);
+        }
+        assert_eq!(ordered_entries.len(), 2);
     }
 
-    // Function to extract table structure from the document
-    fn extract_table_structure(html_document: &Html) -> Vec<&str> {
-        let mut table_structure = Vec::new();
-        if let Some(table) = html_document.tree.root().descendants().find(|n| {
-            n.value().is_element() &&
-                n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("table"))
-        }) {
-            if let Some(thead) = table.descendants().find(|n| {
-                n.value().is_element() &&
-                    n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("thead"))
-            }) {
-                if let Some(tr) = thead.descendants().find(|n| {
-                    n.value().is_element() &&
-                        n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("tr"))
-                }) {
-                    for th in tr.descendants().filter(|n| {
-                        n.value().is_element() &&
-                            n.value().as_element().unwrap().name == QualName::new(None, ns!(html), local_name!("th"))
-                    }) {
-                        for child in th.children() {
-                            if let Some(text) = child.value().as_text() {
-                                table_structure.push(text.deref().trim());
-                            }
-                        }
-                    }
+    #[tokio::test]
+    async fn test_table_structure() {
+        let config = MergeMiningProxyConfig::default();
+        let html_content = match get_monerod_html(&config.monero_fail_url).await {
+            Ok(val) => val,
+            Err(err) => {
+                if err.to_string().contains("Failed to send request to monerod") {
+                    println!("Cannot complete test: {}", err);
+                    return;
                 }
-            }
+                panic!("Unexpected error: {}", err);
+            },
+        };
+
+        let table_structure = extract_table_structure(&html_content);
+        let expected_structure = get_expected_table_structure();
+
+        // Compare the actual and expected table structures
+        if table_structure.is_empty() {
+            println!(
+                "Cannot complete test, 'https://monero.fail' seems to be down ({:?})",
+                html_content.errors
+            );
+        } else {
+            assert_eq!(table_structure, expected_structure);
         }
-        table_structure
     }
 }

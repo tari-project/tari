@@ -140,7 +140,7 @@ impl SoftwareUpdaterService {
         log::info!(
             target: LOG_TARGET,
             "Checking for updates ({})...",
-            self.config.update_uris.join(", ")
+            self.config.update_uris.as_slice().join(", ")
         );
         if !self.config.is_update_enabled() {
             warn!(

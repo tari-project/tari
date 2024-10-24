@@ -4,26 +4,34 @@ authors = ["The Tari Development Community"]
 description = "The Tari merge mining proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2018"
 
 [features]
 default = []
 
 [dependencies]
-minotari_app_grpc = { workspace = true }
-minotari_app_utilities = { workspace = true, features = ["miner_input"] }
-minotari_node_grpc_client = { workspace = true }
-tari_common = { workspace = true }
-tari_common_types = { workspace = true }
-tari_comms = { workspace = true }
-tari_core = { workspace = true, default-features = false, features = [] }
-tari_key_manager = { workspace = true, features = ["key_manager_service"] }
-tari_utilities = { workspace = true }
+minotari_app_grpc = { path = "../minotari_app_grpc" }
+minotari_app_utilities = { path = "../minotari_app_utilities", features = [
+    "miner_input",
+] }
+minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" }
+minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_core = { path = "../../base_layer/core", default-features = false, features = [
+    "transactions",
+] }
+tari_key_manager = { path = "../../base_layer/key_manager", features = [
+    "key_manager_service",
+] }
+tari_max_size = { path = "../../infrastructure/max_size" }
+tari_utilities = { version = "0.8" }
 
 anyhow = "1.0.53"
 bincode = "1.3.1"
-borsh = "1.2"
+borsh = "1.5"
 bytes = "1.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
@@ -31,22 +39,23 @@ config = { version = "0.14.0" }
 crossterm = { version = "0.25.0" }
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-hyper = "0.14.12"
+hyper = { version ="0.14.12", features = ["default"] }
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
+markup5ever = "0.11.0"
 monero = { version = "0.21.0" }
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.26"
 tokio = { version = "1.36", features = ["macros"] }
-tonic = "0.8.3"
+tonic = "0.12.3"
 tracing = "0.1"
 url = "2.1.1"
 scraper = "0.19.0"
 
 [build-dependencies]
-tari_features = { workspace = true }
+tari_features = { path = "../../common/tari_features", version = "1.7.0-pre.3" }
 
 [dev-dependencies]
-markup5ever = "0.11.0"
+hyper = { version ="0.14.12", features = ["full"] }

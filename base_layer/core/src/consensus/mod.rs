@@ -30,7 +30,7 @@ mod consensus_manager;
 pub use consensus_manager::{ConsensusBuilderError, ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
 
 mod consensus_encoding;
-pub use consensus_encoding::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString};
+pub use consensus_encoding::DomainSeparatedConsensusHasher;
 mod network;
 pub use network::NetworkConsensus;
 

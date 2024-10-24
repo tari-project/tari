@@ -90,7 +90,8 @@ message GetVersionResponse {
 }
 
 message GetAddressResponse {
-  bytes address = 1;
+  bytes interactive_address = 1;
+  bytes one_sided_address = 2;
 }
 
 message TransferRequest {
@@ -121,7 +122,7 @@ message PaymentRecipient {
     ONE_SIDED_TO_STEALTH_ADDRESS = 2;
   }
   PaymentType payment_type = 5;
-    bytes payment_id = 6;
+  bytes payment_id = 6;
 }
 
 message TransferResponse {
@@ -192,6 +193,7 @@ message TransactionInfo {
   bytes excess_sig = 9;
   uint64 timestamp = 10;
   string message = 11;
+  bytes payment_id = 12;
 }
 
 enum TransactionDirection {
@@ -336,6 +338,7 @@ message TransactionEvent {
   string direction = 6;
   uint64 amount = 7;
   string message = 8;
+  bytes payment_id = 9;
 }
 
 message TransactionEventResponse {

@@ -26,6 +26,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_script::TariScript;
+use tari_test_utils::unpack_enum;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
@@ -171,10 +172,10 @@ async fn chain_balance_validation() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
-    let faucet_value = 5000 * uT;
+    let pre_mine_value = 5000 * uT;
     let key_manager = create_memory_db_key_manager().unwrap();
-    let (faucet_utxo, faucet_key_id, _) = create_utxo(
-        faucet_value,
+    let (pre_mine_utxo, pre_mine_key_id, _) = create_utxo(
+        pre_mine_value,
         &key_manager,
         &OutputFeatures::default(),
         &TariScript::default(),
@@ -184,7 +185,7 @@ async fn chain_balance_validation() {
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
-        faucet_key_id,
+        pre_mine_key_id,
         0.into(),
         0,
         KernelFeatures::empty(),
@@ -195,7 +196,7 @@ async fn chain_balance_validation() {
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
-    gen_block.body.add_output(faucet_utxo);
+    gen_block.body.add_output(pre_mine_utxo);
     gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
@@ -203,17 +204,19 @@ async fn chain_balance_validation() {
     for output in gen_block.body.outputs() {
         utxo_sum = &output.commitment + &utxo_sum;
     }
+    for input in gen_block.body.inputs() {
+        utxo_sum = &utxo_sum - input.commitment().unwrap();
+    }
     for kernel in gen_block.body.kernels() {
         kernel_sum = &kernel.excess + &kernel_sum;
     }
     let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
-    let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
+    let total_pre_mine = pre_mine_value + consensus_manager.consensus_constants(0).pre_mine_value();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
-        .with_faucet_value(total_faucet)
+        .with_pre_mine_value(total_pre_mine)
         .build();
-    // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
-    // block that contains an extra faucet utxo
+    // Create a LocalNet consensus manager that uses custom genesis block that contains an extra pre_mine utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
@@ -354,10 +357,10 @@ async fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
-    let faucet_value = 5000 * uT;
+    let pre_mine_value = 5000 * uT;
     let key_manager = create_memory_db_key_manager().unwrap();
-    let (faucet_utxo, faucet_key_id, _) = create_utxo(
-        faucet_value,
+    let (pre_mine_utxo, pre_mine_key_id, _) = create_utxo(
+        pre_mine_value,
         &key_manager,
         &OutputFeatures::default(),
         &TariScript::default(),
@@ -367,7 +370,7 @@ async fn chain_balance_validation_burned() {
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
-        faucet_key_id,
+        pre_mine_key_id,
         0.into(),
         0,
         KernelFeatures::empty(),
@@ -378,7 +381,7 @@ async fn chain_balance_validation_burned() {
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
-    gen_block.body.add_output(faucet_utxo);
+    gen_block.body.add_output(pre_mine_utxo);
     gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
@@ -386,17 +389,20 @@ async fn chain_balance_validation_burned() {
     for output in gen_block.body.outputs() {
         utxo_sum = &output.commitment + &utxo_sum;
     }
+    for input in gen_block.body.inputs() {
+        utxo_sum = &utxo_sum - input.commitment().unwrap();
+    }
     for kernel in gen_block.body.kernels() {
         kernel_sum = &kernel.excess + &kernel_sum;
     }
     let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
-    let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
+    let total_pre_mine = pre_mine_value + consensus_manager.consensus_constants(0).pre_mine_value();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
-        .with_faucet_value(total_faucet)
+        .with_pre_mine_value(total_pre_mine)
         .build();
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
-    // block that contains an extra faucet utxo
+    // block that contains an extra pre-mine utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
@@ -505,9 +511,11 @@ async fn chain_balance_validation_burned() {
 }
 
 mod transaction_validator {
+    use std::convert::TryFrom;
+
     use super::*;
     use crate::{
-        transactions::transaction_components::{OutputType, TransactionError},
+        transactions::transaction_components::{CoinBaseExtra, OutputType, TransactionError},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 
@@ -526,9 +534,11 @@ mod transaction_validator {
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
-        assert!(matches!(err, ValidationError::OutputTypeNotPermitted {
-            output_type: OutputType::Coinbase
-        }));
+        unpack_enum!(
+            ValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase
+            } = err
+        );
     }
 
     #[tokio::test]
@@ -539,7 +549,7 @@ mod transaction_validator {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
-        features.coinbase_extra = b"deadbeef".to_vec();
+        features.coinbase_extra = CoinBaseExtra::try_from(b"deadbeef".to_vec()).unwrap();
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,

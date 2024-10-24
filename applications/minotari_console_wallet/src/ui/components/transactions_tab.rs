@@ -7,7 +7,6 @@ use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -111,7 +110,7 @@ impl TransactionsTab {
 
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_address),
+                    app_state.get_alias(t.destination_address.to_base58()),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -123,7 +122,7 @@ impl TransactionsTab {
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_address),
+                    app_state.get_alias(t.source_address.to_base58()),
                     Style::default().fg(text_color),
                 )));
                 let amount_style = if t.cancelled.is_some() {
@@ -209,11 +208,18 @@ impl TransactionsTab {
         for t in windowed_view {
             let cancelled = t.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
+
+            let address_text = match (&t.direction, &t.coinbase, &t.burn) {
+                (_, true, _) => "Mining reward",
+                (_, _, true) => "Burned output",
+                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(t.destination_address.to_base58()),
+                _ => &app_state.get_alias(t.source_address.to_base58()),
+            };
+            column0_items.push(ListItem::new(Span::styled(
+                app_state.get_alias(address_text.to_string()),
+                Style::default().fg(text_color),
+            )));
             if t.direction == TransactionDirection::Outbound {
-                column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.destination_address),
-                    Style::default().fg(text_color),
-                )));
                 let amount_style = if t.cancelled.is_some() {
                     Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
                 } else {
@@ -222,10 +228,6 @@ impl TransactionsTab {
                 let amount = format!("{}", t.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
-                column0_items.push(ListItem::new(Span::styled(
-                    app_state.get_alias(&t.source_address),
-                    Style::default().fg(text_color),
-                )));
                 let color = match (t.cancelled.is_some(), chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,
@@ -289,10 +291,10 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 15];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
-        let tx_id = Span::styled("TxID:", Style::default().fg(Color::Magenta));
+        let excess_sig = Span::styled("Excess sig(nonce, sig):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
@@ -302,14 +304,13 @@ impl TransactionsTab {
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
         let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
         let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
-        let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let mined_height = Span::styled("Mined Height:", Style::default().fg(Color::Magenta));
         let maturity = Span::styled("Maturity:", Style::default().fg(Color::Magenta));
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(tx_id).wrap(trim);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
@@ -329,23 +330,21 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[8]);
         let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(excess).wrap(trim);
-        f.render_widget(paragraph, label_layout[10]);
         let paragraph = Paragraph::new(confirmations).wrap(trim);
-        f.render_widget(paragraph, label_layout[11]);
+        f.render_widget(paragraph, label_layout[10]);
         let paragraph = Paragraph::new(mined_height).wrap(trim);
-        f.render_widget(paragraph, label_layout[12]);
+        f.render_widget(paragraph, label_layout[11]);
         let paragraph = Paragraph::new(maturity).wrap(trim);
-        f.render_widget(paragraph, label_layout[13]);
+        f.render_widget(paragraph, label_layout[12]);
         let paragraph = Paragraph::new(payment_id).wrap(trim);
-        f.render_widget(paragraph, label_layout[14]);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 15];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
-            let tx_id = Span::styled(format!("{}", tx.tx_id), Style::default().fg(Color::White));
+            let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let source_address =
                 if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Outbound {
@@ -406,11 +405,18 @@ impl TransactionsTab {
                 Style::default().fg(Color::White),
             );
 
-            let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
-            let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
+            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed ||
+                tx.status == TransactionStatus::OneSidedConfirmed ||
+                tx.status == TransactionStatus::CoinbaseConfirmed) &&
+                tx.cancelled.is_none()
+            {
                 format!("{} required confirmations met", required_confirmations)
-            } else if tx.status == TransactionStatus::MinedUnconfirmed && tx.cancelled.is_none() {
+            } else if (tx.status == TransactionStatus::MinedUnconfirmed ||
+                tx.status == TransactionStatus::OneSidedUnconfirmed ||
+                tx.status == TransactionStatus::CoinbaseUnconfirmed) &&
+                tx.cancelled.is_none()
+            {
                 if let Some(count) = confirmation_count {
                     format!("{} of {} required confirmations met", count, required_confirmations)
                 } else {
@@ -435,19 +441,20 @@ impl TransactionsTab {
 
             let payment_id = match tx.payment_id.clone() {
                 Some(v) => {
-                    if let PaymentId::Open(bytes) = v {
-                        String::from_utf8(bytes)
-                            .unwrap_or_else(|_| "Invalid".to_string())
-                            .to_string()
-                    } else {
+                    let bytes = v.get_data();
+                    if bytes.is_empty() {
                         format!("#{}", v)
+                    } else {
+                        String::from_utf8(bytes)
+                            .unwrap_or_else(|_| "Invalid string".to_string())
+                            .to_string()
                     }
                 },
                 None => "None".to_string(),
             };
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(tx_id).wrap(trim);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
@@ -467,16 +474,14 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[8]);
             let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(excess).wrap(trim);
-            f.render_widget(paragraph, content_layout[10]);
             let paragraph = Paragraph::new(confirmations).wrap(trim);
-            f.render_widget(paragraph, content_layout[11]);
+            f.render_widget(paragraph, content_layout[10]);
             let paragraph = Paragraph::new(mined_height).wrap(trim);
-            f.render_widget(paragraph, content_layout[12]);
+            f.render_widget(paragraph, content_layout[11]);
             let paragraph = Paragraph::new(maturity).wrap(trim);
-            f.render_widget(paragraph, content_layout[13]);
+            f.render_widget(paragraph, content_layout[12]);
             let paragraph = Paragraph::new(payment_id).wrap(trim);
-            f.render_widget(paragraph, content_layout[14]);
+            f.render_widget(paragraph, content_layout[13]);
         }
     }
 }
@@ -489,7 +494,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(17),
+                    Constraint::Length(16),
                 ]
                 .as_ref(),
             )
@@ -615,6 +620,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
                 }
             },
+            'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {

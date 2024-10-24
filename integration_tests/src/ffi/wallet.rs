@@ -22,6 +22,7 @@
 
 use std::{
     ffi::CString,
+    ptr,
     ptr::null_mut,
     sync::{Arc, Mutex},
 };
@@ -57,87 +58,114 @@ use super::{
 };
 use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
-extern "C" fn callback_received_transaction(ptr: *mut TariPendingInboundTransaction) {
+extern "C" fn callback_received_transaction(_context: *mut c_void, ptr: *mut TariPendingInboundTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_transaction(ptr);
     // println!("callback_received_transaction");
 }
-extern "C" fn callback_received_transaction_reply(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_received_transaction_reply(_context: *mut c_void, ptr: *mut TariCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_transaction_reply(ptr);
     // println!("callback_received_transaction_reply");
 }
-extern "C" fn callback_received_finalized_transaction(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_received_finalized_transaction(_context: *mut c_void, ptr: *mut TariCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_finalized_transaction(ptr);
     // println!("callback_received_finalized_transaction");
 }
-extern "C" fn callback_transaction_broadcast(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_transaction_broadcast(_context: *mut c_void, ptr: *mut TariCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_broadcast(ptr);
     // println!("callback_transaction_broadcast");
 }
-extern "C" fn callback_transaction_mined(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_transaction_mined(_context: *mut c_void, ptr: *mut TariCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_mined(ptr);
     // println!("callback_transaction_mined");
 }
-extern "C" fn callback_transaction_mined_unconfirmed(ptr: *mut TariCompletedTransaction, confirmations: u64) {
+extern "C" fn callback_transaction_mined_unconfirmed(
+    _context: *mut c_void,
+    ptr: *mut TariCompletedTransaction,
+    confirmations: u64,
+) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_mined_unconfirmed(ptr, confirmations);
     // println!("callback_transaction_mined_unconfirmed");
 }
-extern "C" fn callback_faux_transaction_confirmed(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_faux_transaction_confirmed(_context: *mut c_void, ptr: *mut TariCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_faux_transaction_confirmed(ptr);
     // println!("callback_faux_transaction_confirmed");
 }
-extern "C" fn callback_faux_transaction_unconfirmed(ptr: *mut TariCompletedTransaction, confirmations: u64) {
+extern "C" fn callback_faux_transaction_unconfirmed(
+    _context: *mut c_void,
+    ptr: *mut TariCompletedTransaction,
+    confirmations: u64,
+) {
     let callbacks = Callbacks::instance();
     callbacks.on_faux_transaction_mined_unconfirmed(ptr, confirmations);
     // println!("callback_faux_transaction_unconfirmed");
 }
-extern "C" fn callback_transaction_send_result(tx_id: c_ulonglong, ptr: *mut TariTransactionSendStatus) {
+extern "C" fn callback_transaction_send_result(
+    _context: *mut c_void,
+    tx_id: c_ulonglong,
+    ptr: *mut TariTransactionSendStatus,
+) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_send_result(tx_id, ptr);
     // println!("callback_transaction_send_result");
 }
-extern "C" fn callback_transaction_cancellation(ptr: *mut TariCompletedTransaction, reason: u64) {
+extern "C" fn callback_transaction_cancellation(
+    _context: *mut c_void,
+    ptr: *mut TariCompletedTransaction,
+    reason: u64,
+) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_cancellation(ptr, reason);
     // println!("callback_transaction_cancellation");
 }
-extern "C" fn callback_txo_validation_complete(request_key: u64, validation_results: u64) {
+extern "C" fn callback_txo_validation_complete(_context: *mut c_void, request_key: u64, validation_results: u64) {
     let callbacks = Callbacks::instance();
     callbacks.on_txo_validation_complete(request_key, validation_results);
     // println!("callback_txo_validation_complete");
 }
-extern "C" fn callback_contacts_liveness_data_updated(ptr: *mut TariContactsLivenessData) {
+extern "C" fn callback_contacts_liveness_data_updated(_context: *mut c_void, ptr: *mut TariContactsLivenessData) {
     let callbacks = Callbacks::instance();
     callbacks.on_contacts_liveness_data_updated(ptr);
     // println!("callback_contacts_liveness_data_updated");
 }
-extern "C" fn callback_balance_updated(ptr: *mut TariBalance) {
+extern "C" fn callback_balance_updated(_context: *mut c_void, ptr: *mut TariBalance) {
     let callbacks = Callbacks::instance();
     callbacks.on_balance_updated(ptr);
     // println!("callback_balance_updated");
 }
-extern "C" fn callback_transaction_validation_complete(request_key: u64, validation_results: u64) {
+extern "C" fn callback_transaction_validation_complete(
+    _context: *mut c_void,
+    request_key: u64,
+    validation_results: u64,
+) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_validation_complete(request_key, validation_results);
     // println!("callback_transaction_validation_complete");
 }
-extern "C" fn callback_saf_messages_received() {
+extern "C" fn callback_saf_messages_received(_context: *mut c_void) {
     let callbacks = Callbacks::instance();
     callbacks.on_saf_messages_received();
     // println!("callback_saf_messages_received");
 }
-extern "C" fn callback_connectivity_status(status: u64) {
+extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64) {
     let callbacks = Callbacks::instance();
     callbacks.on_connectivity_status(status);
     // println!("callback_connectivity_status");
 }
-extern "C" fn callback_base_node_state(state: *mut TariBaseNodeState) {
+
+extern "C" fn callback_wallet_scanned_height(_context: *mut c_void, height: u64) {
+    let callbacks = Callbacks::instance();
+    callbacks.callback_wallet_scanned_height(height);
+    // println!("callback_wallet_scanned_height");
+}
+
+extern "C" fn callback_base_node_state(_context: *mut c_void, state: *mut TariBaseNodeState) {
     let callbacks = Callbacks::instance();
     callbacks.on_basenode_state_update(state);
 }
@@ -169,17 +197,21 @@ impl Wallet {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
+        let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
         unsafe {
             ptr = wallet_create(
+                void_ptr,
                 comms_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
                 50,
                 104857600, // 100 MB
                 CString::new("kensentme").unwrap().into_raw(),
+                ptr::null(),
                 seed_words_ptr,
                 CString::new("localnet").unwrap().into_raw(),
                 CString::new("").unwrap().into_raw(),
+                ptr::null(),
                 false,
                 callback_received_transaction,
                 callback_received_transaction_reply,
@@ -197,12 +229,14 @@ impl Wallet {
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
                 callback_connectivity_status,
+                callback_wallet_scanned_height,
                 callback_base_node_state,
                 &mut recovery_in_progress,
                 &mut error,
             );
             if error > 0 {
                 println!("wallet_create error {}", error);
+                panic!("wallet_create error");
             }
         }
         #[allow(clippy::arc_with_non_send_sync)]
@@ -248,6 +282,7 @@ impl Wallet {
             );
             if error > 0 {
                 println!("wallet_set_base_node_peer error {}", error);
+                panic!("wallet_set_base_node_peer error");
             }
         }
         success
@@ -257,9 +292,10 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_tari_address(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_tari_interactive_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {}", error);
+                panic!("wallet_get_tari_interactive_address error");
             }
         }
         WalletAddress::from_ptr(ptr)
@@ -270,6 +306,10 @@ impl Wallet {
         let mut error = 0;
         unsafe {
             ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
+            if error > 0 {
+                println!("comms_list_connected_public_keys error {}", error);
+                panic!("comms_list_connected_public_keys error");
+            }
         }
         PublicKeys::from_ptr(ptr)
     }
@@ -281,6 +321,7 @@ impl Wallet {
             success = ffi_import::wallet_upsert_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
                 println!("wallet_upsert_contact error {}", error);
+                panic!("wallet_upsert_contact error");
             }
         }
         success
@@ -293,6 +334,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_contacts(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_contacts error {}", error);
+                panic!("wallet_get_contacts error");
             }
         }
         Contacts::from_ptr(ptr)
@@ -305,6 +347,7 @@ impl Wallet {
             success = ffi_import::wallet_remove_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
                 println!("wallet_remove_contact error {}", error);
+                panic!("wallet_remove_contact error");
             }
         }
         success
@@ -317,6 +360,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_balance(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_balance error {}", error);
+                panic!("wallet_get_balance error");
             }
         }
         Balance::from_ptr(ptr)
@@ -346,6 +390,7 @@ impl Wallet {
             );
             if error > 0 {
                 println!("wallet_send_transaction error {}", error);
+                panic!("wallet_send_transaction error");
             }
         }
         tx_id
@@ -358,6 +403,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_outbound_transactions error {}", error);
+                panic!("wallet_get_pending_outbound_transactions error");
             }
         }
         PendingOutboundTransactions::from_ptr(ptr)
@@ -370,6 +416,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_pending_inbound_transactions error {}", error);
+                panic!("wallet_get_pending_inbound_transactions error");
             }
         }
         PendingInboundTransactions::from_ptr(ptr)
@@ -382,6 +429,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_completed_transactions(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_get_completed_transactions error {}", error);
+                panic!("wallet_get_completed_transactions error");
             }
         }
         CompletedTransactions::from_ptr(ptr)
@@ -394,6 +442,7 @@ impl Wallet {
             cancelled = ffi_import::wallet_cancel_pending_transaction(self.ptr, transaction_id, &mut error);
             if error > 0 {
                 println!("wallet_cancel_pending_transaction error {}", error);
+                panic!("wallet_cancel_pending_transaction error");
             }
         }
         cancelled
@@ -406,6 +455,7 @@ impl Wallet {
             request_key = ffi_import::wallet_start_txo_validation(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_start_txo_validation error {}", error);
+                panic!("wallet_start_txo_validation error");
             }
         }
         request_key
@@ -418,6 +468,7 @@ impl Wallet {
             request_key = ffi_import::wallet_start_transaction_validation(self.ptr, &mut error);
             if error > 0 {
                 println!("wallet_start_transaction_validation error {}", error);
+                panic!("wallet_start_transaction_validation error");
             }
         }
         request_key
@@ -435,6 +486,7 @@ impl Wallet {
             ptr = ffi_import::wallet_get_fee_per_gram_stats(self.ptr, count, &mut error);
             if error > 0 {
                 println!("wallet_get_fee_per_gram_stats error {}", error);
+                panic!("wallet_get_fee_per_gram_stats error");
             }
         }
         FeePerGramStats::from_ptr(ptr)
@@ -447,6 +499,7 @@ impl Wallet {
             ptr = ffi_import::contacts_handle(self.ptr, &mut error);
             if error > 0 {
                 println!("contacts_handle error {}", error);
+                panic!("contacts_handle error");
             }
         }
         ptr

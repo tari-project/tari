@@ -57,6 +57,8 @@ pub struct MergeMiningProxyConfig {
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
     pub base_node_grpc_address: Option<Multiaddr>,
+    /// P2Pool node's gRPC address
+    pub p2pool_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation
@@ -91,6 +93,8 @@ pub struct MergeMiningProxyConfig {
     pub wallet_payment_address: String,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
+    /// Use p2pool to submit and get block templates
+    pub p2pool_enabled: bool,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -99,11 +103,45 @@ impl Default for MergeMiningProxyConfig {
             override_from: None,
             use_dynamic_fail_data: true,
             monero_fail_url: MONERO_FAIL_MAINNET_URL.into(),
-            monerod_url: StringList::default(),
+            monerod_url: StringList::from(vec![
+                "http://node.c3pool.org:18081".to_string(),
+                "http://xmr-full.p2pool.uk:18089".to_string(),
+                "http://monero.stackwallet.com:18081".to_string(),
+                "http://xmr.support:18081".to_string(),
+                "https://xmr-01.tari.com".to_string(),
+                "http://node1.xmr-tw.org:18081".to_string(),
+                "http://monero-g2.hexhex.online:18081".to_string(),
+                "http://137.220.120.19:18089".to_string(),
+                "http://185.218.124.120:18489".to_string(),
+                "http://185.218.124.120:18789".to_string(),
+                "https://xmr-de-2.boldsuck.org:18081".to_string(),
+                "http://46.32.46.171:18081".to_string(),
+                "http://185.218.124.120:18089".to_string(),
+                "http://185.218.124.120:18589".to_string(),
+                "http://xmr-de-1.boldsuck.org:18081".to_string(),
+                "http://185.218.124.120:18889".to_string(),
+                "http://pinodexmr.hopto.org:18081".to_string(),
+                "http://node.tincloud.eu:18081".to_string(),
+                "http://183.6.24.33:18081".to_string(),
+                "http://147.45.196.232:18089".to_string(),
+                "http://h-helix.com:18089".to_string(),
+                "http://185.218.124.120:18689".to_string(),
+                "http://185.218.124.120:18289".to_string(),
+                "https://node.tincloud.eu".to_string(),
+                "https://xmr-de.boldsuck.org:18081".to_string(),
+                "https://monero.booze.org".to_string(),
+                "https://xmr.mailia.be:18088".to_string(),
+                "https://xmr.lolfox.au".to_string(),
+                "https://xmr1.doggett.tech:18089".to_string(),
+                "https://node.icefiles.nz:18081".to_string(),
+                "http://45.8.132.220:18089".to_string(),
+                "http://82.147.85.13:18089".to_string(),
+            ]),
             monerod_username: String::new(),
             monerod_password: String::new(),
             monerod_use_auth: false,
             base_node_grpc_address: None,
+            p2pool_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
@@ -117,6 +155,7 @@ impl Default for MergeMiningProxyConfig {
             config_dir: PathBuf::from("config/merge_mining_proxy"),
             wallet_payment_address: TariAddress::default().to_base58(),
             range_proof_type: RangeProofType::RevealedValue,
+            p2pool_enabled: false,
         }
     }
 }

@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::convert;
-use std::{iter, sync::Arc};
+use std::{iter, sync::Arc, time::Duration};
 
 use futures::future;
 use tari_comms::{
-    peer_manager::PeerFeatures,
+    peer_manager::{NodeId, PeerFeatures},
     protocol::rpc::{
         mock::{MockRpcImpl, MockRpcServer},
         RpcPoolClient,
@@ -41,11 +41,12 @@ use tari_test_utils::runtime::spawn_until_shutdown;
 use tokio::{
     sync::{mpsc, Barrier},
     task,
+    time::{sleep, timeout},
 };
 
-use super::service::WalletConnectivityService;
+use super::service::{WalletConnectivityService, CONNECTIVITY_WAIT};
 use crate::{
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    connectivity_service::{BaseNodePeerManager, OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     util::watch::Watch,
 };
 
@@ -65,7 +66,7 @@ async fn setup() -> (
     let service = WalletConnectivityService::new(
         Default::default(),
         rx,
-        base_node_watch.get_receiver(),
+        base_node_watch,
         online_status_watch,
         connectivity,
     );
@@ -87,7 +88,7 @@ async fn it_dials_peer_when_base_node_is_set() {
     // Set the mock to defer returning a result for the peer connection
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer.to_peer()]).unwrap());
 
     // Wait for connection request
     mock_state.await_call_count(1).await;
@@ -102,6 +103,7 @@ async fn it_dials_peer_when_base_node_is_set() {
 
 #[tokio::test]
 async fn it_resolves_many_pending_rpc_session_requests() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;
@@ -110,7 +112,7 @@ async fn it_resolves_many_pending_rpc_session_requests() {
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer.to_peer()]).unwrap());
 
     let pending_requests = iter::repeat_with(|| {
         let mut handle = handle.clone();
@@ -131,7 +133,8 @@ async fn it_resolves_many_pending_rpc_session_requests() {
 }
 
 #[tokio::test]
-async fn it_changes_to_a_new_base_node() {
+async fn it_changes_to_a_new_base_node_if_online() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let conn1 = mock_server.create_mockimpl_connection(base_node_peer1.to_peer()).await;
@@ -142,7 +145,7 @@ async fn it_changes_to_a_new_base_node() {
     mock_state.add_active_connection(conn2).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer1.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer1.to_peer()]).unwrap());
 
     mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer1.node_id()).await;
@@ -153,7 +156,7 @@ async fn it_changes_to_a_new_base_node() {
     assert!(rpc_client.is_connected());
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer2.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer2.to_peer()]).unwrap());
 
     mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer2.node_id()).await;
@@ -162,8 +165,65 @@ async fn it_changes_to_a_new_base_node() {
     assert!(rpc_client.is_connected());
 }
 
+async fn wait_for_peers_to_be_dialed(
+    mock_state: &ConnectivityManagerMockState,
+    peers: &[&NodeId],
+    timeout_duration: Duration,
+) {
+    let check_interval = Duration::from_millis(100); // Interval to check the condition
+
+    let result = timeout(timeout_duration, async {
+        loop {
+            let all_dialed = futures::future::join_all(peers.iter().map(|peer| mock_state.is_peer_dialed(peer))).await;
+            if all_dialed.into_iter().all(|dialed| dialed) {
+                break;
+            }
+            sleep(check_interval).await;
+        }
+    })
+    .await;
+
+    if result.is_err() {
+        panic!("Timeout reached while waiting for all peers to be dialed");
+    }
+}
+
+#[tokio::test]
+async fn it_changes_to_a_new_base_node_if_preferred_is_offline() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
+    let base_node_peer1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let base_node_peer2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let conn2 = mock_server.create_mockimpl_connection(base_node_peer2.to_peer()).await;
+
+    mock_state.add_active_connection(conn2).await;
+
+    // Initiate a connection to the base node
+    handle.set_base_node(
+        BaseNodePeerManager::new(0, vec![base_node_peer1.to_peer(), base_node_peer2.to_peer()]).unwrap(),
+    );
+
+    mock_state.await_call_count(2).await;
+
+    wait_for_peers_to_be_dialed(
+        &mock_state,
+        &[base_node_peer1.node_id(), base_node_peer2.node_id()],
+        Duration::from_secs(2 * CONNECTIVITY_WAIT),
+    )
+    .await;
+
+    assert!(mock_state.count_calls_containing("DialPeer").await >= 2);
+    let _result = mock_state.take_calls().await;
+
+    let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
+    assert!(rpc_client.is_connected());
+
+    handle.get_current_base_node_peer().unwrap();
+}
+
 #[tokio::test]
 async fn it_gracefully_handles_connect_fail_reconnect() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (mut handle, mock_server, mock_state, _shutdown) = setup().await;
     let base_node_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let mut conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;
@@ -172,7 +232,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer.to_peer()]).unwrap());
 
     // Now a connection will given to the service
     mock_state.add_active_connection(conn.clone()).await;
@@ -212,7 +272,7 @@ async fn it_gracefully_handles_multiple_connection_failures() {
     let conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer());
+    handle.set_base_node(BaseNodePeerManager::new(0, vec![base_node_peer.to_peer()]).unwrap());
 
     // Now a connection will given to the service
     mock_state.add_active_connection(conn.clone()).await;

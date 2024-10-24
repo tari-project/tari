@@ -58,6 +58,7 @@ impl Contact {
             );
             if error > 0 {
                 println!("contact_create error {}", error);
+                panic!("contact_create error");
             }
         }
         Self { ptr }
@@ -70,6 +71,7 @@ impl Contact {
             alias = FFIString::from_ptr(ffi_import::contact_get_alias(self.ptr, &mut error));
             if error > 0 {
                 println!("contact_get_alias error {}", error);
+                panic!("contact_get_alias error");
             }
         }
         alias.as_string()
@@ -82,6 +84,7 @@ impl Contact {
             ptr = ffi_import::contact_get_tari_address(self.ptr, &mut error);
             if error > 0 {
                 println!("contact_get_tari_address error {}", error);
+                panic!("contact_get_tari_address error");
             }
         }
         WalletAddress::from_ptr(ptr)

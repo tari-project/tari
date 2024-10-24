@@ -23,7 +23,8 @@
 
 use log::*;
 use tari_common_types::{
-    tari_address::TariAddress,
+    key_branches::TransactionKeyManagerBranch,
+    tari_address::{TariAddress, TariAddressFeatures},
     types::{Commitment, PrivateKey},
 };
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
@@ -37,23 +38,13 @@ use crate::{
         ConsensusConstants,
     },
     covenants::Covenant,
-    one_sided::{
-        shared_secret_to_output_encryption_key,
-        shared_secret_to_output_spending_key,
-        stealth_address_script_spending_key,
-    },
+    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
-        key_manager::{
-            CoreKeyManagerError,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerBranch,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
+        key_manager::{CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             encrypted_data::PaymentId,
+            CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -141,7 +132,7 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
     sender_offset_key_id: Option<TariKeyId>,
     script: Option<TariScript>,
     covenant: Covenant,
-    extra: Option<Vec<u8>>,
+    extra: Option<CoinBaseExtra>,
     range_proof_type: Option<RangeProofType>,
 }
 
@@ -219,7 +210,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
     /// Provide some arbitrary additional information that will be stored in the coinbase output's `coinbase_extra`
     /// field.
-    pub fn with_extra(mut self, extra: Vec<u8>) -> Self {
+    pub fn with_extra(mut self, extra: CoinBaseExtra) -> Self {
         self.extra = Some(extra);
         self
     }
@@ -402,7 +393,7 @@ pub async fn generate_coinbase(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
-    extra: &[u8],
+    extra: &CoinBaseExtra,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -435,7 +426,7 @@ pub async fn generate_coinbase_with_wallet_output(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
-    extra: &[u8],
+    extra: &CoinBaseExtra,
     key_manager: &MemoryDbKeyManager,
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
@@ -444,6 +435,14 @@ pub async fn generate_coinbase_with_wallet_output(
     range_proof_type: RangeProofType,
     payment_id: PaymentId,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
+    if !wallet_payment_address
+        .features()
+        .contains(TariAddressFeatures::create_one_sided_only())
+    {
+        return Err(CoinbaseBuildError::BuildError(
+            "Invalid address, address must be one-sided enabled".to_string(),
+        ));
+    }
     let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;
@@ -456,22 +455,15 @@ pub async fn generate_coinbase_with_wallet_output(
         )
         .await?;
     let commitment_mask = shared_secret_to_output_spending_key(&shared_secret)?;
+    let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
 
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
     let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
 
-    let commitment_mask_key_id = key_manager.import_key(commitment_mask).await?;
-
     let script_spending_pubkey = if stealth_payment {
-        let c = key_manager
-            .get_diffie_hellman_stealth_domain_hasher(
-                &sender_offset.key_id,
-                wallet_payment_address
-                    .public_view_key()
-                    .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
-            )
-            .await?;
-        stealth_address_script_spending_key(&c, wallet_payment_address.public_spend_key())
+        key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, wallet_payment_address.public_spend_key())
+            .await?
     } else {
         wallet_payment_address.public_spend_key().clone()
     };
@@ -484,7 +476,7 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_sender_offset_key_id(sender_offset.key_id)
         .with_script_key_id(script_key_id.clone())
         .with_script(script)
-        .with_extra(extra.to_vec())
+        .with_extra(extra.clone())
         .with_range_proof_type(range_proof_type)
         .build_with_reward(consensus_constants, reward, payment_id)
         .await?;
@@ -508,7 +500,7 @@ pub async fn generate_coinbase_with_wallet_output(
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::{tari_address::TariAddress, types::Commitment};
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::Commitment};
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -779,7 +771,6 @@ mod test {
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
-            TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
             TxoStage,
         },

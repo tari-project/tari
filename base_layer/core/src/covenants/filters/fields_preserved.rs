@@ -49,7 +49,8 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_outputs_that_match_input_fields() {
-        let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type)));
+        let covenant =
+            covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type))).unwrap();
         let key_manager = create_memory_db_key_manager().unwrap();
         let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();

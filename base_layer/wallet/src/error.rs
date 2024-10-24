@@ -41,6 +41,7 @@ use thiserror::Error;
 
 use crate::{
     base_node_service::error::BaseNodeServiceError,
+    connectivity_service::WalletConnectivityError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
@@ -103,6 +104,8 @@ pub enum WalletError {
     UnexpectedApiResponse { method: String, api: String },
     #[error("Public address not set for this wallet")]
     PublicAddressNotSet,
+    #[error("Wallet connectivity error: `{0}`")]
+    WalletConnectivityError(#[from] WalletConnectivityError),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

@@ -27,12 +27,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use digest::crypto_common::rand_core::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::keys::SecretKey;
+use tari_utilities::encoding::MBase58;
 
 use crate::automation::{
-    commands::{FILE_EXTENSION, SESSION_INFO},
+    commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
     error::CommandError,
-    Step1SessionInfo,
+    PreMineSpendStep1SessionInfo,
+    SessionId,
 };
 
 #[derive(Debug)]
@@ -126,18 +131,32 @@ fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result
     Ok(())
 }
 
+/// Create a unique session-based output directory
+pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String, PathBuf), CommandError> {
+    let mut session_id = PrivateKey::random(&mut OsRng).to_monero_base58();
+    session_id.truncate(if alias.is_some() { 8 } else { 16 });
+    if let Some(alias) = alias {
+        session_id.push('_');
+        session_id.push_str(alias);
+    }
+    let out_dir = out_dir(&session_id)?;
+    fs::create_dir_all(out_dir.clone())
+        .map_err(|e| CommandError::JsonFile(format!("{} ({})", e, out_dir.display())))?;
+    Ok((session_id, out_dir))
+}
+
 /// Return the output directory for the session
 pub(crate) fn out_dir(session_id: &str) -> Result<PathBuf, CommandError> {
-    let base_dir = dirs::cache_dir().ok_or(CommandError::InvalidArgument(
+    let base_dir = dirs_next::document_dir().ok_or(CommandError::InvalidArgument(
         "Could not find cache directory".to_string(),
     ))?;
-    Ok(base_dir.join("tari_faucets").join(session_id))
+    Ok(base_dir.join("tari_pre_mine").join("spend").join(session_id))
 }
 
 /// Move the session file to the session directory
 pub(crate) fn move_session_file_to_session_dir(session_id: &str, input_file: &PathBuf) -> Result<(), CommandError> {
     let out_dir = out_dir(session_id)?;
-    let session_file = out_dir.join(get_file_name(SESSION_INFO, None));
+    let session_file = out_dir.join(get_file_name(SPEND_SESSION_INFO, None));
     if input_file != &session_file {
         fs::copy(input_file.clone(), session_file.clone())?;
         fs::remove_file(input_file.clone())?;
@@ -151,31 +170,31 @@ pub(crate) fn move_session_file_to_session_dir(session_id: &str, input_file: &Pa
 }
 
 /// Read the session info from the session directory and verify the supplied session ID
-pub(crate) fn read_verify_session_info(session_id: &str) -> Result<Step1SessionInfo, CommandError> {
-    let file_path = out_dir(session_id)?.join(get_file_name(SESSION_INFO, None));
-    let session_info = json_from_file_single_object::<_, Step1SessionInfo>(&file_path, None)?;
-    if session_info.session_id != session_id {
+pub(crate) fn read_verify_session_info<T: DeserializeOwned + SessionId>(session_id: &str) -> Result<T, CommandError> {
+    let file_path = out_dir(session_id)?.join(get_file_name(SPEND_SESSION_INFO, None));
+    let session_info = json_from_file_single_object::<_, T>(&file_path, None)?;
+    if session_info.session_id() != session_id {
         return Err(CommandError::InvalidArgument(format!(
             "Session ID in session info file '{}' mismatch",
-            get_file_name(SESSION_INFO, None)
+            get_file_name(SPEND_SESSION_INFO, None)
         )));
     }
     Ok(session_info)
 }
 
 /// Read the session info from the session directory
-pub(crate) fn read_session_info(session_file: PathBuf) -> Result<Step1SessionInfo, CommandError> {
-    json_from_file_single_object::<_, Step1SessionInfo>(&session_file, None)
+pub(crate) fn read_session_info<T: DeserializeOwned>(session_file: PathBuf) -> Result<T, CommandError> {
+    json_from_file_single_object::<_, T>(&session_file, None)
 }
 
 /// Read the inputs from the session directory and verify the header
 pub(crate) fn read_and_verify<T: DeserializeOwned>(
     session_id: &str,
     file_name: &str,
-    session_info: &Step1SessionInfo,
+    session_info: &PreMineSpendStep1SessionInfo,
 ) -> Result<T, CommandError> {
     let out_dir = out_dir(session_id)?;
-    let header = json_from_file_single_object::<_, Step1SessionInfo>(
+    let header = json_from_file_single_object::<_, PreMineSpendStep1SessionInfo>(
         &out_dir.join(file_name),
         Some(PartialRead {
             lines_to_read: 1,

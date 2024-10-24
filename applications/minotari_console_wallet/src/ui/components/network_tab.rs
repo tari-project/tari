@@ -69,7 +69,7 @@ impl NetworkTab {
         f.render_widget(block, area);
 
         let areas = Layout::default()
-            .constraints([Constraint::Length(2), Constraint::Min(8)].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Min(8)].as_ref())
             .margin(1)
             .split(area);
 
@@ -91,6 +91,7 @@ impl NetworkTab {
 
         let mut column0_items = Vec::with_capacity(capacity);
         let mut column1_items = Vec::with_capacity(capacity);
+        let mut column2_items = Vec::with_capacity(capacity);
 
         let styles: HashMap<bool, Style> = [
             (true, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
@@ -107,7 +108,8 @@ impl NetworkTab {
                 .unwrap_or(&Style::default().fg(Color::Reset))
                 .to_owned();
             column0_items.push(ListItem::new(Span::styled(peer_type, style)));
-            column1_items.push(ListItem::new(Span::styled(peer.public_key.to_string(), style)));
+            column1_items.push(ListItem::new(Span::styled(peer.node_id.to_string(), style)));
+            column2_items.push(ListItem::new(Span::styled(peer.public_key.to_string(), style)));
         }
 
         self.base_node_list_state.set_num_items(capacity);
@@ -119,8 +121,9 @@ impl NetworkTab {
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Type"), Some(28), column0_items)
-            .add_column(Some("Public Key"), Some(65), column1_items);
+            .add_column(Some("Type"), Some(17), column0_items)
+            .add_column(Some("NodeID"), Some(27), column1_items)
+            .add_column(Some("Public Key"), Some(65), column2_items);
         column_list.render(f, areas[1], &mut base_node_list_state);
     }
 

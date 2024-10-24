@@ -6,8 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version.workspace = true
-edition.workspace = true
+version = "1.7.0-pre.3"
+edition = "2018"
 
 [lib]
 proc-macro = true

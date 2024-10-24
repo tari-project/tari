@@ -83,20 +83,20 @@ impl MergeMiningProxyProcess {
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
             .expect("wallet grpc client");
-        let wallet_public_key = &wallet_client
+        let wallet_address = &wallet_client
             .get_address(grpc::Empty {})
             .await
             .unwrap()
             .into_inner()
-            .address;
-        let wallet_payment_address = TariAddress::from_bytes(wallet_public_key).unwrap();
+            .interactive_address;
+        let wallet_payment_address = TariAddress::from_bytes(wallet_address).unwrap();
         thread::spawn(move || {
             let cli = Cli {
                 common: CommonCliArgs {
                     base_path: data_dir_str,
                     config: config_path.into_os_string().into_string().unwrap(),
                     log_config: None,
-                    log_level: None,
+                    log_path: None,
                     network: Some("localnet".to_string().try_into().unwrap()),
                     config_property_overrides: vec![
                         ("merge_mining_proxy.listener_address".to_string(), proxy_full_address),
@@ -141,6 +141,7 @@ impl MergeMiningProxyProcess {
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
             if let Err(e) = rt.block_on(merge_miner(cli)) {
                 println!("Error running merge mining proxy : {:?}", e);
+                panic!("Error running merge mining proxy");
             }
         });
     }

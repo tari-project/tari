@@ -33,6 +33,7 @@ impl From<ChainMetadata> for grpc::MetaData {
             best_block_hash: meta.best_block_hash().to_vec(),
             pruned_height: meta.pruned_height(),
             accumulated_difficulty: diff.to_vec(),
+            timestamp: meta.timestamp(),
         }
     }
 }

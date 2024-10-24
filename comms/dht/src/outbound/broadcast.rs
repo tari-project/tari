@@ -204,7 +204,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
-        debug!(target: LOG_TARGET, "Processing outbound request {}", request);
+        trace!(target: LOG_TARGET, "Processing outbound request {}", request);
         let messages = self.generate_outbound_messages(request).await?;
         trace!(
             target: LOG_TARGET,

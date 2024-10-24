@@ -332,6 +332,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                                 OutboundEncryption::ClearText,
                                 vec![msg.source_peer.node_id.clone()],
                                 OutboundDomainMessage::new(&0i32, public_msg),
+                                "Memory net example".to_string(),
                             )
                             .await
                             .unwrap();

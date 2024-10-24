@@ -21,13 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{ComAndPubSignature, PublicKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{ComAndPubSignature, PublicKey},
+};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -200,6 +203,43 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
+    pub async fn sign_as_sender_and_receiver_verified<KM: TransactionKeyManagerInterface>(
+        mut self,
+        key_manager: &KM,
+        sender_offset_key_id: &TariKeyId,
+        receiver_address: &TariAddress,
+    ) -> Result<Self, TransactionError> {
+        let script = self
+            .script
+            .as_ref()
+            .ok_or_else(|| TransactionError::BuilderError("Cannot sign metadata without a script".to_string()))?;
+        let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
+        let metadata_message_common = TransactionOutput::metadata_signature_message_common_from_parts(
+            &self.version,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            &self.minimum_value_promise,
+        );
+        let metadata_signature = key_manager
+            .get_one_sided_metadata_signature(
+                &self.commitment_mask_key_id,
+                self.value,
+                sender_offset_key_id,
+                &self.version,
+                &metadata_message_common,
+                self.features.range_proof_type,
+                script,
+                receiver_address,
+            )
+            .await?;
+        self.metadata_signature = Some(metadata_signature);
+        self.metadata_signed_by_receiver = true;
+        self.metadata_signed_by_sender = true;
+        self.sender_offset_public_key = Some(sender_offset_public_key);
+        Ok(self)
+    }
+
     /// Sign a partial multi-party metadata signature as the sender and receiver - `sender_offset_public_key_shares` and
     /// `ephemeral_pubkey_shares` from other participants are combined to enable creation of the challenge.
     pub async fn sign_partial_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
@@ -226,9 +266,7 @@ impl WalletOutputBuilder {
         let aggregate_sender_offset_public_key =
             aggregated_sender_offset_public_key_shares + &sender_offset_public_key_self;
 
-        let ephemeral_pubkey_self = key_manager
-            .get_next_key(TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
-            .await?;
+        let ephemeral_pubkey_self = key_manager.get_random_key().await?;
         let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.pub_key;
 
         let receiver_partial_metadata_signature = key_manager
@@ -256,7 +294,7 @@ impl WalletOutputBuilder {
             &metadata_message,
         );
         let sender_partial_metadata_signature_self = key_manager
-            .sign_with_nonce_and_message(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
+            .sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
             .await?;
 
         let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
@@ -311,6 +349,7 @@ impl WalletOutputBuilder {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::key_branches::TransactionKeyManagerBranch;
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
@@ -322,7 +361,7 @@ mod test {
         let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -364,7 +403,7 @@ mod test {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TariScript::new(vec![]).unwrap());
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await

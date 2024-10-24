@@ -23,6 +23,7 @@
 use std::{
     fmt::{Debug, Display, Formatter},
     path::PathBuf,
+    str::FromStr,
     time::Duration,
 };
 
@@ -88,26 +89,44 @@ pub struct Cli {
     pub command2: Option<CliCommands>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    // For read only wallets
+    #[clap(long)]
+    pub view_private_key: Option<String>,
+    #[clap(long)]
+    pub spend_key: Option<String>,
 }
 
 impl ConfigOverrideProvider for Cli {
-    fn get_config_property_overrides(&self, network: &mut Network) -> Vec<(String, String)> {
-        let mut overrides = self.common.get_config_property_overrides(network);
-        *network = self.common.network.unwrap_or(*network);
-        overrides.push(("wallet.network".to_string(), network.to_string()));
+    /// Get the configuration property overrides for the given network. In case of duplicates, the final override
+    /// added to the list will have preference.
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
+        // Config file overrides
+        let mut overrides = vec![("wallet.network".to_string(), network.to_string())];
         overrides.push(("wallet.override_from".to_string(), network.to_string()));
         overrides.push(("p2p.seeds.override_from".to_string(), network.to_string()));
-        // Either of these configs enable grpc
+        // Command-line overrides
+        let command_line_overrides = self.common.get_config_property_overrides(network);
+        command_line_overrides.iter().for_each(|(k, v)| {
+            replace_or_add_override(&mut overrides, k, v);
+        });
+        // Logical overrides based on command-line flags - Either of these configs enable grpc
         if let Some(ref addr) = self.grpc_address {
-            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
-            overrides.push(("wallet.grpc_address".to_string(), addr.clone()));
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
+            replace_or_add_override(&mut overrides, "wallet.grpc_address", addr);
         } else if self.grpc_enabled {
-            overrides.push(("wallet.grpc_enabled".to_string(), "true".to_string()));
+            replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
         } else {
             // GRPC is disabled
         }
         overrides
     }
+}
+
+fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
+        overrides.remove(index);
+    }
+    overrides.push((key.to_string(), value.to_string()));
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -116,11 +135,13 @@ pub enum CliCommands {
     GetBalance,
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
-    FaucetGenerateSessionInfo(FaucetGenerateSessionInfoArgs),
-    FaucetCreatePartyDetails(FaucetCreatePartyDetailsArgs),
-    FaucetEncumberAggregateUtxo(FaucetEncumberAggregateUtxoArgs),
-    FaucetCreateInputOutputSigs(FaucetCreateInputOutputSigArgs),
-    FaucetSpendAggregateUtxo(FaucetSpendAggregateUtxoArgs),
+    PreMineSpendGetOutputStatus,
+    PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
+    PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
+    PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
+    PreMineSpendInputOutputSigs(PreMineSpendInputOutputSigArgs),
+    PreMineSpendAggregateTransaction(PreMineSpendAggregateTransactionArgs),
+    PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
@@ -140,6 +161,9 @@ pub enum CliCommands {
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
+    Sync(SyncArgs),
+    ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
+    ImportPaperWallet(ImportPaperWalletArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -163,29 +187,96 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetGenerateSessionInfoArgs {
+pub struct PreMineSpendSessionInfoArgs {
     #[clap(long)]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
-    pub commitment: String,
-    #[clap(long)]
-    pub output_hash: String,
-    #[clap(long)]
-    pub recipient_address: TariAddress,
+    pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub verify_unspent_outputs: bool,
+    #[clap(long)]
+    pub use_pre_mine_input_file: bool,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetCreatePartyDetailsArgs {
+pub struct CliRecipientInfo {
+    pub output_indexes: Vec<usize>,
+    pub recipient_address: TariAddress,
+}
+
+impl FromStr for CliRecipientInfo {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Parse 'RecipientInfo' from "[<v1>,<v2>,<v3>]:<recipient_address>"
+        if !s.contains(':') {
+            return Err("Invalid 'recipient-info', could not find address separator ':'".to_string());
+        }
+        let parts: Vec<&str> = s.split(':').collect();
+        if parts.len() != 2 {
+            return Err(format!(
+                "Invalid 'recipient-info', needs exactly 2 parts, found {}",
+                parts.len()
+            ));
+        }
+
+        // Parse output indexes
+        if !parts[0].starts_with('[') && !parts[0].ends_with(']') {
+            return Err("Invalid 'recipient-info' part 1; array bounds must be indicated with '[' and ']'".to_string());
+        }
+        let binding = parts[0].replace("[", "").replace("]", "");
+        let parts_0 = binding.split(',').collect::<Vec<&str>>();
+        let output_indexes = parts_0
+            .iter()
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| format!("'recipient_info' - invalid output_index: {}", e))
+            })
+            .collect::<Result<Vec<usize>, String>>()?;
+
+        // Parse recipient address
+        let recipient_address = TariAddress::from_base58(parts[1])
+            .map_err(|e| format!("'recipient_info' - invalid recipient address: {}", e))?;
+
+        Ok(CliRecipientInfo {
+            output_indexes,
+            recipient_address,
+        })
+    }
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
     pub input_file: PathBuf,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(long)]
+    pub recipient_info: Vec<CliRecipientInfo>,
     #[clap(long)]
     pub alias: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetEncumberAggregateUtxoArgs {
+pub struct PreMineSpendEncumberAggregateUtxoArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub input_file_names: Vec<String>,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendInputOutputSigArgs {
+    #[clap(long)]
+    pub session_id: String,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PreMineSpendAggregateTransactionArgs {
     #[clap(long)]
     pub session_id: String,
     #[clap(long)]
@@ -193,17 +284,15 @@ pub struct FaucetEncumberAggregateUtxoArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FaucetCreateInputOutputSigArgs {
+pub struct PreMineSpendBackupUtxoArgs {
     #[clap(long)]
-    pub session_id: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FaucetSpendAggregateUtxoArgs {
+    pub fee_per_gram: MicroMinotari,
     #[clap(long)]
-    pub session_id: String,
+    pub output_index: usize,
     #[clap(long)]
-    pub input_file_names: Vec<String>,
+    pub recipient_address: TariAddress,
+    #[clap(long)]
+    pub pre_mine_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -295,6 +384,22 @@ pub struct ExportTxArgs {
 }
 
 #[derive(Debug, Args, Clone)]
+pub struct ExportViewKeyAndSpendKeyArgs {
+    #[clap(short, long)]
+    pub output_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ImportPaperWalletArgs {
+    #[clap(short, long, default_value = "")]
+    pub seed_words: String,
+    #[clap(short, long, default_value = "")]
+    pub cipher_seed: String,
+    #[clap(short, long, default_value = "")]
+    pub passphrase: String,
+}
+
+#[derive(Debug, Args, Clone)]
 pub struct ImportTxArgs {
     #[clap(short, long)]
     pub input_file: PathBuf,
@@ -352,4 +457,10 @@ pub struct RegisterValidatorNodeArgs {
     pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SyncArgs {
+    #[clap(short, long, default_value = "0")]
+    pub sync_to_height: u64,
 }

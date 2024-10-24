@@ -24,7 +24,6 @@ use std::{convert::TryFrom, marker::PhantomData};
 
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common::DomainDigest;
 use thiserror::Error;
 
 use crate::{common::hash_together, Hash};
@@ -54,7 +53,7 @@ pub struct BalancedBinaryMerkleTree<D> {
 }
 
 impl<D> BalancedBinaryMerkleTree<D>
-where D: Digest + DomainDigest
+where D: Digest
 {
     // There is no push method for this tree. This tree is created at once and no modifications are allowed.
     pub fn create(leaves: Vec<Hash>) -> Self {

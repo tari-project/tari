@@ -132,7 +132,7 @@ async fn range_proof_verification() {
         test_params_2.commitment_mask_key_id.clone(),
     )
     .with_features(OutputFeatures::default())
-    .with_script(script![Nop])
+    .with_script(script![Nop].unwrap())
     .encrypt_data_for_recovery(&key_manager, None, PaymentId::Empty)
     .await
     .unwrap()
@@ -524,7 +524,7 @@ async fn inputs_not_malleable() {
         2,
         15.into(),
         &Default::default(),
-        &script![Nop],
+        &script![Nop].unwrap(),
         &Default::default(),
         &key_manager,
     )
@@ -538,7 +538,7 @@ async fn inputs_not_malleable() {
         .unwrap();
 
     let mut inputs = tx.body().inputs().clone();
-    inputs[0].set_script(script![Drop]).unwrap();
+    inputs[0].set_script(script![Drop].unwrap()).unwrap();
     inputs[0].input_data = stack;
     tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
@@ -622,7 +622,7 @@ mod validate_internal_consistency {
     #[tokio::test]
     async fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
-        let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
+        let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };
         let key_manager = create_memory_db_key_manager().unwrap();
         test_case(
@@ -655,7 +655,7 @@ mod validate_internal_consistency {
         slice.copy_from_slice(hash.as_ref());
         let hash = FixedHash::from(slice);
 
-        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash)));
+        let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash))).unwrap();
 
         test_case(
             &UtxoTestParams {
@@ -673,7 +673,8 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case3 - FAIL --------------------------------------------//
-        let covenant = covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_maturity, @uint(42))));
+        let covenant =
+            covenant!(or(absolute_height(@uint(100),), field_eq(@field::features_maturity, @uint(42)))).unwrap();
 
         let err = test_case(
             &UtxoTestParams {

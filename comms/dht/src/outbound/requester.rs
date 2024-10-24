@@ -136,12 +136,14 @@ impl OutboundMessageRequester {
         encryption: OutboundEncryption,
         exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
+        source_info: String,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
         T: prost::Message,
     {
         self.send_message(
             SendMessageParams::new()
+                .with_debug_info(source_info)
                 .propagate(destination.clone(), exclude_peers)
                 .with_encryption(encryption)
                 .with_destination(destination)

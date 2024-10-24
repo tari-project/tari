@@ -62,6 +62,45 @@ pub struct KeyAndId<PK> {
     pub key_id: KeyId<PK>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SerializedKeyString {
+    inner: String,
+}
+
+impl From<String> for SerializedKeyString {
+    fn from(inner: String) -> Self {
+        Self { inner }
+    }
+}
+
+impl From<&str> for SerializedKeyString {
+    fn from(inner: &str) -> Self {
+        Self { inner: inner.into() }
+    }
+}
+
+impl fmt::Display for SerializedKeyString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl<PK> From<KeyId<PK>> for SerializedKeyString
+where PK: ByteArray
+{
+    fn from(key_id: KeyId<PK>) -> Self {
+        Self::from(key_id.to_string())
+    }
+}
+
+impl<PK> From<&KeyId<PK>> for SerializedKeyString
+where PK: ByteArray
+{
+    fn from(key_id: &KeyId<PK>) -> Self {
+        Self::from(key_id.to_string())
+    }
+}
+
 #[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
     Managed {
@@ -69,9 +108,7 @@ pub enum KeyId<PK> {
         index: u64,
     },
     Derived {
-        branch: String,
-        label: String,
-        index: u64,
+        key: SerializedKeyString,
     },
     Imported {
         key: PK,
@@ -86,7 +123,7 @@ where PK: Clone
     pub fn managed_index(&self) -> Option<u64> {
         match self {
             KeyId::Managed { index, .. } => Some(*index),
-            KeyId::Derived { index, .. } => Some(*index),
+            KeyId::Derived { .. } => None,
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -95,7 +132,7 @@ where PK: Clone
     pub fn managed_branch(&self) -> Option<String> {
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
-            KeyId::Derived { branch, .. } => Some(branch.clone()),
+            KeyId::Derived { .. } => None,
             KeyId::Imported { .. } => None,
             KeyId::Zero => None,
         }
@@ -123,11 +160,7 @@ where PK: ByteArray
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
-            KeyId::Derived {
-                branch: b,
-                label: l,
-                index: i,
-            } => write!(f, "{}.{}.{}.{}", DERIVED_KEY_BRANCH, b, l, i),
+            KeyId::Derived { key: k } => write!(f, "{}.{}", DERIVED_KEY_BRANCH, k),
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
@@ -146,7 +179,7 @@ where PK: ByteArray
             Some(val) => match *val {
                 MANAGED_KEY_BRANCH => {
                     if parts.len() != 3 {
-                        return Err("Wrong format".to_string());
+                        return Err("Wrong managed format".to_string());
                     }
                     let index = parts[2]
                         .parse()
@@ -158,26 +191,24 @@ where PK: ByteArray
                 },
                 IMPORTED_KEY_BRANCH => {
                     if parts.len() != 2 {
-                        return Err("Wrong format".to_string());
+                        return Err("Wrong imported format".to_string());
                     }
                     let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
                 DERIVED_KEY_BRANCH => {
-                    if parts.len() != 4 {
-                        return Err("Wrong format".to_string());
+                    match parts.len() {
+                        4 | 3 => (),
+                        _ => return Err("Wrong derived format".to_string()),
                     }
-                    let index = parts[3]
-                        .parse()
-                        .map_err(|_| "Index for default, invalid u64".to_string())?;
+
+                    let key = parts[1..].join(".");
                     Ok(KeyId::Derived {
-                        branch: parts[1].into(),
-                        label: parts[2].into(),
-                        index,
+                        key: SerializedKeyString::from(key),
                     })
                 },
-                _ => Err("Wrong format".to_string()),
+                _ => Err("Wrong generic format".to_string()),
             },
         }
     }
@@ -255,13 +286,18 @@ mod test {
             key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         };
         let zero_key_id: KeyId<PublicKey> = KeyId::Zero;
+        let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
+            key: (&managed_key_id).into(),
+        };
 
         let managed_key_id_str = managed_key_id.to_string();
         let imported_key_id_str = imported_key_id.to_string();
         let zero_key_id_str = zero_key_id.to_string();
+        let derived_key_id_str = derived_key_id.to_string();
 
         assert_eq!(managed_key_id, KeyId::from_str(&managed_key_id_str).unwrap());
         assert_eq!(imported_key_id, KeyId::from_str(&imported_key_id_str).unwrap());
         assert_eq!(zero_key_id, KeyId::from_str(&zero_key_id_str).unwrap());
+        assert_eq!(derived_key_id, KeyId::from_str(&derived_key_id_str).unwrap());
     }
 }

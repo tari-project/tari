@@ -22,7 +22,6 @@
 use std::{error::Error, path::PathBuf};
 
 use clap::Args;
-use log::Level;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Args, Debug)]
@@ -43,14 +42,20 @@ pub struct CommonCliArgs {
     #[clap(short, long, alias = "log_config")]
     pub log_config: Option<PathBuf>,
 
-    #[clap()]
-    pub log_level: Option<Level>,
+    /// The path to where logs should be stored
+    #[clap(long, alias = "log_path")]
+    pub log_path: Option<PathBuf>,
 
     /// Supply a network (overrides existing configuration)
     #[clap(long, env = "TARI_NETWORK")]
     pub network: Option<Network>,
 
-    /// Overrides for properties in the config file, e.g. -p base_node.network=esmeralda
+    /// Overrides for properties in the config file (use the fully qualified key name!!), e.g.
+    /// -p base_node.network=esmeralda
+    /// -p base_node.grpc_server_allow_methods="get_tokens_in_circulation, get_sync_progress, get_mempool_stats"
+    /// -p esmeralda.p2p.seeds.peer_seeds="<public_key_1>::<address_1>", "<public_key_2>::<address_2>", or,
+    /// -p base_node.grpc_server_allow_methods=""
+    /// -p esmeralda.p2p.seeds.peer_seeds=""
     #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
     pub config_property_overrides: Vec<(String, String)>,
 }
@@ -105,7 +110,7 @@ impl CommonCliArgs {
 }
 
 impl ConfigOverrideProvider for CommonCliArgs {
-    fn get_config_property_overrides(&self, _network: &mut Network) -> Vec<(String, String)> {
+    fn get_config_property_overrides(&self, _network: &Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push((
             "common.base_path".to_string(),

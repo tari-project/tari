@@ -14,7 +14,7 @@ minotari_app_grpc = { workspace = true }
 tari_common_types = { workspace = true }
 
 thiserror = "1.0.35"
-tonic = { version = "0.8.3", default-features = false, features = ["codegen", "transport", "tls"] }
+tonic = { version = "0.12.3", default-features = false, features = ["codegen", "transport", "tls"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }

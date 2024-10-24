@@ -595,7 +595,7 @@ mod test {
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &script!(Nop),
+            &script!(Nop).unwrap(),
             &Covenant::default(),
             0.into(),
         )
@@ -604,7 +604,7 @@ mod test {
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &script!(Nop),
+            &script!(Nop).unwrap(),
             &Covenant::default(),
             0.into(),
         )
@@ -613,7 +613,7 @@ mod test {
             102.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &script!(Nop),
+            &script!(Nop).unwrap(),
             &Covenant::default(),
             0.into(),
         )
@@ -658,7 +658,7 @@ mod test {
                     100.into(),
                     &key_manager,
                     &OutputFeatures::create_burn_output(),
-                    &script!(Nop),
+                    &script!(Nop).unwrap(),
                     &Covenant::default(),
                     0.into(),
                 )

@@ -92,7 +92,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
@@ -171,12 +171,12 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 3000000 uT
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
-        And I have a ffi wallet FFI_WALLET connected to base node SEED
+        And I have a ffi wallet FFI_WALLET connected to base node BASE1
         When I have wallet RECEIVER connected to base node BASE1
 
         # Force some P2P discovery with contact liveness
@@ -202,13 +202,13 @@ Feature: Wallet FFI
         Then ffi wallet FFI_WALLET detects AT_LEAST 3 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 2 blocks
         Then all nodes are at height 22
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_UNCONFIRMED and not cancelled
         When mining node MINER mines 5 blocks
         Then all nodes are at height 27
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_CONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
-    @critical @brokenFFI @broken
+    @critical @pie
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes

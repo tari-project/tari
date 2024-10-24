@@ -20,45 +20,50 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, FutureExt};
-use rustls::{ClientConfig, RootCertStore};
-use tari_common::DnsNameServer;
-use tari_shutdown::Shutdown;
-use tokio::task;
-use trust_dns_client::{
+#[cfg(test)]
+use hickory_client::proto::error::ProtoError;
+use hickory_client::{
     client::{AsyncClient, AsyncDnssecClient, ClientHandle},
     op::Query,
     proto::{
-        error::ProtoError,
         iocompat::AsyncIoTokioAsStd,
-        rr::dnssec::TrustAnchor,
+        rr::dnssec::{SigSigner, TrustAnchor},
         rustls::tls_client_connect,
         xfer::DnsResponse,
         DnsHandle,
         DnsMultiplexer,
     },
-    rr::{dnssec::SigSigner, DNSClass, IntoName, RecordType},
-    serialize::binary::BinEncoder,
+    rr::{DNSClass, IntoName, RecordType},
+    serialize::binary::{BinEncodable, BinEncoder},
+    tcp::TcpClientStream,
 };
+use hickory_resolver::system_conf;
+use rustls::{ClientConfig, RootCertStore};
+use tari_common::DnsNameServer;
+use tari_shutdown::Shutdown;
+use tokio::task;
 
 use super::DnsClientError;
 #[cfg(test)]
 use crate::dns::mock::{DefaultOnSend, MockClientHandle};
 use crate::dns::roots;
 
+const TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Clone)]
 pub enum DnsClient {
     Secure(Client<AsyncDnssecClient>),
     Normal(Client<AsyncClient>),
     #[cfg(test)]
-    Mock(Client<MockClientHandle<DefaultOnSend, ProtoError>>),
+    Mock(Client<MockClientHandle<DefaultOnSend>>),
 }
 
 impl DnsClient {
     pub async fn connect_secure(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
-        let client = Client::connect_secure(name_server, trust_anchor).await?;
+        let client = Client::connect_dnssec(name_server, trust_anchor).await?;
         Ok(DnsClient::Secure(client))
     }
 
@@ -98,14 +103,9 @@ impl DnsClient {
             .answers()
             .iter()
             .map(|answer| {
-                let data = if let Some(d) = answer.data() {
-                    d
-                } else {
-                    return Err(DnsClientError::NoRecordDataPresent);
-                };
                 let mut buf = Vec::new();
                 let mut decoder = BinEncoder::new(&mut buf);
-                data.emit(&mut decoder).unwrap();
+                answer.data().emit(&mut decoder).unwrap();
                 Ok(buf)
             })
             .collect::<Result<Vec<Vec<u8>>, DnsClientError>>()?
@@ -130,22 +130,25 @@ pub struct Client<C> {
 }
 
 impl Client<AsyncDnssecClient> {
-    pub async fn connect_secure(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
+    pub async fn connect_dnssec(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
         let timeout = Duration::from_secs(5);
-        let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
-            name_server.addr,
-            name_server.dns_name,
-            default_client_config(),
-        );
+        let (socket_addr, dns_name) = socket_addr_and_dns_name(name_server)?;
 
+        let dns_name = dns_name.ok_or_else(|| DnsClientError::DnsNameRequiredForDnsSec)?;
+        let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
+            socket_addr,
+            dns_name,
+            default_tls_client_config(),
+        );
         let dns_muxer = DnsMultiplexer::<_, SigSigner>::with_timeout(stream, handle, timeout, None);
-        let (client, background) = AsyncDnssecClient::builder(dns_muxer)
+
+        let (client, bg) = AsyncDnssecClient::builder(dns_muxer)
             .trust_anchor(trust_anchor)
             .build()
             .await?;
 
-        task::spawn(future::select(shutdown.to_signal(), background.fuse()));
+        task::spawn(future::select(shutdown.to_signal(), bg.fuse()));
 
         Ok(Self {
             inner: client,
@@ -158,15 +161,28 @@ impl Client<AsyncClient> {
     pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
 
-        let timeout = Duration::from_secs(5);
-        let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
-            name_server.addr,
-            name_server.dns_name,
-            default_client_config(),
-        );
+        let (socket_addr, dns_name) = socket_addr_and_dns_name(name_server)?;
 
-        let (client, background) = AsyncClient::with_timeout(stream, handle, timeout, None).await?;
-        task::spawn(future::select(shutdown.to_signal(), background.fuse()));
+        let client = match dns_name {
+            Some(dns_name) => {
+                let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
+                    socket_addr,
+                    dns_name,
+                    default_tls_client_config(),
+                );
+
+                let (client, bg) = AsyncClient::with_timeout(stream, handle, TIMEOUT, None).await?;
+                task::spawn(future::select(shutdown.to_signal(), bg.fuse()));
+                client
+            },
+            None => {
+                let (stream, handle) =
+                    TcpClientStream::<AsyncIoTokioAsStd<tokio::net::TcpStream>>::new(([8, 8, 8, 8], 53).into());
+                let (client, bg) = AsyncClient::with_timeout(stream, handle, TIMEOUT, None).await?;
+                task::spawn(future::select(shutdown.to_signal(), bg.fuse()));
+                client
+            },
+        };
 
         Ok(Self {
             inner: client,
@@ -176,7 +192,7 @@ impl Client<AsyncClient> {
 }
 
 impl<C> Client<C>
-where C: DnsHandle<Error = ProtoError>
+where C: DnsHandle
 {
     pub async fn lookup(&mut self, query: Query) -> Result<DnsResponse, DnsClientError> {
         let client_resp = self
@@ -188,25 +204,38 @@ where C: DnsHandle<Error = ProtoError>
     }
 }
 
-fn default_client_config() -> Arc<ClientConfig> {
+fn default_tls_client_config() -> Arc<ClientConfig> {
     let mut root_store = RootCertStore::empty();
-    root_store.add_server_trust_anchors(roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-        rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(ta.subject, ta.spki, ta.name_constraints)
-    }));
+    root_store.extend(roots::TLS_SERVER_ROOTS.iter().cloned());
 
     let client_config = ClientConfig::builder()
-        .with_safe_defaults()
         .with_root_certificates(root_store)
         .with_no_client_auth();
 
     Arc::new(client_config)
 }
 
+fn socket_addr_and_dns_name(server: DnsNameServer) -> Result<(SocketAddr, Option<String>), DnsClientError> {
+    match server {
+        DnsNameServer::System => {
+            let (conf, _opts) = system_conf::read_system_conf()?;
+            let found = conf
+                .name_servers()
+                .iter()
+                .find(|ns| ns.tls_dns_name.is_some())
+                .or_else(|| conf.name_servers().first())
+                .ok_or_else(|| DnsClientError::SystemHasNoDnsServers)?;
+            Ok((found.socket_addr, found.tls_dns_name.clone()))
+        },
+        DnsNameServer::Custom { addr, dns_name } => Ok((addr, dns_name)),
+    }
+}
+
 #[cfg(test)]
 mod mock {
     use super::*;
 
-    impl Client<MockClientHandle<DefaultOnSend, ProtoError>> {
+    impl Client<MockClientHandle<DefaultOnSend>> {
         pub async fn connect_mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Result<Self, ProtoError> {
             let client = MockClientHandle::mock(messages);
             Ok(Self {

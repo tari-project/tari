@@ -5,17 +5,44 @@
 
 set -e
 
-USAGE="Usage: $0 target build ie: x86_64-unknown-linux-gnu or aarch64-unknown-linux-gnu"
+# APT Proxy for quicker testing
+#export HTTP_PROXY_APT=http://apt-proxy.local:3142
+if [ ! -z "${HTTP_PROXY_APT}" ] && [ -d "/etc/apt/apt.conf.d/" ]; then
+  echo "Setup apt proxy - ${HTTP_PROXY_APT}"
+  cat << APT-EoF > /etc/apt/apt.conf.d/proxy.conf
+Acquire {
+  HTTP::proxy "${HTTP_PROXY_APT}";
+  #HTTPS::proxy "http://127.0.0.1:8080";
+}
+APT-EoF
+fi
+
+USAGE="Usage: $0 {target build}
+ where target build is one of the following:
+  x86_64-unknown-linux-gnu or
+  aarch64-unknown-linux-gnu or
+  riscv64gc-unknown-linux-gnu
+"
 
 if [ "$#" == "0" ]; then
-  echo "$USAGE"
+  echo -e "${USAGE}"
   exit 1
 fi
 
 if [ -z "${CROSS_DEB_ARCH}" ]; then
-  echo "Should be run from cross, which sets the env CROSS_DEB_ARCH"
+  echo -e "Should be run from cross, which sets the env 'CROSS_DEB_ARCH'
+  amd64
+  arm64
+  riscv64
+"
   exit 1
 fi
+
+DEBIAN_FRONTEND=${DEBIAN_FRONTEND:-noninteractive}
+# Hack of Note!
+TimeZone=${TimeZone:-"Etc/GMT"}
+ln -snf /usr/share/zoneinfo/${TimeZone} /etc/localtime
+echo ${TimeZone} > /etc/timezone
 
 targetBuild="${1}"
 nativeRunTime=$(uname -m)
@@ -23,22 +50,24 @@ echo "Native RunTime is ${nativeRunTime}"
 
 if [ "${nativeRunTime}" == "x86_64" ]; then
   nativeArch=amd64
-  if [ "${targetBuild}" == "aarch64-unknown-linux-gnu" ]; then
-    targetArch=arm64
-    targetPlatform=aarch64
-  else
-    targetArch=amd64
-    targetPlatform=x86-64
-  fi
 elif [ "${nativeRunTime}" == "aarch64" ]; then
   nativeArch=arm64
-  if [ "${targetBuild}" == "x86_64-unknown-linux-gnu" ]; then
-    targetArch=amd64
-    targetPlatform=x86-64
-  fi
 elif [ "${nativeRunTime}" == "riscv64" ]; then
   nativeArch=riscv64
-  echo "ToDo!"
+else
+  echo "!!Unsupport platform!!"
+  exit 1
+fi
+
+if [ "${targetBuild}" == "aarch64-unknown-linux-gnu" ]; then
+  targetArch=arm64
+  targetPlatform=aarch64
+elif [ "${targetBuild}" == "x86_64-unknown-linux-gnu" ]; then
+  targetArch=amd64
+  targetPlatform=x86-64
+elif [ "${targetBuild}" == "riscv64gc-unknown-linux-gnu" ]; then
+  targetArch=riscv64
+  targetPlatform=riscv64
 else
   echo "!!Unsupport platform!!"
   exit 1
@@ -63,6 +92,7 @@ apt-get install --no-install-recommends --assume-yes \
   libsqlite3-0 \
   libreadline-dev \
   git \
+  make \
   cmake \
   dh-autoreconf \
   clang \
@@ -91,7 +121,7 @@ if [ "${CROSS_DEB_ARCH}" != "${nativeArch}" ]; then
   . /etc/lsb-release
   ubuntu_tag=${DISTRIB_CODENAME}
 
-  if [ "${crossArch}" == "arm64" ]; then
+  if [[ "${crossArch}" =~ ^(arm|riscv)64$ ]]; then
     cat << EoF > /etc/apt/sources.list.d/${ubuntu_tag}-${crossArch}.list
 deb [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
 # deb-src [arch=${crossArch}] http://ports.ubuntu.com/ubuntu-ports ${ubuntu_tag} main restricted universe multiverse
@@ -143,24 +173,31 @@ deb [arch=amd64] http://security.ubuntu.com/ubuntu/ ${ubuntu_tag}-security multi
 EoF
   fi
 
+  dpkg --print-architecture
   dpkg --add-architecture ${CROSS_DEB_ARCH}
+  dpkg --print-architecture
   apt-get update
 
   # scripts/install_ubuntu_dependencies-cross_compile.sh x86-64
+#    pkg-config-${targetPlatform}-linux-gnu \
   apt-get --assume-yes install \
-    pkg-config-${targetPlatform}-linux-gnu \
     gcc-${targetPlatform}-linux-gnu \
     g++-${targetPlatform}-linux-gnu
 
   # packages needed for Ledger and hidapi
   apt-get --assume-yes install \
     libudev-dev:${CROSS_DEB_ARCH} \
-    libhidapi-dev:${CROSS_DEB_ARCH}
+    libhidapi-dev:${CROSS_DEB_ARCH} \
+    libssl-dev:${CROSS_DEB_ARCH}
 
 fi
+
+rustup show
 
 rustup target add ${targetBuild}
 rustup toolchain install stable-${targetBuild} --force-non-host
 
 rustup target list --installed
 rustup toolchain list
+
+rustup show

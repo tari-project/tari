@@ -30,13 +30,13 @@ use tari_comms::{
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::watch;
 
-use crate::connectivity_service::OnlineStatus;
+use crate::connectivity_service::{BaseNodePeerManager, OnlineStatus};
 
 #[async_trait::async_trait]
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
-    fn set_base_node(&mut self, base_node_peer: Peer);
+    fn set_base_node(&mut self, base_node_peer: BaseNodePeerManager);
 
-    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<Peer>>;
+    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>>;
 
     /// Obtain a BaseNodeWalletRpcClient.
     ///
@@ -72,7 +72,9 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
 
     fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey>;
 
-    fn get_current_base_node_id(&self) -> Option<NodeId>;
+    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId>;
 
     fn is_base_node_set(&self) -> bool;
+
+    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)>;
 }

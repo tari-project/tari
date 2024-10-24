@@ -56,6 +56,7 @@ pub unsafe extern "C" fn get_conversationalists(
     if client.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
     }
 
     let result = (*client).runtime.block_on((*client).client.get_conversationalists());
