@@ -287,6 +287,8 @@ impl WalletConnectivityService {
                 Err(e) => error!(target: LOG_TARGET, "Failed to disconnect base node: {}", e),
             }
             self.pools.remove(&node_id);
+            // We want to ensure any active RPC clients are dropped when this connection (a clone) is dropped
+            connection.set_force_disconnect_rpc_clients_when_clone_drops();
         };
     }
 
