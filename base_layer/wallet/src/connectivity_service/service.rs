@@ -64,7 +64,6 @@ pub struct WalletConnectivityService {
     pools: HashMap<NodeId, ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
-    busy_acquiring_connection_watch: Watch<bool>,
 }
 
 struct ClientPoolContainer {
@@ -80,7 +79,6 @@ impl WalletConnectivityService {
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
-        let busy_acquiring_connection_watch = Watch::new(false);
         Self {
             config,
             request_receiver,
@@ -90,7 +88,6 @@ impl WalletConnectivityService {
             pools: HashMap::new(),
             pending_requests: Vec::new(),
             online_status_watch,
-            busy_acquiring_connection_watch,
         }
     }
 
@@ -194,7 +191,6 @@ impl WalletConnectivityService {
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>,
     ) {
-        self.wait_for_base_node_connection("wallet").await;
         let node_id = if let Some(val) = self.current_base_node() {
             val
         } else {
@@ -236,7 +232,6 @@ impl WalletConnectivityService {
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>,
     ) {
-        self.wait_for_base_node_connection("sync").await;
         let node_id = if let Some(val) = self.current_base_node() {
             val
         } else {
@@ -301,7 +296,6 @@ impl WalletConnectivityService {
         } else {
             return;
         };
-        self.set_busy_acquiring_connection(true);
         loop {
             let node_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
                 if time < Duration::from_secs(COOL_OFF_PERIOD) {
@@ -336,12 +330,10 @@ impl WalletConnectivityService {
                             target: LOG_TARGET,
                             "The peer list has changed while connecting, aborting connection attempt."
                         );
-                        self.set_busy_acquiring_connection(false);
                         self.set_online_status(OnlineStatus::Offline);
                         break;
                     }
                     self.base_node_watch.send(Some(peer_manager.clone()));
-                    self.set_busy_acquiring_connection(false);
                     if let Ok(true) = self.notify_pending_requests().await {
                         self.set_online_status(OnlineStatus::Online);
                         debug!(
@@ -372,7 +364,6 @@ impl WalletConnectivityService {
                     target: LOG_TARGET,
                     "The peer list has changed while connecting, aborting connection attempt."
                 );
-                self.set_busy_acquiring_connection(false);
                 self.set_online_status(OnlineStatus::Offline);
                 break;
             }
@@ -400,31 +391,6 @@ impl WalletConnectivityService {
 
     fn set_online_status(&self, status: OnlineStatus) {
         self.online_status_watch.send(status);
-    }
-
-    fn set_busy_acquiring_connection(&mut self, value: bool) {
-        self.busy_acquiring_connection_watch.send(value);
-        trace!(target: LOG_TARGET, "Busy acquiring base node connection: '{}'", value);
-    }
-
-    fn busy_acquiring_connection(&self) -> bool {
-        *self.busy_acquiring_connection_watch.borrow()
-    }
-
-    async fn wait_for_base_node_connection(&mut self, rpc_service: &str) {
-        loop {
-            if self.busy_acquiring_connection() {
-                trace!(
-                    target: LOG_TARGET,
-                    "Busy acquiring base node connection, obtaining the '{}' RPC client will wait for {} s",
-                    rpc_service,
-                    CONNECTIVITY_WAIT
-                );
-                tokio::time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
-            } else {
-                break;
-            }
-        }
     }
 
     async fn try_setup_rpc_pool(&mut self, peer_node_id: NodeId) -> Result<bool, WalletConnectivityError> {

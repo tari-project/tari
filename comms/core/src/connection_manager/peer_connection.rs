@@ -26,7 +26,6 @@ use std::{
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
-        Mutex,
     },
     time::{Duration, Instant},
 };
@@ -140,7 +139,7 @@ pub struct PeerConnection {
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
     drop_notifier: OneshotTrigger<NodeId>,
-    number_of_rpc_clients: Arc<Mutex<Option<usize>>>,
+    number_of_rpc_clients: Arc<AtomicUsize>,
     force_disconnect_rpc_clients_when_clone_drops: Arc<AtomicBool>,
 }
 
@@ -165,7 +164,7 @@ impl PeerConnection {
             substream_counter,
             handle_counter: Arc::new(()),
             drop_notifier: OneshotTrigger::<NodeId>::new(),
-            number_of_rpc_clients: Arc::new(Mutex::new(None)),
+            number_of_rpc_clients: Arc::new(AtomicUsize::new(0)),
             force_disconnect_rpc_clients_when_clone_drops: Arc::new(Default::default()),
         }
     }
@@ -269,10 +268,7 @@ impl PeerConnection {
             .with_terminate_signal(self.drop_notifier.to_signal())
             .connect(framed)
             .await?;
-        {
-            let mut rpc_clients = self.number_of_rpc_clients.lock().unwrap();
-            *rpc_clients = Some(rpc_clients.unwrap_or_default() + 1);
-        }
+        self.number_of_rpc_clients.fetch_add(1, Ordering::Relaxed);
 
         Ok(rpc_client)
     }
@@ -327,7 +323,7 @@ impl Drop for PeerConnection {
             self.force_disconnect_rpc_clients_when_clone_drops
                 .load(Ordering::Relaxed)
         {
-            let number_of_rpc_clients = self.number_of_rpc_clients.lock().unwrap().unwrap_or(0);
+            let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
             if number_of_rpc_clients > 0 {
                 self.drop_notifier.broadcast(self.peer_node_id.clone());
                 trace!(

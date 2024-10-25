@@ -469,7 +469,7 @@ where
             },
         };
 
-        match self.new_session_possible_for(&node_id) {
+        match self.new_session_possible_for(node_id) {
             Ok(num_sessions) => {
                 info!(
                     target: LOG_TARGET,
