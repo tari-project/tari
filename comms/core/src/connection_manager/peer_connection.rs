@@ -266,7 +266,7 @@ impl PeerConnection {
         let rpc_client = builder
             .with_protocol_id(protocol)
             .with_node_id(self.peer_node_id.clone())
-            .with_drop_receiver(self.drop_notifier.clone())
+            .with_terminate_signal(self.drop_notifier.to_signal())
             .connect(framed)
             .await?;
         {

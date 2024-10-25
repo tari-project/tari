@@ -377,30 +377,28 @@ where
         Ok(())
     }
 
-    fn new_session_possible_for(&mut self, node_id: &NodeId) -> Result<(), RpcServerError> {
+    fn new_session_possible_for(&mut self, node_id: &NodeId) -> Result<usize, RpcServerError> {
         match self.config.maximum_sessions_per_client {
             Some(max) if max > 0 => {
                 if let Some(session_info) = self.sessions.get(node_id) {
                     if max > session_info.len() {
-                        Ok(())
+                        Ok(session_info.len())
                     } else {
-                        if max <= session_info.len() {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Maximum RPC sessions for peer {} met or exceeded. Max: {}, Current: {}",
-                                node_id, max, session_info.len()
-                            );
-                        }
+                        warn!(
+                            target: LOG_TARGET,
+                            "Maximum RPC sessions for peer {} met or exceeded. Max: {}, Current: {}",
+                            node_id, max, session_info.len()
+                        );
                         Err(RpcServerError::MaxSessionsPerClientReached {
                             node_id: node_id.clone(),
                             max_sessions: max,
                         })
                     }
                 } else {
-                    Ok(())
+                    Ok(0)
                 }
             },
-            Some(_) | None => Ok(()),
+            Some(_) | None => Ok(0),
         }
     }
 
@@ -471,16 +469,14 @@ where
             },
         };
 
-        let version = handshake.perform_server_handshake().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Server negotiated RPC v{} with client node `{}`", version, node_id
-        );
-
-        match self.new_session_possible_for(node_id) {
-            Ok(_) => {
-                trace!(target: LOG_TARGET, "NEW SESSION can be created for {}", node_id);
+        match self.new_session_possible_for(&node_id) {
+            Ok(num_sessions) => {
+                info!(
+                    target: LOG_TARGET,
+                    "NEW SESSION for {} ({} currently active) ", node_id, num_sessions
+                );
             },
+
             Err(err) => {
                 handshake
                     .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
@@ -491,6 +487,11 @@ where
             },
         }
 
+        let version = handshake.perform_server_handshake().await?;
+        debug!(
+            target: LOG_TARGET,
+            "Server negotiated RPC v{} with client node `{}`", version, node_id
+        );
         let stream_id = framed.stream_id();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(());
         let service = ActivePeerRpcService::new(
