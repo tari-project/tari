@@ -22,11 +22,6 @@
 
 use std::{collections::HashMap, ops::Deref};
 
-use lmdb_zero::{ConstTransaction, WriteTransaction};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_storage::lmdb_store::DatabaseRef;
-use tari_utilities::ByteArray;
-
 use crate::chain_storage::{
     lmdb_db::{
         composite_key::CompositeKey,
@@ -37,6 +32,12 @@ use crate::chain_storage::{
     ValidatorNodeEntry,
     ValidatorNodeRegistrationInfo,
 };
+use lmdb_zero::{ConstTransaction, WriteTransaction};
+use serde::de::Unexpected::Option;
+use tari_common_types::epoch::VnEpoch;
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_storage::lmdb_store::DatabaseRef;
+use tari_utilities::ByteArray;
 
 pub type ShardKey = [u8; 32];
 // <h, pk, output_hash>
@@ -50,7 +51,7 @@ pub struct ValidatorNodeStore<'a, Txn> {
     db_validator_nodes_mapping: DatabaseRef,
 }
 
-impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
+impl<'a, Txn: Deref<Target=ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
     pub fn new(txn: &'a Txn, db_height_to_vn: DatabaseRef, idx_public_key_to_shard: DatabaseRef) -> Self {
         Self {
             txn,
@@ -67,7 +68,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             validator.public_key.as_bytes(),
             validator.commitment.as_bytes(),
         ])
-        .expect("insert: Composite key length is incorrect");
+            .expect("insert: Composite key length is incorrect");
         lmdb_insert(self.txn, &self.db_validator_nodes, &key, &validator, "Validator node")?;
 
         let key = ShardIdIndexKey::try_from_parts(&[
@@ -75,7 +76,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             height.to_be_bytes().as_slice(),
             validator.commitment.as_bytes(),
         ])
-        .expect("insert: Composite key length is incorrect");
+            .expect("insert: Composite key length is incorrect");
         lmdb_insert(
             self.txn,
             &self.db_validator_nodes_mapping,
@@ -97,7 +98,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             public_key.as_bytes(),
             commitment.as_bytes(),
         ])
-        .expect("delete: Composite key length is incorrect");
+            .expect("delete: Composite key length is incorrect");
         lmdb_delete(self.txn, &self.db_validator_nodes, &key, "validator_nodes")?;
 
         let key = ShardIdIndexKey::try_from_parts(&[
@@ -105,7 +106,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
             height.to_be_bytes().as_slice(),
             commitment.as_bytes(),
         ])
-        .expect("delete: Composite key length is incorrect");
+            .expect("delete: Composite key length is incorrect");
         lmdb_delete(
             self.txn,
             &self.db_validator_nodes_mapping,
@@ -116,7 +117,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
     }
 }
 
-impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
+impl<'a, Txn: Deref<Target=ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
     fn db_read_cursor(&self) -> Result<LmdbReadCursor<'a, ValidatorNodeEntry>, ChainStorageError> {
         let cursor = self.txn.cursor(self.db_validator_nodes.clone())?;
         let access = self.txn.access();
@@ -129,6 +130,26 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let access = self.txn.access();
         let cursor = LmdbReadCursor::new(cursor, access);
         Ok(cursor)
+    }
+
+    pub fn get_vn_set_until_epoch(
+        &self,
+        epoch: VnEpoch,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        let mut result = vec![];
+        while let Ok(Some((_, value))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if value.sidechain_id == sidechain_id && value.start_epoch <= epoch {
+                result.push(ValidatorNodeRegistrationInfo {
+                    public_key: value.public_key,
+                    sidechain_id: value.sidechain_id,
+                    shard_key: [],
+                });
+            }
+        }
+
+        Ok(result)
     }
 
     /// Returns a set of <public key, shard id> tuples ordered by height of registration.
@@ -156,7 +177,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     sidechain_id: vn.sidechain_id,
                     shard_key: vn.shard_key,
                 }));
-            },
+            }
             None => return Ok(Vec::new()),
         }
 
@@ -212,7 +233,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     return Ok(None);
                 }
                 Some(s)
-            },
+            }
             None => return Ok(None),
         };
 
@@ -243,7 +264,7 @@ mod tests {
 
     const DBS: &[&str] = &["validator_node_store", "validator_node_index"];
 
-    fn create_store<'a, Txn: Deref<Target = ConstTransaction<'a>>>(
+    fn create_store<'a, Txn: Deref<Target=ConstTransaction<'a>>>(
         db: &TempLmdbDatabase,
         txn: &'a Txn,
     ) -> ValidatorNodeStore<'a, Txn> {

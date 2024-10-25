@@ -30,7 +30,6 @@ use tari_common_types::{
 pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
     pub start_epoch: VnEpoch,
-    pub end_epoch: VnEpoch,
     pub public_key: PublicKey,
     pub commitment: Commitment,
     pub sidechain_id: Option<PublicKey>,

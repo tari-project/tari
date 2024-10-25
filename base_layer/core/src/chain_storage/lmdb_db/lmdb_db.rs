@@ -337,17 +337,17 @@ impl LMDBDatabase {
                 InsertOrphanBlock(block) => self.insert_orphan_block(&write_txn, block)?,
                 InsertChainHeader { header } => {
                     self.insert_header(&write_txn, header.header(), header.accumulated_data())?;
-                },
+                }
                 InsertTipBlockBody { block, smt } => {
                     self.insert_tip_block_body(&write_txn, block.header(), block.block().body.clone(), smt.clone())?;
-                },
+                }
                 InsertKernel {
                     header_hash,
                     kernel,
                     mmr_position,
                 } => {
                     self.insert_kernel(&write_txn, header_hash, kernel, *mmr_position)?;
-                },
+                }
                 InsertOutput {
                     header_hash,
                     header_height,
@@ -355,13 +355,13 @@ impl LMDBDatabase {
                     output,
                 } => {
                     self.insert_output(&write_txn, header_hash, *header_height, *timestamp, output)?;
-                },
+                }
                 DeleteHeader(height) => {
                     self.delete_header(&write_txn, *height)?;
-                },
+                }
                 DeleteOrphan(hash) => {
                     self.delete_orphan(&write_txn, hash)?;
-                },
+                }
                 DeleteOrphanChainTip(hash) => {
                     lmdb_delete(
                         &write_txn,
@@ -369,7 +369,7 @@ impl LMDBDatabase {
                         hash.deref(),
                         "orphan_chain_tips_db",
                     )?;
-                },
+                }
                 InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                     lmdb_insert(
                         &write_txn,
@@ -381,39 +381,39 @@ impl LMDBDatabase {
                         },
                         "orphan_chain_tips_db",
                     )?;
-                },
+                }
                 DeleteTipBlock(hash, smt) => {
                     self.delete_tip_block_body(&write_txn, hash, smt.clone())?;
-                },
+                }
                 InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, *height)?;
-                },
+                }
                 SetAccumulatedDataForOrphan(accumulated_data) => {
                     self.set_accumulated_data_for_orphan(&write_txn, accumulated_data)?;
-                },
+                }
                 InsertChainOrphanBlock(chain_block) => {
                     self.insert_orphan_block(&write_txn, chain_block.block())?;
                     self.set_accumulated_data_for_orphan(&write_txn, chain_block.accumulated_data())?;
-                },
+                }
                 UpdateBlockAccumulatedData { header_hash, values } => {
                     self.update_block_accumulated_data(&write_txn, header_hash, values.clone())?;
-                },
+                }
                 PruneOutputsSpentAtHash { block_hash } => {
                     self.prune_outputs_spent_at_hash(&write_txn, block_hash)?;
-                },
+                }
                 PruneOutputFromAllDbs {
                     output_hash,
                     commitment,
                     output_type,
                 } => {
                     self.prune_output_from_all_dbs(&write_txn, output_hash, commitment, *output_type)?;
-                },
+                }
                 DeleteAllKernelsInBlock { block_hash } => {
                     self.delete_all_kernels_in_block(&write_txn, block_hash)?;
-                },
+                }
                 DeleteAllInputsInBlock { block_hash } => {
                     self.delete_all_inputs_in_block(&write_txn, block_hash)?;
-                },
+                }
                 SetBestBlock {
                     height,
                     hash,
@@ -458,37 +458,37 @@ impl LMDBDatabase {
                         MetadataKey::BestBlockTimestamp,
                         &MetadataValue::BestBlockTimestamp(*timestamp),
                     )?;
-                },
+                }
                 SetPruningHorizonConfig(pruning_horizon) => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::PruningHorizon,
                         &MetadataValue::PruningHorizon(*pruning_horizon),
                     )?;
-                },
+                }
                 SetPrunedHeight { height } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::PrunedHeight,
                         &MetadataValue::PrunedHeight(*height),
                     )?;
-                },
+                }
                 SetHorizonData { horizon_data } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::HorizonData,
                         &MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
-                },
+                }
                 InsertBadBlock { hash, height, reason } => {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
-                },
+                }
                 InsertReorg { reorg } => {
                     lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg, None)?;
-                },
+                }
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
-                },
+                }
             }
         }
         write_txn.commit()?;
@@ -651,7 +651,7 @@ impl LMDBDatabase {
                         field: "hash",
                         value: output_hash.to_hex(),
                     });
-                },
+                }
                 Err(e) => {
                     error!(
                         target: LOG_TARGET,
@@ -659,7 +659,7 @@ impl LMDBDatabase {
                         output_hash.to_hex(), e
                     );
                     return Err(e);
-                },
+                }
             },
         };
         Ok(input_with_output_data)
@@ -985,7 +985,7 @@ impl LMDBDatabase {
             }
             let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
             match output_smt.delete(&smt_key)? {
-                DeleteResult::Deleted(_value_hash) => {},
+                DeleteResult::Deleted(_value_hash) => {}
                 DeleteResult::KeyNotFound => {
                     error!(
                         target: LOG_TARGET,
@@ -993,7 +993,7 @@ impl LMDBDatabase {
                         utxo.output.commitment.to_hex(),
                     );
                     return Err(ChainStorageError::UnspendableInput);
-                },
+                }
             };
             lmdb_delete(
                 txn,
@@ -1111,7 +1111,7 @@ impl LMDBDatabase {
                     hash.to_hex()
                 );
                 return Ok(());
-            },
+            }
         };
 
         let parent_hash = orphan.header.prev_hash;
@@ -1142,19 +1142,19 @@ impl LMDBDatabase {
                                 },
                                 "orphan_chain_tips_db",
                             )?;
-                        },
+                        }
                         None => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Empty 'BlockHeaderAccumulatedData' for parent hash '{}'",
                                 parent_hash.to_hex()
                             );
-                        },
+                        }
                     }
-                },
+                }
                 (false, false) => {
                     // No entries, nothing here
-                },
+                }
                 _ => {
                     // Some previous database operations were not atomic
                     warn!(
@@ -1164,7 +1164,7 @@ impl LMDBDatabase {
                         lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?,
                         parent_hash.to_hex()
                     );
-                },
+                }
             }
         }
 
@@ -1313,7 +1313,7 @@ impl LMDBDatabase {
             let input_with_output_data = self.input_with_output_data(txn, input)?;
             let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
-                DeleteResult::Deleted(_value_hash) => {},
+                DeleteResult::Deleted(_value_hash) => {}
                 DeleteResult::KeyNotFound => {
                     error!(
                         target: LOG_TARGET,
@@ -1321,7 +1321,7 @@ impl LMDBDatabase {
                         input_with_output_data.commitment()?.to_hex(),
                     );
                     return Err(ChainStorageError::UnspendableInput);
-                },
+                }
             };
 
             let features = input_with_output_data.features()?;
@@ -1360,7 +1360,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn validator_node_store<'a, T: Deref<Target = ConstTransaction<'a>>>(
+    fn validator_node_store<'a, T: Deref<Target=ConstTransaction<'a>>>(
         &'a self,
         txn: &'a T,
     ) -> ValidatorNodeStore<'a, T> {
@@ -1392,12 +1392,14 @@ impl LMDBDatabase {
             constants.validator_node_registration_shuffle_interval(),
             &header.prev_hash,
         );
+        
+        let next_epoch = current_epoch + VnEpoch(1);
+        // TODO: looking for next available epoch
+        store.get_vn_set()
 
-        let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
         let validator_node = ValidatorNodeEntry {
             shard_key,
             start_epoch: next_epoch,
-            end_epoch: next_epoch + constants.validator_node_validity_period_epochs(),
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
             sidechain_id: vn_reg.sidechain_id().cloned(),
@@ -1557,7 +1559,7 @@ impl LMDBDatabase {
                 let key = OutputKey::new(&FixedHash::from(buffer), output_hash)?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
-            },
+            }
             None => return Err(ChainStorageError::InvalidOperation("Output key not found".to_string())),
         }
 
@@ -1666,12 +1668,12 @@ impl LMDBDatabase {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
             match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
                 Some(TransactionOutputRowData {
-                    output: o,
-                    mined_height,
-                    header_hash,
-                    mined_timestamp,
-                    ..
-                }) => Ok(Some(OutputMinedInfo {
+                         output: o,
+                         mined_height,
+                         header_hash,
+                         mined_timestamp,
+                         ..
+                     }) => Ok(Some(OutputMinedInfo {
                     output: o,
                     mined_height,
                     header_hash,
@@ -1693,12 +1695,12 @@ impl LMDBDatabase {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, output_hash)? {
             match lmdb_get::<_, TransactionInputRowData>(txn, &self.inputs_db, &key)? {
                 Some(TransactionInputRowData {
-                    input: i,
-                    spent_height: height,
-                    header_hash,
-                    spent_timestamp,
-                    ..
-                }) => Ok(Some(InputMinedInfo {
+                         input: i,
+                         spent_height: height,
+                         header_hash,
+                         spent_timestamp,
+                         ..
+                     }) => Ok(Some(InputMinedInfo {
                     input: i,
                     spent_height: height,
                     header_hash,
@@ -1792,7 +1794,7 @@ impl BlockchainBackend for LMDBDatabase {
                     );
 
                     return Ok(());
-                },
+                }
                 Err(ChainStorageError::DbResizeRequired(size_that_could_not_be_written)) => {
                     info!(
                         target: LOG_TARGET,
@@ -1806,11 +1808,11 @@ impl BlockchainBackend for LMDBDatabase {
                     unsafe {
                         LMDBStore::resize(&self.env, &self.env_config, size_that_could_not_be_written)?;
                     }
-                },
+                }
                 Err(e) => {
                     error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", e);
                     return Err(e);
-                },
+                }
             }
         }
 
@@ -1823,7 +1825,7 @@ impl BlockchainBackend for LMDBDatabase {
             DbKey::HeaderHeight(k) => {
                 let val: Option<BlockHeader> = lmdb_get(&txn, &self.headers_db, k)?;
                 val.map(|val| DbValue::HeaderHeight(Box::new(val)))
-            },
+            }
             DbKey::HeaderHash(hash) => {
                 let k: Option<u64> = self.fetch_height_from_hash(&txn, hash)?;
                 match k {
@@ -1836,7 +1838,7 @@ impl BlockchainBackend for LMDBDatabase {
                         );
                         let val: Option<BlockHeader> = lmdb_get(&txn, &self.headers_db, &k)?;
                         val.map(|val| DbValue::HeaderHash(Box::new(val)))
-                    },
+                    }
                     None => {
                         trace!(
                             target: LOG_TARGET,
@@ -1844,9 +1846,9 @@ impl BlockchainBackend for LMDBDatabase {
                             hash.to_hex()
                         );
                         None
-                    },
+                    }
                 }
-            },
+            }
             DbKey::OrphanBlock(k) => self
                 .fetch_orphan(&txn, k)?
                 .map(|val| DbValue::OrphanBlock(Box::new(val))),
@@ -2327,10 +2329,10 @@ impl BlockchainBackend for LMDBDatabase {
                                 }
                             })?;
                         Ok(Some(chain_block))
-                    },
+                    }
                     None => Ok(None),
                 }
-            },
+            }
             None => Ok(None),
         }
     }
@@ -2433,7 +2435,7 @@ impl BlockchainBackend for LMDBDatabase {
                 } else {
                     Err(ChainStorageError::AccessError(e))
                 }
-            },
+            }
             Err(e) => Err(e),
         }
     }
@@ -2444,7 +2446,7 @@ impl BlockchainBackend for LMDBDatabase {
             Some(h) => h,
             None => {
                 return Ok(0);
-            },
+            }
         };
         let metadata = fetch_metadata(&txn, &self.metadata_db)?;
 

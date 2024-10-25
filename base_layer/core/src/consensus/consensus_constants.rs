@@ -115,14 +115,17 @@ pub struct ConsensusConstants {
     max_covenant_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
-    /// The number of Epochs that a validator node registration is valid
-    vn_validity_period_epochs: VnEpoch,
     /// The min amount of micro Minotari to deposit for a registration transaction to be allowed onto the blockchain
     vn_registration_min_deposit_amount: MicroMinotari,
     /// The period that the registration funds are required to be locked up.
     vn_registration_lock_height: u64,
     /// The period after which the VNs will be reshuffled.
     vn_registration_shuffle_interval: VnEpoch,
+    /// Maximum number of validator nodes activated initially 
+    /// (in the first epoch when we do not have any vns yet).
+    vn_registration_max_vns_initial_epoch: u64,
+    /// Maximum number of validator nodes activated in an epoch.
+    vn_registration_max_vns_per_epoch: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -342,10 +345,6 @@ impl ConsensusConstants {
         self.max_covenant_length
     }
 
-    pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
-        self.vn_validity_period_epochs
-    }
-
     pub fn validator_node_registration_shuffle_interval(&self) -> VnEpoch {
         self.vn_registration_shuffle_interval
     }
@@ -413,11 +412,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -479,11 +479,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
-            vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
@@ -536,11 +537,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -593,11 +595,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -644,11 +647,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -697,11 +701,12 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
