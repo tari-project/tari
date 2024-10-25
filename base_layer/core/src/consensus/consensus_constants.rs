@@ -417,7 +417,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -483,7 +483,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
@@ -540,7 +540,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -597,7 +597,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -617,7 +617,7 @@ impl ConsensusConstants {
             target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
             blockchain_version: 0,
@@ -649,7 +649,12 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-        }];
+        };
+        let mut con_2 = con_1.clone();
+        con_2.effective_from_height = 33000;
+        con_2.coinbase_output_features_extra_max_length = 256;
+
+        let consensus_constants = vec![con_1, con_2];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
@@ -701,7 +706,7 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
