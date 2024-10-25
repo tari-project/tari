@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.7.0-pre.4](https://github.com/tari-project/tari/compare/v1.7.0-pre.3...v1.7.0-pre.4) (2024-10-25)
+
+### Features
+
+* increase coinbase extra field max length
+
 ## [1.7.0-pre.3](https://github.com/tari-project/tari/compare/v1.7.0-pre.2...v1.7.0-pre.3) (2024-10-18)
 
 

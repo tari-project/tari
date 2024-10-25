@@ -45,7 +45,7 @@ use crate::transactions::transaction_components::{
 };
 
 /// Coinbase outputs are allowed to have metadata, but it has the following length limit
-pub type CoinBaseExtra = MaxSizeBytes<256>;
+pub type CoinBaseExtra = MaxSizeBytes<258>;
 
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]

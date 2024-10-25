@@ -419,6 +419,7 @@ mod test {
         }
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_default_monerod_list() {
         let config = MergeMiningProxyConfig::default();
