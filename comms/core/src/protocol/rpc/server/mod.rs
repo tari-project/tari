@@ -179,6 +179,7 @@ pub struct RpcServerBuilder {
     maximum_sessions_per_client: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
+    cull_oldest_peer_rpc_connection_on_full: bool,
 }
 
 impl RpcServerBuilder {
@@ -198,6 +199,11 @@ impl RpcServerBuilder {
 
     pub fn with_maximum_sessions_per_client(mut self, limit: usize) -> Self {
         self.maximum_sessions_per_client = Some(cmp::min(limit, BoundedExecutor::max_theoretical_tasks()));
+        self
+    }
+
+    pub fn with_cull_oldest_peer_rpc_connection_on_full(mut self, cull: bool) -> Self {
+        self.cull_oldest_peer_rpc_connection_on_full = cull;
         self
     }
 
@@ -228,6 +234,7 @@ impl Default for RpcServerBuilder {
             maximum_sessions_per_client: None,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
+            cull_oldest_peer_rpc_connection_on_full: false,
         }
     }
 }
@@ -380,8 +387,17 @@ where
     fn new_session_possible_for(&mut self, node_id: &NodeId) -> Result<usize, RpcServerError> {
         match self.config.maximum_sessions_per_client {
             Some(max) if max > 0 => {
-                if let Some(session_info) = self.sessions.get(node_id) {
+                if let Some(session_info) = self.sessions.get_mut(node_id) {
                     if max > session_info.len() {
+                        Ok(session_info.len())
+                    } else if self.config.cull_oldest_peer_rpc_connection_on_full {
+                        // Remove the oldest session(s) until we have space for a new one
+                        let num_to_remove = session_info.len() - max + 1;
+                        for _ in 0..num_to_remove {
+                            let info = session_info.remove(0);
+                            info!(target: LOG_TARGET, "Culling oldest RPC session for peer `{}`", node_id);
+                            let _ = info.peer_watch.send(());
+                        }
                         Ok(session_info.len())
                     } else {
                         warn!(

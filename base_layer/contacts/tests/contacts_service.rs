@@ -96,6 +96,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_self_liveness_check_interval: None,
+        cull_oldest_peer_rpc_connection_on_full: true,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();

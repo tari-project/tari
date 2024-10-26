@@ -5452,6 +5452,7 @@ pub unsafe extern "C" fn comms_config_create(
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
                 listener_self_liveness_check_interval: None,
+                cull_oldest_peer_rpc_connection_on_full: true,
             };
 
             Box::into_raw(Box::new(config))

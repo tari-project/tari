@@ -208,6 +208,9 @@ event_channel_size = 3500
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
 #rpc_max_sessions_per_peer = 10
+#rpc_max_sessions_per_peer = 10
+# Cull the oldest peer RPC connection when the maximum number of sessions is reached (default value = true).
+#pub cull_oldest_peer_rpc_connection_on_full = true
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------

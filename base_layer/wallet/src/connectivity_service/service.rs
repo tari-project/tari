@@ -45,7 +45,6 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::connectivity";
 pub(crate) const CONNECTIVITY_WAIT: u64 = 5;
-pub(crate) const COOL_OFF_PERIOD: u64 = 60;
 
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -299,20 +298,17 @@ impl WalletConnectivityService {
             return;
         };
         loop {
-            let node_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
-                if time < Duration::from_secs(COOL_OFF_PERIOD) {
-                    if peer_manager.get_current_peer().node_id == peer_manager.get_next_peer().node_id {
-                        // If we only have one peer in the list, wait a bit before retrying
-                        debug!(target: LOG_TARGET,
-                            "Retrying after {}s ...",
-                            Duration::from_secs(CONNECTIVITY_WAIT).as_secs()
-                        );
-                        time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
-                    }
-                    peer_manager.get_current_peer().node_id
-                } else {
-                    peer_manager.get_current_peer().node_id
+            let node_id = if let Some(_time) = peer_manager.time_since_last_connection_attempt() {
+                if peer_manager.get_current_peer().node_id == peer_manager.get_next_peer().node_id {
+                    // If we only have one peer in the list, wait a bit before retrying
+                    debug!(target: LOG_TARGET,
+                        "Retrying after {}s ...",
+                        Duration::from_secs(CONNECTIVITY_WAIT).as_secs()
+                    );
+                    time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                 }
+                // If 'peer_manager.get_next_peer()' is called, 'current_peer' is advanced to the next peer
+                peer_manager.get_current_peer().node_id
             } else {
                 peer_manager.get_current_peer().node_id
             };
@@ -432,15 +428,15 @@ impl WalletConnectivityService {
 
     async fn notify_pending_requests(&mut self) -> Result<bool, WalletConnectivityError> {
         let current_pending = mem::take(&mut self.pending_requests);
-        let mut count = 1;
+        let mut count = 0;
         let current_pending_len = current_pending.len();
         for reply in current_pending {
             if reply.is_canceled() {
                 continue;
             }
+            count += 1;
             trace!(target: LOG_TARGET, "Handle {} of {} pending RPC pool requests", count, current_pending_len);
             self.handle_pool_request(reply).await;
-            count += 1;
         }
         if self.pending_requests.is_empty() {
             Ok(true)
