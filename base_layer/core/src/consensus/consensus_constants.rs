@@ -656,7 +656,7 @@ impl ConsensusConstants {
 
         let consensus_constants = vec![con_1, con_2];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120, 120], &[50, 50], &[50, 50]);
         consensus_constants
     }
 
