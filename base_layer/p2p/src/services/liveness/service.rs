@@ -192,7 +192,7 @@ where
                     message_tag,
                 );
 
-                let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into());
+                let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into(), ping_pong_msg.nonce);
                 self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
             },
             PingPong::Pong => {
@@ -219,7 +219,12 @@ where
                     message_tag,
                 );
 
-                let pong_event = PingPongEvent::new(node_id.clone(), maybe_latency, ping_pong_msg.metadata.into());
+                let pong_event = PingPongEvent::new(
+                    node_id.clone(),
+                    maybe_latency,
+                    ping_pong_msg.metadata.into(),
+                    ping_pong_msg.nonce,
+                );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
                 if let Some(address) = source_peer.last_address_used() {
@@ -232,9 +237,10 @@ where
         Ok(())
     }
 
-    async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+    async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-        self.state.add_inflight_ping(msg.nonce, node_id.clone());
+        let nonce = msg.nonce;
+        self.state.add_inflight_ping(nonce, node_id.clone());
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
@@ -246,7 +252,7 @@ where
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
 
-        Ok(())
+        Ok(nonce)
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
@@ -267,9 +273,18 @@ where
         use LivenessRequest::*;
         match request {
             SendPing(node_id) => {
-                self.send_ping(node_id).await?;
+                let nonce = self.send_ping(node_id).await?;
                 self.state.inc_pings_sent();
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(Some(vec![nonce])))
+            },
+            SendPings(node_ids, delay_between_pings) => {
+                let mut nonces = Vec::with_capacity(node_ids.len());
+                for node_id in node_ids {
+                    nonces.push(self.send_ping(node_id).await?);
+                    self.state.inc_pings_sent();
+                    time::sleep(delay_between_pings).await;
+                }
+                Ok(LivenessResponse::Ok(Some(nonces)))
             },
             GetPingCount => {
                 let ping_count = self.get_ping_count();
@@ -289,21 +304,21 @@ where
             },
             SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             AddMonitoredPeer(node_id) => {
                 let node_id_exists = { self.monitored_peers.read().await.iter().any(|val| val == &node_id) };
                 if !node_id_exists {
                     self.monitored_peers.write().await.push(node_id.clone());
                 }
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             RemoveMonitoredPeer(node_id) => {
                 let node_id_exists = { self.monitored_peers.read().await.iter().position(|val| *val == node_id) };
                 if let Some(pos) = node_id_exists {
                     self.monitored_peers.write().await.swap_remove(pos);
                 }
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
         }
     }

@@ -45,34 +45,39 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    /// Function to process the dial-peer command
+    /// Function to process the ping-peer command
     pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
-        println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
         let mut liveness = self.liveness.clone();
         task::spawn(async move {
-            if let Err(e) = liveness.send_ping(dest_node_id.clone()).await {
-                println!("🏓 Ping failed to send to {}: {}", dest_node_id, e);
-                return;
-            }
-            loop {
-                match liveness_events.recv().await {
-                    Ok(event) => {
-                        if let LivenessEvent::ReceivedPong(pong) = &*event {
-                            if pong.node_id == dest_node_id {
-                                println!(
-                                    "🏓️ Pong received, round-trip-time is {:.2?}!",
-                                    pong.latency.unwrap_or_default()
-                                );
+            match liveness.send_ping(dest_node_id.clone()).await {
+                Ok(nonce) => {
+                    println!("🏓 Pinging peer {} with nonce {} ...", dest_node_id, nonce);
+                    loop {
+                        match liveness_events.recv().await {
+                            Ok(event) => {
+                                if let LivenessEvent::ReceivedPong(pong) = &*event {
+                                    if pong.node_id == dest_node_id && pong.nonce == nonce {
+                                        println!(
+                                            "🏓️ Pong: peer {} responded with nonce {}, round-trip-time is {:.2?}!",
+                                            pong.node_id,
+                                            pong.nonce,
+                                            pong.latency.unwrap_or_default()
+                                        );
+                                        break;
+                                    }
+                                }
+                            },
+                            Err(RecvError::Closed) => {
                                 break;
-                            }
+                            },
+                            Err(RecvError::Lagged(_)) => {},
                         }
-                    },
-                    Err(RecvError::Closed) => {
-                        break;
-                    },
-                    Err(RecvError::Lagged(_)) => {},
-                }
+                    }
+                },
+                Err(e) => {
+                    println!("🏓 Ping failed to send to {}: {}", dest_node_id, e);
+                },
             }
         });
         Ok(())
