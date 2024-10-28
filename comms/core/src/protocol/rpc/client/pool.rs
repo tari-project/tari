@@ -100,7 +100,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
                 Some(c) => {
                     trace!(
                         target: LOG_TARGET,
-                        "used existing RPC client session for connection '{}'",
+                        "Used existing RPC client session for connection '{}'",
                         self.connection.peer_node_id(),
                     );
                     c
@@ -122,7 +122,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
                             .ok_or(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val.clone()))?;
                         trace!(
                             target: LOG_TARGET,
-                            "used existing RPC client session for connection '{}', protocol: {:?} ({})",
+                            "Used existing RPC client session for connection '{}', protocol: {:?} ({})",
                             peer_node_id, protocol_id, RpcClientPoolError::NoMoreRemoteServerRpcSessions(val),
                         );
                         c
