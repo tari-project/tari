@@ -70,6 +70,9 @@ hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = [
     "server",
 ] }
+tokio-stream = { version = "0.1.9", default-features = false, features = [
+    "time",
+] }
 
 [features]
 default = ["libtor"]

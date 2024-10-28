@@ -66,7 +66,7 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::ApplicationConfig;
+use crate::{checkpoints::CheckpointServiceInitializer, ApplicationConfig};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -164,6 +164,7 @@ where B: BlockchainBackend + 'static
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
             ))
+            .add_initializer(CheckpointServiceInitializer)
             .build()
             .await?;
 
@@ -215,7 +216,6 @@ where B: BlockchainBackend + 'static
         };
 
         handles.register(comms);
-
         Ok(handles)
     }
 

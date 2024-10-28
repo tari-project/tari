@@ -3853,6 +3853,7 @@ dependencies = [
  "tari_utilities",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "toml 0.5.11",
  "tonic 0.12.3",
 ]
