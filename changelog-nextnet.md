@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+## [1.8.0-rc.0](https://github.com/tari-project/tari/compare/v1.7.0-rc.4...v1.8.0-rc.0) (2024-10-28)
+
+
+### Features
+
+* close rpc connections when not in use - without close on dial requests ([#6649](https://github.com/tari-project/tari/issues/6649)) ([20e70fa](https://github.com/tari-project/tari/commit/20e70fa25204dfb0e5dff1e35e716bed2de2add0))
+
 ## [1.7.0-rc.4](https://github.com/tari-project/tari/compare/v1.7.0-rc.3...v1.7.0-rc.4) (2024-10-25)
 
 ### Features
