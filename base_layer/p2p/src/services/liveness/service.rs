@@ -184,7 +184,7 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await?;
                 self.state.inc_pongs_sent();
 
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Received ping from peer '{}' with useragent '{}' (Trace: {})",
                     node_id.short_str(),
@@ -208,7 +208,7 @@ where
                 }
 
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
                     node_id.short_str(),

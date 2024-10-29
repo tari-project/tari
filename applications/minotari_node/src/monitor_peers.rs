@@ -74,10 +74,10 @@ pub async fn monitor_peers(
     shutdown: Shutdown,
     metadata_auto_ping_interval: Duration,
 ) -> Result<(), LivenessError> {
-    let mut interval_timer = time::interval(metadata_auto_ping_interval * 5);
+    let mut interval_timer = time::interval(metadata_auto_ping_interval * 10);
     let mut shutdown_signal = shutdown.to_signal();
 
-    let mut peer_liveness_stats: HashMap<NodeId, PeerLiveness<Stats, 10>> = HashMap::new();
+    let mut peer_liveness_stats: HashMap<NodeId, PeerLiveness<Stats, 7>> = HashMap::new();
 
     let mut loop_count = 1u64;
     loop {
@@ -119,11 +119,6 @@ pub async fn monitor_peers(
                     }
                 }
 
-                trace!(
-                    target: LOG_TARGET,
-                    "Found {} outbound base node peer connections",
-                    active_peer_connections.len()
-                );
                 let mut liveness_events = liveness_handle.get_event_stream();
                 let mut expected_nonces = liveness_handle.send_pings(
                     active_peer_node_ids,
@@ -176,7 +171,7 @@ pub async fn monitor_peers(
                 }
 
                 // Compare nonces and close connections for peers that did not respond multiple times
-                upadate_stats_and_cull_unresponsive_connections(
+                update_stats_and_cull_unresponsive_connections(
                     &expected_nonces,
                     &received_nonces,
                     &mut active_peer_connections,
@@ -191,18 +186,18 @@ pub async fn monitor_peers(
     Ok(())
 }
 
-async fn upadate_stats_and_cull_unresponsive_connections(
+async fn update_stats_and_cull_unresponsive_connections(
     expected_nonces: &[u64],
     received_nonces: &[u64],
     active_peer_connections: &mut [&PeerConnection],
-    peer_liveness_stats: &mut HashMap<NodeId, PeerLiveness<Stats, 10>>,
+    peer_liveness_stats: &mut HashMap<NodeId, PeerLiveness<Stats, 7>>,
     loop_count: u64,
 ) -> Result<(), LivenessError> {
     if received_nonces != expected_nonces {
         trace!(
             target: LOG_TARGET,
-            "Found {} outbound base node peer connections that did not respond to pings",
-            expected_nonces.len().saturating_sub(received_nonces.len())
+            "Found {} of {} outbound base node peer connections that did not respond to pings",
+            expected_nonces.len().saturating_sub(received_nonces.len()), active_peer_connections.len()
         );
     }
     for (i, &mut peer) in active_peer_connections.iter_mut().enumerate() {
@@ -239,7 +234,7 @@ async fn upadate_stats_and_cull_unresponsive_connections(
                     debug!(
                         target: LOG_TARGET,
                         "Disconnecting {} as the peer is no longer responsive - \
-                        (iteration, connected, responsive) {:?}",
+                        (iter, conn, resp) {:?}",
                         peer.peer_node_id(),
                         stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
                     );
@@ -248,7 +243,7 @@ async fn upadate_stats_and_cull_unresponsive_connections(
                 } else {
                     trace!(
                         target: LOG_TARGET,
-                        "Peer {} stats - (iteration, connected, responsive) {:?}",
+                        "Peer {} stats - (iter, conn, resp) {:?}",
                         peer.peer_node_id(),
                         stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
                     );

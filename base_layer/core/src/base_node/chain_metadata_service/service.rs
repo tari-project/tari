@@ -141,7 +141,6 @@ impl ChainMetadataService {
         match event {
             // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
-                debug!(target: LOG_TARGET, "Received ping {} from neighbouring node '{}'.", event.nonce, event.node_id);
                 self.number_of_rounds_no_pings = 0;
                 if event.metadata.has(MetadataKey::ChainMetadata) {
                     self.send_chain_metadata_to_event_publisher(event).await?;
@@ -149,7 +148,6 @@ impl ChainMetadataService {
             },
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
-                trace!(target: LOG_TARGET, "Received pong {} from neighbouring node '{}'.", event.nonce, event.node_id);
                 self.number_of_rounds_no_pings = 0;
                 if event.metadata.has(MetadataKey::ChainMetadata) {
                     self.send_chain_metadata_to_event_publisher(event).await?;
