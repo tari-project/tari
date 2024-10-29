@@ -33,13 +33,13 @@ use tokio::{
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, peer_manager::NodeId};
+use crate::{message::InboundMessage, PeerConnection};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
 pub struct InboundMessaging {
-    peer: NodeId,
+    connection: PeerConnection,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<MessagingEvent>,
     enable_message_received_event: bool,
@@ -48,14 +48,14 @@ pub struct InboundMessaging {
 
 impl InboundMessaging {
     pub fn new(
-        peer: NodeId,
+        connection: PeerConnection,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         messaging_events_tx: broadcast::Sender<MessagingEvent>,
         enable_message_received_event: bool,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
-            peer,
+            connection,
             inbound_message_tx,
             messaging_events_tx,
             enable_message_received_event,
@@ -65,7 +65,7 @@ impl InboundMessaging {
 
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
-        let peer = &self.peer;
+        let peer = self.connection.peer_node_id();
         #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(
@@ -75,13 +75,14 @@ impl InboundMessaging {
         );
 
         let stream = MessagingProtocol::framed(socket);
+        let stream = stream.take_until(self.connection.on_disconnect());
         tokio::pin!(stream);
 
         while let Either::Right((Some(result), _)) = future::select(self.shutdown_signal.wait(), stream.next()).await {
             match result {
                 Ok(raw_msg) => {
                     #[cfg(feature = "metrics")]
-                    metrics::inbound_message_count(&self.peer).inc();
+                    metrics::inbound_message_count(self.connection.peer_node_id()).inc();
                     let msg_len = raw_msg.len();
                     let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
                     debug!(

@@ -50,6 +50,7 @@ use crate::{
         ProtocolId,
         ProtocolNotification,
     },
+    PeerConnection,
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
@@ -203,7 +204,9 @@ impl MessagingProtocol {
                 },
 
                 Some(notification) = self.proto_notification.recv() => {
-                    self.handle_protocol_notification(notification);
+                    if let Err(err) = self.handle_protocol_notification(notification).await {
+                        error!(target: LOG_TARGET, "handle_protocol_notification failed: {err}");
+                    }
                 },
 
                 _ = &mut shutdown_signal => {
@@ -332,7 +335,8 @@ impl MessagingProtocol {
         msg_tx
     }
 
-    fn spawn_inbound_handler(&mut self, peer: NodeId, substream: Substream) {
+    fn spawn_inbound_handler(&mut self, conn: PeerConnection, substream: Substream) {
+        let peer = conn.peer_node_id().clone();
         if let Some(handle) = self.active_inbound.get(&peer) {
             if handle.is_finished() {
                 self.active_inbound.remove(&peer);
@@ -347,7 +351,7 @@ impl MessagingProtocol {
         let messaging_events_tx = self.messaging_events_tx.clone();
         let inbound_message_tx = self.inbound_message_tx.clone();
         let inbound_messaging = InboundMessaging::new(
-            peer.clone(),
+            conn,
             inbound_message_tx,
             messaging_events_tx,
             self.enable_message_received_event,
@@ -357,7 +361,10 @@ impl MessagingProtocol {
         self.active_inbound.insert(peer, handle);
     }
 
-    fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
+    async fn handle_protocol_notification(
+        &mut self,
+        notification: ProtocolNotification<Substream>,
+    ) -> Result<(), MessagingProtocolError> {
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
@@ -366,10 +373,17 @@ impl MessagingProtocol {
                     "NewInboundSubstream for peer '{}'",
                     node_id.short_str()
                 );
-
-                self.spawn_inbound_handler(node_id, substream);
+                match self.connectivity.get_connection(node_id.clone()).await? {
+                    Some(conn) => {
+                        self.spawn_inbound_handler(conn, substream);
+                    },
+                    None => {
+                        error!(target: LOG_TARGET, "No active connection for new inbound substream for node {node_id}");
+                    },
+                }
             },
         }
+        Ok(())
     }
 
     async fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {

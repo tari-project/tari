@@ -53,6 +53,8 @@ pub enum MessagingProtocolError {
     PeerConnectionError(#[from] PeerConnectionError),
     #[error("Failed to dial peer: {0}")]
     PeerDialFailed(ConnectivityError),
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
     #[error("IO Error: {0}")]
     Io(io::Error),
     #[error("Sender error: {0}")]
