@@ -58,6 +58,7 @@ use std::{
     slice,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use chrono::{DateTime, Local};
@@ -9053,7 +9054,12 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
         debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
         let mut w = Box::from_raw(wallet);
         w.shutdown.trigger();
-        w.runtime.block_on(w.wallet.wait_until_shutdown());
+        if w.runtime
+            .block_on(w.wallet.wait_until_shutdown_timeout(Duration::from_secs(2)))
+            .is_err()
+        {
+            warn!(target: LOG_TARGET, "Timeout while waiting for wallet to shut down");
+        }
     }
 }
 

@@ -55,16 +55,16 @@ use tari_test_utils::paths::create_temporary_data_path;
 
 use crate::helpers::database::create_orphan_block;
 
-#[tokio::test]
-async fn test_lmdb_insert_contains_delete_and_fetch_orphan() {
+#[test]
+fn test_lmdb_insert_contains_delete_and_fetch_orphan() {
     let network = Network::LocalNet;
-    let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
+    let consensus = ConsensusManagerBuilder::new(network).build();
     let mut db = create_test_db();
     let txs = vec![
-        tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1).0,
-        tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1).0,
+        (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_orphan_block(10, txs, &consensus).await;
+    let orphan = create_orphan_block(10, txs, &consensus);
     let hash = orphan.hash();
     assert!(!db.contains(&DbKey::OrphanBlock(hash)).unwrap());
 

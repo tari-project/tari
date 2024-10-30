@@ -23,9 +23,9 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_utilities::utilities::{parse_emoji_id_or_public_key, UniPeerId};
+use minotari_app_utilities::utilities::UniPeerId;
 use tari_common_types::emoji::EmojiId;
-use tari_network::ToPeerId;
+use tari_network::{identity::PeerId, ToPeerId};
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
@@ -33,8 +33,7 @@ use super::{CommandContext, HandleCommand, TypeOrHex};
 /// Get all available info about peer
 #[derive(Debug, Parser)]
 pub struct Args {
-    /// Partial NodeId | PublicKey | EmojiId
-    value: String,
+    value: UniPeerId,
 }
 
 impl From<TypeOrHex<UniPeerId>> for Vec<u8> {
@@ -55,21 +54,18 @@ impl HandleCommand<Args> for CommandContext {
 
 #[derive(Error, Debug)]
 enum ArgsError {
-    #[error("No peer matching: {original_str}")]
-    NoPeerMatching { original_str: String },
+    #[error("Peer {peer_id} not found")]
+    PeerNotFound { peer_id: PeerId },
 }
 
 impl CommandContext {
-    pub async fn get_peer(&self, original_str: String) -> Result<(), Error> {
-        let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
-            original_str: original_str.clone(),
-        })?;
-        let peer_id = pk.to_peer_id();
+    pub async fn get_peer(&self, peer_id: UniPeerId) -> Result<(), Error> {
+        let peer_id = peer_id.to_peer_id();
         let peer = self
             .network
             .get_connection(peer_id)
             .await?
-            .ok_or(ArgsError::NoPeerMatching { original_str })?;
+            .ok_or(ArgsError::PeerNotFound { peer_id })?;
 
         match peer.public_key {
             Some(pk) => {
@@ -97,17 +93,28 @@ impl CommandContext {
                 println!("User agent: Unknown");
             },
         }
-        // TODO: we could also provide this
-        // println!("Supported protocols:");
-        // peer.supported_protocols.iter().for_each(|p| {
-        //     println!("- {}", String::from_utf8_lossy(p));
-        // });
-        // if let Some(dt) = peer.banned_until() {
-        //     println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-        // }
-        // if let Some(dt) = peer.last_seen() {
-        //     println!("Last seen: {}", dt);
-        // }
+        print!("Supported protocols:");
+        if peer.supported_protocols.is_empty() {
+            println!(" Unknown");
+        } else {
+            println!();
+            for p in &peer.supported_protocols {
+                println!("- {}", p);
+            }
+        }
+        if let Some(banned_peer) = self.network.get_banned_peer(peer.peer_id).await? {
+            print!("Banned ");
+            match banned_peer.remaining_ban() {
+                Some(until) => {
+                    print!("until {}", humantime::format_duration(until));
+                },
+                None => {
+                    print!("indefinitely")
+                },
+            }
+            println!(", reason: {}", banned_peer.ban_reason);
+        }
+
         Ok(())
     }
 }

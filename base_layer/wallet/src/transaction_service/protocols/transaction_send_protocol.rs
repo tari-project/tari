@@ -613,8 +613,6 @@ where
             tx.clone(),
             self.dest_address.comms_public_key().to_peer_id(),
             self.resources.outbound_message_service.clone(),
-            self.resources.config.direct_send_timeout,
-            self.resources.config.transaction_routing_mechanism,
         )
         .await
         .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
@@ -708,81 +706,6 @@ where
             transaction_status,
         })
     }
-
-    // /// Contains all the logic to send the transaction to the recipient via store and forward
-    // /// # Arguments
-    // /// `msg`: The transaction data message to be sent
-    // /// 'send_events': A bool indicating whether we should send events during the operation or not.
-    // async fn send_transaction_store_and_forward(
-    //     &mut self,
-    //     msg: SingleRoundSenderData,
-    // ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-    //     if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
-    //         return Ok(false);
-    //     }
-    //     let proto_message = proto::TransactionSenderMessage::single(msg.clone().try_into().map_err(|err| {
-    //         TransactionServiceProtocolError::new(msg.tx_id, TransactionServiceError::ServiceError(err))
-    //     })?);
-    //     match self
-    //         .resources
-    //         .outbound_message_service
-    //         .closest_broadcast(
-    //             self.dest_address.comms_public_key().clone(),
-    //             OutboundEncryption::encrypt_for(self.dest_address.comms_public_key().clone()),
-    //             vec![],
-    //             OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
-    //         )
-    //         .await
-    //     {
-    //         Ok(send_states) if !send_states.is_empty() => {
-    //             let (successful_sends, failed_sends) = send_states
-    //                 .wait_n_timeout(self.resources.config.broadcast_send_timeout, 1)
-    //                 .await;
-    //             if !successful_sends.is_empty() {
-    //                 info!(
-    //                     target: LOG_TARGET,
-    //                     "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
-    //                      Tags: {:?}",
-    //                     self.id,
-    //                     successful_sends[0],
-    //                 );
-    //                 Ok(true)
-    //             } else if !failed_sends.is_empty() {
-    //                 warn!(
-    //                     target: LOG_TARGET,
-    //                     "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-    //                      messages were sent",
-    //                     self.id
-    //                 );
-    //                 Ok(false)
-    //             } else {
-    //                 warn!(
-    //                     target: LOG_TARGET,
-    //                     "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
-    //                      unsuccessful. Some message might still be sent.",
-    //                     self.id
-    //                 );
-    //                 Ok(false)
-    //             }
-    //         },
-    //         Ok(_) => {
-    //             warn!(
-    //                 target: LOG_TARGET,
-    //                 "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-    //                  messages were sent",
-    //                 self.id
-    //             );
-    //             Ok(false)
-    //         },
-    //         Err(e) => {
-    //             warn!(
-    //                 target: LOG_TARGET,
-    //                 "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
-    //             );
-    //             Ok(false)
-    //         },
-    //     }
-    // }
 
     async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         info!(

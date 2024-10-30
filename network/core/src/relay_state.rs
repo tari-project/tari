@@ -3,8 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use rand::seq::IteratorRandom;
+use tari_swarm::libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 
 use crate::Peer;
 

@@ -6,8 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use libp2p::{identity, identity::OtherVariantError, Multiaddr, PeerId, StreamProtocol};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex};
+use tari_swarm::libp2p::{identity, identity::OtherVariantError, Multiaddr, PeerId, StreamProtocol};
 
 use crate::identity::{KeyType, PublicKey};
 

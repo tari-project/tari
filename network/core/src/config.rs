@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use libp2p::{multiaddr::multiaddr, Multiaddr};
+use tari_swarm::libp2p::{multiaddr::multiaddr, Multiaddr};
 
 #[derive(Debug, Clone)]
 pub struct Config {

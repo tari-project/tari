@@ -137,11 +137,6 @@ impl WalletConnectivityService {
                     trace!(target: LOG_TARGET, "check_connection: rpc pool is already connected");
                     self.set_online_status(OnlineStatus::Online);
                     return;
-                    // debug!(
-                    //     target: LOG_TARGET,
-                    //     "Peer RPC connection '{:?}' lost. Attempting to reconnect...",
-                    //     self.current_base_node()
-                    // );
                 }
                 trace!(target: LOG_TARGET, "check_connection: no rpc pool for connection");
                 trace!(target: LOG_TARGET, "check_connection: current base node has connection but not connected");

@@ -37,9 +37,6 @@ pub struct TransactionServiceConfig {
     /// This is the timeout period that will be used for chain monitoring tasks
     #[serde(with = "serializers::seconds")]
     pub chain_monitoring_timeout: Duration,
-    /// This is the timeout period that will be used for sending transactions directly
-    #[serde(with = "serializers::seconds")]
-    pub direct_send_timeout: Duration,
     /// This is the timeout period that will be used for sending transactions via broadcast mode
     #[serde(with = "serializers::seconds")]
     pub broadcast_send_timeout: Duration,
@@ -76,7 +73,6 @@ impl Default for TransactionServiceConfig {
         Self {
             broadcast_monitoring_timeout: Duration::from_secs(30),
             chain_monitoring_timeout: Duration::from_secs(60),
-            direct_send_timeout: Duration::from_secs(20),
             broadcast_send_timeout: Duration::from_secs(60),
             low_power_polling_timeout: Duration::from_secs(300),
             transaction_resend_period: Duration::from_secs(600),

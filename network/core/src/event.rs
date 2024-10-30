@@ -3,7 +3,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use libp2p::{identity, PeerId, StreamProtocol};
+use tari_swarm::libp2p::{identity, PeerId, StreamProtocol};
 
 #[derive(Debug, Clone)]
 pub enum NetworkEvent {

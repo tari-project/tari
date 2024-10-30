@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, time::Duration};
+use std::convert::TryInto;
 
 use log::*;
 use tari_common_types::{transaction::TxId, types::PublicKey};
@@ -40,7 +40,6 @@ const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_r
 pub async fn send_transaction_reply(
     inbound_transaction: InboundTransaction,
     mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
-    direct_send_timeout: Duration,
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
@@ -50,13 +49,7 @@ pub async fn send_transaction_reply(
 
     let send_result = match transaction_routing_mechanism {
         TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
-            send_transaction_reply_direct(
-                inbound_transaction,
-                outbound_message_service,
-                direct_send_timeout,
-                transaction_routing_mechanism,
-            )
-            .await?
+            send_transaction_reply_direct(inbound_transaction, outbound_message_service).await?
         },
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             send_transaction_reply_store_and_forward(
@@ -76,8 +69,6 @@ pub async fn send_transaction_reply(
 pub async fn send_transaction_reply_direct(
     inbound_transaction: InboundTransaction,
     mut outbound_message_service: OutboundMessaging<TariNodeMessageSpec>,
-    _direct_send_timeout: Duration,
-    _transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError> {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
 

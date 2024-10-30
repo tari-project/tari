@@ -312,18 +312,6 @@ where TPeerStore: PeerStore
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         if let Some(event) = self.pending_events.pop_front() {
-            //     if let
-            //         ToSwarm::GenerateEvent(event) =
-            //         &event {
-            //         match event {
-            //             Event::InboundFailure { peer_id, .. } => {}
-            //             Event::OutboundFailure { peer_id, .. } => {}
-            //             Event::InboundStreamInterrupted { peer_id,  .. } => {}
-            //             Event::OutboundStreamInterrupted { peer_id, .. } => {}
-            //             Event::ResponseStreamComplete { peer_id, .. } => {}
-            //             Event::Error(_) => {}
-            //         }
-            //     }
             return Poll::Ready(event);
         }
         if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {

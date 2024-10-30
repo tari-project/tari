@@ -3,7 +3,7 @@
 
 //! Copied from autonat due to stdlib ipv4/6 is_global() being unstable
 
-use libp2p::{multiaddr::Protocol, Multiaddr};
+use tari_swarm::libp2p::{multiaddr::Protocol, Multiaddr};
 
 pub(crate) trait GlobalIp {
     fn is_global_ip(&self) -> bool;

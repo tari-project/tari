@@ -4709,6 +4709,7 @@ dependencies = [
  "derive_more",
  "either",
  "futures 0.3.30",
+ "humantime 2.1.0",
  "log",
  "log-mdc",
  "log4rs",
@@ -6073,9 +6074,9 @@ dependencies = [
 
 [[package]]
 name = "prometheus"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
 dependencies = [
  "cfg-if",
  "fnv",
@@ -8147,7 +8148,6 @@ version = "1.7.0-pre.2"
 dependencies = [
  "anyhow",
  "humantime 2.1.0",
- "libp2p",
  "log",
  "prost 0.13.3",
  "rand",
@@ -8184,7 +8184,6 @@ dependencies = [
  "tari_network",
  "tari_service_framework",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",

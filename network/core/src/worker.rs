@@ -8,36 +8,36 @@ use std::{
     time::{Duration, Instant},
 };
 
-use libp2p::{
-    autonat,
-    autonat::NatStatus,
-    core::ConnectedPoint,
-    dcutr,
-    futures::StreamExt,
-    gossipsub,
-    gossipsub::{IdentTopic, MessageId, PublishError, TopicHash},
-    identify,
-    identity,
-    kad,
-    kad::{GetClosestPeersError, QueryId, QueryResult, RoutingUpdate},
-    mdns,
-    multiaddr::Protocol,
-    ping,
-    relay,
-    swarm::{
-        dial_opts::{DialOpts, PeerCondition},
-        ConnectionId,
-        DialError,
-        SwarmEvent,
-    },
-    Multiaddr,
-    PeerId,
-    StreamProtocol,
-};
 use log::*;
 use rand::{prelude::IteratorRandom, rngs::OsRng};
 use tari_shutdown::ShutdownSignal;
 use tari_swarm::{
+    libp2p::{
+        autonat,
+        autonat::NatStatus,
+        core::ConnectedPoint,
+        dcutr,
+        futures::StreamExt,
+        gossipsub,
+        gossipsub::{IdentTopic, MessageId, PublishError, TopicHash},
+        identify,
+        identity,
+        kad,
+        kad::{GetClosestPeersError, QueryId, QueryResult, RoutingUpdate},
+        mdns,
+        multiaddr::Protocol,
+        ping,
+        relay,
+        swarm::{
+            dial_opts::{DialOpts, PeerCondition},
+            ConnectionId,
+            DialError,
+            SwarmEvent,
+        },
+        Multiaddr,
+        PeerId,
+        StreamProtocol,
+    },
     messaging,
     messaging::{prost, prost::ProstCodec},
     peersync,
@@ -47,11 +47,12 @@ use tari_swarm::{
     TariSwarm,
 };
 use tokio::{
-    sync::{broadcast, mpsc, oneshot},
+    sync::{broadcast, mpsc, oneshot, watch},
     time,
 };
 
 use crate::{
+    autonat::AutonatStatus,
     connection::Connection,
     event::NetworkEvent,
     global_ip::GlobalIp,
@@ -59,6 +60,7 @@ use crate::{
     messaging::MessagingRequest,
     notify::Notifiers,
     relay_state::RelayState,
+    AveragePeerLatency,
     BannedPeer,
     ConnectionDirection,
     DiscoveredPeer,
@@ -98,6 +100,7 @@ where
     config: crate::Config,
     relays: RelayState,
     seed_peers: Vec<Peer>,
+    autonat_status_sender: watch::Sender<AutonatStatus>,
     is_initial_bootstrap_complete: bool,
     shutdown_signal: ShutdownSignal,
 }
@@ -117,6 +120,7 @@ where
         config: crate::Config,
         seed_peers: Vec<Peer>,
         known_relay_nodes: Vec<Peer>,
+        autonat_status_sender: watch::Sender<AutonatStatus>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         let (gossipsub_outbound_tx, gossipsub_outbound_rx) = mpsc::channel(100);
@@ -141,6 +145,7 @@ where
             gossipsub_outbound_rx: Some(gossipsub_outbound_rx),
             config,
             is_initial_bootstrap_complete: false,
+            autonat_status_sender,
             shutdown_signal,
         }
     }
@@ -171,6 +176,7 @@ where
         self.listen()?;
 
         if self.config.reachability_mode.is_private() {
+            let _ignore = self.autonat_status_sender.send(AutonatStatus::ConfiguredPrivate);
             self.attempt_relay_reservation();
         }
 
@@ -340,6 +346,16 @@ where
                     // observed_addr: (),
                 };
                 let _ignore = reply_tx.send(Ok(peer));
+            },
+            NetworkingRequest::GetAveragePeerLatency { reply } => {
+                let iter = self
+                    .active_connections
+                    .values()
+                    .flatten()
+                    .filter_map(|c| c.ping_latency);
+                let num_samples = iter.clone().count();
+                let total = iter.sum();
+                let _ignore = reply.send(Ok(AveragePeerLatency::new(num_samples, total)));
             },
             NetworkingRequest::SetWantPeers(peers) => {
                 info!(target: LOG_TARGET, "🧭 Setting want peers to {:?}", peers);
@@ -892,6 +908,39 @@ where
                     info!(target: LOG_TARGET, "🌍️ Autonat: Our public address is {public_address}");
                 }
 
+                self.autonat_status_sender.send_if_modified(|prev| {
+                    // Don't set if configured as this is already set
+                    if self.config.reachability_mode.is_auto() {
+                        return false;
+                    }
+                    match &new {
+                        NatStatus::Public(_) => {
+                            if matches!(prev, AutonatStatus::Public) {
+                                false
+                            } else {
+                                *prev = AutonatStatus::Public;
+                                true
+                            }
+                        },
+                        NatStatus::Private => {
+                            if matches!(prev, AutonatStatus::Private) {
+                                false
+                            } else {
+                                *prev = AutonatStatus::Private;
+                                true
+                            }
+                        },
+                        NatStatus::Unknown => {
+                            if matches!(prev, AutonatStatus::Checking) {
+                                false
+                            } else {
+                                *prev = AutonatStatus::Checking;
+                                true
+                            }
+                        },
+                    }
+                });
+
                 // If we are/were "Private", let's establish a relay reservation with a known relay
                 if (self.config.reachability_mode.is_private() ||
                     new == NatStatus::Private ||
@@ -969,6 +1018,7 @@ where
             established_in,
             ping_latency: None,
             user_agent: None,
+            supported_protocols: vec![],
         });
 
         let Some(waiters) = self.pending_dial_requests.remove(&peer_id) else {
@@ -1014,7 +1064,7 @@ where
             ..
         } = info;
 
-        self.update_connected_peers(&peer_id, public_key.clone(), agent_version.clone());
+        self.update_connected_peers(&peer_id, public_key.clone(), agent_version.clone(), protocols.clone());
 
         let is_relay = protocols.iter().any(|p| *p == relay::HOP_PROTOCOL_NAME);
 
@@ -1072,7 +1122,13 @@ where
         Ok(())
     }
 
-    fn update_connected_peers(&mut self, peer_id: &PeerId, public_key: identity::PublicKey, agent_version: String) {
+    fn update_connected_peers(
+        &mut self,
+        peer_id: &PeerId,
+        public_key: identity::PublicKey,
+        agent_version: String,
+        supported_protocols: Vec<StreamProtocol>,
+    ) {
         let Some(conns_mut) = self.active_connections.get_mut(peer_id) else {
             return;
         };
@@ -1081,6 +1137,7 @@ where
         for conn_mut in conns_mut {
             conn_mut.user_agent = Some(user_agent.clone());
             conn_mut.public_key = Some(public_key.clone());
+            conn_mut.supported_protocols = supported_protocols.clone();
         }
     }
 

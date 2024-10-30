@@ -6,9 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use libp2p::{core::ConnectedPoint, swarm::ConnectionId, PeerId};
+use tari_swarm::libp2p::{core::ConnectedPoint, swarm::ConnectionId, PeerId};
 
-use crate::{identity::PublicKey, multiaddr::Multiaddr, ConnectionDirection};
+use crate::{identity::PublicKey, multiaddr::Multiaddr, ConnectionDirection, StreamProtocol};
 
 #[derive(Debug, Clone)]
 pub struct Connection {
@@ -22,6 +22,7 @@ pub struct Connection {
     pub established_in: Duration,
     pub ping_latency: Option<Duration>,
     pub user_agent: Option<Arc<String>>,
+    pub supported_protocols: Vec<StreamProtocol>,
 }
 
 impl Connection {
@@ -35,6 +36,10 @@ impl Connection {
 
     pub fn address(&self) -> &Multiaddr {
         self.endpoint.get_remote_address()
+    }
+
+    pub fn supported_protocols(&self) -> &[StreamProtocol] {
+        &self.supported_protocols
     }
 
     pub fn direction(&self) -> ConnectionDirection {

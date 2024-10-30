@@ -1828,8 +1828,6 @@ where
             tx.clone(),
             dest_address.comms_public_key().to_peer_id(),
             self.resources.outbound_message_service.clone(),
-            self.resources.config.direct_send_timeout,
-            self.resources.config.transaction_routing_mechanism,
         )
         .await?;
 
@@ -2475,8 +2473,6 @@ where
                     ctx.transaction,
                     source_peer_id,
                     self.resources.outbound_message_service.clone(),
-                    self.resources.config.direct_send_timeout,
-                    self.resources.config.transaction_routing_mechanism,
                 )
                 .await?;
             }
@@ -2801,7 +2797,6 @@ where
                 tokio::spawn(send_transaction_reply(
                     inbound_tx,
                     self.resources.outbound_message_service.clone(),
-                    self.resources.config.direct_send_timeout,
                     self.resources.config.transaction_routing_mechanism,
                 ));
                 if let Err(e) = self.resources.db.increment_send_count(tx_id) {
@@ -2832,15 +2827,6 @@ where
             }
 
             let source_address = data.sender_address.clone();
-            // let source_address = if data.sender_address.comms_public_key().to_peer_id() == source_peer_id {
-            //     data.sender_address.clone()
-            // } else {
-            //     TariAddress::new_single_address(
-            //         source_pubkey,
-            //         self.resources.interactive_tari_address.network(),
-            //         TariAddressFeatures::INTERACTIVE,
-            //     )
-            // };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
             self.finalized_transaction_senders

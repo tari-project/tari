@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use libp2p::{swarm::dial_opts::DialOpts, PeerId};
+use tari_swarm::libp2p::{swarm::dial_opts::DialOpts, PeerId};
 use tokio::sync::oneshot;
 
 use crate::{error::DialError, messaging::MulticastDestination, MessageSpec, NetworkError};

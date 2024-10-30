@@ -22,9 +22,13 @@
 
 use std::io;
 
-use libp2p::{gossipsub, gossipsub::SubscriptionError, Multiaddr, TransportError};
 use tari_rpc_framework::RpcError;
-use tari_swarm::{messaging, substream, TariSwarmError};
+use tari_swarm::{
+    libp2p::{gossipsub, gossipsub::SubscriptionError, Multiaddr, TransportError},
+    messaging,
+    substream,
+    TariSwarmError,
+};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{

@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use minotari_app_utilities::consts;
+use tari_network::AutonatStatus;
 use tokio::time;
 
 use super::{CommandContext, HandleCommand};
@@ -108,7 +109,7 @@ impl CommandContext {
         });
         status_line.add_field("Connections", format!("{}|{}", num_nodes, num_clients));
         let banned_peers = self.fetch_banned_peers().await?;
-        status_line.add_field("Banned", banned_peers.len());
+        status_line.add_field("Banned", banned_peers.len().to_string());
 
         // TODO: would be nice to have this
         // let num_messages = self
@@ -126,19 +127,22 @@ impl CommandContext {
             ),
         );
 
-        // TODO: get autonat status
-        // match self.network.get_local_peer_info() {
-        //     SelfLivenessStatus::Disabled => {},
-        //     SelfLivenessStatus::Checking => {
-        //         status_line.add("⏳️️");
-        //     },
-        //     SelfLivenessStatus::Unreachable => {
-        //         status_line.add("️🔌");
-        //     },
-        //     SelfLivenessStatus::Live(latency) => {
-        //         status_line.add(format!("⚡️ {:.2?}", latency));
-        //     },
-        // }
+        let avg_latency = self.network.get_average_peer_latency().await?;
+
+        match self.network.get_autonat_status() {
+            AutonatStatus::ConfiguredPrivate => {
+                status_line.add(format!("️🔌(conf) {avg_latency}"));
+            },
+            AutonatStatus::Checking => {
+                status_line.add(format!("{avg_latency}"));
+            },
+            AutonatStatus::Private => {
+                status_line.add(format!("️🔌 {avg_latency}"));
+            },
+            AutonatStatus::Public => {
+                status_line.add(format!("⚡️ {avg_latency}"));
+            },
+        }
 
         if full_log {
             status_line.add_field(

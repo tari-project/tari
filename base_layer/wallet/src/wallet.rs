@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -328,6 +328,12 @@ where
     /// exiting.
     pub async fn wait_until_shutdown(self) {
         self.network.wait_until_shutdown().await;
+    }
+
+    /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
+    /// exiting.
+    pub async fn wait_until_shutdown_timeout(self, timeout: Duration) -> Result<(), ()> {
+        self.network.wait_until_shutdown_timeout(timeout).await
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and

@@ -3,8 +3,10 @@
 
 use std::io;
 
-use libp2p::{gossipsub, gossipsub::IdentTopic};
-use tari_swarm::messaging::{prost::ProstCodec, Codec};
+use tari_swarm::{
+    libp2p::{gossipsub, gossipsub::IdentTopic},
+    messaging::{prost::ProstCodec, Codec},
+};
 use tokio::sync::mpsc;
 
 use crate::identity::PeerId;

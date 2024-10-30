@@ -20,9 +20,12 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter},
+    time::Duration,
+};
 
-use libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, Multiaddr, PeerId, StreamProtocol};
 use log::*;
 use tari_rpc_framework::{
     framing,
@@ -33,10 +36,17 @@ use tari_rpc_framework::{
     RpcConnector,
     Substream,
 };
-use tari_swarm::substream::{NegotiatedSubstream, ProtocolNotification};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use tari_swarm::{
+    libp2p::{gossipsub, gossipsub::IdentTopic, swarm::dial_opts::DialOpts, Multiaddr, PeerId, StreamProtocol},
+    substream::{NegotiatedSubstream, ProtocolNotification},
+};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot, watch},
+    time,
+};
 
 use crate::{
+    autonat::AutonatStatus,
     connection::Connection,
     error::NetworkingHandleError,
     event::NetworkEvent,
@@ -98,6 +108,9 @@ pub enum NetworkingRequest {
         exclude_peers: HashSet<PeerId>,
         reply_tx: Reply<Vec<Connection>>,
     },
+    GetAveragePeerLatency {
+        reply: Reply<AveragePeerLatency>,
+    },
     GetLocalPeerInfo {
         reply_tx: Reply<PeerInfo>,
     },
@@ -147,11 +160,13 @@ pub enum NetworkingRequest {
         reply: Reply<Vec<Peer>>,
     },
 }
+
 #[derive(Debug)]
 pub struct NetworkHandle {
     tx_request: mpsc::Sender<NetworkingRequest>,
     local_peer_id: PeerId,
     tx_events: broadcast::Sender<NetworkEvent>,
+    autonat_status_receiver: watch::Receiver<AutonatStatus>,
 }
 
 impl NetworkHandle {
@@ -159,12 +174,18 @@ impl NetworkHandle {
         local_peer_id: PeerId,
         tx_request: mpsc::Sender<NetworkingRequest>,
         tx_events: broadcast::Sender<NetworkEvent>,
+        autonat_status_receiver: watch::Receiver<AutonatStatus>,
     ) -> Self {
         Self {
             tx_request,
             local_peer_id,
             tx_events,
+            autonat_status_receiver,
         }
+    }
+
+    pub fn get_autonat_status(&self) -> AutonatStatus {
+        self.autonat_status_receiver.borrow().clone()
     }
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<NetworkEvent> {
@@ -426,8 +447,28 @@ impl NetworkHandle {
         rx.await?
     }
 
+    pub async fn get_average_peer_latency(&self) -> Result<AveragePeerLatency, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::GetAveragePeerLatency { reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
     pub async fn wait_until_shutdown(&self) {
         self.tx_request.closed().await;
+    }
+
+    pub async fn wait_until_shutdown_timeout(&self, timeout: Duration) -> Result<(), ()> {
+        tokio::select! {
+            _ = time::sleep(timeout) => {
+                Err(())
+            }
+            _ = self.wait_until_shutdown() => {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -498,6 +539,7 @@ impl Clone for NetworkHandle {
             tx_request: self.tx_request.clone(),
             local_peer_id: self.local_peer_id,
             tx_events: self.tx_events.clone(),
+            autonat_status_receiver: self.autonat_status_receiver.clone(),
         }
     }
 }
@@ -519,5 +561,36 @@ impl RpcConnector for NetworkHandle {
             .await?;
         let client = builder.with_protocol_id(protocol).connect(framed).await?;
         Ok(client)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AveragePeerLatency {
+    num_peers: usize,
+    total_latency: Duration,
+}
+
+impl AveragePeerLatency {
+    pub(crate) fn new(num_peers: usize, total_latency: Duration) -> Self {
+        Self {
+            num_peers,
+            total_latency,
+        }
+    }
+
+    pub fn get(&self) -> Option<Duration> {
+        let avg = self.total_latency.as_millis().checked_div(self.num_peers as u128)?;
+        Some(Duration::from_millis(u64::try_from(avg).unwrap_or(u64::MAX)))
+    }
+}
+
+impl Display for AveragePeerLatency {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.get() {
+            Some(latency) => {
+                write!(f, "{:.2?}", latency)
+            },
+            None => Ok(()),
+        }
     }
 }

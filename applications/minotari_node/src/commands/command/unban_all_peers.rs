@@ -23,6 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
+use tari_network::NetworkingService;
 
 use super::{CommandContext, HandleCommand};
 
@@ -38,17 +39,15 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    pub async fn unban_all_peers(&self) -> Result<(), Error> {
-        println!("Not implemented");
-        // let peer_manager = self.network.peer_manager();
-        // let peers = peer_manager.perform_query(query).await?;
-        // let num_peers = peers.len();
-        // for peer in peers {
-        //     if let Err(err) = peer_manager.unban_peer(&peer.node_id).await {
-        //         println!("Failed to unban peer: {}", err);
-        //     }
-        // }
-        // println!("Unbanned {} peer(s) from node", num_peers);
+    pub async fn unban_all_peers(&mut self) -> Result<(), Error> {
+        let peers = self.network.get_banned_peers().await?;
+        let num_peers = peers.len();
+        for peer in peers {
+            if let Err(err) = self.network.unban_peer(peer.peer_id).await {
+                println!("Failed to unban peer: {}", err);
+            }
+        }
+        println!("Unbanned {} peer(s) from node", num_peers);
         Ok(())
     }
 }

@@ -3,8 +3,7 @@
 
 use std::collections::HashMap;
 
-use libp2p::StreamProtocol;
-use tari_swarm::substream::ProtocolNotification;
+use tari_swarm::{libp2p::StreamProtocol, substream::ProtocolNotification};
 use tokio::sync::mpsc;
 
 pub struct Notifiers<T> {

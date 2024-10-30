@@ -74,7 +74,6 @@ pub trait WalletBackend: Send + Sync + Clone {
 pub enum DbKey {
     CommsAddress,
     CommsFeatures,
-    // TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
     MasterSeed,
@@ -94,7 +93,6 @@ impl DbKey {
             DbKey::MasterSeed => "MasterSeed".to_string(),
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
-            // DbKey::TorId => "TorId".to_string(),
             DbKey::ClientKey(k) => format!("ClientKey.{}", k),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
@@ -112,7 +110,6 @@ impl DbKey {
 pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(u32),
-    // TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
@@ -130,7 +127,6 @@ pub enum DbValue {
 #[derive(Clone)]
 pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
-    // TorId(TorIdentity),
     BaseNodeChainMetadata(ChainMetadata),
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
@@ -182,22 +178,6 @@ where T: WalletBackend + 'static
         self.db.write(WriteOperation::Remove(DbKey::MasterSeed))?;
         Ok(())
     }
-
-    // pub fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
-    //     let c = match self.db.fetch(&DbKey::CommsAddress) {
-    //         Ok(None) => Ok(None),
-    //         Ok(Some(DbValue::CommsAddress(k))) => Ok(Some(k)),
-    //         Ok(Some(other)) => unexpected_result(DbKey::CommsAddress, other),
-    //         Err(e) => log_error(DbKey::CommsAddress, e),
-    //     }?;
-    //     Ok(c)
-    // }
-
-    // pub fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
-    //     self.db
-    //         .write(WriteOperation::Insert(DbKeyValuePair::CommsAddress(address)))?;
-    //     Ok(())
-    // }
 
     pub fn get_node_features(&self) -> Result<Option<u32>, WalletStorageError> {
         let c = match self.db.fetch(&DbKey::CommsFeatures) {
@@ -373,7 +353,6 @@ impl Display for DbValue {
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
-            // DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
             DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
             DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),

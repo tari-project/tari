@@ -3,16 +3,21 @@
 
 use std::collections::HashSet;
 
-use libp2p::{identity::Keypair, PeerId};
 use log::warn;
 use tari_shutdown::ShutdownSignal;
-use tari_swarm::{is_supported_multiaddr, messaging, messaging::prost::ProstCodec};
+use tari_swarm::{
+    is_supported_multiaddr,
+    libp2p::{identity::Keypair, PeerId},
+    messaging,
+    messaging::prost::ProstCodec,
+};
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::{broadcast, mpsc, watch},
     task::JoinHandle,
 };
 
 use crate::{
+    autonat::AutonatStatus,
     message::MessageSpec,
     messaging::OutboundMessaging,
     worker::NetworkingWorker,
@@ -72,6 +77,7 @@ where
     let (tx_requests, rx_requests) = mpsc::channel(1);
     let (tx_msg_requests, rx_msg_requests) = mpsc::channel(1000);
     let (tx_events, _) = broadcast::channel(100);
+    let (autonat_status_sender, autonat_status_receiver) = watch::channel(AutonatStatus::Checking);
     let handle = tokio::spawn(
         NetworkingWorker::<TMsg>::new(
             identity,
@@ -83,12 +89,13 @@ where
             config,
             seed_peers,
             known_relay_peers,
+            autonat_status_sender,
             shutdown_signal,
         )
         .run(),
     );
     Ok((
-        NetworkHandle::new(local_peer_id, tx_requests, tx_events),
+        NetworkHandle::new(local_peer_id, tx_requests, tx_events, autonat_status_receiver),
         OutboundMessaging::new(tx_msg_requests),
         handle,
     ))
