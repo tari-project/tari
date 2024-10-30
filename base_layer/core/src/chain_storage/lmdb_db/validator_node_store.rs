@@ -33,7 +33,6 @@ use crate::chain_storage::{
     ValidatorNodeRegistrationInfo,
 };
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use serde::de::Unexpected::Option;
 use tari_common_types::epoch::VnEpoch;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
@@ -132,20 +131,34 @@ impl<'a, Txn: Deref<Target=ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> {
         Ok(cursor)
     }
 
-    pub fn get_vn_set_until_epoch(
+    /// Returns validator nodes until a given epoch.
+    pub fn get_vn_count_until_epoch(
         &self,
         epoch: VnEpoch,
         sidechain_id: Option<PublicKey>,
-    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+    ) -> Result<u64, ChainStorageError> {
         let mut cursor = self.db_read_cursor()?;
-        let mut result = vec![];
+        let mut result = 0;
         while let Ok(Some((_, value))) = cursor.next::<ValidatorNodeStoreKey>() {
             if value.sidechain_id == sidechain_id && value.start_epoch <= epoch {
-                result.push(ValidatorNodeRegistrationInfo {
-                    public_key: value.public_key,
-                    sidechain_id: value.sidechain_id,
-                    shard_key: [],
-                });
+                result += 1;
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Returns validator nodes in a given epoch.
+    pub fn get_vn_count_in_epoch(
+        &self,
+        epoch: VnEpoch,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<u64, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        let mut result = 0;
+        while let Ok(Some((_, value))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if value.sidechain_id == sidechain_id && value.start_epoch == epoch {
+                result += 1;
             }
         }
 

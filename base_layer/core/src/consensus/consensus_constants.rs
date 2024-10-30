@@ -121,7 +121,7 @@ pub struct ConsensusConstants {
     vn_registration_lock_height: u64,
     /// The period after which the VNs will be reshuffled.
     vn_registration_shuffle_interval: VnEpoch,
-    /// Maximum number of validator nodes activated initially 
+    /// Maximum number of validator nodes activated initially
     /// (in the first epoch when we do not have any vns yet).
     vn_registration_max_vns_initial_epoch: u64,
     /// Maximum number of validator nodes activated in an epoch.
@@ -365,6 +365,14 @@ impl ConsensusConstants {
     /// Returns the block height of the start of the given epoch
     pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
         epoch.as_u64() * self.vn_epoch_length
+    }
+
+    pub fn vn_registration_max_vns_initial_epoch(&self) -> u64 {
+        self.vn_registration_max_vns_initial_epoch
+    }
+
+    pub fn vn_registration_max_vns_per_epoch(&self) -> u64 {
+        self.vn_registration_max_vns_per_epoch
     }
 
     pub fn epoch_length(&self) -> u64 {

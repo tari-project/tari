@@ -1379,10 +1379,7 @@ impl LMDBDatabase {
         let current_epoch = constants.block_height_to_epoch(header.height);
 
         let prev_shard_key = store.get_shard_key(
-            current_epoch
-                .as_u64()
-                .saturating_sub(constants.validator_node_validity_period_epochs().as_u64()) *
-                constants.epoch_length(),
+            0,
             current_epoch.as_u64() * constants.epoch_length(),
             vn_reg.public_key(),
         )?;
@@ -1392,10 +1389,19 @@ impl LMDBDatabase {
             constants.validator_node_registration_shuffle_interval(),
             &header.prev_hash,
         );
-        
-        let next_epoch = current_epoch + VnEpoch(1);
-        // TODO: looking for next available epoch
-        store.get_vn_set()
+
+        let mut next_epoch = current_epoch + VnEpoch(1);
+
+        // looking for next available epoch
+        let current_vn_count = store.get_vn_count_until_epoch(current_epoch, vn_reg.sidechain_id().cloned())?;
+        let mut vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
+        if (current_vn_count == 0 && vn_count >= constants.vn_registration_max_vns_initial_epoch()) ||
+            (current_vn_count > 0 && vn_count > constants.vn_registration_max_vns_per_epoch()) {
+            while vn_count > constants.vn_registration_max_vns_per_epoch() {
+                next_epoch += VnEpoch(1);
+                vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
+            }
+        }
 
         let validator_node = ValidatorNodeEntry {
             shard_key,
@@ -2481,12 +2487,10 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Get the current epoch for the height
         let end_epoch = constants.block_height_to_epoch(height);
-        // Subtract the registration validaty period to get the start epoch
-        let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
         // Convert these back to height as validators regs are indexed by height
-        let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = end_epoch.as_u64() * constants.epoch_length();
-        let nodes = vn_store.get_vn_set(start_height, end_height)?;
+        // TODO: replace with a call without start height
+        let nodes = vn_store.get_vn_set(0, end_height)?;
         Ok(nodes)
     }
 
@@ -2510,10 +2514,8 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Get the epoch height boundaries for our query
         let current_epoch = constants.block_height_to_epoch(height);
-        let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
-        let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = current_epoch.as_u64() * constants.epoch_length();
-        let maybe_shard_id = store.get_shard_key(start_height, end_height, &public_key)?;
+        let maybe_shard_id = store.get_shard_key(0, end_height, &public_key)?;
         Ok(maybe_shard_id)
     }
 
