@@ -402,8 +402,6 @@ pub async fn init_wallet(
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
-    // fs::create_dir_all(&config.p2p.datastore_path)
-    //     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -418,22 +416,12 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    // let node_addresses = if config.p2p.public_addresses.is_empty() {
-    //     match wallet_db.get_node_address()? {
-    //         Some(addr) => MultiaddrList::from(vec![addr]),
-    //         None => MultiaddrList::default(),
-    //     }
-    // } else {
-    //     config.p2p.public_addresses.clone()
-    // };
-
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
 
     let key = derive_comms_secret_key(&master_seed)?;
     let keypair = identity::Keypair::from(identity::sr25519::Keypair::from(identity::sr25519::SecretKey::from(
         key,
     )));
-    // let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
     let consensus_manager = ConsensusManager::builder(config.network)
         .build()
@@ -515,47 +503,6 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     );
     Some(SeedPeer::new(public_key, addresses))
 }
-
-// fn setup_identity_from_db<D: WalletBackend + 'static>(
-//     wallet_db: &WalletDatabase<D>,
-//     master_seed: &CipherSeed,
-//     node_addresses: Vec<Multiaddr>,
-// ) -> Result<Arc<NodeIdentity>, ExitError> {
-//     let node_features = wallet_db
-//         .get_node_features()?
-//         .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
-//
-//     let identity_sig = wallet_db.get_comms_identity_signature()?;
-//
-//     let comms_secret_key = derive_comms_secret_key(master_seed)?;
-//
-//     // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
-//     // to None
-//     let identity_sig = identity_sig.filter(|sig| {
-//         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-//         sig.is_valid(&comms_public_key, node_features, &node_addresses)
-//     });
-//
-//     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-//     let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-//         comms_secret_key,
-//         node_addresses,
-//         node_features,
-//         identity_sig,
-//     ));
-//     if !node_identity.is_signed() {
-//         node_identity.sign();
-//         // unreachable panic: signed above
-//         let sig = node_identity
-//             .identity_signature_read()
-//             .as_ref()
-//             .expect("unreachable panic")
-//             .clone();
-//         wallet_db.set_comms_identity_signature(sig)?;
-//     }
-//
-//     Ok(node_identity)
-// }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
 pub async fn start_wallet(

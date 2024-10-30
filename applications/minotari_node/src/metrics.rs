@@ -56,7 +56,6 @@ fn create_metrics_registry(application: ApplicationType, identity: &identity::Ke
     let mut labels = HashMap::with_capacity(4);
     labels.insert("app".to_string(), application.as_config_str().to_string());
     labels.insert("node_id".to_string(), identity.public().to_peer_id().to_string());
-    // labels.insert("node_public_key".to_string(), identity.public().to_string());
     Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }
 
