@@ -131,6 +131,10 @@ pub enum NetworkingRequest {
         peer_id: PeerId,
         reply: Reply<()>,
     },
+    SetPeerAllowList {
+        peers: HashSet<PeerId>,
+        reply: Reply<()>,
+    },
     RemovePeerFromAllowList {
         peer_id: PeerId,
         reply: Reply<bool>,
@@ -389,6 +393,16 @@ impl NetworkHandle {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::AddPeerToAllowList { peer_id, reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    /// Sets the peer allow list to the provided list. Previous entries are not retained.
+    pub async fn set_peer_allow_list(&self, peers: HashSet<PeerId>) -> Result<(), NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::SetPeerAllowList { peers, reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?

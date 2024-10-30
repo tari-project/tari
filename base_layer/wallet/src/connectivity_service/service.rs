@@ -292,8 +292,9 @@ impl WalletConnectivityService {
             return;
         };
         loop {
-            let node_id = if let Some(_time) = peer_manager.time_since_last_connection_attempt() {
-                if peer_manager.get_current_peer().node_id == peer_manager.get_next_peer().node_id {
+            let peer_id = if let Some(_time) = peer_manager.time_since_last_connection_attempt() {
+                let next_peer_id = peer_manager.select_next_peer().peer_id();
+                if peer_manager.get_current_peer().peer_id() == next_peer_id {
                     // If we only have one peer in the list, wait a bit before retrying
                     debug!(target: LOG_TARGET,
                         "Retrying after {}s ...",
@@ -301,18 +302,7 @@ impl WalletConnectivityService {
                     );
                     time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                 }
-                // If 'peer_manager.get_next_peer()' is called, 'current_peer' is advanced to the next peer
-                peer_manager.get_current_peer().node_id
-                // TODO
-                // let peer_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
-                //     if time < Duration::from_secs(COOL_OFF_PERIOD) &&
-                //         peer_manager.get_current_peer_id().to_peer_id() ==
-                // peer_manager.get_next_peer_id().to_peer_id()     {
-                //         // If we only have one peer in the list, wait a bit before retrying
-                //         time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
-                //     }
-                //
-                //     peer_manager.get_current_peer_id().to_peer_id()
+                next_peer_id
             } else {
                 peer_manager.get_current_peer_id().to_peer_id()
             };
@@ -327,14 +317,6 @@ impl WalletConnectivityService {
             self.pools.remove(&peer_id);
             match self.try_setup_rpc_pool(peer_id).await {
                 Ok(true) => {
-                    // if self.peer_list_change_detected(&peer_manager) {
-                    //     debug!(
-                    //         target: LOG_TARGET,
-                    //         "The peer list has changed while connecting, aborting connection attempt."
-                    //     );
-                    //     self.set_online_status(OnlineStatus::Offline);
-                    //     break;
-                    // }
                     self.base_node_watch.send(Some(peer_manager.clone()));
                     if let Err(e) = self.notify_pending_requests().await {
                         warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
@@ -351,15 +333,15 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "The peer has changed while connecting. Attempting to connect to new base node."
                     );
-                    self.disconnect_base_node(node_id).await;
+                    self.disconnect_base_node(peer_id).await;
                 },
                 Err(WalletConnectivityError::DialError(DialError::Aborted)) => {
                     debug!(target: LOG_TARGET, "Dial was cancelled.");
-                    self.disconnect_base_node(node_id).await;
+                    self.disconnect_base_node(peer_id).await;
                 },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "{}", e);
-                    self.disconnect_base_node(node_id).await;
+                    self.disconnect_base_node(peer_id).await;
                 },
             }
             if self.peer_list_change_detected(&peer_manager) {
@@ -417,11 +399,11 @@ impl WalletConnectivityService {
         debug!(
             target: LOG_TARGET,
             "Established peer connection to base node '{}'",
-            conn.peer_node_id()
+            peer_id
         );
         self.pools.insert(peer_id, container);
 
-        trace!(target: LOG_TARGET, "Created RPC pools for '{}'", peer_node_id);
+        trace!(target: LOG_TARGET, "Created RPC pools for '{}'", peer_id);
         Ok(true)
     }
 

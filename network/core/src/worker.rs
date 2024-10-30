@@ -452,6 +452,14 @@ where
                 self.allow_list.insert(peer_id);
                 let _ignore = reply.send(Ok(()));
             },
+            NetworkingRequest::SetPeerAllowList { peers, reply } => {
+                for peer_id in &peers {
+                    self.ban_list.remove(peer_id);
+                }
+                shrink_hashmap_if_required(&mut self.ban_list);
+                self.allow_list = peers;
+                let _ignore = reply.send(Ok(()));
+            },
             NetworkingRequest::RemovePeerFromAllowList { peer_id, reply } => {
                 let _ignore = reply.send(Ok(self.allow_list.remove(&peer_id)));
             },

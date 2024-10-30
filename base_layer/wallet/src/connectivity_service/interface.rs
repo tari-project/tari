@@ -61,7 +61,7 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     /// BaseNodeSyncRpcClient RPC session.
     async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>>;
 
-    async fn disconnect_base_node(&mut self, node_id: NodeId);
+    async fn disconnect_base_node(&mut self, peer_id: PeerId);
 
     fn get_connectivity_status(&mut self) -> OnlineStatus;
 

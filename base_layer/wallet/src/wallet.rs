@@ -363,7 +363,9 @@ where
             backup_peers.swap_remove(pos);
         }
         peer_list.extend(backup_peers);
-        self.network.set_peer_allow_list(peer_list).await?;
+        self.network
+            .set_peer_allow_list(peer_list.iter().map(|p| p.peer_id()).collect())
+            .await?;
         self.wallet_connectivity
             .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
 

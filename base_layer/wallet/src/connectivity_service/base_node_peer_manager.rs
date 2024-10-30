@@ -78,10 +78,10 @@ impl BaseNodePeerManager {
             .unwrap_or(&self.peer_list[0])
     }
 
-    /// Get the next peer in the list
-    pub fn get_next_peer_id(&mut self) -> PeerId {
+    /// Changes to the next peer in the list, returning that peer
+    pub fn select_next_peer(&mut self) -> &Peer {
         self.current_peer_index = (self.current_peer_index + 1) % self.peer_list.len();
-        self.peer_list[self.current_peer_index].peer_id()
+        &self.peer_list[self.current_peer_index]
     }
 
     /// Get the base node peer manager state

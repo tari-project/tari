@@ -116,7 +116,7 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         borrow.as_ref().cloned()
     }
 
-    async fn disconnect_base_node(&mut self, _node_id: NodeId) {
+    async fn disconnect_base_node(&mut self, _node_id: PeerId) {
         self.send_shutdown();
     }
 

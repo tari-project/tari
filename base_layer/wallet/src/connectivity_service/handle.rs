@@ -34,7 +34,7 @@ use crate::{
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
     ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
-    DisconnectBaseNode(NodeId),
+    DisconnectBaseNode(PeerId),
 }
 
 #[derive(Clone)]
@@ -119,10 +119,10 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
         reply_rx.await.ok()
     }
 
-    async fn disconnect_base_node(&mut self, node_id: NodeId) {
+    async fn disconnect_base_node(&mut self, peer_id: PeerId) {
         let _unused = self
             .sender
-            .send(WalletConnectivityRequest::DisconnectBaseNode(node_id))
+            .send(WalletConnectivityRequest::DisconnectBaseNode(peer_id))
             .await;
     }
 
