@@ -9,7 +9,7 @@ use hickory_client::{
 };
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tari_core::base_node::LocalNodeCommsInterface;
+use tari_core::{base_node::LocalNodeCommsInterface, blocks::ChainHeader};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_utilities::hex::Hex;
 use tokio::{net::TcpStream as TokioTcpStream, time};
@@ -49,7 +49,7 @@ impl CheckpointService {
         let mut interval = time::interval(self.config.check_interval.unwrap());
         loop {
             info!(target: LOG_TARGET, "Checking Tari Pulse");
-            let checkpoints = match self.fetch_checkpoints().await {
+            let dns_checkpoints = match self.fetch_checkpoints().await {
                 Ok(checkpoints) => checkpoints,
                 Err(e) => {
                     error!(target: LOG_TARGET, "Error fetching checkpoints: {:?}", e);
@@ -57,9 +57,28 @@ impl CheckpointService {
                     continue;
                 },
             };
-            info!(target: LOG_TARGET, "Fetched {} checkpoints", checkpoints.len());
+            info!(target: LOG_TARGET, "Fetched {} checkpoints from dns", dns_checkpoints.len());
 
-            for (height, hash) in checkpoints {
+            let heights = dns_checkpoints.iter().map(|(height, _)| *height).collect();
+            let local_checkpoints = match self.get_node_blocks(&mut base_node_service, heights).await {
+                Ok(checkpoints) => checkpoints,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Error fetching local checkpoints: {:?}", e);
+                    interval.tick().await;
+                    continue;
+                },
+            };
+            info!(target: LOG_TARGET, "Fetched {} checkpoints from local node", local_checkpoints.len());
+            local_checkpoints.iter().for_each(|header| {
+                info!(
+                    target: LOG_TARGET,
+                    "Local checkpoint: {} - {}",
+                    header.height(),
+                    header.hash().to_hex()
+                );
+            });
+
+            for (height, hash) in dns_checkpoints {
                 info!(target: LOG_TARGET, "Checking checkpoint: {} - {}", height, hash);
                 let _ = base_node_service
                     .get_header(height)
@@ -100,6 +119,31 @@ impl CheckpointService {
         }
     }
 
+    async fn get_node_blocks(
+        &mut self,
+        base_node_service: &mut LocalNodeCommsInterface,
+        heights: Vec<u64>,
+    ) -> Result<Vec<ChainHeader>, anyhow::Error> {
+        let historical_blocks = future::try_join_all(heights.into_iter().map(|height| {
+            let mut node_clone = base_node_service.clone();
+            async move {
+                node_clone.get_header(height).await.map(|header| {
+                    let header = header.expect("Header not found");
+                    info!(
+                        target: LOG_TARGET,
+                        "Fetched header from local node: {} - {}",
+                        header.height(),
+                        header.hash().to_hex()
+                    );
+                    header
+                })
+            }
+        }))
+        .await?;
+
+        Ok(historical_blocks)
+    }
+
     pub async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
         debug!(target: LOG_TARGET, "Fetching checkpoints");
         let mut client = self.get_dns_client().await?;
@@ -136,11 +180,8 @@ impl ServiceInitializer for CheckpointServiceInitializer {
         let shutdown_signal = context.get_shutdown_signal();
 
         context.spawn_when_ready(move |handles| async move {
-            debug!(target: LOG_TARGET, "Spawning Tari Pulse Service");
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-            debug!(target: LOG_TARGET, "before CheckpointService::new");
             let mut checkpoint_service = CheckpointService::new().await.unwrap();
-            debug!(target: LOG_TARGET, "before Tari Pulse main loop");
             let tari_pulse_service = checkpoint_service.run(base_node_service);
             futures::pin_mut!(tari_pulse_service);
             future::select(tari_pulse_service, shutdown_signal).await;
