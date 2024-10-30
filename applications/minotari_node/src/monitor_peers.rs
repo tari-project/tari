@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use log::*;
 use tari_comms::{connection_manager::ConnectionDirection, peer_manager::NodeId, CommsNode, Minimized, PeerConnection};
-use tari_p2p::services::liveness::{error::LivenessError, LivenessEvent, LivenessHandle};
+use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle};
 use tari_shutdown::Shutdown;
 use tokio::{
     sync::broadcast::error::RecvError,
@@ -34,6 +34,8 @@ use tokio::{
 const LOG_TARGET: &str = "minotari::base_node::monitor_peers";
 
 use std::collections::VecDeque;
+
+use futures::pin_mut;
 
 pub struct PeerLiveness<T, const MAX_SIZE: usize> {
     vec: VecDeque<T>,
@@ -64,6 +66,12 @@ struct Stats {
     loop_count: u64,
 }
 
+struct PeerPingPong {
+    expected_nonce: u64,
+    received_nonce: Option<u64>,
+    node_id: NodeId,
+}
+
 /// Monitor the liveness of outbound peer connections and disconnect those that do not respond to pings consecutively.
 /// The intent of the interval timer is to be significantly longer than the rate at which metadata is requested from
 /// peers.
@@ -73,14 +81,17 @@ pub async fn monitor_peers(
     mut liveness_handle: LivenessHandle,
     shutdown: Shutdown,
     metadata_auto_ping_interval: Duration,
-) -> Result<(), LivenessError> {
+) {
     let mut interval_timer = time::interval(metadata_auto_ping_interval * 10);
     let mut shutdown_signal = shutdown.to_signal();
+    let liveness_events = liveness_handle.get_event_stream();
+    pin_mut!(liveness_events);
 
     let mut peer_liveness_stats: HashMap<NodeId, PeerLiveness<Stats, 7>> = HashMap::new();
 
-    let mut loop_count = 1u64;
+    let mut loop_count = 0u64;
     loop {
+        loop_count += 1;
         tokio::select! {
             biased;
             _ = shutdown_signal.wait() => {
@@ -88,17 +99,26 @@ pub async fn monitor_peers(
             }
 
             _ = interval_timer.tick() => {
-                let active_connections = comms.connectivity().get_active_connections().await?;
+                trace!(target: LOG_TARGET, "Starting monitor peers round (iter {})", loop_count);
+                let active_connections = match comms.connectivity().get_active_connections().await {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get active connections ({})", e);
+                        continue;
+                    },
+                };
                 let mut active_peer_connections = active_connections
                     .iter()
                     .filter(|p|p.peer_features().is_node() && p.direction() == ConnectionDirection::Outbound)
+                    .cloned()
                     .collect::<Vec<_>>();
                 if active_peer_connections.is_empty() {
+                    trace!(target: LOG_TARGET, "No active connections found");
                     continue;
                 }
                 let active_peer_node_ids = active_peer_connections
                     .iter()
-                    .map(|&p|p.peer_node_id().clone())
+                    .map(|p|p.peer_node_id().clone())
                     .collect::<Vec<_>>();
 
                 let known_peer_connections = peer_liveness_stats.keys().cloned().collect::<Vec<_>>();
@@ -119,15 +139,26 @@ pub async fn monitor_peers(
                     }
                 }
 
-                let mut liveness_events = liveness_handle.get_event_stream();
-                let mut expected_nonces = liveness_handle.send_pings(
-                    active_peer_node_ids,
-                    Duration::from_millis(100)
-                ).await?;
-                expected_nonces.sort();
+                let mut peer_ping_pongs = match liveness_handle
+                    .send_pings(active_peer_node_ids.clone(), Duration::from_millis(100))
+                    .await
+                {
+                    Ok(nonces) => active_peer_node_ids
+                        .iter()
+                        .zip(nonces.iter())
+                        .map(|(node_id, &nonce)| PeerPingPong {
+                            expected_nonce: nonce,
+                            received_nonce: None,
+                            node_id: node_id.clone(),
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to send pings to peers ({})", e);
+                        continue;
+                    },
+                };
 
                 // Only listen for the expected pongs from the peers (ignore any other pongs)
-                let mut received_nonces = Vec::new();
                 let timeout_timer = time::sleep(metadata_auto_ping_interval);
                 tokio::pin!(timeout_timer);
                 loop {
@@ -142,17 +173,16 @@ pub async fn monitor_peers(
                             match event {
                                 Ok(arc_event) => {
                                     if let LivenessEvent::ReceivedPong(pong) = &*arc_event {
-                                        if expected_nonces.contains(&pong.nonce) {
-                                            received_nonces.push(pong.nonce);
-                                            received_nonces.sort();
+                                        if let Some(ping_pong) = peer_ping_pongs.iter_mut().find(|p| p.expected_nonce == pong.nonce) {
+                                            ping_pong.received_nonce = Some(pong.nonce);
                                         }
-                                        if received_nonces == expected_nonces {
+                                        if peer_ping_pongs.iter().all(|p| p.received_nonce.is_some()) {
                                             break;
                                         }
                                     }
                                 },
                                 Err(RecvError::Closed) => {
-                                    return Ok(());
+                                    return;
                                 },
                                 Err(ref e) => {
                                     debug!(
@@ -165,6 +195,13 @@ pub async fn monitor_peers(
                         },
 
                         _ = &mut timeout_timer => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Timed out waiting for pongs, received {} of {} (iter  {})",
+                                peer_ping_pongs.iter().filter(|p| p.received_nonce.is_some()).count(),
+                                peer_ping_pongs.len(),
+                                loop_count
+                            );
                             break;
                         },
                     }
@@ -172,87 +209,94 @@ pub async fn monitor_peers(
 
                 // Compare nonces and close connections for peers that did not respond multiple times
                 update_stats_and_cull_unresponsive_connections(
-                    &expected_nonces,
-                    &received_nonces,
+                    &peer_ping_pongs,
                     &mut active_peer_connections,
                     &mut peer_liveness_stats,
                     loop_count
-                ).await?;
+                ).await;
             },
         }
-        loop_count += 1;
     }
-
-    Ok(())
 }
 
 async fn update_stats_and_cull_unresponsive_connections(
-    expected_nonces: &[u64],
-    received_nonces: &[u64],
-    active_peer_connections: &mut [&PeerConnection],
+    peer_ping_pongs: &[PeerPingPong],
+    active_peer_connections: &mut [PeerConnection],
     peer_liveness_stats: &mut HashMap<NodeId, PeerLiveness<Stats, 7>>,
     loop_count: u64,
-) -> Result<(), LivenessError> {
-    if received_nonces != expected_nonces {
+) {
+    let received_nonces_count = peer_ping_pongs.iter().filter(|p| p.received_nonce.is_some()).count();
+    if received_nonces_count != peer_ping_pongs.len() {
         trace!(
             target: LOG_TARGET,
             "Found {} of {} outbound base node peer connections that did not respond to pings",
-            expected_nonces.len().saturating_sub(received_nonces.len()), active_peer_connections.len()
+            peer_ping_pongs.len().saturating_sub(received_nonces_count), active_peer_connections.len()
         );
     }
-    for (i, &mut peer) in active_peer_connections.iter_mut().enumerate() {
-        if received_nonces.contains(&expected_nonces[i]) {
-            peer_liveness_stats
-                .entry(peer.peer_node_id().clone())
-                .and_modify(|item| {
-                    item.push_pop(Stats {
-                        connected: true,
-                        responsive: true,
-                        loop_count,
-                    })
-                });
-        } else {
-            peer_liveness_stats
-                .entry(peer.peer_node_id().clone())
-                .and_modify(|item| {
-                    item.push_pop(Stats {
-                        connected: true,
-                        responsive: false,
-                        loop_count,
-                    })
-                });
-            if let Some(stats) = peer_liveness_stats.get(peer.peer_node_id()) {
-                // Evaluate the last 3 entries in the stats
-                if stats
-                    .iter()
-                    .rev()
-                    .take(3)
-                    .filter(|s| s.connected && !s.responsive)
-                    .count() >=
-                    3
-                {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Disconnecting {} as the peer is no longer responsive - \
-                        (iter, conn, resp) {:?}",
-                        peer.peer_node_id(),
-                        stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
-                    );
-                    peer.clone().disconnect(Minimized::No).await?;
-                    peer_liveness_stats.remove(peer.peer_node_id());
-                } else {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Peer {} stats - (iter, conn, resp) {:?}",
-                        peer.peer_node_id(),
-                        stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
-                    );
-                }
+
+    let mut disconnect_peers = Vec::new();
+    for &mut ref peer in active_peer_connections.iter_mut() {
+        if let Some(ping_pong) = peer_ping_pongs.iter().find(|p| &p.node_id == peer.peer_node_id()) {
+            if ping_pong.received_nonce.is_some() {
+                peer_liveness_stats
+                    .entry(peer.peer_node_id().clone())
+                    .and_modify(|item| {
+                        item.push_pop(Stats {
+                            connected: true,
+                            responsive: true,
+                            loop_count,
+                        })
+                    });
             } else {
-                warn!(target: LOG_TARGET, "Entry {} not in stats (check 3)!", peer.peer_node_id());
+                peer_liveness_stats
+                    .entry(peer.peer_node_id().clone())
+                    .and_modify(|item| {
+                        item.push_pop(Stats {
+                            connected: true,
+                            responsive: false,
+                            loop_count,
+                        })
+                    });
+                if let Some(stats) = peer_liveness_stats.get(peer.peer_node_id()) {
+                    // Evaluate the last 3 entries in the stats
+                    if stats
+                        .iter()
+                        .rev()
+                        .take(3)
+                        .filter(|s| s.connected && !s.responsive)
+                        .count() >=
+                        3
+                    {
+                        disconnect_peers.push(peer.clone());
+                    } else {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Peer {} stats - (iter, conn, resp) {:?}",
+                            peer.peer_node_id(),
+                            stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
+                        );
+                    }
+                }
             }
         }
     }
 
-    Ok(())
+    for peer in disconnect_peers {
+        if let Some(stats) = peer_liveness_stats.get(peer.peer_node_id()) {
+            debug!(
+                target: LOG_TARGET,
+                "Disconnecting {} as the peer is no longer responsive - (iter, conn, resp) {:?}",
+                peer.peer_node_id(),
+                stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
+            );
+            if let Err(e) = peer.clone().disconnect(Minimized::No).await {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error while attempting to disconnect peer {}: {}", peer.peer_node_id(), e
+                );
+            }
+            peer_liveness_stats.remove(peer.peer_node_id());
+            trace!(target: LOG_TARGET, "Disconnected {} (iter, {})", peer.peer_node_id(), loop_count);
+        }
+    }
 }
