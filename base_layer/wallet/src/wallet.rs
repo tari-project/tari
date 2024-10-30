@@ -358,12 +358,12 @@ where
             peer.add_address(address);
             self.network.add_peer(peer.clone()).await?;
         }
-        self.network.add_peer_to_allow_list(peer_id).await?;
         let mut peer_list = vec![peer];
         if let Some(pos) = backup_peers.iter().position(|p| p.peer_id() == peer_id) {
             backup_peers.swap_remove(pos);
         }
         peer_list.extend(backup_peers);
+        self.network.set_peer_allow_list(peer_list).await?;
         self.wallet_connectivity
             .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
 

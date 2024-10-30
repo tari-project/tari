@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+## [1.8.0-rc.0](https://github.com/tari-project/tari/compare/v1.7.0-rc.4...v1.8.0-rc.0) (2024-10-28)
+
+
+### Features
+
+* close rpc connections when not in use - without close on dial requests ([#6649](https://github.com/tari-project/tari/issues/6649)) ([20e70fa](https://github.com/tari-project/tari/commit/20e70fa25204dfb0e5dff1e35e716bed2de2add0))
+
+## [1.7.0-rc.4](https://github.com/tari-project/tari/compare/v1.7.0-rc.3...v1.7.0-rc.4) (2024-10-25)
+
+### Features
+
+* increase coinbase extra field max length
+
+## [1.7.0-rc.3](https://github.com/tari-project/tari/compare/v1.7.0-rc.2...v1.7.0-rc.3) (2024-10-18)
+
+
+### Features
+
+* add proxy monerod resiliency ([#6637](https://github.com/tari-project/tari/issues/6637)) ([c51ba7a](https://github.com/tari-project/tari/commit/c51ba7adf4ab7b7c4af2555bb6513e35919120d3))
+* change ffi wallet recovery interface ([#6636](https://github.com/tari-project/tari/issues/6636)) ([c6cbbc1](https://github.com/tari-project/tari/commit/c6cbbc1fa1352557ba2700bad0cd4aa91d493498))
+* 
 ## [1.7.0-rc.2](https://github.com/tari-project/tari/compare/v1.7.0-rc.1...v1.7.0-rc.2) (2024-10-15)
 
 

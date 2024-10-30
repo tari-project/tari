@@ -874,7 +874,7 @@ async fn test_block_sync_body_validator() {
     ).await;
 
     // Coinbase extra field is too large
-    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(65).collect::<Vec<_>>()).unwrap();
+    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(257).collect::<Vec<_>>()).unwrap();
     let (template, _) = chain_block_with_new_coinbase(
         &genesis,
         vec![tx01.clone(), tx02.clone()],
@@ -895,7 +895,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::TransactionError(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize{len, max }) if
-            len == 65 && max == max_len
+            len == 257 && max == max_len
         ),
         "{}",
         err

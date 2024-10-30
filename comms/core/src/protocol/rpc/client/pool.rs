@@ -90,21 +90,54 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
     }
 
     pub async fn get_least_used_or_connect(&mut self) -> Result<RpcClientLease<T>, RpcClientPoolError> {
-        loop {
+        {
             self.check_peer_connection()?;
+            let peer_node_id = self.connection.peer_node_id().clone();
 
+            let clients_capacity = self.clients.capacity();
+            let protocol_id = self.client_config.protocol_id.clone();
             let client = match self.get_next_lease() {
-                Some(c) => c,
+                Some(c) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Used existing RPC client session for connection '{}'",
+                        self.connection.peer_node_id(),
+                    );
+                    c
+                },
                 None => match self.add_new_client_session().await {
-                    Ok(c) => c,
+                    Ok((c, len)) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Added new RPC client session for connection '{}' ({} of {}, protocol: {:?})",
+                            peer_node_id, len, clients_capacity, protocol_id,
+                        );
+                        c
+                    },
                     // This is an edge case where the remote node does not have any further sessions available. This is
                     // gracefully handled by returning one of the existing used sessions.
-                    Err(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val)) => self
-                        .get_least_used()
-                        .ok_or(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val))?,
-                    Err(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val)) => self
-                        .get_least_used()
-                        .ok_or(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val))?,
+                    Err(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val)) => {
+                        let c = self
+                            .get_least_used()
+                            .ok_or(RpcClientPoolError::NoMoreRemoteServerRpcSessions(val.clone()))?;
+                        trace!(
+                            target: LOG_TARGET,
+                            "Used existing RPC client session for connection '{}', protocol: {:?} ({})",
+                            peer_node_id, protocol_id, RpcClientPoolError::NoMoreRemoteServerRpcSessions(val),
+                        );
+                        c
+                    },
+                    Err(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val)) => {
+                        let c = self
+                            .get_least_used()
+                            .ok_or(RpcClientPoolError::NoMoreRemoteClientRpcSessions(val.clone()))?;
+                        trace!(
+                            target: LOG_TARGET,
+                            "used existing RPC client session for connection '{}', protocol: {:?} ({})",
+                            peer_node_id, protocol_id, RpcClientPoolError::NoMoreRemoteClientRpcSessions(val),
+                        );
+                        c
+                    },
                     Err(err) => {
                         return Err(err);
                     },
@@ -112,12 +145,17 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
             };
 
             if !client.is_connected() {
+                trace!(
+                    target: LOG_TARGET,
+                    "RPC client for connection '{}' is not connected, pruning",
+                    peer_node_id
+                );
                 self.prune();
-                continue;
+                return Err(RpcClientPoolError::CouldNotObtainRpcConnection);
             }
 
             // Clone is what actually takes the lease out (increments the Arc)
-            return Ok(client.clone());
+            Ok(client.clone())
         }
     }
 
@@ -184,7 +222,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
         self.clients.len() == self.clients.capacity()
     }
 
-    async fn add_new_client_session(&mut self) -> Result<&RpcClientLease<T>, RpcClientPoolError> {
+    async fn add_new_client_session(&mut self) -> Result<(&RpcClientLease<T>, usize), RpcClientPoolError> {
         debug_assert!(!self.is_full(), "add_new_client called when pool is full");
         let client = self
             .connection
@@ -192,7 +230,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
             .await?;
         let client = RpcClientLease::new(client);
         self.clients.push(client);
-        Ok(self.clients.last().unwrap())
+        Ok((self.clients.last().unwrap(), self.clients.len()))
     }
 
     fn prune(&mut self) {
@@ -204,7 +242,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
             }
             vec
         });
-        assert_eq!(self.clients.capacity(), cap);
+        debug_assert_eq!(self.clients.capacity(), cap);
         debug!(
             target: LOG_TARGET,
             "Pruned {} client(s) (total connections: {})",
@@ -267,6 +305,8 @@ pub enum RpcClientPoolError {
     NoMoreRemoteClientRpcSessions(String),
     #[error("Failed to create client connection: {0}")]
     FailedToConnect(RpcError),
+    #[error("Could not obtain RPC connection")]
+    CouldNotObtainRpcConnection,
 }
 
 impl From<RpcError> for RpcClientPoolError {

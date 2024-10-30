@@ -23,8 +23,8 @@ The recommended running versions of each network are:
 | Network   | Version        |
 |-----------|----------------|
 | Stagenet  | 1.0.0-alpha.0a |
-| Nextnet   | 1.7.0-rc.2     |
-| Esmeralda | 1.7.0-pre.2    |
+| Nextnet   | 1.8.0-rc.0     |
+| Esmeralda | 1.8.0-pre.0    |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -1017,4 +1017,4 @@ to generate the documentation. The generated html sits in `target/doc/`. Alterna
 
 ## Conversation channels
 
-We're generally on [Discord](https://discord.gg/q3Sfzb8S2V).
+We're generally on [Discord](https://discord.gg/tari).
