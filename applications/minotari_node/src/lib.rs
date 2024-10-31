@@ -28,7 +28,6 @@ mod table;
 
 mod bootstrap;
 mod builder;
-mod checkpoints;
 pub mod cli;
 mod commands;
 pub mod config;
@@ -37,6 +36,7 @@ mod grpc_method;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
+mod tari_pulse;
 mod utils;
 use std::{process, sync::Arc};
 
