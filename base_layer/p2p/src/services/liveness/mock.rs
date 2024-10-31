@@ -127,7 +127,7 @@ impl LivenessMock {
             SendPing(_) => {
                 reply.send(Ok(LivenessResponse::Ok(Some(vec![0])))).unwrap();
             },
-            SendPings(node_ids, _delay_between_pings) => {
+            SendPings(node_ids) => {
                 let nonces: Vec<u64> = (0..node_ids.len() as u64).collect();
                 reply.send(Ok(LivenessResponse::Ok(Some(nonces)))).unwrap();
             },

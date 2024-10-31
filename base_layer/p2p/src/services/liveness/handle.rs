@@ -36,7 +36,7 @@ pub enum LivenessRequest {
     /// Send a ping to the given node ID
     SendPing(NodeId),
     /// Ping a list of peers
-    SendPings(Vec<NodeId>, Duration),
+    SendPings(Vec<NodeId>),
     /// Retrieve the total number of pings received
     GetPingCount,
     /// Retrieve the total number of pongs received
@@ -135,16 +135,8 @@ impl LivenessHandle {
     }
 
     /// Send pings to a list of peers
-    pub async fn send_pings(
-        &mut self,
-        node_ids: Vec<NodeId>,
-        delay_between_pings: Duration,
-    ) -> Result<Vec<u64>, LivenessError> {
-        match self
-            .handle
-            .call(LivenessRequest::SendPings(node_ids, delay_between_pings))
-            .await??
-        {
+    pub async fn send_pings(&mut self, node_ids: Vec<NodeId>) -> Result<Vec<u64>, LivenessError> {
+        match self.handle.call(LivenessRequest::SendPings(node_ids)).await?? {
             LivenessResponse::Ok(Some(nonces)) => Ok(nonces),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }

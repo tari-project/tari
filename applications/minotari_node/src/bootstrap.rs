@@ -59,7 +59,10 @@ use tari_p2p::{
     initialization,
     initialization::P2pInitializer,
     peer_seeds::SeedPeer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    services::{
+        liveness::{config::LivenessConfig, LivenessInitializer},
+        monitor_peers::MonitorPeersInitializer,
+    },
     P2pConfig,
     TransportType,
 };
@@ -154,6 +157,9 @@ where B: BlockchainBackend + 'static
                     ..Default::default()
                 },
                 peer_message_subscriptions,
+            ))
+            .add_initializer(MonitorPeersInitializer::new(
+                base_node_config.metadata_auto_ping_interval,
             ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
