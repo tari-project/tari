@@ -65,6 +65,8 @@ pub enum NetworkError {
     MessagingDisabled,
     #[error("Failed to add peer: {details}")]
     FailedToAddPeer { details: String },
+    #[error("Refusing to dial peer {peer_id} because it is banned")]
+    RefuseDialPeerBanned { peer_id: PeerId },
 }
 
 impl From<oneshot::error::RecvError> for NetworkError {

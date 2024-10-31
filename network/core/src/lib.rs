@@ -26,6 +26,7 @@ pub use autonat::*;
 pub use config::*;
 pub use connection::*;
 pub use event::*;
+pub use global_ip::*;
 pub use gossip::*;
 pub use handle::*;
 pub use message::*;

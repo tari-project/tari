@@ -104,6 +104,13 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
 
+  # An appender named "fail2ban" that writes to a file with a custom pattern encoder
+  fail2ban:
+    kind: file
+    path: "{{log_dir}}/log/base_node/fail2ban.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+
 # Set the default logging level to "info"
 root:
   level: warn
@@ -195,3 +202,9 @@ loggers:
     level: warn
     appenders:
       - message_logging
+  # fail2ban logs
+  fail2ban:
+    level: info
+    appenders:
+      - fail2ban
+    additive: false

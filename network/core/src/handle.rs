@@ -68,7 +68,7 @@ pub(super) type Reply<T> = oneshot::Sender<Result<T, NetworkError>>;
 pub enum NetworkingRequest {
     DialPeer {
         dial_opts: DialOpts,
-        reply_tx: Reply<DialWaiter<()>>,
+        reply: Reply<DialWaiter<()>>,
     },
     DisconnectPeer {
         peer_id: PeerId,
@@ -77,7 +77,7 @@ pub enum NetworkingRequest {
     PublishGossip {
         topic: IdentTopic,
         message: Vec<u8>,
-        reply_tx: Reply<()>,
+        reply: Reply<()>,
     },
     SubscribeTopic {
         topic: IdentTopic,
@@ -86,16 +86,16 @@ pub enum NetworkingRequest {
     },
     UnsubscribeTopic {
         topic: IdentTopic,
-        reply_tx: Reply<()>,
+        reply: Reply<()>,
     },
     IsSubscribedTopic {
         topic: IdentTopic,
-        reply_tx: Reply<bool>,
+        reply: Reply<bool>,
     },
     OpenSubstream {
         peer_id: PeerId,
         protocol_id: StreamProtocol,
-        reply_tx: Reply<NegotiatedSubstream<Substream>>,
+        reply: Reply<NegotiatedSubstream<Substream>>,
     },
     AddProtocolNotifier {
         protocols: HashSet<StreamProtocol>,
@@ -106,13 +106,13 @@ pub enum NetworkingRequest {
         limit: Option<usize>,
         randomize: bool,
         exclude_peers: HashSet<PeerId>,
-        reply_tx: Reply<Vec<Connection>>,
+        reply: Reply<Vec<Connection>>,
     },
     GetAveragePeerLatency {
         reply: Reply<AveragePeerLatency>,
     },
     GetLocalPeerInfo {
-        reply_tx: Reply<PeerInfo>,
+        reply: Reply<PeerInfo>,
     },
     SetWantPeers(HashSet<PeerId>),
     AddPeer {
@@ -206,7 +206,7 @@ impl NetworkHandle {
         self.tx_request
             .send(NetworkingRequest::IsSubscribedTopic {
                 topic: IdentTopic::new(topic),
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
@@ -235,12 +235,12 @@ impl NetworkHandle {
         peer_id: PeerId,
         protocol_id: &StreamProtocol,
     ) -> Result<NegotiatedSubstream<Substream>, NetworkError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
+        let (reply, reply_rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::OpenSubstream {
                 peer_id,
                 protocol_id: protocol_id.clone(),
-                reply_tx,
+                reply,
             })
             .await?;
         reply_rx
@@ -293,7 +293,7 @@ impl NetworkHandle {
                 limit,
                 randomize,
                 exclude_peers,
-                reply_tx: tx,
+                reply: tx,
             })
             .await?;
         rx.await?
@@ -302,7 +302,7 @@ impl NetworkHandle {
     pub async fn get_local_peer_info(&self) -> Result<PeerInfo, NetworkError> {
         let (tx, rx) = oneshot::channel();
         self.tx_request
-            .send(NetworkingRequest::GetLocalPeerInfo { reply_tx: tx })
+            .send(NetworkingRequest::GetLocalPeerInfo { reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?
@@ -336,7 +336,7 @@ impl NetworkHandle {
             .send(NetworkingRequest::PublishGossip {
                 topic: IdentTopic::new(topic),
                 message,
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
@@ -373,7 +373,7 @@ impl NetworkHandle {
         self.tx_request
             .send(NetworkingRequest::UnsubscribeTopic {
                 topic: IdentTopic::new(topic),
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
@@ -485,7 +485,7 @@ impl NetworkingService for NetworkHandle {
         self.tx_request
             .send(NetworkingRequest::DialPeer {
                 dial_opts: dial_opts.into(),
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;

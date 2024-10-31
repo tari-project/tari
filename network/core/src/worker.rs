@@ -72,6 +72,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "network::service::worker";
+const LOG_TARGET_FAIL2BAN: &str = "fail2ban";
 
 type ReplyTx<T> = oneshot::Sender<Result<T, NetworkError>>;
 
@@ -187,9 +188,7 @@ where
         loop {
             tokio::select! {
                 Some(request) = self.rx_request.recv() => {
-                    if let Err(err) = self.handle_request(request).await {
-                        error!(target: LOG_TARGET, "Error handling request: {err}");
-                    }
+                    self.handle_request(request).await;
                 }
                 Some(request) = self.rx_msg_request.recv() => {
                     self.handle_messaging_request(request).await;
@@ -228,9 +227,17 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn handle_request(&mut self, request: NetworkingRequest) -> Result<(), NetworkError> {
+    async fn handle_request(&mut self, request: NetworkingRequest) {
         match request {
-            NetworkingRequest::DialPeer { dial_opts, reply_tx } => {
+            NetworkingRequest::DialPeer { dial_opts, reply } => {
+                if let Some(peer_id) = dial_opts.get_peer_id() {
+                    if self.is_banned(&peer_id) {
+                        warn!(target: LOG_TARGET, "⚠️ Attempt to dial banned peer {peer_id}. Refusing request.");
+                        let _ignore = reply.send(Err(NetworkError::RefuseDialPeerBanned { peer_id }));
+                        return;
+                    }
+                }
+
                 let (tx_waiter, rx_waiter) = oneshot::channel();
                 let maybe_peer_id = dial_opts.get_peer_id();
                 info!(target: LOG_TARGET, "🤝 Dialing peer {:?}", dial_opts);
@@ -240,69 +247,67 @@ where
                         if let Some(peer_id) = maybe_peer_id {
                             self.pending_dial_requests.entry(peer_id).or_default().push(tx_waiter);
                         }
-                        let _ignore = reply_tx.send(Ok(rx_waiter.into()));
+                        let _ignore = reply.send(Ok(rx_waiter.into()));
                     },
                     Err(err) => {
                         info!(target: LOG_TARGET, "🚨 Failed to dial peer: {}",  err);
-                        let _ignore = reply_tx.send(Err(err.into()));
+                        let _ignore = reply.send(Err(err.into()));
                     },
                 }
             },
             NetworkingRequest::DisconnectPeer { peer_id, reply } => {
                 let _ignore = reply.send(Ok(self.swarm.disconnect_peer_id(peer_id).is_ok()));
             },
-            NetworkingRequest::PublishGossip {
-                topic,
-                message,
-                reply_tx,
-            } => match self.swarm.behaviour_mut().gossipsub.publish(topic, message) {
-                Ok(msg_id) => {
-                    debug!(target: LOG_TARGET, "📢 Published gossipsub message: {}", msg_id);
-                    let _ignore = reply_tx.send(Ok(()));
-                },
-                Err(err) => {
-                    if matches!(err, PublishError::Duplicate) {
-                        debug!(target: LOG_TARGET, "Published duplicate: {}", err);
-                    } else {
-                        error!(target: LOG_TARGET, "🚨 Failed to publish gossip message: {}", err);
-                    }
-                    let _ignore = reply_tx.send(Err(err.into()));
-                },
+            NetworkingRequest::PublishGossip { topic, message, reply } => {
+                match self.swarm.behaviour_mut().gossipsub.publish(topic, message) {
+                    Ok(msg_id) => {
+                        debug!(target: LOG_TARGET, "📢 Published gossipsub message: {}", msg_id);
+                        let _ignore = reply.send(Ok(()));
+                    },
+                    Err(err) => {
+                        if matches!(err, PublishError::Duplicate) {
+                            debug!(target: LOG_TARGET, "Published duplicate: {}", err);
+                        } else {
+                            error!(target: LOG_TARGET, "🚨 Failed to publish gossip message: {}", err);
+                        }
+                        let _ignore = reply.send(Err(err.into()));
+                    },
+                }
             },
             NetworkingRequest::SubscribeTopic { topic, inbound, reply } => {
                 let result = self.gossipsub_subscribe_topic(topic, inbound);
                 let _ignore = reply.send(result.map(|_| self.gossipsub_outbound_tx.clone()));
             },
-            NetworkingRequest::UnsubscribeTopic { topic, reply_tx } => {
+            NetworkingRequest::UnsubscribeTopic { topic, reply } => {
                 self.gossipsub_subscriptions.remove(&topic.hash());
 
                 match self.swarm.behaviour_mut().gossipsub.unsubscribe(&topic) {
                     Ok(_) => {
                         debug!(target: LOG_TARGET, "📢 Unsubscribed from gossipsub topic: {}", topic);
-                        let _ignore = reply_tx.send(Ok(()));
+                        let _ignore = reply.send(Ok(()));
                     },
                     Err(err) => {
                         error!(target: LOG_TARGET, "🚨 Failed to unsubscribe from gossipsub topic: {}", err);
-                        let _ignore = reply_tx.send(Err(err.into()));
+                        let _ignore = reply.send(Err(err.into()));
                     },
                 }
             },
-            NetworkingRequest::IsSubscribedTopic { topic, reply_tx } => {
+            NetworkingRequest::IsSubscribedTopic { topic, reply } => {
                 let hash = topic.hash();
                 let found = self.swarm.behaviour_mut().gossipsub.topics().any(|t| *t == hash);
-                let _ignore = reply_tx.send(Ok(found));
+                let _ignore = reply.send(Ok(found));
             },
             NetworkingRequest::OpenSubstream {
                 peer_id,
                 protocol_id,
-                reply_tx,
+                reply,
             } => {
                 let stream_id = self
                     .swarm
                     .behaviour_mut()
                     .substream
                     .open_substream(peer_id, protocol_id.clone());
-                self.pending_substream_requests.insert(stream_id, reply_tx);
+                self.pending_substream_requests.insert(stream_id, reply);
             },
             NetworkingRequest::AddProtocolNotifier { protocols, tx_notifier } => {
                 for protocol in protocols {
@@ -315,7 +320,7 @@ where
                 limit,
                 randomize,
                 exclude_peers: excluded_peers,
-                reply_tx,
+                reply,
             } => {
                 let iter = self
                     .active_connections
@@ -332,9 +337,9 @@ where
                     iter.collect()
                 };
 
-                let _ignore = reply_tx.send(Ok(connections));
+                let _ignore = reply.send(Ok(connections));
             },
-            NetworkingRequest::GetLocalPeerInfo { reply_tx } => {
+            NetworkingRequest::GetLocalPeerInfo { reply } => {
                 let peer = crate::peer::PeerInfo {
                     peer_id: *self.swarm.local_peer_id(),
                     public_key: self.keypair.public(),
@@ -345,7 +350,7 @@ where
                     protocols: self.swarm.behaviour_mut().substream.supported_protocols().to_vec(),
                     // observed_addr: (),
                 };
-                let _ignore = reply_tx.send(Ok(peer));
+                let _ignore = reply.send(Ok(peer));
             },
             NetworkingRequest::GetAveragePeerLatency { reply } => {
                 let iter = self
@@ -359,7 +364,9 @@ where
             },
             NetworkingRequest::SetWantPeers(peers) => {
                 info!(target: LOG_TARGET, "🧭 Setting want peers to {:?}", peers);
-                self.swarm.behaviour_mut().peer_sync.want_peers(peers).await?;
+                if let Err(err) = self.swarm.behaviour_mut().peer_sync.want_peers(peers).await {
+                    error!(target: LOG_TARGET, "Failed to set want peers: {err}");
+                }
             },
             NetworkingRequest::AddPeer { peer, reply } => {
                 info!(target: LOG_TARGET, "Adding {peer}");
@@ -367,7 +374,7 @@ where
                     let _ignore = reply.send(Err(NetworkError::FailedToAddPeer {
                         details: format!("AddPeer: No addresses provided for peer {}. Nothing to do.", peer),
                     }));
-                    return Ok(());
+                    return;
                 }
                 let num_addresses = peer.addresses().len();
                 let peer_id = peer.peer_id();
@@ -405,9 +412,10 @@ where
                 reply,
             } => {
                 info!(target: LOG_TARGET, "🎯Banning peer {peer_id} for {ban_duration:?}: {reason}");
+                self.fail2ban_ban(&peer_id, ban_duration, &reason);
                 if self.allow_list.contains(&peer_id) {
                     info!(target: LOG_TARGET, "Not banning peer because it is on the allow list");
-                    return Ok(());
+                    return;
                 }
 
                 // TODO: mark the peer as banned and prevent connections,messages from coming through
@@ -427,6 +435,7 @@ where
             },
             NetworkingRequest::UnbanPeer { peer_id, reply } => match self.ban_list.remove(&peer_id) {
                 Some(peer) => {
+                    self.fail2ban_unban(&peer_id);
                     let _ignore = reply.send(Ok(peer.is_banned()));
                     shrink_hashmap_if_required(&mut self.ban_list);
                 },
@@ -490,17 +499,11 @@ where
                 let _ignore = reply.send(Ok(self.seed_peers.clone()));
             },
         }
-
-        Ok(())
     }
 
     async fn handle_messaging_request(&mut self, request: MessagingRequest<TMsg>) {
         match request {
-            MessagingRequest::SendMessage {
-                peer,
-                message,
-                reply_tx,
-            } => {
+            MessagingRequest::SendMessage { peer, message, reply } => {
                 match self
                     .swarm
                     .behaviour_mut()
@@ -510,27 +513,27 @@ where
                 {
                     Some(Ok(_)) => {
                         debug!(target: LOG_TARGET, "📢 Queued message to peer {}", peer);
-                        let _ignore = reply_tx.send(Ok(()));
+                        let _ignore = reply.send(Ok(()));
                     },
                     Some(Err(err)) => {
                         debug!(target: LOG_TARGET, "🚨 Failed to queue message to peer {}: {}", peer, err);
-                        let _ignore = reply_tx.send(Err(err.into()));
+                        let _ignore = reply.send(Err(err.into()));
                     },
                     None => {
                         warn!(target: LOG_TARGET, "Sent message but messaging is disabled");
-                        let _ignore = reply_tx.send(Err(NetworkError::MessagingDisabled));
+                        let _ignore = reply.send(Err(NetworkError::MessagingDisabled));
                     },
                 }
             },
             MessagingRequest::SendMulticast {
                 destination,
                 message,
-                reply_tx,
+                reply,
             } => {
                 let len = destination.len();
                 let Some(messaging_mut) = &mut self.swarm.behaviour_mut().messaging.as_mut() else {
                     warn!(target: LOG_TARGET, "Sent multicast message but messaging is disabled");
-                    let _ignore = reply_tx.send(Err(NetworkError::MessagingDisabled));
+                    let _ignore = reply.send(Err(NetworkError::MessagingDisabled));
                     return;
                 };
 
@@ -546,7 +549,7 @@ where
                     }
                 }
                 debug!(target: LOG_TARGET, "📢 Queued message to {num_sent} out of {len} peers");
-                let _ignore = reply_tx.send(Ok(num_sent));
+                let _ignore = reply.send(Ok(num_sent));
             },
         }
     }
@@ -999,6 +1002,14 @@ where
             established_in
         );
 
+        if self.is_banned(&peer_id) {
+            warn!(target: LOG_TARGET, "Banned peer {peer_id} reconnected. Disconnecting.");
+            if self.swarm.disconnect_peer_id(peer_id).is_err() {
+                debug!(target: LOG_TARGET, "Banned peer not connected when disconnecting it due to ban");
+            }
+            return Ok(());
+        }
+
         if let Some(relay) = self.relays.selected_relay_mut() {
             if endpoint.is_dialer() && relay.peer_id == peer_id {
                 relay.dialled_address = Some(endpoint.get_remote_address().clone());
@@ -1237,6 +1248,30 @@ where
             debug!(target: LOG_TARGET, "📢 Published networking event to {num} subscribers");
         }
     }
+
+    fn is_banned(&self, peer_id: &PeerId) -> bool {
+        self.ban_list.get(peer_id).map_or(false, |p| p.is_banned())
+    }
+
+    fn fail2ban_ban(&self, peer_id: &PeerId, duration: Option<Duration>, reason: &str) {
+        if let Some(conns) = self.active_connections.get(peer_id) {
+            for conn in conns {
+                let remote_addr = conn.endpoint.get_remote_address();
+                if let Some((protocol, port)) = extract_protocol_and_port(remote_addr) {
+                    let params = duration
+                        // NOTE: not sure if fail2ban can be configured with a dynamic bantime
+                        .map(|ban_time| format!(r#", bantime="{}s""#, ban_time.as_secs()))
+                        .unwrap_or_default();
+                    // NOTE: Not sure if the "name" and "chain" should be configurable
+                    info!(target: LOG_TARGET_FAIL2BAN, r#"FAIL2BAN: actionban[name="tarinetwork", peer={peer_id}, addr={remote_addr}, port="{port}", protocol="{protocol}", chain="INPUT"{params}, reason="{reason}"]"#);
+                }
+            }
+        }
+    }
+
+    fn fail2ban_unban(&self, peer_id: &PeerId) {
+        info!(target: LOG_TARGET_FAIL2BAN, r#"FAIL2BAN: actionunban[name="tarinetwork", peer={peer_id}, chain="INPUT"]"#);
+    }
 }
 
 fn is_p2p_address(address: &Multiaddr) -> bool {
@@ -1272,5 +1307,21 @@ where K: Eq + Hash {
     const HASHMAP_EXCESS_ENTRIES_SHRINK_THRESHOLD: usize = 50;
     if map.len() + HASHMAP_EXCESS_ENTRIES_SHRINK_THRESHOLD < map.capacity() {
         map.shrink_to_fit();
+    }
+}
+
+fn extract_protocol_and_port(addr: &Multiaddr) -> Option<(&'static str, u16)> {
+    let mut iter = addr.iter();
+    match iter.next()? {
+        Protocol::Ip4(_) | Protocol::Ip6(_) => {
+            // Continue
+        },
+        _ => return None,
+    }
+
+    match iter.next()? {
+        Protocol::Tcp(port) => Some(("tcp", port)),
+        Protocol::Udp(port) => Some(("udp", port)),
+        _ => None,
     }
 }

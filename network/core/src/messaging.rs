@@ -16,12 +16,12 @@ pub enum MessagingRequest<TMsg: MessageSpec> {
     SendMessage {
         peer: PeerId,
         message: TMsg::Message,
-        reply_tx: Reply<()>,
+        reply: Reply<()>,
     },
     SendMulticast {
         destination: MulticastDestination,
         message: TMsg::Message,
-        reply_tx: Reply<usize>,
+        reply: Reply<usize>,
     },
 }
 
@@ -47,7 +47,7 @@ impl<TMsg: MessageSpec> OutboundMessager<TMsg> for OutboundMessaging<TMsg> {
             .send(MessagingRequest::SendMessage {
                 peer,
                 message: message.into(),
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
@@ -64,7 +64,7 @@ impl<TMsg: MessageSpec> OutboundMessager<TMsg> for OutboundMessaging<TMsg> {
             .send(MessagingRequest::SendMulticast {
                 destination: dest.into(),
                 message: message.into(),
-                reply_tx: tx,
+                reply: tx,
             })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;

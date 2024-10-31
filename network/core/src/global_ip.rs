@@ -5,7 +5,7 @@
 
 use tari_swarm::libp2p::{multiaddr::Protocol, Multiaddr};
 
-pub(crate) trait GlobalIp {
+pub trait GlobalIp {
     fn is_global_ip(&self) -> bool;
 }
 

@@ -559,6 +559,10 @@ impl From<NetworkError> for LibWalletError {
                 code: 912,
                 message: value.to_string(),
             },
+            NetworkError::RefuseDialPeerBanned { .. } => Self {
+                code: 913,
+                message: value.to_string(),
+            },
         }
     }
 }
