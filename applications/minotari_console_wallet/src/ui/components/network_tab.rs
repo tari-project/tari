@@ -126,7 +126,7 @@ impl NetworkTab {
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
             .add_column(Some("Type"), Some(17), column0_items)
-            .add_column(Some("NodeID"), Some(57), column1_items)
+            .add_column(Some("PeerID"), Some(57), column1_items)
             .add_column(Some("Public Key"), Some(65), column2_items);
         column_list.render(f, areas[1], &mut base_node_list_state);
     }
@@ -215,7 +215,7 @@ impl NetworkTab {
         let column_list = MultiColumnList::new()
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("NodeID"), Some(27), column0_items)
+            .add_column(Some("PeerID"), Some(53), column0_items)
             .add_column(Some("Public Key"), Some(65), column1_items)
             .add_column(Some("User Agent"), Some(MAX_WIDTH.saturating_sub(93)), column2_items);
         column_list.render(f, list_areas[0], &mut ListState::default());
