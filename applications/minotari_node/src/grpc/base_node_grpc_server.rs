@@ -26,10 +26,21 @@ use std::{
     str::FromStr,
 };
 
+use crate::{
+    builder::BaseNodeContext,
+    grpc::{
+        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        hash_rate::HashRateMovingAverage,
+        helpers::{mean, median},
+    },
+    grpc_method::GrpcMethod,
+    BaseNodeConfig,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
+use minotari_app_grpc::tari_rpc::{GetValidatorNodeChangesRequest, GetValidatorNodeChangesResponse};
 use minotari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
@@ -72,17 +83,6 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
-
-use crate::{
-    builder::BaseNodeContext,
-    grpc::{
-        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
-        hash_rate::HashRateMovingAverage,
-        helpers::{mean, median},
-    },
-    grpc_method::GrpcMethod,
-    BaseNodeConfig,
-};
 
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
@@ -285,7 +285,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             )))
                             .await;
                         return;
-                    },
+                    }
                 };
 
                 if headers.is_empty() {
@@ -322,7 +322,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 Status::internal(format!("Error fetching block at height {}", current_height)),
                             )));
                             return;
-                        },
+                        }
                     };
                     if block.is_none() {
                         let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
@@ -378,7 +378,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
                     return;
-                },
+                }
                 Ok(data) => data,
             };
             for transaction in transactions.unconfirmed_pool {
@@ -400,7 +400,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             );
                         }
                         return;
-                    },
+                    }
                 };
 
                 if tx
@@ -445,7 +445,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     report_error_flag,
                     Status::internal(err.to_string()),
                 ));
-            },
+            }
             Ok(data) => data.best_block_height(),
         };
 
@@ -468,7 +468,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         (res, false) => res + 1,
                     };
                     (from..=tip, true)
-                },
+                }
                 Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
             }
         } else {
@@ -479,11 +479,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         (res, false) => res + 1,
                     };
                     (from..=from_height, true)
-                },
+                }
                 Sorting::Asc => {
                     let to = from_height.saturating_add(num_headers).saturating_sub(1);
                     (from_height..=to, false)
-                },
+                }
             }
         };
         let consensus_rules = self.consensus_rules.clone();
@@ -492,7 +492,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             header_range.end().saturating_add(1),
             LIST_HEADERS_PAGE_SIZE,
         )
-        .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
         task::spawn(async move {
             trace!(
                 target: LOG_TARGET,
@@ -511,7 +511,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
                         return;
-                    },
+                    }
                     Ok(data) => {
                         if is_reversed {
                             data.into_iter()
@@ -530,7 +530,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                         Err(e) => {
                                             Err(obscure_error_if_true(report_error_flag, Status::internal(e))
                                                 .to_string())
-                                        },
+                                        }
                                     }
                                 })
                                 .rev()
@@ -552,18 +552,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                         Err(e) => {
                                             Err(obscure_error_if_true(report_error_flag, Status::internal(e))
                                                 .to_string())
-                                        },
+                                        }
                                     }
                                 })
                                 .collect::<Result<Vec<_>, String>>()
                         }
-                    },
+                    }
                 };
 
                 match result_data {
                     Err(e) => {
                         error!(target: LOG_TARGET, "No result headers transmitted due to error: {}", e)
-                    },
+                    }
                     Ok(result_data) => {
                         let result_size = result_data.len();
                         trace!(target: LOG_TARGET, "Result headers: {}", result_size);
@@ -584,7 +584,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 return;
                             }
                         }
-                    },
+                    }
                 }
             }
         });
@@ -680,7 +680,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     report_error_flag,
                     Status::invalid_argument(message),
                 ));
-            },
+            }
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -688,13 +688,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Bytes::from_static(b"CannotCalculateNonTipMmr"),
                 );
                 return Err(obscure_error_if_true(report_error_flag, status));
-            },
+            }
             Err(e) => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
                     Status::internal(e.to_string()),
                 ))
-            },
+            }
         };
         let fees = new_block.body.get_total_fee().map_err(|_| {
             obscure_error_if_true(
@@ -849,12 +849,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     })? -
                     prev_coinbase_value,
             )
-            .map_err(|_| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::internal("Single coinbase fees exceeded u64".to_string()),
-                )
-            })?;
+                .map_err(|_| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::internal("Single coinbase fees exceeded u64".to_string()),
+                    )
+                })?;
             prev_coinbase_value += u128::from(coinbase.value);
         }
 
@@ -895,8 +895,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 range_proof_type,
                 PaymentId::Empty,
             )
-            .await
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+                .await
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             new_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -950,7 +950,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     report_error_flag,
                     Status::invalid_argument(message),
                 ));
-            },
+            }
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -958,13 +958,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Bytes::from_static(b"CannotCalculateNonTipMmr"),
                 );
                 return Err(obscure_error_if_true(report_error_flag, status));
-            },
+            }
             Err(e) => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
                     Status::internal(e.to_string()),
                 ))
-            },
+            }
         };
         let gen_hash = handler
             .get_header(0)
@@ -1093,8 +1093,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 range_proof_type,
                 PaymentId::Empty,
             )
-            .await
-            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+                .await
+                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             block_template.body.add_output(coinbase_output);
             let new_nonce = key_manager
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -1148,7 +1148,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     report_error_flag,
                     Status::invalid_argument(message),
                 ));
-            },
+            }
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -1156,13 +1156,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Bytes::from_static(b"CannotCalculateNonTipMmr"),
                 );
                 return Err(obscure_error_if_true(report_error_flag, status));
-            },
+            }
             Err(e) => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
                     Status::internal(e.to_string()),
                 ))
-            },
+            }
         };
         let fees = new_block.body.get_total_fee().map_err(|_| {
             obscure_error_if_true(
@@ -1253,7 +1253,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     report_error_flag,
                     Status::invalid_argument(message),
                 ));
-            },
+            }
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -1261,13 +1261,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Bytes::from_static(b"CannotCalculateNonTipMmr"),
                 );
                 return Err(obscure_error_if_true(report_error_flag, status));
-            },
+            }
             Err(e) => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
                     Status::internal(e.to_string()),
                 ))
-            },
+            }
         };
         // construct response
         let block_hash = new_block.hash().to_vec();
@@ -1508,7 +1508,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                                                             * should not think its mined, but the
                                                                             * node does not think it is. */
                 }
-            },
+            }
             TxStorageResponse::NotStored |
             TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStoredOrphan |
@@ -1598,7 +1598,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             "Error communicating with local base node: {:?}", err,
                         );
                         return;
-                    },
+                    }
                     Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
                 };
 
@@ -1688,7 +1688,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         "Error communicating with local base node: {:?}", err,
                     );
                     return;
-                },
+                }
                 Ok(data) => data,
             };
             for block in blocks {
@@ -1744,7 +1744,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         "Error communicating with local base node: {:?}", err,
                     );
                     return;
-                },
+                }
                 Ok(data) => data,
             };
             for block in blocks {
@@ -1804,7 +1804,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         Status::internal(format!("Error communicating with local base node: {}", err)),
                     )));
                     return;
-                },
+                }
                 Ok(data) => data,
             };
             for output in outputs {
@@ -1818,14 +1818,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             );
                             return;
                         }
-                    },
+                    }
                     Err(err) => {
                         let _ignore = tx.send(Err(obscure_error_if_true(
                             report_error_flag,
                             Status::internal(format!("Error communicating with local base node: {}", err)),
                         )));
                         return;
-                    },
+                    }
                 }
             }
         });
@@ -1925,7 +1925,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             BlockGroupType::BlockSize,
             report_error_flag,
         )
-        .await
+            .await
     }
 
     async fn get_block_fees(
@@ -1940,7 +1940,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             BlockGroupType::BlockFees,
             report_error_flag,
         )
-        .await
+            .await
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
@@ -2307,7 +2307,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err,);
                     return;
-                },
+                }
                 Ok(data) => data,
             };
 
@@ -2372,7 +2372,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 header.map(|h| h.height()).ok_or_else(|| {
                     obscure_error_if_true(report_error_flag, Status::not_found("Start hash not found"))
                 })?
-            },
+            }
             None => 0,
         };
 
@@ -2392,7 +2392,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err);
                     return;
-                },
+                }
                 Ok(data) => data,
             };
 
@@ -2482,7 +2482,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Base node service error: {}", e);
                         return;
-                    },
+                    }
                 };
 
                 let next_header = match node_service.get_header(height.saturating_add(1)).await {
@@ -2493,7 +2493,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             Status::internal(e.to_string()),
                         )));
                         return;
-                    },
+                    }
                 };
 
                 let sidechain_outputs = utxos
@@ -2520,7 +2520,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             );
                             return;
                         }
-                    },
+                    }
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
@@ -2533,13 +2533,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             )))
                             .await;
                         return;
-                    },
+                    }
                 };
 
                 match next_header {
                     Some(header) => {
                         current_header = header;
-                    },
+                    }
                     None => break,
                 }
             }
@@ -2549,6 +2549,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Sending GetTemplateRegistrations response stream to client"
         );
         Ok(Response::new(rx))
+    }
+
+    async fn get_validator_node_changes(&self, request: Request<GetValidatorNodeChangesRequest>) -> Result<Response<GetValidatorNodeChangesResponse>, Status> {
+        self.check_method_enabled(GrpcMethod::GetValidatorNodeChanges)?;
+        // TODO: continue impl
+        todo!()
     }
 }
 
@@ -2586,7 +2592,7 @@ async fn get_block_group(
                 "Error communicating with local base node: {:?}", err,
             );
             vec![]
-        },
+        }
         Ok(data) => data,
     };
     let extractor = match block_group_type {
@@ -2602,15 +2608,15 @@ async fn get_block_group(
                 report_error_flag,
                 Status::unimplemented("Quantile has not been implemented"),
             ))
-        },
+        }
         CalcType::Quartile => {
             return Err(obscure_error_if_true(
                 report_error_flag,
                 Status::unimplemented("Quartile has not been implemented"),
             ))
-        },
+        }
     }
-    .unwrap_or_default();
+        .unwrap_or_default();
     trace!(
         target: LOG_TARGET,
         "Sending GetBlockSize response to client: {:?}", value
