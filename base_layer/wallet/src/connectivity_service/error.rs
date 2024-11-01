@@ -22,6 +22,7 @@
 
 use futures::channel::{mpsc, oneshot};
 use tari_network::{DialError, NetworkError};
+use tari_rpc_framework::pool::RpcClientPoolError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WalletConnectivityError {
@@ -33,8 +34,12 @@ pub enum WalletConnectivityError {
     DialError(#[from] DialError),
     #[error("Service is terminated and can no longer response to requests")]
     ServiceTerminated,
+    #[error("Client is_connected returned false after connecting")]
+    ClientConnectionLost,
     #[error("Preferred peer index is out of bounds: {0}")]
     PeerIndexOutOfBounds(String),
+    #[error("Rpc client pool error: {0}")]
+    RpcClientPoolError(#[from] RpcClientPoolError),
 }
 
 impl From<mpsc::SendError> for WalletConnectivityError {

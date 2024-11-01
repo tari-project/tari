@@ -34,7 +34,7 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
-use tari_network::multiaddr::Multiaddr;
+use tari_network::{multiaddr::Multiaddr, ReachabilityMode};
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
@@ -128,11 +128,11 @@ impl ConfigOverrideProvider for Cli {
     }
 }
 
-fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+fn replace_or_add_override<T: Into<String>>(overrides: &mut Vec<(String, String)>, key: &str, value: T) {
     if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
         overrides.remove(index);
     }
-    overrides.push((key.to_string(), value.to_string()));
+    overrides.push((key.to_string(), value.into()));
 }
 
 #[allow(clippy::large_enum_variant)]

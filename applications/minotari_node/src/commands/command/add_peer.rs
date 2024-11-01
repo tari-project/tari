@@ -26,7 +26,12 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
-use tari_network::{multiaddr::Multiaddr, swarm::dial_opts::DialOpts, NetworkingService, ToPeerId};
+use tari_network::{
+    multiaddr::Multiaddr,
+    swarm::dial_opts::{DialOpts, PeerCondition},
+    NetworkingService,
+    ToPeerId,
+};
 
 use super::{CommandContext, HandleCommand};
 
@@ -50,7 +55,12 @@ impl HandleCommand<ArgsAddPeer> for CommandContext {
         let timer = Instant::now();
         let dial = self
             .network
-            .dial_peer(DialOpts::peer_id(peer_id).addresses(vec![args.address]).build())
+            .dial_peer(
+                DialOpts::peer_id(peer_id)
+                    .condition(PeerCondition::Always)
+                    .addresses(vec![args.address])
+                    .build(),
+            )
             .await?;
         println!("Peer with node id '{}' was added to the base node. Dialing...", peer_id);
 

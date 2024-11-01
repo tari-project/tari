@@ -683,10 +683,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
             // Check if the response receiver has been dropped while receiving messages
             let resp_result = {
+                let shutdown_signal = self.shutdown_signal.clone();
                 let resp_fut = self.read_response(request_id);
                 tokio::pin!(resp_fut);
-                let closed_fut = response_tx.closed();
-                tokio::pin!(closed_fut);
+                let resp_closed = response_tx.closed();
+                tokio::pin!(resp_closed);
+                let closed_fut = shutdown_signal.select(resp_closed);
                 match future::select(resp_fut, closed_fut).await {
                     Either::Left((r, _)) => Some(r),
                     Either::Right(_) => None,

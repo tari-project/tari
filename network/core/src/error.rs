@@ -45,7 +45,7 @@ pub enum NetworkError {
     GossipPublishError(#[from] gossipsub::PublishError),
     #[error("Failed to send message to peer: {0}")]
     SwarmError(#[from] TariSwarmError),
-    #[error("Failed to invoke handle: {0}")]
+    #[error("Failed to invoke network handle: {0}")]
     NetworkingHandleError(#[from] NetworkingHandleError),
     #[error("Failed to subscribe to topic: {0}")]
     SubscriptionError(#[from] SubscriptionError),

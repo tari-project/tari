@@ -92,7 +92,8 @@ where
     pending_kad_queries: HashMap<QueryId, oneshot::Sender<DiscoveryResult>>,
     substream_notifiers: Notifiers<Substream>,
     swarm: TariSwarm<ProstCodec<TMsg::Message>>,
-    // TODO: we'll replace this with a proper libp2p behaviour if needed
+    // TODO: we'll replace this with a proper libp2p behaviour if needed. There is a new libp2p behaviour called
+    //       allow_block_list which does this however does not support time-based bans
     ban_list: HashMap<PeerId, BannedPeer>,
     allow_list: HashSet<PeerId>,
     gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<(PeerId, gossipsub::Message)>>,
@@ -418,7 +419,6 @@ where
                     return;
                 }
 
-                // TODO: mark the peer as banned and prevent connections,messages from coming through
                 self.ban_list.insert(peer_id, BannedPeer {
                     peer_id,
                     banned_at: Instant::now(),
