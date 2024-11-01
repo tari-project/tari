@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Instant;
+
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
@@ -45,10 +47,18 @@ impl HandleCommand<ArgsAddPeer> for CommandContext {
         if *self.network.local_peer_id() == peer_id {
             return Err(Error::msg("Cannot add self as peer"));
         }
-        self.network
+        let timer = Instant::now();
+        let dial = self
+            .network
             .dial_peer(DialOpts::peer_id(peer_id).addresses(vec![args.address]).build())
             .await?;
-        println!("Peer with node id '{}' was added to the base node.", peer_id);
+        println!("Peer with node id '{}' was added to the base node. Dialing...", peer_id);
+
+        match dial.await {
+            Ok(_) => println!("⚡️ Peer connected in {}ms!", timer.elapsed().as_millis()),
+            Err(err) => println!("☠️ {}", err),
+        }
+
         Ok(())
     }
 }
