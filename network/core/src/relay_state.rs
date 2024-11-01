@@ -45,6 +45,23 @@ impl RelayState {
         self.selected_relay.as_mut()
     }
 
+    pub fn set_relay_peer(&mut self, peer_id: PeerId, dialled_address: Option<Multiaddr>) -> bool {
+        if self.selected_relay.as_ref().map_or(false, |p| p.peer_id == peer_id) {
+            return true;
+        }
+
+        if let Some(addrs) = self.possible_relays.get(&peer_id) {
+            self.selected_relay = Some(RelayPeer {
+                peer_id,
+                addresses: addrs.iter().cloned().collect(),
+                is_circuit_established: false,
+                remote_address: dialled_address,
+            });
+            return true;
+        }
+        false
+    }
+
     pub fn possible_relays(&self) -> impl Iterator<Item = (&PeerId, &HashSet<Multiaddr>)> {
         self.possible_relays.iter()
     }
@@ -76,7 +93,7 @@ impl RelayState {
             peer_id: *peer,
             addresses: addrs.iter().cloned().collect(),
             is_circuit_established: false,
-            dialled_address: None,
+            remote_address: None,
         });
     }
 }
@@ -86,5 +103,5 @@ pub struct RelayPeer {
     pub peer_id: PeerId,
     pub addresses: Vec<Multiaddr>,
     pub is_circuit_established: bool,
-    pub dialled_address: Option<Multiaddr>,
+    pub remote_address: Option<Multiaddr>,
 }

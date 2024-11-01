@@ -147,6 +147,11 @@ loggers:
     level: debug
     appenders:
       - base_layer
+  # Route log events sent to the "network" logger to the "network" appender
+  network:
+    level: debug
+    appenders:
+      - network
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
     level: debug

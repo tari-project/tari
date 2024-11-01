@@ -1012,7 +1012,7 @@ where
 
         if let Some(relay) = self.relays.selected_relay_mut() {
             if endpoint.is_dialer() && relay.peer_id == peer_id {
-                relay.dialled_address = Some(endpoint.get_remote_address().clone());
+                relay.remote_address = Some(endpoint.get_remote_address().clone());
             }
         }
 
@@ -1104,6 +1104,9 @@ where
                     // Otherwise, if the peer advertises as a relay we'll add them
                     info!(target: LOG_TARGET, "📡 Adding peer {peer_id} {address} as a relay");
                     self.relays.add_possible_relay(peer_id, address.clone());
+                    if !self.relays.has_active_relay() {
+                        self.relays.set_relay_peer(peer_id, Some(address.clone()));
+                    }
                 } else {
                     // Nothing to do
                 }
@@ -1154,27 +1157,31 @@ where
 
     /// Establishes a relay circuit for the given peer if it is the selected relay peer. Returns true if the circuit
     /// was established from this call.
-    fn establish_relay_circuit_on_connect(&mut self, peer_id: &PeerId) -> bool {
+    fn establish_relay_circuit_on_connect(&mut self, connected_peer_id: &PeerId) -> bool {
         let Some(relay) = self.relays.selected_relay() else {
+            debug!(target: LOG_TARGET, "📡 No relay selected.");
             return false;
         };
 
-        // If the peer we've connected with is the selected relay that we previously dialled, then continue
-        if relay.peer_id != *peer_id {
+        // If the peer we've connected with is the selected relay that we previously connected with, then continue
+        if relay.peer_id != *connected_peer_id {
+            debug!(target: LOG_TARGET, "📡 Dialed peer is not set as a relay.");
             return false;
         }
 
         // If we've already established a circuit with the relay, there's nothing to do here
         if relay.is_circuit_established {
+            debug!(target: LOG_TARGET, "📡 Already have a circuit established with this relay peer.");
             return false;
         }
 
         // Check if we've got a confirmed address for the relay
-        let Some(dialled_address) = relay.dialled_address.as_ref() else {
+        let Some(remote_address) = relay.remote_address.as_ref() else {
+            debug!(target: LOG_TARGET, "📡 No remote addresses for relay peer.");
             return false;
         };
 
-        let circuit_addr = dialled_address.clone().with(Protocol::P2pCircuit);
+        let circuit_addr = remote_address.clone().with(Protocol::P2pCircuit);
 
         match self.swarm.listen_on(circuit_addr.clone()) {
             Ok(id) => {
@@ -1182,7 +1189,7 @@ where
                     .behaviour_mut()
                     .peer_sync
                     .add_known_local_public_addresses(vec![circuit_addr]);
-                info!(target: LOG_TARGET, "🌍️ Peer {peer_id} is a relay. Listening (id={id:?}) for circuit connections");
+                info!(target: LOG_TARGET, "🌍️ Peer {connected_peer_id} is a relay. Listening (id={id:?}) for circuit connections");
                 let Some(relay_mut) = self.relays.selected_relay_mut() else {
                     // unreachable
                     return false;
