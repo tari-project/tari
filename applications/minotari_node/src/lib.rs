@@ -168,13 +168,6 @@ pub async fn run_base_node_with_cli(
             "Force Sync Peers have been set! This node will only sync to the nodes in this set."
         );
     }
-    // // Monitor peers to ensure the reported active connections are still active
-    // task::spawn(monitor_peers::monitor_peers(
-    //     ctx.base_node_comms().clone(),
-    //     ctx.liveness(),
-    //     shutdown,
-    //     config.base_node.metadata_auto_ping_interval,
-    // ));
 
     info!(target: LOG_TARGET, "Minotari base node has STARTED");
     main_loop.cli_loop().await;
