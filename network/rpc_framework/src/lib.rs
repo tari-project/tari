@@ -32,6 +32,9 @@
 /// This can be thought of as the hard limit on message size.
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
+/// Bytes used for session aliveness check
+pub(crate) const CHECK_BYTES: Bytes = Bytes::from_static(&[0xde, 0xad, 0xbe, 0xef]);
+
 /// The maximum request payload size
 const fn max_request_size() -> usize {
     RPC_MAX_FRAME_SIZE
@@ -110,6 +113,7 @@ pub mod __macro_reexports {
 }
 
 pub use async_trait::async_trait;
+use bytes::Bytes;
 
 // TODO: We could fairly easily abstract this and make this framework independent of libp2p
 pub type Substream = libp2p::Stream;

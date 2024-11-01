@@ -9,7 +9,7 @@ use thiserror::Error;
 use super::RpcError;
 use crate::{optional::OrOptional, proto};
 
-const LOG_TARGET: &str = "comms::rpc::status";
+const LOG_TARGET: &str = "network::rpc::status";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub struct RpcStatus {

@@ -408,7 +408,7 @@ impl WalletConnectivityService {
             container.close().await;
         }
 
-        trace!(target: LOG_TARGET, "Created RPC pools for '{}'", peer_id);
+        debug!(target: LOG_TARGET, "Created RPC pools for '{}'", peer_id);
         Ok(true)
     }
 

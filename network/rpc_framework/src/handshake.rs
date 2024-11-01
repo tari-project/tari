@@ -11,7 +11,7 @@ use tracing::{debug, error, span, warn, Instrument, Level};
 
 use crate::{error::HandshakeRejectReason, framing::CanonicalFraming, proto};
 
-const LOG_TARGET: &str = "comms::rpc::handshake";
+const LOG_TARGET: &str = "network::rpc::handshake";
 
 /// Supported RPC protocol versions.
 /// Currently only v0 is supported

@@ -131,10 +131,10 @@ impl CommandContext {
 
         match self.network.get_autonat_status() {
             AutonatStatus::ConfiguredPrivate => {
-                status_line.add(format!("️(non-public) {avg_latency}"));
+                status_line.add(avg_latency.to_string());
             },
             AutonatStatus::Checking => {
-                status_line.add(format!("{avg_latency}"));
+                status_line.add(avg_latency.to_string());
             },
             AutonatStatus::Private => {
                 status_line.add(format!("️🔌 {avg_latency}"));

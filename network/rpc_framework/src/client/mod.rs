@@ -74,6 +74,7 @@ use crate::{
     RpcHandshakeError,
     RpcServerError,
     RpcStatus,
+    CHECK_BYTES,
 };
 
 const LOG_TARGET: &str = "network::rpc::client";
@@ -422,6 +423,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         self.protocol_id.as_ref()
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -468,6 +470,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 },
                 server_msg = self.framed.next() => {
                     match server_msg {
+                        Some(Ok(frame)) if frame.as_ref() == CHECK_BYTES.as_ref() => {
+                            trace!(target: LOG_TARGET, "Received check bytes");
+                        },
                         Some(Ok(msg)) => {
                             if let Err(err) = self.handle_interrupt_server_message(msg) {
                                 #[cfg(feature = "metrics")]
@@ -506,6 +511,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         }
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.peer_id, &self.protocol_id).dec();
+
+        if let Err(err) = self.send_polite_close().await {
+            debug!(
+                target: LOG_TARGET,
+                "(peer: {}) IO Error when sending close substream: {}",
+                self.peer_id,
+                err
+            );
+        }
 
         if let Err(err) = self.framed.close().await {
             debug!(
@@ -812,6 +826,19 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         Ok(())
     }
 
+    async fn send_polite_close(&mut self) -> Result<(), RpcError> {
+        let req = proto::RpcRequest {
+            flags: RpcMessageFlags::FIN.bits().into(),
+            ..Default::default()
+        };
+
+        // If we cannot set FIN quickly, just exit
+        if let Ok(res) = time::timeout(Duration::from_secs(2), self.send_request(req)).await {
+            res?;
+        }
+        Ok(())
+    }
+
     async fn send_request(&mut self, req: proto::RpcRequest) -> Result<(), RpcError> {
         let payload = req.encode_to_vec();
         if payload.len() > crate::max_request_size() {
@@ -986,17 +1013,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn next(&mut self) -> Result<proto::RpcResponse, RpcError> {
-        // Wait until the timeout, allowing an extra grace period to account for latency
-        let next_msg_fut = match self.config.timeout_with_grace_period() {
-            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
-            None => Either::Right(self.framed.next().map(Ok)),
-        };
+        loop {
+            // Wait until the timeout, allowing an extra grace period to account for latency
+            let next_msg_fut = match self.config.timeout_with_grace_period() {
+                Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
+                None => Either::Right(self.framed.next().map(Ok)),
+            };
 
-        match next_msg_fut.await {
-            Ok(Some(Ok(resp))) => Ok(proto::RpcResponse::decode(resp)?),
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::ReplyTimeout),
+            match next_msg_fut.await {
+                Ok(Some(Ok(resp))) if resp == CHECK_BYTES => {
+                    trace!(target: LOG_TARGET, "Received CHECK_BYTES");
+                },
+                Ok(Some(Ok(resp))) => return Ok(proto::RpcResponse::decode(resp)?),
+                Ok(Some(Err(err))) => return Err(err.into()),
+                Ok(None) => return Err(RpcError::ServerClosedRequest),
+                Err(_) => return Err(RpcError::ReplyTimeout),
+            }
         }
     }
 }

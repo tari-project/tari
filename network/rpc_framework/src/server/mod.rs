@@ -49,14 +49,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::{future, stream::FuturesUnordered, SinkExt, Stream, StreamExt};
 use libp2p::{PeerId, StreamProtocol};
 use libp2p_substream::{ProtocolEvent, ProtocolNotification};
 use log::*;
 use prost::Message;
 use router::Router;
-use tokio::{sync::mpsc, task::JoinHandle, time};
+use tokio::{sync::mpsc, task::JoinHandle, time, time::MissedTickBehavior};
 use tower::{make::MakeService, Service};
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
@@ -69,6 +69,7 @@ use super::{
     status::RpcStatus,
     Handshake,
     Substream,
+    CHECK_BYTES,
     RPC_MAX_FRAME_SIZE,
 };
 use crate::{
@@ -79,10 +80,9 @@ use crate::{
     message::{RpcMethod, RpcResponse},
     notify::ProtocolNotificationRx,
     proto,
-    server::early_close::EarlyClose,
 };
 
-const LOG_TARGET: &str = "comms::rpc::server";
+const LOG_TARGET: &str = "network::rpc::server";
 
 pub trait NamedProtocolService {
     const PROTOCOL_NAME: &'static str;
@@ -165,6 +165,7 @@ pub struct RpcServerBuilder {
     maximum_sessions_per_client: Option<usize>,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
+    check_connection_interval: Duration,
 }
 
 impl RpcServerBuilder {
@@ -197,6 +198,11 @@ impl RpcServerBuilder {
         self
     }
 
+    pub fn with_check_connection_interval(mut self, interval: Duration) -> Self {
+        self.check_connection_interval = interval;
+        self
+    }
+
     pub fn finish(self) -> RpcServer {
         let (request_tx, request_rx) = mpsc::channel(10);
         RpcServer {
@@ -214,6 +220,7 @@ impl Default for RpcServerBuilder {
             maximum_sessions_per_client: None,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
+            check_connection_interval: Duration::from_secs(5),
         }
     }
 }
@@ -419,10 +426,16 @@ where
                     "NEW SESSION for {} ({} active) ", peer_id, num_sessions
                 );
             },
-
-            Err(err) => {
+            Err(err @ RpcServerError::MaxSessionsPerClientReached { .. }) => {
                 handshake
-                    .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                    .reject_with_reason(HandshakeRejectReason::NoPerPeerSessionsAvailable)
+                    .await?;
+                return Err(err);
+            },
+            Err(err) => {
+                // Not reachable since  new_session_for only returns the above error
+                handshake
+                    .reject_with_reason(HandshakeRejectReason::Unknown("new_session_for unreachable error"))
                     .await?;
                 return Err(err);
             },
@@ -463,7 +476,7 @@ struct ActivePeerRpcService<TSvc> {
     protocol: StreamProtocol,
     peer_id: PeerId,
     service: TSvc,
-    framed: EarlyClose<CanonicalFraming<Substream>>,
+    framed: CanonicalFraming<Substream>,
     logging_context_string: Arc<String>,
 }
 
@@ -484,7 +497,7 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             protocol,
             peer_id,
             service,
-            framed: EarlyClose::new(framed),
+            framed,
         }
     }
 
@@ -512,59 +525,89 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
-        while let Some(result) = self.framed.next().await {
-            match result {
-                Ok(frame) => {
-                    #[cfg(feature = "metrics")]
-                    metrics::inbound_requests_bytes(&self.peer_id, &self.protocol).observe(frame.len() as f64);
-
-                    let start = Instant::now();
-
-                    if let Err(err) = self.handle_request(frame.freeze()).await {
-                        if let Err(err) = self.framed.close().await {
-                            let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
-
-                            log!(
-                                target: LOG_TARGET,
-                                level,
-                                "({}) Failed to close substream after socket error: {}",
-                                self.logging_context_string,
-                                err,
-                            );
-                        }
-                        let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
-                        log!(
-                            target: LOG_TARGET,
-                            level,
-                            "(peer: {}, protocol: {}) Failed to handle request: {}",
-                            self.peer_id,
-                            self.protocol_name(),
-                            err
-                        );
-                        return Err(err);
+        let mut interval = time::interval(self.config.check_connection_interval);
+        // If there is a missed tick, the handle_request essentially checks the connection, so we can skip
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                maybe_result = self.framed.next() => {
+                    match maybe_result {
+                        Some(result) => self.handle_request_message(result).await?,
+                        None => break,
                     }
-                    let elapsed = start.elapsed();
-                    debug!(
-                        target: LOG_TARGET,
-                        "({}) RPC request completed in {:.0?}{}",
-                        self.logging_context_string,
-                        elapsed,
-                        if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
-                    );
                 },
-                Err(err) => {
-                    if let Err(err) = self.framed.close().await {
-                        error!(
-                            target: LOG_TARGET,
-                            "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
-                        );
+
+                _ = interval.tick() => {
+                    if let Err(err) = self.check_stream().await {
+                        debug!(target: LOG_TARGET, "check_stream detected closed or malfunctioning session: {err}. Closing session.");
+                        break;
                     }
-                    return Err(err.into());
-                },
+                }
             }
         }
 
         self.framed.close().await?;
+        Ok(())
+    }
+
+    async fn handle_request_message(&mut self, result: io::Result<BytesMut>) -> Result<(), RpcServerError> {
+        match result {
+            Ok(frame) => {
+                #[cfg(feature = "metrics")]
+                metrics::inbound_requests_bytes(&self.peer_id, &self.protocol).observe(frame.len() as f64);
+
+                let start = Instant::now();
+
+                if let Err(err) = self.handle_request(frame.freeze()).await {
+                    if let Err(err) = self.framed.close().await {
+                        // let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
+                        let level = err_to_log_level(&err);
+
+                        log!(
+                            target: LOG_TARGET,
+                            level,
+                            "({}) Failed to close substream after socket error: {}",
+                            self.logging_context_string,
+                            err,
+                        );
+                    }
+                    let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
+                    log!(
+                        target: LOG_TARGET,
+                        level,
+                        "(peer: {}, protocol: {}) Failed to handle request: {}",
+                        self.peer_id,
+                        self.protocol_name(),
+                        err
+                    );
+                    return Err(err);
+                }
+                let elapsed = start.elapsed();
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) RPC request completed in {:.0?}{}",
+                    self.logging_context_string,
+                    elapsed,
+                    if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
+                );
+                Ok(())
+            },
+            Err(err) => {
+                if let Err(err) = self.framed.close().await {
+                    error!(
+                        target: LOG_TARGET,
+                        "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
+                    );
+                }
+                Err(err.into())
+            },
+        }
+    }
+
+    async fn check_stream(&mut self) -> Result<(), RpcServerError> {
+        // https://users.rust-lang.org/t/tokio-detect-connection-loss/116217/4
+        self.framed.send(CHECK_BYTES).await?;
+        self.framed.flush().await?;
         Ok(())
     }
 
@@ -575,6 +618,19 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
         let request_id = decoded_msg.request_id;
         let method = RpcMethod::from(decoded_msg.method);
         let deadline = Duration::from_secs(decoded_msg.deadline);
+
+        let msg_flags = RpcMessageFlags::from_bits(u8::try_from(decoded_msg.flags).map_err(|_| {
+            RpcServerError::ProtocolError(format!("invalid message flag: must be less than {}", u8::MAX))
+        })?)
+        .ok_or(RpcServerError::ProtocolError(format!(
+            "invalid message flag, does not match any flags ({})",
+            decoded_msg.flags
+        )))?;
+
+        if msg_flags.contains(RpcMessageFlags::FIN) {
+            debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
+            return Ok(());
+        }
 
         // The client side deadline MUST be greater or equal to the minimum_client_deadline
         if deadline < self.config.minimum_client_deadline {
@@ -599,18 +655,6 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             return Ok(());
         }
 
-        let msg_flags = RpcMessageFlags::from_bits(u8::try_from(decoded_msg.flags).map_err(|_| {
-            RpcServerError::ProtocolError(format!("invalid message flag: must be less than {}", u8::MAX))
-        })?)
-        .ok_or(RpcServerError::ProtocolError(format!(
-            "invalid message flag, does not match any flags ({})",
-            decoded_msg.flags
-        )))?;
-
-        if msg_flags.contains(RpcMessageFlags::FIN) {
-            debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
-            return Ok(());
-        }
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
@@ -885,7 +929,8 @@ fn err_to_log_level(err: &io::Error) -> log::Level {
         ErrorKind::ConnectionAborted |
         ErrorKind::BrokenPipe |
         ErrorKind::WriteZero |
-        ErrorKind::UnexpectedEof => log::Level::Debug,
+        ErrorKind::UnexpectedEof |
+        ErrorKind::Interrupted => log::Level::Debug,
         _ => log::Level::Error,
     }
 }

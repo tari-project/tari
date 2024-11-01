@@ -260,8 +260,10 @@ impl<T: RpcPoolClient> RpcPoolClient for RpcClientLease<T> {
 pub enum RpcClientPoolError {
     #[error("Peer connection to peer '{peer}' dropped")]
     PeerConnectionDropped { peer: PeerId },
-    #[error("No peer RPC sessions are available")]
+    #[error("No RPC sessions are available")]
     NoMoreRemoteRpcSessions,
+    #[error("No RPC sessions are available (per peer)")]
+    NoMoreRemotePerPeerRpcSessions,
     #[error("Failed to create client connection: {0}")]
     FailedToConnect(String),
 }
@@ -272,6 +274,9 @@ impl From<RpcError> for RpcClientPoolError {
             RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)) => {
                 RpcClientPoolError::NoMoreRemoteRpcSessions
             },
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoPerPeerSessionsAvailable,
+            )) => RpcClientPoolError::NoMoreRemotePerPeerRpcSessions,
             err => RpcClientPoolError::FailedToConnect(err.to_string()),
         }
     }
