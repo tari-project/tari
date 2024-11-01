@@ -94,6 +94,9 @@ pub struct Cli {
     pub view_private_key: Option<String>,
     #[clap(long)]
     pub spend_key: Option<String>,
+    /// Set the node to unreachable mode, the node will not act as a relay and will attempt relayed connections.
+    #[clap(long)]
+    pub reachability: Option<ReachabilityMode>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -117,6 +120,9 @@ impl ConfigOverrideProvider for Cli {
             replace_or_add_override(&mut overrides, "wallet.grpc_enabled", "true");
         } else {
             // GRPC is disabled
+        }
+        if let Some(reachability) = self.reachability {
+            replace_or_add_override(&mut overrides, "wallet.p2p.reachability_mode", reachability.to_string());
         }
         overrides
     }
