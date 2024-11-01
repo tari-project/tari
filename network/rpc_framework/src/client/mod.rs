@@ -36,7 +36,6 @@ use std::{
     fmt,
     future::Future,
     marker::PhantomData,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -56,7 +55,7 @@ use log::*;
 use prost::Message;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
-    sync::{mpsc, oneshot, watch, Mutex},
+    sync::{mpsc, oneshot, watch},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -163,8 +162,8 @@ impl RpcClient {
     }
 
     /// Close the RPC session. Any subsequent calls will error.
-    pub async fn close(&mut self) {
-        self.connector.close().await;
+    pub fn close(&mut self) {
+        self.connector.close();
     }
 
     pub fn is_connected(&self) -> bool {
@@ -309,7 +308,7 @@ impl Default for RpcClientConfig {
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
     last_request_latency_rx: watch::Receiver<Option<Duration>>,
-    shutdown: Arc<Mutex<Shutdown>>,
+    shutdown: Shutdown,
 }
 
 impl ClientConnector {
@@ -321,13 +320,12 @@ impl ClientConnector {
         Self {
             inner: sender,
             last_request_latency_rx,
-            shutdown: Arc::new(Mutex::new(shutdown)),
+            shutdown,
         }
     }
 
-    pub async fn close(&mut self) {
-        let mut lock = self.shutdown.lock().await;
-        lock.trigger();
+    pub fn close(&mut self) {
+        self.shutdown.trigger();
     }
 
     pub fn get_last_request_latency(&mut self) -> Option<Duration> {

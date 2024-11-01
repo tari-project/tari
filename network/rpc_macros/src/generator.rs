@@ -217,8 +217,8 @@ impl RpcCodeGenerator {
                 self.inner.ping().await
             }
 
-            pub async fn close(&mut self) {
-                self.inner.close().await;
+            pub fn close(&mut self) {
+                self.inner.close();
             }
         };
 
@@ -249,6 +249,10 @@ impl RpcCodeGenerator {
             impl #dep_mod::RpcPoolClient for #client_struct {
                 fn is_connected(&self) -> bool {
                     self.inner.is_connected()
+                }
+
+                fn close(&mut self) {
+                    self.inner.close();
                 }
             }
         }

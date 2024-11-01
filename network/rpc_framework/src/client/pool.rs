@@ -63,6 +63,13 @@ where
         let mut pool = self.pool.lock().await;
         pool.get_least_used_or_connect().await
     }
+
+    pub async fn close(self) {
+        let mut pool = self.pool.lock().await;
+        for mut client in pool.clients.drain(..) {
+            client.close();
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -243,6 +250,10 @@ impl<T: RpcPoolClient> RpcPoolClient for RpcClientLease<T> {
     fn is_connected(&self) -> bool {
         self.inner.is_connected()
     }
+
+    fn close(&mut self) {
+        self.inner.close();
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -268,10 +279,15 @@ impl From<RpcError> for RpcClientPoolError {
 
 pub trait RpcPoolClient {
     fn is_connected(&self) -> bool;
+    fn close(&mut self);
 }
 
 impl RpcPoolClient for RpcClient {
     fn is_connected(&self) -> bool {
         RpcClient::is_connected(self)
+    }
+
+    fn close(&mut self) {
+        RpcClient::close(self)
     }
 }

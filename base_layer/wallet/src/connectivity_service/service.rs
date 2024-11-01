@@ -73,6 +73,13 @@ struct ClientPoolContainer {
     pub base_node_sync_rpc_client: RpcClientPool<NetworkHandle, BaseNodeSyncRpcClient>,
 }
 
+impl ClientPoolContainer {
+    pub async fn close(self) {
+        self.base_node_wallet_rpc_client.close().await;
+        self.base_node_sync_rpc_client.close().await;
+    }
+}
+
 impl WalletConnectivityService {
     pub(super) fn new(
         config: BaseNodeServiceConfig,
@@ -275,10 +282,12 @@ impl WalletConnectivityService {
     }
 
     async fn disconnect_base_node(&mut self, peer_id: PeerId) {
+        if let Some(pool) = self.pools.remove(&peer_id) {
+            pool.close().await;
+        }
         if let Err(e) = self.network_handle.disconnect_peer(peer_id).await {
             error!(target: LOG_TARGET, "Failed to disconnect base node: {}", e);
         }
-        self.pools.remove(&peer_id);
     }
 
     async fn setup_base_node_connection(&mut self) {
@@ -309,7 +318,7 @@ impl WalletConnectivityService {
                 peer_id,
                 peer_manager.time_since_last_connection_attempt()
             );
-            self.pools.remove(&peer_id);
+            self.disconnect_base_node(peer_id).await;
             match self.try_setup_rpc_pool(peer_id).await {
                 Ok(true) => {
                     self.base_node_watch.send(Some(peer_manager.clone()));
