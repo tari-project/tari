@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io, sync::Arc};
+use std::{convert::TryFrom, sync::Arc};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
-use tari_network::{GossipMessage, GossipSubscription};
+use tari_network::{gossipsub, GossipMessage, GossipSubscription, InboundGossipError, NetworkHandle};
 use tari_p2p::proto;
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::hex::Hex;
@@ -55,11 +55,15 @@ pub struct MempoolStreams<SLocalReq> {
 /// Mempools of remote Base nodes.
 pub struct MempoolService {
     inbound_handlers: MempoolInboundHandlers,
+    network: NetworkHandle,
 }
 
 impl MempoolService {
-    pub fn new(inbound_handlers: MempoolInboundHandlers) -> Self {
-        Self { inbound_handlers }
+    pub fn new(inbound_handlers: MempoolInboundHandlers, network: NetworkHandle) -> Self {
+        Self {
+            inbound_handlers,
+            network,
+        }
     }
 
     pub async fn start<SLocalReq>(mut self, streams: MempoolStreams<SLocalReq>) -> Result<(), MempoolServiceError>
@@ -78,9 +82,8 @@ impl MempoolService {
                     let _result = reply.send(self.handle_request(request).await);
                 },
 
-
                 // Incoming transaction messages from the Comms layer
-                Some(transaction_msg) = transaction_subscription.next_message() => self.handle_incoming_tx(transaction_msg),
+                Some(transaction_msg) = transaction_subscription.next_message() => self.handle_incoming_tx(transaction_msg).await,
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
                 Some(local_request_context) = local_request_stream.next() => {
@@ -138,16 +141,27 @@ impl MempoolService {
         });
     }
 
-    fn handle_incoming_tx(&self, result: io::Result<GossipMessage<proto::common::Transaction>>) {
+    async fn handle_incoming_tx(&self, result: Result<GossipMessage<proto::common::Transaction>, InboundGossipError>) {
         let msg = match result {
             Ok(msg) => msg,
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to decode gossip message: {err}");
+                if let Err(err) = self
+                    .network
+                    .report_gossip_message_validation_result(
+                        err.message_id,
+                        err.propagation_source,
+                        gossipsub::MessageAcceptance::Reject,
+                    )
+                    .await
+                {
+                    warn!(target: LOG_TARGET, "handle_incoming_tx call network: {err}");
+                }
                 return;
             },
         };
 
-        let source_peer_id = msg.source;
+        let source_peer_id = msg.propagation_source;
         let transaction = match Transaction::try_from(msg.message) {
             Ok(tx) => tx,
             Err(e) => {
@@ -155,6 +169,17 @@ impl MempoolService {
                     target: LOG_TARGET,
                     "Received transaction message from {} with invalid transaction: {:?}", source_peer_id, e
                 );
+                if let Err(err) = self
+                    .network
+                    .report_gossip_message_validation_result(
+                        msg.message_id,
+                        msg.propagation_source,
+                        gossipsub::MessageAcceptance::Reject,
+                    )
+                    .await
+                {
+                    warn!(target: LOG_TARGET, "handle_incoming_tx call network: {err}");
+                }
                 return;
             },
         };
@@ -173,13 +198,36 @@ impl MempoolService {
             source_peer_id,
         );
         let mut inbound_handlers = self.inbound_handlers.clone();
-        task::spawn(async move {
-            if let Err(e) = inbound_handlers.handle_transaction(transaction, source_peer_id).await {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
-                );
+        if let Err(e) = inbound_handlers.handle_transaction(transaction, source_peer_id).await {
+            error!(
+                target: LOG_TARGET,
+                "Failed to handle incoming transaction message: {:?}", e
+            );
+            // NOTE: We assume that all errors are due to a "bad" transaction.
+            if let Err(err) = self
+                .network
+                .report_gossip_message_validation_result(
+                    msg.message_id,
+                    msg.propagation_source,
+                    gossipsub::MessageAcceptance::Reject,
+                )
+                .await
+            {
+                warn!(target: LOG_TARGET, "handle_incoming_tx call network: {err}");
             }
-        });
+        } else {
+            // Transaction message OK
+            if let Err(err) = self
+                .network
+                .report_gossip_message_validation_result(
+                    msg.message_id,
+                    msg.propagation_source,
+                    gossipsub::MessageAcceptance::Accept,
+                )
+                .await
+            {
+                warn!(target: LOG_TARGET, "handle_incoming_tx call network: {err}");
+            }
+        }
     }
 }

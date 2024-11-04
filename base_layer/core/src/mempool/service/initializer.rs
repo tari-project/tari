@@ -92,7 +92,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
                 request_receiver,
             };
             debug!(target: LOG_TARGET, "Mempool service started");
-            if let Err(err) = MempoolService::new(inbound_handlers).start(streams).await {
+            if let Err(err) = MempoolService::new(inbound_handlers, network).start(streams).await {
                 error!(target: LOG_TARGET, "Mempool service error: {}", err);
             }
         });
