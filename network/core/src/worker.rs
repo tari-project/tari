@@ -65,6 +65,7 @@ use crate::{
     ConnectionDirection,
     DiscoveredPeer,
     DiscoveryResult,
+    GossipMessage,
     MessageSpec,
     MessagingMode,
     NetworkError,
@@ -96,7 +97,7 @@ where
     //       allow_block_list which does this however does not support time-based bans
     ban_list: HashMap<PeerId, BannedPeer>,
     allow_list: HashSet<PeerId>,
-    gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<(PeerId, gossipsub::Message)>>,
+    gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<GossipMessage<gossipsub::Message>>>,
     gossipsub_outbound_tx: mpsc::Sender<(IdentTopic, Vec<u8>)>,
     gossipsub_outbound_rx: Option<mpsc::Receiver<(IdentTopic, Vec<u8>)>>,
     config: crate::Config,
@@ -297,6 +298,19 @@ where
                 let hash = topic.hash();
                 let found = self.swarm.behaviour_mut().gossipsub.topics().any(|t| *t == hash);
                 let _ignore = reply.send(Ok(found));
+            },
+            NetworkingRequest::ReportGossipMessageValidationResult {
+                message_id,
+                propagation_source,
+                acceptance,
+            } => {
+                if let Err(err) = self.swarm.behaviour_mut().gossipsub.report_message_validation_result(
+                    &message_id,
+                    &propagation_source,
+                    acceptance,
+                ) {
+                    warn!(target: LOG_TARGET, "⚠️ Failed to report message validation result for message {message_id}: {err}")
+                }
             },
             NetworkingRequest::OpenSubstream {
                 peer_id,
@@ -557,7 +571,7 @@ where
     fn gossipsub_subscribe_topic(
         &mut self,
         topic: IdentTopic,
-        inbound: mpsc::UnboundedSender<(PeerId, gossipsub::Message)>,
+        inbound: mpsc::UnboundedSender<GossipMessage<gossipsub::Message>>,
     ) -> Result<(), NetworkError> {
         if !self.swarm.behaviour_mut().gossipsub.subscribe(&topic)? {
             warn!(target: LOG_TARGET, "Already subscribed to {topic}");
@@ -867,12 +881,19 @@ where
         };
 
         debug!(target: LOG_TARGET, "📣 RX Gossipsub: {message_id} from {propagation_source} (size: {})", message.data.len());
+        let message = GossipMessage {
+            message_id,
+            propagation_source,
+            origin: message.source,
+            message_size: message.data.len(),
+            message,
+        };
 
-        if let Err(mpsc::error::SendError((_, message))) = sink.send((propagation_source, message)) {
-            warn!(target: LOG_TARGET, "📣 Gossipsub sink dropped for topic {}. Removing subscription channel. The node is still subscribed (use NetworkHandle::unsubscribe_topic).", message.topic);
+        if let Err(mpsc::error::SendError(message)) = sink.send(message) {
+            warn!(target: LOG_TARGET, "📣 Gossipsub sink dropped for topic {}. Removing subscription channel. The node is still subscribed (use NetworkHandle::unsubscribe_topic).", message.message.topic);
             // We could unsubscribe in this case, but this probably isn't very useful and this is probably a result of a
             // downstream bug.
-            let _drop = self.gossipsub_subscriptions.remove(&message.topic);
+            let _drop = self.gossipsub_subscriptions.remove(&message.message.topic);
         }
         Ok(())
     }
