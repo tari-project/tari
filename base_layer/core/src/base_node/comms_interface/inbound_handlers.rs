@@ -20,43 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use std::collections::HashMap;
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
 use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
-
-use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
+use crate::base_node::comms_interface::comms_response::ValidatorNodeChangeState;
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
-use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
-    },
-    blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
-    consensus::{ConsensusConstants, ConsensusManager},
-    mempool::Mempool,
-    proof_of_work::{
-        randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
-    },
-    transactions::aggregated_body::AggregateBody,
-    validation::{helpers, ValidationError},
-};
+use crate::{base_node::comms_interface::{
+    error::CommsInterfaceError,
+    local_interface::BlockEventSender,
+    FetchMempoolTransactionsResponse,
+    NodeCommsRequest,
+    NodeCommsResponse,
+    OutboundNodeCommsInterface,
+}, blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate}, chain_storage, chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError}, consensus::{ConsensusConstants, ConsensusManager}, mempool::Mempool, proof_of_work::{
+    randomx_difficulty,
+    randomx_factory::RandomXFactory,
+    sha3x_difficulty,
+    Difficulty,
+    PowAlgorithm,
+    PowError,
+}, transactions::aggregated_body::AggregateBody, validation::{helpers, ValidationError}};
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
@@ -92,7 +84,8 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
@@ -127,7 +120,7 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::FetchHeaders(range) => {
                 let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))
-            },
+            }
             NodeCommsRequest::FetchHeadersByHashes(block_hashes) => {
                 if block_hashes.len() > MAX_REQUEST_BY_BLOCK_HASHES {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -145,18 +138,18 @@ where B: BlockchainBackend + 'static
                     match self.blockchain_db.fetch_chain_header_by_block_hash(block_hash).await? {
                         Some(block_header) => {
                             block_headers.push(block_header);
-                        },
+                        }
                         None => {
                             error!(target: LOG_TARGET, "Could not fetch headers with hashes:{}", block_hex);
                             return Err(CommsInterfaceError::InternalError(format!(
                                 "Could not fetch headers with hashes:{}",
                                 block_hex
                             )));
-                        },
+                        }
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
-            },
+            }
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
                 for (output, spent) in (self
@@ -171,11 +164,11 @@ where B: BlockchainBackend + 'static
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
-            },
+            }
             NodeCommsRequest::FetchMatchingBlocks { range, compact } => {
                 let blocks = self.blockchain_db.fetch_blocks(range, compact).await?;
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
+            }
             NodeCommsRequest::FetchBlocksByKernelExcessSigs(excess_sigs) => {
                 if excess_sigs.len() > MAX_REQUEST_BY_KERNEL_EXCESS_SIGS {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -211,7 +204,7 @@ where B: BlockchainBackend + 'static
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
+            }
             NodeCommsRequest::FetchBlocksByUtxos(commitments) => {
                 if commitments.len() > MAX_REQUEST_BY_UTXO_HASHES {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -246,15 +239,15 @@ where B: BlockchainBackend + 'static
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            },
+            }
             NodeCommsRequest::GetHeaderByHash(hash) => {
                 let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
-            },
+            }
             NodeCommsRequest::GetBlockByHash(hash) => {
                 let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
                 Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
-            },
+            }
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let last_seen_hash = self.mempool.get_last_seen_hash().await?;
@@ -328,7 +321,7 @@ where B: BlockchainBackend + 'static
                 );
 
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
-            },
+            }
             NodeCommsRequest::GetNewBlock(block_template) => {
                 let height = block_template.header.height;
                 let target_difficulty = block_template.target_difficulty;
@@ -350,7 +343,7 @@ where B: BlockchainBackend + 'static
                     error: None,
                     block: Some(block),
                 })
-            },
+            }
             NodeCommsRequest::GetBlockFromAllChains(hash) => {
                 let block_hex = hash.to_hex();
                 debug!(
@@ -388,7 +381,7 @@ where B: BlockchainBackend + 'static
                 };
 
                 Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
-            },
+            }
             NodeCommsRequest::FetchKernelByExcessSig(signature) => {
                 let kernels = match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
                     Ok(Some((kernel, _))) => vec![kernel],
@@ -396,11 +389,11 @@ where B: BlockchainBackend + 'static
                     Err(err) => {
                         error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
                         return Err(err.into());
-                    },
+                    }
                 };
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
-            },
+            }
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
                 let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
@@ -409,7 +402,7 @@ where B: BlockchainBackend + 'static
                         not_found,
                     },
                 ))
-            },
+            }
             NodeCommsRequest::FetchValidatorNodesKeys {
                 height,
                 validator_network,
@@ -421,11 +414,11 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
                     active_validator_nodes,
                 ))
-            },
+            }
             NodeCommsRequest::GetShardKey { height, public_key } => {
                 let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
                 Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
-            },
+            }
             NodeCommsRequest::FetchTemplateRegistrations {
                 start_height,
                 end_height,
@@ -437,11 +430,43 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::FetchTemplateRegistrationsResponse(
                     template_registrations,
                 ))
-            },
+            }
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
-            },
+            }
+            NodeCommsRequest::FetchValidatorNodeChanges { start_height, end_height, sidechain_id } => {
+                let mut result = vec![];
+                let mut node_changes = HashMap::<PublicKey, ValidatorNodeChangeState>::new();
+                let mut nodes = self
+                    .blockchain_db
+                    .fetch_active_validator_nodes(start_height, sidechain_id.clone())
+                    .await?;
+                // add initial validator node set
+                nodes.iter().for_each(|node| {
+                    node_changes.insert(node.public_key.clone(), ValidatorNodeChangeState::ADD);
+                });
+                for height in start_height + 1..=end_height {
+                    let current_nodes = self
+                        .blockchain_db
+                        .fetch_active_validator_nodes(height, sidechain_id.clone())
+                        .await?;
+
+                    current_nodes.iter().for_each(|curr_node| {
+                        // new vn added
+                        if !node_changes.contains_key(&curr_node.public_key) {
+                            node_changes.insert(curr_node.public_key.clone(), ValidatorNodeChangeState::ADD);
+                        }
+                        // TODO: handle case when we do not find a node in the current set from old set
+                    });
+
+                    nodes = current_nodes;
+                }
+
+                // TODO: convert node_changes into result
+
+                Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(vec![]))
+            }
         }
     }
 
@@ -729,7 +754,7 @@ where B: BlockchainBackend + 'static
             Err(_) => {
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
-            },
+            }
             Ok(v) => v,
         };
         if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
@@ -770,14 +795,14 @@ where B: BlockchainBackend + 'static
                     "Invalid response from peer `{}`: Peer failed to provide the block that was propagated",
                     source_peer
                 )))
-            },
+            }
             Err(CommsInterfaceError::UnexpectedApiResponse) => {
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` sent unexpected API response.", source_peer
                 );
                 Err(CommsInterfaceError::UnexpectedApiResponse)
-            },
+            }
             Err(e) => Err(e),
         }
     }
@@ -852,7 +877,7 @@ where B: BlockchainBackend + 'static
                     }
                 }
                 Ok(block_hash)
-            },
+            }
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
                 #[cfg(feature = "metrics")]
@@ -871,7 +896,7 @@ where B: BlockchainBackend + 'static
                 );
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
-            },
+            }
 
             Err(e) => {
                 #[cfg(feature = "metrics")]
@@ -879,7 +904,7 @@ where B: BlockchainBackend + 'static
 
                 self.publish_block_event(BlockEvent::AddBlockErrored { block });
                 Err(e.into())
-            },
+            }
         }
     }
 
@@ -954,11 +979,11 @@ where B: BlockchainBackend + 'static
                 PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
-                },
+                }
                 PowAlgorithm::RandomX => {
                     metrics::target_difficulty_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
-                },
+                }
             }
         }
 
@@ -969,7 +994,7 @@ where B: BlockchainBackend + 'static
                 metrics::tip_height().set(block.height() as i64);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
                 metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
-            },
+            }
             BlockAddResult::ChainReorg { added, removed } => {
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
                     #[allow(clippy::cast_possible_wrap)]
@@ -982,11 +1007,11 @@ where B: BlockchainBackend + 'static
                 for block in added {
                     update_target_difficulty(block);
                 }
-            },
+            }
             BlockAddResult::OrphanBlock => {
                 metrics::orphaned_blocks().inc();
-            },
-            _ => {},
+            }
+            _ => {}
         }
         Ok(())
     }

@@ -65,6 +65,11 @@ pub enum NodeCommsRequest {
         height: u64,
         validator_network: Option<PublicKey>,
     },
+    FetchValidatorNodeChanges {
+        start_height: u64,
+        end_height: u64,
+        sidechain_id: Option<PublicKey>,
+    },
     GetShardKey {
         height: u64,
         public_key: PublicKey,
@@ -92,12 +97,12 @@ impl Display for NodeCommsRequest {
             GetChainMetadata => write!(f, "GetChainMetadata"),
             FetchHeaders(range) => {
                 write!(f, "FetchHeaders ({:?})", range)
-            },
+            }
             FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingBlocks { range, compact } => {
                 write!(f, "FetchMatchingBlocks ({:?}, {})", range, compact)
-            },
+            }
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v),
@@ -113,7 +118,7 @@ impl Display for NodeCommsRequest {
             ),
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
-            },
+            }
             FetchValidatorNodesKeys {
                 height,
                 validator_network,
@@ -127,19 +132,22 @@ impl Display for NodeCommsRequest {
                         .map(|n| n.to_hex())
                         .unwrap_or_else(|| "None".to_string())
                 )
-            },
+            }
             GetShardKey { height, public_key } => {
                 write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
-            },
+            }
             FetchTemplateRegistrations {
                 start_height: start,
                 end_height: end,
             } => {
                 write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
-            },
+            }
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
-            },
+            }
+            FetchValidatorNodeChanges { start_height, end_height, sidechain_id } => {
+                write!(f, "FetchValidatorNodeChanges (Side chain ID:{:?}), Height range: {}-{}", sidechain_id, start_height, end_height)
+            }
         }
     }
 }

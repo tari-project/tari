@@ -22,13 +22,7 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
-};
-use tari_service_framework::{reply_channel::SenderService, Service};
-use tokio::sync::broadcast;
-
+use crate::base_node::comms_interface::comms_response::ValidatorNodeChange;
 use crate::{
     base_node::comms_interface::{
         comms_request::GetNewBlockTemplateRequest,
@@ -42,6 +36,12 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+};
+use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
@@ -180,7 +180,7 @@ impl LocalNodeCommsInterface {
                         error.unwrap_or_else(|| "Unspecified error".to_string()),
                     ))
                 }
-            },
+            }
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
@@ -295,6 +295,26 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_validator_node_changes(
+        &mut self,
+        start_height: u64,
+        end_height: u64,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeChange>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchValidatorNodeChanges {
+                start_height,
+                end_height,
+                sidechain_id,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchValidatorNodeChangesResponse(validator_node_change) => Ok(validator_node_change),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

@@ -25,16 +25,16 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
-};
-
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+};
+use tari_common_types::types::PublicKey;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{HashOutput, PrivateKey},
 };
 
 /// API Response enum
@@ -59,6 +59,7 @@ pub enum NodeCommsResponse {
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
     FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
+    FetchValidatorNodeChangesResponse(Vec<ValidatorNodeChange>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
@@ -98,6 +99,7 @@ impl Display for NodeCommsResponse {
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
+            FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
         }
     }
 }
@@ -107,4 +109,18 @@ impl Display for NodeCommsResponse {
 pub struct FetchMempoolTransactionsResponse {
     pub transactions: Vec<Arc<Transaction>>,
     pub not_found: Vec<PrivateKey>,
+}
+
+/// Represents a validator node state
+#[derive(Debug, Clone)]
+pub enum ValidatorNodeChangeState {
+    ADD,
+    REMOVE,
+}
+
+/// Represents a validator node state change
+#[derive(Debug, Clone)]
+pub struct ValidatorNodeChange {
+    pub public_key: PublicKey,
+    pub state: ValidatorNodeChangeState,
 }

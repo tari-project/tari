@@ -488,8 +488,9 @@ message GetActiveValidatorNodesResponse {
 }
 
 message GetValidatorNodeChangesRequest {
-  uint64 start_epoch = 1;
-  uint64 end_epoch = 2;
+  uint64 start_height = 1;
+  uint64 end_height = 2;
+  bytes sidechain_id = 3;
 }
 
 enum ValidatorNodeChangeState {
@@ -504,6 +505,7 @@ message ValidatorNodeChange {
 
 message GetValidatorNodeChangesResponse {
   repeated ValidatorNodeChange changes = 1;
+  bytes sidechain_id = 2;
 }
 
 message GetShardKeyRequest {
