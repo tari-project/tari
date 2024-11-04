@@ -97,11 +97,12 @@ impl BaseNodePeerManager {
     }
 
     /// Set the last connection attempt stats
-    pub fn set_last_connection_attempt(&mut self) {
+    pub fn set_last_connection_attempt(&self) {
         let mut lock = self
             .last_connection_attempt
             .lock()
-            // In the currently impossible case that a panic occurs while this mutex is unlocked, we'll simply recover to use the previous value before the panic.
+            // In the currently impossible case that a panic occurs while this mutex is unlocked, we'll 
+            // simply recover to use the previous value before the panic.
             .unwrap_or_else(|e| e.into_inner());
         *lock = Some(LastConnectionAttempt {
             peer_index: self.current_peer_index(),
