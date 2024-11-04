@@ -59,7 +59,6 @@ pub struct WalletConnectivityService {
     request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
     network_handle: NetworkHandle,
     base_node_watch_receiver: watch::Receiver<Option<BaseNodePeerManager>>,
-    // base_node_watch: Watch<Option<BaseNodePeerManager>>,
     current_pool: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
@@ -141,11 +140,13 @@ impl WalletConnectivityService {
                     Some(pool) if pool.peer_id == current_base_node => {
                         trace!(target: LOG_TARGET, "check_connection: has rpc pool");
                         trace!(target: LOG_TARGET, "check_connection: rpc pool is already connected");
+                        pool.base_node_sync_rpc_client.clear_unused_leases().await;
+                        pool.base_node_wallet_rpc_client.clear_unused_leases().await;
                         self.set_online_status(OnlineStatus::Online);
                         return;
                     },
                     Some(pool) => {
-                        warn!(target: LOG_TARGET, "check_connection: current pool connected to peer {} but the base node peer is {}", pool.peer_id, current_base_node, );
+                        warn!(target: LOG_TARGET, "check_connection: current pool connected to peer {} but the base node peer is {}", pool.peer_id, current_base_node);
                     },
                     None => {
                         info!(target: LOG_TARGET, "check_connection: current base node has connection but no rpc pool for connection");

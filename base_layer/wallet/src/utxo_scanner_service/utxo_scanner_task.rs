@@ -178,7 +178,7 @@ where
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
-        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
+        let mut client = if selected_peer.map_or(false, |p| p == peer) {
             // Use the wallet connectivity service so that RPC pools are correctly managed
             self.resources
                 .wallet_connectivity
@@ -186,7 +186,8 @@ where
                 .await
                 .ok_or(UtxoScannerError::ConnectivityShutdown)?
         } else {
-            self.establish_new_rpc_connection(&peer).await?
+            let client = self.establish_new_rpc_connection(&peer).await?;
+            RpcClientLease::new(client)
         };
 
         let latency = client.get_last_request_latency();
@@ -277,6 +278,7 @@ where
                     tip_header.height,
                 )
                 .await?;
+
             if num_scanned == 0 {
                 return Err(UtxoScannerError::UtxoScanningError(
                     "Peer returned 0 UTXOs to scan".to_string(),
@@ -297,13 +299,13 @@ where
     async fn establish_new_rpc_connection(
         &mut self,
         peer: &PeerId,
-    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
+    ) -> Result<BaseNodeWalletRpcClient, UtxoScannerError> {
         let client = self
             .resources
             .network
             .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder(*peer).with_deadline(Duration::from_secs(60)))
             .await?;
-        Ok(RpcClientLease::new(client))
+        Ok(client)
     }
 
     async fn get_chain_tip_header(

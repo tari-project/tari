@@ -64,6 +64,11 @@ where
         pool.get_least_used_or_connect().await
     }
 
+    pub async fn clear_unused_leases(&self) {
+        let mut pool = self.pool.lock().await;
+        pool.clear_unused_leases();
+    }
+
     pub async fn close(self) {
         let mut pool = self.pool.lock().await;
         for mut client in pool.clients.drain(..) {
@@ -123,10 +128,23 @@ where
         }
     }
 
-    // pub fn is_connected(&self) -> bool {
-    //     // We assume a connection if any of the clients are connected.
-    //     self.clients.iter().any(|lease| lease.is_connected())
-    // }
+    pub fn clear_unused_leases(&mut self) {
+        let initial_len = self.clients.len();
+        let cap = self.clients.capacity();
+        self.clients = self.clients.drain(..).fold(Vec::with_capacity(cap), |mut vec, c| {
+            // 1 lease is held by the pool
+            if c.is_connected() && c.lease_count() > 1 {
+                vec.push(c);
+            }
+            vec
+        });
+        debug!(
+            target: LOG_TARGET,
+            "Cleared {} unused client(s) (total: {})",
+            initial_len - self.clients.len(),
+            self.clients.len()
+        )
+    }
 
     #[allow(dead_code)]
     pub(super) fn refresh_num_active_connections(&mut self) -> usize {
