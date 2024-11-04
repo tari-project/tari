@@ -286,8 +286,9 @@ where B: BlockchainBackend
             // lets load the smt into memory
             let mut smt = blockchain_db.smt_write_access()?;
             warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
+            let timer = Instant::now();
             *smt = blockchain_db.db_write_access()?.calculate_tip_smt()?;
-            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
+            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db in {:.2?}", timer.elapsed());
         }
         if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {

@@ -84,7 +84,7 @@ use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, StreamProtocol
 use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
-    sync::{mpsc, Semaphore},
+    sync::{broadcast, mpsc, Semaphore},
     task,
     time,
 };
@@ -141,10 +141,9 @@ impl MempoolSyncProtocol {
         }
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self, mut network_events: broadcast::Receiver<NetworkEvent>) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
 
-        let mut network_events = self.network.subscribe_events();
         loop {
             tokio::select! {
                 Ok(block_event) = self.block_event_stream.recv() => {
