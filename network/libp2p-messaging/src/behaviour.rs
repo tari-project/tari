@@ -170,17 +170,18 @@ where TCodec: Codec + Send + Clone + 'static
             ..
         }: ConnectionClosed,
     ) {
-        let connections = self
-            .connected
-            .get_mut(&peer_id)
-            .expect("Expected some established connection to peer before closing.");
+        let Some(connections) = self.connected.get_mut(&peer_id) else {
+            return;
+        };
 
-        let connection = connections
+        let Some(connection) = connections
             .connections
             .iter()
             .position(|c| c.id == connection_id)
             .map(|p: usize| connections.connections.remove(p))
-            .expect("Expected connection to be established before closing.");
+        else {
+            return;
+        };
 
         debug_assert_eq!(connections.is_empty(), remaining_established == 0);
         if connections.is_empty() {
