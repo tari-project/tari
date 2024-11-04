@@ -229,7 +229,7 @@ extern "C" fn sample_main() {
             continue;
         };
 
-        let status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
@@ -239,8 +239,9 @@ extern "C" fn sample_main() {
                 sw
             },
         };
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
-        show_status_and_home_if_needed(&ins, &status, &mut offset_ctx, &mut home);
+        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut home);
     }
 }
 
