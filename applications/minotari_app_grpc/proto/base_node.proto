@@ -505,7 +505,6 @@ message ValidatorNodeChange {
 
 message GetValidatorNodeChangesResponse {
   repeated ValidatorNodeChange changes = 1;
-  bytes sidechain_id = 2;
 }
 
 message GetShardKeyRequest {

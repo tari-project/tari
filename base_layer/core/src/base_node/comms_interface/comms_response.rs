@@ -25,16 +25,16 @@ use std::{
     sync::Arc,
 };
 
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{HashOutput, PrivateKey, PublicKey},
+};
+
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
-};
-use tari_common_types::types::PublicKey;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
 };
 
 /// API Response enum

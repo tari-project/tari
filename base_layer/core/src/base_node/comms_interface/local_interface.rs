@@ -22,10 +22,17 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use crate::base_node::comms_interface::comms_response::ValidatorNodeChange;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+};
+use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
+
 use crate::{
     base_node::comms_interface::{
         comms_request::GetNewBlockTemplateRequest,
+        comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
         BlockEvent,
         NodeCommsRequest,
@@ -36,12 +43,6 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
-};
-use tari_service_framework::{reply_channel::SenderService, Service};
-use tokio::sync::broadcast;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
@@ -180,7 +181,7 @@ impl LocalNodeCommsInterface {
                         error.unwrap_or_else(|| "Unspecified error".to_string()),
                     ))
                 }
-            }
+            },
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
