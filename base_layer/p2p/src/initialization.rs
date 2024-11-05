@@ -326,6 +326,7 @@ impl ServiceInitializer for P2pInitializer {
                 user_agent: self.user_agent.clone(),
                 enable_mdns: self.config.enable_mdns,
                 enable_relay: self.config.enable_relay,
+                max_inbound_connections_per_peer: self.config.max_inbound_connections_per_peer,
                 ..Default::default()
             },
             listener_addrs: self.config.listen_addresses.to_vec(),

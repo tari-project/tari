@@ -129,6 +129,7 @@ impl Default for WalletConfig {
             enable_relay: false,
             enable_mdns: true,
             reachability_mode: ReachabilityMode::Private,
+            max_inbound_connections_per_peer: Some(3),
             ..Default::default()
         };
         Self {

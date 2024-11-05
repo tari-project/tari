@@ -112,6 +112,7 @@ pub struct P2pConfig {
     pub rpc_max_sessions_per_peer: usize,
     pub enable_mdns: bool,
     pub enable_relay: bool,
+    pub max_inbound_connections_per_peer: Option<u32>,
 }
 
 impl Default for P2pConfig {
@@ -125,6 +126,7 @@ impl Default for P2pConfig {
             rpc_max_sessions_per_peer: 10,
             enable_mdns: true,
             enable_relay: false,
+            max_inbound_connections_per_peer: None,
         }
     }
 }

@@ -5305,6 +5305,7 @@ pub unsafe extern "C" fn comms_config_create(
         rpc_max_sessions_per_peer: 0,
         enable_mdns: true,
         enable_relay: false,
+        max_inbound_connections_per_peer: Some(1),
     };
 
     Box::into_raw(Box::new(config))

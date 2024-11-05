@@ -146,7 +146,7 @@ where
 
             // Connection limits
             let connection_limits = connection_limits::Behaviour::new(
-                ConnectionLimits::default().with_max_established_per_peer(config.max_connections_per_peer),
+                ConnectionLimits::default().with_max_established_incoming(config.max_inbound_connections_per_peer),
             );
 
             // mDNS
