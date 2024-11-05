@@ -458,24 +458,29 @@ where B: BlockchainBackend + 'static
                     .blockchain_db
                     .fetch_active_validator_nodes(start_height, sidechain_id.clone())
                     .await?;
-                // add initial validator node set
-                nodes.iter().for_each(|node| {
-                    node_changes.insert(node.public_key.clone(), ValidatorNodeChangeState::ADD);
-                });
                 for height in start_height + 1..=end_height {
                     let current_nodes = self
                         .blockchain_db
                         .fetch_active_validator_nodes(height, sidechain_id.clone())
                         .await?;
 
+                    // remove nodes
                     nodes.iter().for_each(|prev_node| {
                         let prev_exists_in_new_set = current_nodes
                             .iter()
                             .any(|current_node| prev_node.public_key == current_node.public_key);
-                        if prev_exists_in_new_set {
-                            node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChangeState::ADD);
-                        } else {
+                        if !prev_exists_in_new_set {
                             node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChangeState::REMOVE);
+                        }
+                    });
+
+                    // add nodes
+                    current_nodes.iter().for_each(|current_node| {
+                        let new_exists_in_prev = nodes
+                            .iter()
+                            .any(|prev_node| current_node.public_key == prev_node.public_key);
+                        if !new_exists_in_prev {
+                            node_changes.insert(current_node.public_key.clone(), ValidatorNodeChangeState::ADD);
                         }
                     });
 
