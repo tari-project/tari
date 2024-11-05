@@ -135,11 +135,9 @@ impl WalletConnectivityService {
             trace!(target: LOG_TARGET, "check_connection: has current_base_node");
             if let Ok(Some(conn)) = self.network_handle.get_connection(current_base_node).await {
                 trace!(target: LOG_TARGET, "check_connection: has connection with ID {}", conn.connection_id);
-                trace!(target: LOG_TARGET, "check_connection: is connected");
                 match self.current_pool.as_ref() {
                     Some(pool) if pool.peer_id == current_base_node => {
-                        trace!(target: LOG_TARGET, "check_connection: has rpc pool");
-                        trace!(target: LOG_TARGET, "check_connection: rpc pool is already connected");
+                        trace!(target: LOG_TARGET, "check_connection: has rpc pool, already connected");
                         pool.base_node_sync_rpc_client.clear_unused_leases().await;
                         pool.base_node_wallet_rpc_client.clear_unused_leases().await;
                         self.set_online_status(OnlineStatus::Online);
