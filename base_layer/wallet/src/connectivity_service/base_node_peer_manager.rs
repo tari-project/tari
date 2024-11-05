@@ -73,6 +73,13 @@ impl BaseNodePeerManager {
         self.get_current_peer().peer_id()
     }
 
+    pub fn select_next_peer_if_attempted(&self) -> PeerId {
+        if self.time_since_last_connection_attempt().is_some() {
+            self.select_next_peer();
+        }
+        self.get_current_peer_id()
+    }
+
     /// Get the current peer.
     pub fn get_current_peer(&self) -> &Peer {
         self.peer_list
@@ -82,7 +89,7 @@ impl BaseNodePeerManager {
     }
 
     /// Changes to the next peer in the list, returning that peer
-    pub fn select_next_peer(&mut self) -> &Peer {
+    pub fn select_next_peer(&self) -> &Peer {
         self.set_current_peer_index((self.current_peer_index() + 1) % self.peer_list.len());
         &self.peer_list[self.current_peer_index()]
     }

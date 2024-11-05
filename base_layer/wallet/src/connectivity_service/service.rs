@@ -295,7 +295,8 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
-        let mut peer_id = peer_manager.get_current_peer_id();
+        let mut peer_id = peer_manager.select_next_peer_if_attempted();
+
         loop {
             self.set_online_status(OnlineStatus::Connecting);
             let maybe_last_attempt = peer_manager.time_since_last_connection_attempt();
