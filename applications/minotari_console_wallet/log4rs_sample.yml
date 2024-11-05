@@ -63,7 +63,7 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
-  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
     path: "{{log_dir}}/log/wallet/other.log"
@@ -97,6 +97,23 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
+  # An appender named "libp2p" that writes to a file with a custom pattern encoder
+  libp2p:
+    kind: rolling_file
+    path: "{{log_dir}}/log/libp2p.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/libp2p.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+
   # An appender named "fail2ban" that writes to a file with a custom pattern encoder
   fail2ban:
     kind: file
@@ -118,6 +135,7 @@ loggers:
       - base_layer
       - stdout
     additive: false
+
   # other
   h2:
     level: info
@@ -134,6 +152,19 @@ loggers:
     appenders:
       - other
     additive: false
+  r2d2:
+    level: warn
+    appenders:
+      - other
+    additive: false
+
+# contacts
+  contacts:
+    level: info
+    appenders:
+      - contacts
+    additive: false
+
   # network
   network:
     level: debug
@@ -145,11 +176,6 @@ loggers:
     appenders:
       - network
     additive: false
-  contacts:
-    level: info
-    appenders:
-      - contacts
-    additive: false
   comms::noise:
     level: error
     appenders:
@@ -159,7 +185,6 @@ loggers:
     level: debug
     appenders:
       - network
-  # Route log events sent to the "mio" logger to the "other" appender
   mio:
     level: error
     appenders:
@@ -175,12 +200,7 @@ loggers:
     appenders:
       - network
     additive: false
-  # Route R2D2 log events
-  r2d2:
-    level: warn
-    appenders:
-      - other
-    additive: false
+
   # fail2ban logs
   fail2ban:
     level: info
@@ -188,3 +208,84 @@ loggers:
       - fail2ban
     additive: false
 
+  # libp2p
+  libp2p_identify:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_noise:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_peersync:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_gossipsub:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  quinn:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  quinn_proto:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_core:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_mdns:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_swarm:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  hickory_proto:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  multistream_select:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_tcp:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_quic:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_kad:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_ping:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_messaging:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
