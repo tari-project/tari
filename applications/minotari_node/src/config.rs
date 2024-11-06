@@ -147,7 +147,9 @@ impl Default for BaseNodeConfig {
         let p2p = P2pConfig {
             enable_relay: true,
             enable_mdns: true,
-            max_inbound_connections_per_peer: Some(5),
+            // We should reduce this to something like 5 - however there seems (unconfirmed) to be an issue in some
+            // behaviours when the limit is hit (continuous connection closing)
+            max_inbound_connections_per_peer: Some(50),
             ..Default::default()
         };
 
