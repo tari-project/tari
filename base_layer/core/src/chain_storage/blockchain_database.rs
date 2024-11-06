@@ -1495,6 +1495,7 @@ pub fn calculate_validator_node_mr(
         public_key: pk,
         sidechain_id,
         shard_key,
+        ..
     } in validator_nodes
     {
         hash_map
@@ -2308,14 +2309,14 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         // We dont have to mark the block twice
         Err(e @ ValidationError::BadBlockFound { .. }) => {
             db.write(txn)?;
-            return Err(e.into())
-        },
+            return Err(e.into());
+        }
 
         Err(e) => {
             txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height, e.to_string());
             db.write(txn)?;
             return Err(e.into());
-        },
+        }
     };
 
     // Include the current block timestamp in the median window

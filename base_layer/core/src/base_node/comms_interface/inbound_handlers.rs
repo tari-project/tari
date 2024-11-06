@@ -31,7 +31,11 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
+use tari_common::configuration::Network;
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{BlockHash, FixedHash, HashOutput, PublicKey},
+};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
@@ -50,7 +54,7 @@ use crate::{
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
         randomx_difficulty,
@@ -453,7 +457,8 @@ where B: BlockchainBackend + 'static
                 end_height,
                 sidechain_id,
             } => {
-                let mut node_changes = HashMap::<PublicKey, ValidatorNodeChangeState>::new();
+                let constants = self.consensus_manager.consensus_constants(start_height);
+                let mut node_changes = HashMap::<PublicKey, ValidatorNodeChange>::new();
                 let mut nodes = self
                     .blockchain_db
                     .fetch_active_validator_nodes(start_height, sidechain_id.clone())
@@ -470,7 +475,11 @@ where B: BlockchainBackend + 'static
                             .iter()
                             .any(|current_node| prev_node.public_key == current_node.public_key);
                         if !prev_exists_in_new_set {
-                            node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChangeState::REMOVE);
+                            node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChange {
+                                public_key: prev_node.public_key.clone(),
+                                state: ValidatorNodeChangeState::REMOVE,
+                                epoch: prev_node.start_epoch, // TODO: revisit
+                            });
                         }
                     });
 
@@ -480,7 +489,11 @@ where B: BlockchainBackend + 'static
                             .iter()
                             .any(|prev_node| current_node.public_key == prev_node.public_key);
                         if !new_exists_in_prev {
-                            node_changes.insert(current_node.public_key.clone(), ValidatorNodeChangeState::ADD);
+                            node_changes.insert(current_node.public_key.clone(), ValidatorNodeChange {
+                                public_key: current_node.public_key.clone(),
+                                state: ValidatorNodeChangeState::ADD,
+                                epoch: current_node.start_epoch,
+                            });
                         }
                     });
 
@@ -490,9 +503,10 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(
                     node_changes
                         .iter()
-                        .map(|(pub_key, state)| ValidatorNodeChange {
+                        .map(|(pub_key, change)| ValidatorNodeChange {
                             public_key: pub_key.clone(),
-                            state: state.clone(),
+                            state: change.state.clone(),
+                            epoch: change.epoch,
                         })
                         .collect(),
                 ))

@@ -2323,6 +2323,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 public_key,
                 sidechain_id,
                 shard_key,
+                ..
             } in active_validator_nodes
             {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
@@ -2594,6 +2595,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         tari_rpc::ValidatorNodeChangeState::Remove.into()
                     },
                 },
+                epoch: node_change.epoch.0,
             })
             .collect();
 

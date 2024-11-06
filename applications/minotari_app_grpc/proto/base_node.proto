@@ -501,6 +501,7 @@ enum ValidatorNodeChangeState {
 message ValidatorNodeChange {
   bytes public_key = 1;
   ValidatorNodeChangeState state = 2;
+  uint64 epoch = 3;
 }
 
 message GetValidatorNodeChangesResponse {
