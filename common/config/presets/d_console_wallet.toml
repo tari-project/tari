@@ -166,6 +166,12 @@ event_channel_size = 3500
 # _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
 # automatically configured
 #public_addresses = ["/ip4/172.2.3.4/tcp/18188",]
+# The multiaddrs to listen on.
+# Default: ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"]
+#listen_addresses = ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"]
+# If set to `Private`, the node will not be used as a public relay
+# (Base node default: `auto`, Wallet default: `private`)
+#reachability_mode = private
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -204,7 +210,6 @@ event_channel_size = 3500
 # sessions.
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
-#rpc_max_sessions_per_peer = 10
 #rpc_max_sessions_per_peer = 10
 # If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.

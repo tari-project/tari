@@ -287,6 +287,7 @@ impl WalletConnectivityService {
     }
 
     async fn disconnect_base_node(&mut self, peer_id: PeerId) {
+        trace!(target: LOG_TARGET, "Disconnecting base node '{}'...", peer_id);
         if let Some(pool) = self.current_pool.take() {
             pool.close().await;
         }
@@ -314,9 +315,8 @@ impl WalletConnectivityService {
 
             match self.try_setup_rpc_pool(&peer).await {
                 Ok(true) => {
-                    if let Err(e) = self.notify_pending_requests().await {
-                        warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
-                    }
+                    self.base_node_watch.send(Some(peer_manager.clone()));
+                    self.notify_pending_requests().await;
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
@@ -434,16 +434,21 @@ impl WalletConnectivityService {
         Ok(true)
     }
 
-    async fn notify_pending_requests(&mut self) -> Result<(), WalletConnectivityError> {
+    async fn notify_pending_requests(&mut self) {
         let current_pending = mem::take(&mut self.pending_requests);
+        let mut count = 0;
+        let current_pending_len = current_pending.len();
         for reply in current_pending {
             if reply.is_canceled() {
                 continue;
             }
-
+            count += 1;
+            trace!(target: LOG_TARGET, "Handle {} of {} pending RPC pool requests", count, current_pending_len);
             self.handle_pool_request(reply).await;
         }
-        Ok(())
+        if !self.pending_requests.is_empty() {
+            warn!(target: LOG_TARGET, "{} of {} pending RPC pool requests not handled", count, current_pending_len);
+        }
     }
 }
 

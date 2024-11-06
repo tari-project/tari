@@ -103,6 +103,8 @@ pub struct P2pConfig {
         deserialize_with = "deserialize_from_str",
         serialize_with = "serialize_string"
     )]
+    /// If set to `Private`, the node will not be used as a public relay
+    /// (Base node default: `Auto`, Wallet default: `Private`)
     pub reachability_mode: ReachabilityMode,
     /// The global maximum allowed RPC sessions.
     /// Default: 100
