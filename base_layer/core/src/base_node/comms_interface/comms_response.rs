@@ -26,8 +26,8 @@ use std::{
 };
 
 use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    epoch::VnEpoch,
+    chain_metadata::ChainMetadata
+    ,
     types::{HashOutput, PrivateKey, PublicKey},
 };
 
@@ -124,5 +124,5 @@ pub enum ValidatorNodeChangeState {
 pub struct ValidatorNodeChange {
     pub public_key: PublicKey,
     pub state: ValidatorNodeChangeState,
-    pub epoch: VnEpoch,
+    pub height: u64,
 }
