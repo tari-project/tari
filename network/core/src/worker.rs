@@ -103,6 +103,7 @@ where
     config: crate::Config,
     relays: RelayState,
     seed_peers: Vec<Peer>,
+    added_peers: HashMap<PeerId, Peer>,
     autonat_status_sender: watch::Sender<AutonatStatus>,
     is_initial_bootstrap_complete: bool,
     shutdown_signal: ShutdownSignal,
@@ -140,6 +141,7 @@ where
             pending_kad_queries: HashMap::new(),
             relays: RelayState::new(known_relay_nodes),
             seed_peers,
+            added_peers: HashMap::new(),
             swarm,
             ban_list: HashMap::new(),
             allow_list: HashSet::new(),
@@ -242,7 +244,16 @@ where
 
                 let (tx_waiter, rx_waiter) = oneshot::channel();
                 let maybe_peer_id = dial_opts.get_peer_id();
-                info!(target: LOG_TARGET, "🤝 Dialing peer {:?}", dial_opts);
+                info!(target: LOG_TARGET, "☎️ Dialing peer {:?}", dial_opts);
+                // Kad can remove addresses if we fail to dial a peer (e.g. if they are temporarily offline)
+                // So we readd peers we've explicitly added
+                if let Some(peer_id) = maybe_peer_id {
+                    if let Some(addresses) = self.added_peers.get(&peer_id).map(|p| p.addresses()) {
+                        for address in addresses {
+                            self.swarm.add_peer_address(peer_id, address.clone());
+                        }
+                    }
+                }
 
                 match self.swarm.dial(dial_opts) {
                     Ok(_) => {
@@ -394,13 +405,21 @@ where
                 let num_addresses = peer.addresses().len();
                 let peer_id = peer.peer_id();
                 let mut failed = 0usize;
-                for address in peer.addresses {
-                    let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, address);
+                for address in &peer.addresses {
+                    let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                     if matches!(update, RoutingUpdate::Failed) {
                         failed += 1;
                     }
                 }
 
+                match self.added_peers.entry(peer.peer_id) {
+                    Entry::Occupied(mut p_mut) => {
+                        p_mut.get_mut().merge_addresses(peer.addresses);
+                    },
+                    Entry::Vacant(entry) => {
+                        entry.insert(peer);
+                    },
+                }
                 if failed == 0 {
                     let _ignore = reply.send(Ok(()));
                 } else {
@@ -1148,7 +1167,7 @@ where
             self.establish_relay_circuit_on_connect(&peer_id);
         }
 
-        self.publish_event(NetworkEvent::IdentifiedPeer {
+        self.publish_event(NetworkEvent::PeerIdentified {
             peer_id,
             public_key,
             agent_version,
@@ -1255,6 +1274,9 @@ where
                 error,
             } => {
                 debug!(target: LOG_TARGET, "Inbound substream failed from peer {peer_id} with stream id {stream_id}: {error}");
+                if let Some(waiting_reply) = self.pending_substream_requests.remove(&stream_id) {
+                    let _ignore = waiting_reply.send(Err(NetworkError::FailedToOpenSubstream(error)));
+                }
             },
             OutboundFailure {
                 error,

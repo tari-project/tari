@@ -7,7 +7,7 @@ use std::{
 };
 
 use libp2p::{
-    core::{transport::PortUse, Endpoint},
+    core::{transport::PortUse, ConnectedPoint, Endpoint},
     swarm::{
         dial_opts::DialOpts,
         AddressChange,
@@ -128,17 +128,16 @@ impl Behaviour {
             ..
         }: ConnectionClosed,
     ) {
-        let Some(connections) = self.connected.get_mut(&peer_id) else {
-            return;
-        };
+        let connections = self
+            .connected
+            .get_mut(&peer_id)
+            .expect("Expected connection to be established before closing.");
 
-        let Some(connection) = connections
+        let connection = connections
             .iter()
             .position(|c| c.id == connection_id)
-            .map(|p: usize| connections.remove(p))
-        else {
-            return;
-        };
+            .map(|p| connections.remove(p))
+            .expect("Expected some established connection to peer before closing.");
 
         debug_assert_eq!(connections.is_empty(), remaining_established == 0);
         if connections.is_empty() {
@@ -162,10 +161,15 @@ impl Behaviour {
             new,
             ..
         } = address_change;
+        let remote_address = match new {
+            ConnectedPoint::Dialer { address, .. } => Some(address),
+            ConnectedPoint::Listener { .. } => None,
+        };
+
         if let Some(connections) = self.connected.get_mut(&peer_id) {
             for connection in connections {
                 if connection.id == connection_id {
-                    connection.remote_address = Some(new.get_remote_address().clone());
+                    connection.remote_address = remote_address.cloned();
                     return;
                 }
             }
@@ -173,19 +177,16 @@ impl Behaviour {
     }
 
     fn on_dial_failure(&mut self, DialFailure { peer_id, error, .. }: DialFailure) {
-        if matches!(error, DialError::DialPeerConditionFalse(_)) {
-            return;
-        }
-
         if let Some(peer) = peer_id {
             // If there are pending outgoing stream requests when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
             // outgoing stream requests are drained when a connection is established and
             // only created when a peer is not connected when a request is made.
-            // Therefore these requests must be considered failed, even if there is
+            // Therefor these requests must be considered failed, even if there is
             // another, concurrent dialing attempt ongoing.
             if let Some(pending) = self.pending_outbound_streams.remove(&peer) {
                 let no_addresses = matches!(&error, DialError::NoAddresses);
+                self.pending_events.reserve(pending.len());
                 for request in pending {
                     self.pending_events
                         .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
@@ -295,9 +296,10 @@ impl NetworkBehaviour for Behaviour {
     fn poll(&mut self, _cx: &mut Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         if let Some(event) = self.pending_events.pop_front() {
             return Poll::Ready(event);
-        }
-        if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
+        } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
             self.pending_events.shrink_to_fit();
+        } else {
+            // nothing
         }
 
         Poll::Pending

@@ -161,10 +161,17 @@ impl MempoolSyncProtocol {
     }
 
     async fn handle_network_event(&mut self, event: NetworkEvent) {
+        #[allow(clippy::single_match)]
         match event {
-            // If this node is connecting to a peer
-            NetworkEvent::PeerConnected { peer_id, direction } if direction.is_outbound() => {
-                if !self.is_synched() && !self.has_attempted_peer(peer_id) {
+            NetworkEvent::PeerIdentified {
+                peer_id,
+                supported_protocols,
+                ..
+            } => {
+                if !self.is_synched() &&
+                    !self.has_attempted_peer(peer_id) &&
+                    supported_protocols.iter().any(|p| *p == MEMPOOL_SYNC_PROTOCOL)
+                {
                     self.spawn_initiator_protocol(peer_id).await;
                 }
             },
@@ -277,7 +284,7 @@ impl MempoolSyncProtocol {
                         },
                     }
                 },
-                Err(err) => error!(
+                Err(err) => warn!(
                     target: LOG_TARGET,
                     "Unable to establish mempool protocol substream to peer `{}`: {}",
                     peer_id,

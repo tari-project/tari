@@ -232,7 +232,7 @@ impl AppState {
     pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::TariAddressParseError)?;
 
         let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
@@ -262,7 +262,7 @@ impl AppState {
 
     pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::TariAddressParseError)?;
 
         inner.wallet.contacts_service.remove_contact(address).await?;
 
@@ -298,7 +298,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::TariAddressParseError)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -329,7 +329,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&address).map_err(|_| UiError::TariAddressParseError)?;
         let payment_id = if payment_id_str.is_empty() {
             PaymentId::Empty
         } else {
@@ -384,10 +384,10 @@ impl AppState {
         let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         let claim_public_key = match claim_public_key {
-            None => return Err(UiError::PublicKeyParseError),
+            None => return Err(UiError::TariAddressParseError),
             Some(claim_public_key) => match PublicKey::from_hex(claim_public_key.as_str()) {
                 Ok(claim_public_key) => Some(claim_public_key),
-                Err(_) => return Err(UiError::PublicKeyParseError),
+                Err(_) => return Err(UiError::TariAddressParseError),
             },
         };
 
@@ -1015,7 +1015,7 @@ impl AppStateInner {
             .public_key()
             .clone()
             .try_into_sr25519()
-            .map_err(|_| UiError::PublicKeyParseError)?
+            .map_err(|_| UiError::TariAddressParseError)?
             .inner_key()
             .clone();
         info!(
@@ -1047,7 +1047,7 @@ impl AppStateInner {
             .public_key()
             .clone()
             .try_into_sr25519()
-            .map_err(|_| UiError::PublicKeyParseError)?
+            .map_err(|_| UiError::TariAddressParseError)?
             .inner_key()
             .clone();
         self.wallet
@@ -1097,7 +1097,7 @@ impl AppStateInner {
             .public_key()
             .clone()
             .try_into_sr25519()
-            .map_err(|_| UiError::PublicKeyParseError)?
+            .map_err(|_| UiError::TariAddressParseError)?
             .inner_key()
             .clone();
         self.wallet

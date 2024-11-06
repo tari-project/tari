@@ -25,7 +25,14 @@ use std::{mem, time::Duration};
 use futures::{future, future::Either};
 use log::*;
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
-use tari_network::{identity::PeerId, DialError, NetworkHandle, NetworkingService};
+use tari_network::{
+    identity::PeerId,
+    swarm::dial_opts::{DialOpts, PeerCondition},
+    DialError,
+    NetworkHandle,
+    NetworkingService,
+    Peer,
+};
 use tari_rpc_framework::{
     pool::{RpcClientLease, RpcClientPool},
     RpcClient,
@@ -90,7 +97,6 @@ impl WalletConnectivityService {
             request_receiver,
             network_handle,
             base_node_watch_receiver: base_node_watch.get_receiver(),
-            // base_node_watch,
             current_pool: None,
             pending_requests: Vec::new(),
             online_status_watch,
@@ -293,7 +299,8 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
-        let mut peer_id = peer_manager.select_next_peer_if_attempted();
+        let mut peer = peer_manager.select_next_peer_if_attempted();
+        let peer_id = peer.peer_id();
 
         loop {
             self.set_online_status(OnlineStatus::Connecting);
@@ -302,13 +309,13 @@ impl WalletConnectivityService {
             debug!(
                 target: LOG_TARGET,
                 "Attempting to connect to base node peer '{}'... (last attempt {:?})",
-                peer_id,
+                peer,
                 maybe_last_attempt
             );
 
             peer_manager.set_last_connection_attempt();
 
-            match self.try_setup_rpc_pool(peer_id).await {
+            match self.try_setup_rpc_pool(peer).await {
                 Ok(true) => {
                     if let Err(e) = self.notify_pending_requests().await {
                         warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
@@ -316,7 +323,7 @@ impl WalletConnectivityService {
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
-                        "Wallet is ONLINE and connected to base node '{}'", peer_id
+                        "Wallet is ONLINE and connected to base node '{}'", peer
                     );
                     break;
                 },
@@ -352,16 +359,16 @@ impl WalletConnectivityService {
             }
 
             // Select the next peer (if available)
-            let next_peer_id = peer_manager.select_next_peer().peer_id();
+            let next_peer = peer_manager.select_next_peer();
             // If we only have one peer in the list, wait a bit before retrying
-            if peer_id == next_peer_id {
+            if peer_id == next_peer.peer_id() {
                 debug!(target: LOG_TARGET,
                     "Only single peer in base node peer list. Waiting {}s before retrying again ...",
                     CONNECTIVITY_WAIT.as_secs()
                 );
                 time::sleep(CONNECTIVITY_WAIT).await;
             }
-            peer_id = next_peer_id;
+            peer = next_peer;
         }
     }
 
@@ -372,7 +379,18 @@ impl WalletConnectivityService {
         self.online_status_watch.send(status);
     }
 
-    async fn try_setup_rpc_pool(&mut self, peer_id: PeerId) -> Result<bool, WalletConnectivityError> {
+    async fn try_setup_rpc_pool(&mut self, peer: &Peer) -> Result<bool, WalletConnectivityError> {
+        let peer_id = peer.peer_id();
+        let dial_wait = self
+            .network_handle
+            .dial_peer(
+                DialOpts::peer_id(peer.peer_id())
+                    .condition(PeerCondition::Disconnected)
+                    .addresses(peer.addresses().to_vec())
+                    .build(),
+            )
+            .await?;
+        dial_wait.await?;
         let container = ClientPoolContainer {
             peer_id,
             base_node_sync_rpc_client: self

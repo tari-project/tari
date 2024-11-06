@@ -138,12 +138,16 @@ where
             }
             vec
         });
-        debug!(
-            target: LOG_TARGET,
-            "Cleared {} unused client(s) (total: {})",
-            initial_len - self.clients.len(),
-            self.clients.len()
-        )
+
+        let num_cleared = initial_len - self.clients.len();
+        if num_cleared > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Cleared {} unused client(s) (total: {})",
+                num_cleared,
+                self.clients.len()
+            )
+        }
     }
 
     #[allow(dead_code)]
@@ -161,23 +165,28 @@ where
         // If the pool is full, we choose the client with the smallest lease_count (i.e. the one that is being used
         // the least or not at all).
         if self.is_full() {
+            debug!(target: LOG_TARGET, "get_next_lease: full using client with {} lease(s) (is_connected = {})", client.lease_count(), client.is_connected());
             return Some(client);
         }
 
         // Otherwise, if the least used connection is still in use and since there is capacity for more connections,
         // return None. This indicates that the best option is to create a new connection.
         if client.lease_count() > 0 {
+            debug!(target: LOG_TARGET, "get_next_lease: least used client has {} lease(s) but more capacity exists.", client.is_connected());
             return None;
         }
 
+        debug!(target: LOG_TARGET, "get_next_lease: least used client has no lease.");
         Some(client)
     }
 
     fn get_least_used(&self) -> Option<&RpcClientLease<T>> {
         let mut min_count = usize::MAX;
         let mut selected_client = None;
+        debug!(target: LOG_TARGET, "get_least_used: #clients: {}", self.clients.len());
         for client in &self.clients {
             let lease_count = client.lease_count();
+            debug!(target: LOG_TARGET, "get_least_used: lease count: {}, is_connected: {}", lease_count, client.is_connected());
             if lease_count == 0 {
                 return Some(client);
             }
@@ -197,6 +206,7 @@ where
 
     async fn add_new_client_session(&mut self) -> Result<&RpcClientLease<T>, RpcClientPoolError> {
         debug_assert!(!self.is_full(), "add_new_client called when pool is full");
+        debug!(target: LOG_TARGET, "Attempting new RPC pool session for {} (#clients = {})", self.client_config.peer_id(), self.clients.len());
         let client = self
             .connector
             .connect_rpc_using_builder(self.client_config.clone())
