@@ -262,6 +262,18 @@ where
                         }
                         let _ignore = reply.send(Ok(rx_waiter.into()));
                     },
+                    Err(err @ DialError::DialPeerConditionFalse(_)) => {
+                        debug!(target :LOG_TARGET, "{err}");
+                        if let Some(peer_id) = maybe_peer_id {
+                            if self.active_connections.contains_key(&peer_id) {
+                                let _ignore = tx_waiter.send(Ok(()));
+                            } else {
+                                // We can add to pending because an event will occur
+                                self.pending_dial_requests.entry(peer_id).or_default().push(tx_waiter);
+                            }
+                        }
+                        let _ignore = reply.send(Ok(rx_waiter.into()));
+                    },
                     Err(err) => {
                         info!(target: LOG_TARGET, "🚨 Failed to dial peer: {}",  err);
                         let _ignore = reply.send(Err(err.into()));
@@ -678,9 +690,10 @@ where
                 peer_id,
                 endpoint,
                 cause,
+                connection_id,
                 ..
             } => {
-                info!(target: LOG_TARGET, "🔌 Connection closed: peer_id={}, endpoint={:?}, cause={:?}", peer_id, endpoint, cause);
+                info!(target: LOG_TARGET, "🔌 Connection closed: id={}, peer_id={}, endpoint={:?}, cause={:?}", connection_id, peer_id, endpoint, cause);
                 match self.active_connections.entry(peer_id) {
                     Entry::Occupied(mut entry) => {
                         entry.get_mut().retain(|c| c.endpoint != endpoint);
@@ -1072,13 +1085,10 @@ where
             supported_protocols: vec![],
         });
 
-        let Some(waiters) = self.pending_dial_requests.remove(&peer_id) else {
-            debug!(target: LOG_TARGET, "No pending dial requests initiated by this service for peer {}", peer_id);
-            return Ok(());
-        };
-
-        for waiter in waiters {
-            let _ignore = waiter.send(Ok(()));
+        if let Some(waiters) = self.pending_dial_requests.remove(&peer_id) {
+            for waiter in waiters {
+                let _ignore = waiter.send(Ok(()));
+            }
         }
 
         self.publish_event(NetworkEvent::PeerConnected {
@@ -1274,9 +1284,6 @@ where
                 error,
             } => {
                 debug!(target: LOG_TARGET, "Inbound substream failed from peer {peer_id} with stream id {stream_id}: {error}");
-                if let Some(waiting_reply) = self.pending_substream_requests.remove(&stream_id) {
-                    let _ignore = waiting_reply.send(Err(NetworkError::FailedToOpenSubstream(error)));
-                }
             },
             OutboundFailure {
                 error,

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{mem, time::Duration};
+use std::{mem, pin::pin, time::Duration};
 
 use futures::{future, future::Either};
 use log::*;
@@ -39,7 +39,7 @@ use tari_rpc_framework::{
     RpcConnector,
 };
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot},
     time,
     time::MissedTickBehavior,
 };
@@ -65,7 +65,7 @@ pub struct WalletConnectivityService {
     config: BaseNodeServiceConfig,
     request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
     network_handle: NetworkHandle,
-    base_node_watch_receiver: watch::Receiver<Option<BaseNodePeerManager>>,
+    base_node_watch: Watch<Option<BaseNodePeerManager>>,
     current_pool: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
@@ -96,7 +96,7 @@ impl WalletConnectivityService {
             config,
             request_receiver,
             network_handle,
-            base_node_watch_receiver: base_node_watch.get_receiver(),
+            base_node_watch,
             current_pool: None,
             pending_requests: Vec::new(),
             online_status_watch,
@@ -115,8 +115,8 @@ impl WalletConnectivityService {
                 // BIASED: select branches are in order of priority
                 biased;
 
-                Ok(_) = self.base_node_watch_receiver.changed() => {
-                    if self.base_node_watch_receiver.borrow().is_some() {
+                _ = self.base_node_watch.changed() => {
+                    if self.base_node_watch.borrow().is_some() {
                         // This will block the rest until the connection is established. This is what we want.
                         trace!(target: LOG_TARGET, "start: base_node_watch_receiver.changed");
                         self.check_connection_and_connect_if_required().await;
@@ -204,7 +204,7 @@ impl WalletConnectivityService {
             val
         } else {
             self.pending_requests.push(reply.into());
-            warn!(target: LOG_TARGET, "{} wallet requests waiting for connection", self.pending_requests.len());
+            debug!(target: LOG_TARGET, "{} wallet requests waiting for connection", self.pending_requests.len());
             return;
         };
 
@@ -279,14 +279,11 @@ impl WalletConnectivityService {
     }
 
     fn current_base_node(&self) -> Option<PeerId> {
-        self.base_node_watch_receiver
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer_id())
+        self.base_node_watch.borrow().as_ref().map(|p| p.get_current_peer_id())
     }
 
     fn get_base_node_peer_manager(&self) -> Option<BaseNodePeerManager> {
-        self.base_node_watch_receiver.borrow().as_ref().cloned()
+        self.base_node_watch.borrow().as_ref().cloned()
     }
 
     async fn disconnect_base_node(&mut self, peer_id: PeerId) {
@@ -299,7 +296,7 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
-        let mut peer = peer_manager.select_next_peer_if_attempted();
+        let mut peer = peer_manager.select_next_peer_if_attempted().clone();
         let peer_id = peer.peer_id();
 
         loop {
@@ -315,7 +312,7 @@ impl WalletConnectivityService {
 
             peer_manager.set_last_connection_attempt();
 
-            match self.try_setup_rpc_pool(peer).await {
+            match self.try_setup_rpc_pool(&peer).await {
                 Ok(true) => {
                     if let Err(e) = self.notify_pending_requests().await {
                         warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
@@ -345,6 +342,7 @@ impl WalletConnectivityService {
                     };
                     self.disconnect_base_node(peer_id).await;
                     self.set_online_status(OnlineStatus::Offline);
+                    continue;
                 },
                 Err(WalletConnectivityError::DialError(DialError::Aborted)) => {
                     debug!(target: LOG_TARGET, "Dial was cancelled.");
@@ -359,7 +357,7 @@ impl WalletConnectivityService {
             }
 
             // Select the next peer (if available)
-            let next_peer = peer_manager.select_next_peer();
+            let next_peer = peer_manager.select_next_peer().clone();
             // If we only have one peer in the list, wait a bit before retrying
             if peer_id == next_peer.peer_id() {
                 debug!(target: LOG_TARGET,
@@ -367,6 +365,9 @@ impl WalletConnectivityService {
                     CONNECTIVITY_WAIT.as_secs()
                 );
                 time::sleep(CONNECTIVITY_WAIT).await;
+            } else {
+                // Ensure that all services are aware of the next peer being attempted
+                self.base_node_watch.mark_changed();
             }
             peer = next_peer;
         }
@@ -385,12 +386,12 @@ impl WalletConnectivityService {
             .network_handle
             .dial_peer(
                 DialOpts::peer_id(peer.peer_id())
-                    .condition(PeerCondition::Disconnected)
+                    .condition(PeerCondition::DisconnectedAndNotDialing)
                     .addresses(peer.addresses().to_vec())
                     .build(),
             )
             .await?;
-        dial_wait.await?;
+
         let container = ClientPoolContainer {
             peer_id,
             base_node_sync_rpc_client: self
@@ -403,10 +404,13 @@ impl WalletConnectivityService {
 
         // Create the first RPC session to ensure that we can connect.
         {
-            let connect_fut = container.base_node_wallet_rpc_client.get();
-            futures::pin_mut!(connect_fut);
-            let bn_changed_fut = self.base_node_watch_receiver.changed();
-            futures::pin_mut!(bn_changed_fut);
+            let mut bn_changed_fut = pin!(self.base_node_watch.changed());
+            match future::select(dial_wait, &mut bn_changed_fut).await {
+                Either::Left((result, _)) => result?,
+                Either::Right(_) => return Ok(false),
+            };
+            debug!(target: LOG_TARGET, "Dial succeeded for {peer_id}");
+            let connect_fut = pin!(container.base_node_wallet_rpc_client.get());
             let client = match future::select(connect_fut, bn_changed_fut).await {
                 Either::Left((result, _)) => result?,
                 Either::Right(_) => return Ok(false),

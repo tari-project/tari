@@ -22,8 +22,7 @@
 
 use std::{
     fmt::Display,
-    ops::Deref,
-    sync::{atomic, atomic::AtomicUsize, Arc, Mutex},
+    sync::{atomic, atomic::AtomicUsize, Arc},
     time::{Duration, Instant},
 };
 
@@ -38,13 +37,7 @@ pub struct BaseNodePeerManager {
     current_peer_index: Arc<AtomicUsize>,
     // The other base nodes that the wallet can connect to if the selected peer is not available
     peer_list: Arc<Vec<Peer>>,
-    last_connection_attempt: Arc<Mutex<Option<LastConnectionAttempt>>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LastConnectionAttempt {
-    pub peer_index: usize,
-    pub attempt_time: Instant,
+    local_last_connection_attempt: Option<Instant>,
 }
 
 impl BaseNodePeerManager {
@@ -64,7 +57,7 @@ impl BaseNodePeerManager {
         Ok(Self {
             current_peer_index: Arc::new(AtomicUsize::new(preferred_peer_index)),
             peer_list: Arc::new(peer_list),
-            last_connection_attempt: Arc::new(Mutex::new(None)),
+            local_last_connection_attempt: None,
         })
     }
 
@@ -73,7 +66,7 @@ impl BaseNodePeerManager {
         self.get_current_peer().peer_id()
     }
 
-    pub fn select_next_peer_if_attempted(&self) -> &Peer {
+    pub fn select_next_peer_if_attempted(&mut self) -> &Peer {
         if self.time_since_last_connection_attempt().is_some() {
             self.select_next_peer();
         }
@@ -89,8 +82,12 @@ impl BaseNodePeerManager {
     }
 
     /// Changes to the next peer in the list, returning that peer
-    pub fn select_next_peer(&self) -> &Peer {
+    pub fn select_next_peer(&mut self) -> &Peer {
         self.set_current_peer_index((self.current_peer_index() + 1) % self.peer_list.len());
+        if self.peer_list.len() > 1 {
+            // Reset the last attempt since we've moved onto another peer
+            self.local_last_connection_attempt = None;
+        }
         &self.peer_list[self.current_peer_index()]
     }
 
@@ -104,31 +101,13 @@ impl BaseNodePeerManager {
     }
 
     /// Set the last connection attempt stats
-    pub fn set_last_connection_attempt(&self) {
-        let mut lock = self
-            .last_connection_attempt
-            .lock()
-            // In the currently impossible case that a panic occurs while this mutex is unlocked, we'll 
-            // simply recover to use the previous value before the panic.
-            .unwrap_or_else(|e| e.into_inner());
-        *lock = Some(LastConnectionAttempt {
-            peer_index: self.current_peer_index(),
-            attempt_time: Instant::now(),
-        });
+    pub fn set_last_connection_attempt(&mut self) {
+        self.local_last_connection_attempt = Some(Instant::now());
     }
 
-    /// Get the last connection attempt stats
+    /// Get the last connection attempt for the current peer
     pub fn time_since_last_connection_attempt(&self) -> Option<Duration> {
-        let lock = self.last_connection_attempt.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(stats) = lock.deref() {
-            if stats.peer_index == self.current_peer_index() {
-                Some(stats.attempt_time.elapsed())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        self.local_last_connection_attempt.as_ref().map(|t| t.elapsed())
     }
 
     fn set_current_peer_index(&self, index: usize) {

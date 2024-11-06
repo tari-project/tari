@@ -100,7 +100,7 @@ appenders:
   # An appender named "libp2p" that writes to a file with a custom pattern encoder
   libp2p:
     kind: rolling_file
-    path: "{{log_dir}}/log/libp2p.log"
+    path: "{{log_dir}}/log/wallet/libp2p.log"
     policy:
       kind: compound
       trigger:
@@ -110,9 +110,9 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "{{log_dir}}/log/libp2p.{}.log"
+        pattern: "{{log_dir}}/log/wallet/libp2p.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   # An appender named "fail2ban" that writes to a file with a custom pattern encoder
   fail2ban:
@@ -158,7 +158,7 @@ loggers:
       - other
     additive: false
 
-# contacts
+  # contacts
   contacts:
     level: info
     appenders:

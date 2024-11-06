@@ -9,7 +9,7 @@ use std::{
 use libp2p::{
     core::{transport::PortUse, ConnectedPoint, Endpoint},
     swarm::{
-        dial_opts::DialOpts,
+        dial_opts::{DialOpts, PeerCondition},
         AddressChange,
         ConnectionClosed,
         ConnectionDenied,
@@ -89,14 +89,19 @@ impl Behaviour {
 
     pub fn open_substream(&mut self, peer_id: PeerId, protocol: StreamProtocol) -> StreamId {
         let stream_id = self.next_outbound_stream_id();
+        tracing::debug!("open substream request to {peer_id}: stream={stream_id} {protocol}");
         let request = OpenStreamRequest::new(stream_id, peer_id, protocol);
-
         match self.get_connections(&peer_id) {
             Some(connections) => {
                 let ix = (stream_id as usize) % connections.len();
                 let conn = &mut connections[ix];
-                conn.pending_streams.insert(stream_id);
+                conn.pending_outbound_streams.insert(stream_id);
                 let conn_id = conn.id;
+                tracing::debug!(
+                    "open substream: using conn={conn_id} out of {} connnection(s) to {peer_id}: stream={stream_id} {}",
+                    connections.len(),
+                    request.protocol()
+                );
                 self.pending_events.push_back(ToSwarm::NotifyHandler {
                     peer_id,
                     handler: NotifyHandler::One(conn_id),
@@ -104,8 +109,13 @@ impl Behaviour {
                 });
             },
             None => {
+                tracing::debug!(
+                    "open substream: no connection to peer {peer_id}: protocol: {}, stream: {}",
+                    request.protocol(),
+                    request.stream_id()
+                );
                 self.pending_events.push_back(ToSwarm::Dial {
-                    opts: DialOpts::peer_id(peer_id).build(),
+                    opts: DialOpts::peer_id(peer_id).condition(PeerCondition::Always).build(),
                 });
                 self.pending_outbound_streams.entry(peer_id).or_default().push(request);
             },
@@ -144,9 +154,9 @@ impl Behaviour {
             self.connected.remove(&peer_id);
         }
 
-        for stream_id in connection.pending_streams {
+        for stream_id in connection.pending_outbound_streams {
             self.pending_events
-                .push_back(ToSwarm::GenerateEvent(Event::InboundFailure {
+                .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
                     peer_id,
                     stream_id,
                     error: Error::ConnectionClosed,
@@ -191,7 +201,6 @@ impl Behaviour {
                     self.pending_events
                         .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
                             peer_id: peer,
-                            protocol: request.protocol().clone(),
                             stream_id: request.stream_id(),
                             error: if no_addresses {
                                 Error::NoAddressesForPeer
@@ -217,7 +226,7 @@ impl Behaviour {
 
         if let Some(pending_streams) = self.pending_outbound_streams.remove(&peer_id) {
             for stream in pending_streams {
-                connection.pending_streams.insert(stream.stream_id());
+                connection.pending_outbound_streams.insert(stream.stream_id());
                 handler.on_behaviour_event(stream.into());
             }
         }
@@ -280,7 +289,7 @@ impl NetworkBehaviour for Behaviour {
             Event::SubstreamOpen { peer_id, stream_id, .. } => {
                 if let Some(connections) = self.connected.get_mut(peer_id) {
                     for connection in connections {
-                        connection.pending_streams.remove(stream_id);
+                        connection.pending_outbound_streams.remove(stream_id);
                     }
                 }
             },
@@ -311,7 +320,7 @@ impl NetworkBehaviour for Behaviour {
 struct Connection {
     id: ConnectionId,
     remote_address: Option<Multiaddr>,
-    pending_streams: HashSet<StreamId>,
+    pending_outbound_streams: HashSet<StreamId>,
 }
 
 impl Connection {
@@ -319,7 +328,7 @@ impl Connection {
         Self {
             id,
             remote_address,
-            pending_streams: HashSet::new(),
+            pending_outbound_streams: HashSet::new(),
         }
     }
 }

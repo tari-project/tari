@@ -9,13 +9,13 @@ pub type StreamId = u32;
 
 #[derive(Debug)]
 pub enum FromBehaviourEvent {
-    OpenRpcSessionRequest(OpenStreamRequest),
+    OpenSubstreamRequest(OpenStreamRequest),
     AddSupportedProtocol(StreamProtocol),
 }
 
 impl From<OpenStreamRequest> for FromBehaviourEvent {
     fn from(event: OpenStreamRequest) -> Self {
-        Self::OpenRpcSessionRequest(event)
+        Self::OpenSubstreamRequest(event)
     }
 }
 
