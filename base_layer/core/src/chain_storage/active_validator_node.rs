@@ -26,6 +26,8 @@ use tari_common_types::{
     types::{Commitment, PublicKey},
 };
 
+use crate::transactions::transaction_components::ValidatorNodeRegistration;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
@@ -33,4 +35,5 @@ pub struct ValidatorNodeEntry {
     pub public_key: PublicKey,
     pub commitment: Commitment,
     pub sidechain_id: Option<PublicKey>,
+    pub registration: ValidatorNodeRegistration,
 }

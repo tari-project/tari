@@ -214,6 +214,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     sidechain_id: vn.sidechain_id,
                     shard_key: vn.shard_key,
                     start_epoch: vn.start_epoch,
+                    original_registration: vn.registration.clone(),
                 }));
             },
             None => return Ok(Vec::new()),
@@ -238,6 +239,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 sidechain_id: vn.sidechain_id,
                 shard_key: vn.shard_key,
                 start_epoch: vn.start_epoch,
+                original_registration: vn.registration,
             }));
             i += 1;
         }

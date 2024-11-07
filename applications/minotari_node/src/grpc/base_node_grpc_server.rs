@@ -32,13 +32,7 @@ use futures::{channel::mpsc, SinkExt};
 use log::*;
 use minotari_app_grpc::{
     tari_rpc,
-    tari_rpc::{
-        CalcType,
-        GetValidatorNodeChangesRequest,
-        GetValidatorNodeChangesResponse,
-        Sorting,
-        ValidatorNodeChange,
-    },
+    tari_rpc::{CalcType, GetValidatorNodeChangesRequest, GetValidatorNodeChangesResponse, Sorting},
 };
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -48,7 +42,6 @@ use tari_common_types::{
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
-        comms_interface,
         comms_interface::CommsInterfaceError,
         state_machine_service::states::StateInfo,
         LocalNodeCommsInterface,
@@ -2587,16 +2580,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::internal("Internal error!")
             })?
             .iter()
-            .map(|node_change| ValidatorNodeChange {
-                public_key: node_change.public_key.to_vec(),
-                state: match node_change.state {
-                    comms_interface::ValidatorNodeChangeState::ADD => tari_rpc::ValidatorNodeChangeState::Add.into(),
-                    comms_interface::ValidatorNodeChangeState::REMOVE => {
-                        tari_rpc::ValidatorNodeChangeState::Remove.into()
-                    },
-                },
-                start_height: node_change.height,
-            })
+            .map(|node_change| node_change.into())
             .collect();
 
         Ok(Response::new(GetValidatorNodeChangesResponse { changes }))

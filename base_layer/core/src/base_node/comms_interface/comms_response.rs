@@ -34,7 +34,12 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
-    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{
+        Transaction,
+        TransactionKernel,
+        TransactionOutput,
+        ValidatorNodeRegistration,
+    },
 };
 
 /// API Response enum
@@ -123,5 +128,6 @@ pub enum ValidatorNodeChangeState {
 pub struct ValidatorNodeChange {
     pub public_key: PublicKey,
     pub state: ValidatorNodeChangeState,
+    pub registration: Option<ValidatorNodeRegistration>,
     pub height: u64,
 }

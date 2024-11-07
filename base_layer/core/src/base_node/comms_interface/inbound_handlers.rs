@@ -474,6 +474,7 @@ where B: BlockchainBackend + 'static
                             node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChange {
                                 public_key: prev_node.public_key.clone(),
                                 state: ValidatorNodeChangeState::REMOVE,
+                                registration: None,
                                 height: constants.epoch_to_block_height(prev_node.start_epoch),
                             });
                         }
@@ -488,6 +489,7 @@ where B: BlockchainBackend + 'static
                             node_changes.insert(current_node.public_key.clone(), ValidatorNodeChange {
                                 public_key: current_node.public_key.clone(),
                                 state: ValidatorNodeChangeState::ADD,
+                                registration: Some(current_node.original_registration.clone()),
                                 height: constants.epoch_to_block_height(current_node.start_epoch),
                             });
                         }
@@ -502,6 +504,7 @@ where B: BlockchainBackend + 'static
                         .map(|(pub_key, change)| ValidatorNodeChange {
                             public_key: pub_key.clone(),
                             state: change.state.clone(),
+                            registration: change.registration.clone(),
                             height: change.height,
                         })
                         .collect(),

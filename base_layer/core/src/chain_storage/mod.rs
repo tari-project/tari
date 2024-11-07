@@ -91,6 +91,8 @@ use tari_common_types::{
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
 
+use crate::transactions::transaction_components::ValidatorNodeRegistration;
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
     pub hash: HashOutput,
@@ -103,4 +105,5 @@ pub struct ValidatorNodeRegistrationInfo {
     pub sidechain_id: Option<PublicKey>,
     pub shard_key: [u8; 32],
     pub start_epoch: VnEpoch,
+    pub original_registration: ValidatorNodeRegistration,
 }

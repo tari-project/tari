@@ -502,6 +502,7 @@ message ValidatorNodeChange {
   bytes public_key = 1;
   ValidatorNodeChangeState state = 2;
   uint64 start_height = 3;
+  ValidatorNodeRegistration registration = 4;
 }
 
 message GetValidatorNodeChangesResponse {

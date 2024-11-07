@@ -1417,6 +1417,7 @@ impl LMDBDatabase {
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
             sidechain_id: vn_reg.sidechain_id().cloned(),
+            registration: vn_reg.clone(),
         };
 
         store.insert(header.height, &validator_node)?;
