@@ -103,6 +103,8 @@ pub struct P2pConfig {
         deserialize_with = "deserialize_from_str",
         serialize_with = "serialize_string"
     )]
+    /// If set to `Private`, the node assume it has no public address and will try to establish a relay connection as
+    /// soon as possible. `Auto` will use auto NAT to try determine this automatically.
     pub reachability_mode: ReachabilityMode,
     /// The global maximum allowed RPC sessions.
     /// Default: 100

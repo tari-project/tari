@@ -69,6 +69,7 @@ pub struct WalletConnectivityService {
     current_pool: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
+    last_attempted_peer: Option<PeerId>,
 }
 
 struct ClientPoolContainer {
@@ -100,6 +101,7 @@ impl WalletConnectivityService {
             current_pool: None,
             pending_requests: Vec::new(),
             online_status_watch,
+            last_attempted_peer: None,
         }
     }
 
@@ -287,6 +289,7 @@ impl WalletConnectivityService {
     }
 
     async fn disconnect_base_node(&mut self, peer_id: PeerId) {
+        trace!(target: LOG_TARGET, "Disconnecting base node '{}'...", peer_id);
         if let Some(pool) = self.current_pool.take() {
             pool.close().await;
         }
@@ -296,27 +299,18 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
-        let mut peer = peer_manager.select_next_peer_if_attempted().clone();
-        let peer_id = peer.peer_id();
+        let mut peer = if self.last_attempted_peer.is_some() {
+            peer_manager.select_next_peer().clone()
+        } else {
+            peer_manager.get_current_peer().clone()
+        };
 
         loop {
             self.set_online_status(OnlineStatus::Connecting);
-            let maybe_last_attempt = peer_manager.time_since_last_connection_attempt();
-
-            debug!(
-                target: LOG_TARGET,
-                "Attempting to connect to base node peer '{}'... (last attempt {:?})",
-                peer,
-                maybe_last_attempt
-            );
-
-            peer_manager.set_last_connection_attempt();
-
             match self.try_setup_rpc_pool(&peer).await {
                 Ok(true) => {
-                    if let Err(e) = self.notify_pending_requests().await {
-                        warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
-                    }
+                    self.base_node_watch.send(Some(peer_manager.clone()));
+                    self.notify_pending_requests().await;
                     self.set_online_status(OnlineStatus::Online);
                     debug!(
                         target: LOG_TARGET,
@@ -329,29 +323,18 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "The peer has changed while connecting. Attempting to connect to new base node."
                     );
-
-                    // NOTE: we do not strictly need to update our local copy of BaseNodePeerManager since state is
-                    // atomically shared. However, since None is a possibility (although in practice
-                    // it should never be) we handle that here.
-                    peer_manager = match self.get_base_node_peer_manager() {
-                        Some(pm) => pm,
-                        None => {
-                            warn!(target: LOG_TARGET, "⚠️ NEVER HAPPEN: Base node peer manager set to None while connecting");
-                            return;
-                        },
-                    };
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
-                    continue;
+                    return;
                 },
                 Err(WalletConnectivityError::DialError(DialError::Aborted)) => {
                     debug!(target: LOG_TARGET, "Dial was cancelled.");
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
                 },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "{}", e);
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
                 },
             }
@@ -359,15 +342,12 @@ impl WalletConnectivityService {
             // Select the next peer (if available)
             let next_peer = peer_manager.select_next_peer().clone();
             // If we only have one peer in the list, wait a bit before retrying
-            if peer_id == next_peer.peer_id() {
+            if peer.peer_id() == next_peer.peer_id() {
                 debug!(target: LOG_TARGET,
                     "Only single peer in base node peer list. Waiting {}s before retrying again ...",
                     CONNECTIVITY_WAIT.as_secs()
                 );
                 time::sleep(CONNECTIVITY_WAIT).await;
-            } else {
-                // Ensure that all services are aware of the next peer being attempted
-                self.base_node_watch.mark_changed();
             }
             peer = next_peer;
         }
@@ -381,6 +361,7 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer: &Peer) -> Result<bool, WalletConnectivityError> {
+        self.last_attempted_peer = Some(peer.peer_id());
         let peer_id = peer.peer_id();
         let dial_wait = self
             .network_handle
@@ -434,16 +415,21 @@ impl WalletConnectivityService {
         Ok(true)
     }
 
-    async fn notify_pending_requests(&mut self) -> Result<(), WalletConnectivityError> {
+    async fn notify_pending_requests(&mut self) {
         let current_pending = mem::take(&mut self.pending_requests);
+        let mut count = 0;
+        let current_pending_len = current_pending.len();
         for reply in current_pending {
             if reply.is_canceled() {
                 continue;
             }
-
+            count += 1;
+            trace!(target: LOG_TARGET, "Handle {} of {} pending RPC pool requests", count, current_pending_len);
             self.handle_pool_request(reply).await;
         }
-        Ok(())
+        if !self.pending_requests.is_empty() {
+            warn!(target: LOG_TARGET, "{} of {} pending RPC pool requests not handled", count, current_pending_len);
+        }
     }
 }
 

@@ -108,10 +108,21 @@ where
                         Ok(c) => c,
                         // This is an edge case where the remote node does not have any further sessions available. This
                         // is gracefully handled by returning one of the existing used sessions.
-                        Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => self
-                            .get_least_used()
-                            .ok_or(RpcClientPoolError::NoMoreRemoteRpcSessions)?,
+                        Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "get_least_used_or_connect: no more remote rpc sessions, trying least used."
+                            );
+                            self.get_least_used().ok_or({
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "get_least_used_or_connect: lest used client not found."
+                                );
+                                RpcClientPoolError::NoMoreRemoteRpcSessions
+                            })?
+                        },
                         Err(err) => {
+                            trace!(target: LOG_TARGET, "get_least_used_or_connect: returning error ({})", err);
                             return Err(err);
                         },
                     }
@@ -120,6 +131,7 @@ where
 
             if !client.is_connected() {
                 self.prune();
+                trace!(target: LOG_TARGET, "get_least_used_or_connect: new client is not connected, pruning");
                 continue;
             }
 

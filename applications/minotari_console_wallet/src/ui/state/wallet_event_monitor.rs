@@ -90,11 +90,7 @@ impl WalletEventMonitor {
                 result = transaction_service_events.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Wallet Event Monitor received wallet transaction service event {:?}",
-                                msg
-                            );
+                            trace!(target: LOG_TARGET, "Wallet transaction service event {:?}", msg);
                             self.app_state_inner.write().await.add_event(EventListItem{
                                 event_type: "TransactionEvent".to_string(),
                                 desc: (*msg).to_string()
@@ -184,27 +180,17 @@ impl WalletEventMonitor {
                     }
                 },
                 Ok(_) = connectivity_status.changed() => {
-                    trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
+                    trace!(
+                        target: LOG_TARGET,
+                        "Wallet connectivity status changed to {:?}",
+                        connectivity_status.borrow().clone()
+                    );
                     self.trigger_peer_state_refresh().await;
                 },
-                // Ok(_) = software_update_notif.changed() => {
-                    //     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
-                    //     let update = software_update_notif.borrow().as_ref().cloned();
-                    //     if let Some(update) = update {
-                    //         self.add_notification(format!(
-                    //             "Version {} of the {} is available: {} (sha: {})",
-                    //             update.version(),
-                    //             update.app(),
-                    //             update.download_url(),
-                    //             update.to_hash_hex()
-                    //         )).await;
-                    //     }
-                    // },
-                    result = network_events.recv() => {
-                        match result {
-                            Ok(msg) => {
-                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg
-                            );
+                result = network_events.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Wallet connectivity event {:?}", msg);
                             match msg {
                                 NetworkEvent::PeerConnected{..} |
                                 NetworkEvent::PeerDisconnected{..} => {
@@ -244,14 +230,16 @@ impl WalletEventMonitor {
                 _ = base_node_changed.changed() => {
                     let peer = base_node_changed.borrow().as_ref().cloned();
                     if let Some(peer) = peer {
-                        self.trigger_base_node_peer_refresh(peer.get_current_peer().clone()).await;
+                        let current_peer = peer.get_current_peer().clone();
+                        trace!(target: LOG_TARGET, "Base node changed to '{}'", current_peer.peer_id());
+                        self.trigger_base_node_peer_refresh(current_peer).await;
                         self.trigger_balance_refresh();
                     }
                 }
                 result = base_node_events.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
+                            trace!(target: LOG_TARGET, "Base node event {:?}", msg);
                             if let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone() {
                                     self.trigger_base_node_state_refresh(state).await;
                             }

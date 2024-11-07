@@ -126,6 +126,12 @@ blockchain_sync_config.rpc_deadline = 240
 # _NOTE_: If using the `tor` transport type, public_addresses will be ignored and an onion address will be
 # automatically configured
 #public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
+# The multiaddrs to listen on.
+# Default: ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"]
+#listen_addresses = ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"]
+# If set to `Private`, the node assume it has no public address and will try to establish a relay connection as
+# soon as possible. `Auto` will use auto NAT to try determine this automatically.
+#reachability_mode = auto
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -163,4 +169,4 @@ blockchain_sync_config.rpc_deadline = 240
 # If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
-#pub cull_oldest_peer_rpc_connection_on_full = true
+#cull_oldest_peer_rpc_connection_on_full = true
