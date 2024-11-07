@@ -298,7 +298,6 @@ impl WalletConnectivityService {
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
         let mut peer = peer_manager.select_next_peer_if_attempted().clone();
-        let peer_id = peer.peer_id();
 
         loop {
             self.set_online_status(OnlineStatus::Connecting);
@@ -340,18 +339,18 @@ impl WalletConnectivityService {
                             return;
                         },
                     };
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
                     continue;
                 },
                 Err(WalletConnectivityError::DialError(DialError::Aborted)) => {
                     debug!(target: LOG_TARGET, "Dial was cancelled.");
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
                 },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "{}", e);
-                    self.disconnect_base_node(peer_id).await;
+                    self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
                 },
             }
@@ -359,7 +358,7 @@ impl WalletConnectivityService {
             // Select the next peer (if available)
             let next_peer = peer_manager.select_next_peer().clone();
             // If we only have one peer in the list, wait a bit before retrying
-            if peer_id == next_peer.peer_id() {
+            if peer.peer_id() == next_peer.peer_id() {
                 debug!(target: LOG_TARGET,
                     "Only single peer in base node peer list. Waiting {}s before retrying again ...",
                     CONNECTIVITY_WAIT.as_secs()
