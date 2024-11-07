@@ -55,10 +55,6 @@ impl<T> Watch<T> {
         &self.1
     }
 
-    fn receiver_mut(&mut self) -> &mut watch::Receiver<T> {
-        &mut self.1
-    }
-
     pub fn get_receiver(&self) -> watch::Receiver<T> {
         self.receiver().clone()
     }
