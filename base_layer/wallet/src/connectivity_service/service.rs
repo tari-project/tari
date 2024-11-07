@@ -399,7 +399,7 @@ impl WalletConnectivityService {
                 .create_rpc_client_pool(1, RpcClient::builder(peer_id)),
             base_node_wallet_rpc_client: self
                 .network_handle
-                .create_rpc_client_pool(self.config.base_node_rpc_pool_size, RpcClient::builder(peer_id)),
+                .create_rpc_client_pool(self.config.max_base_node_rpc_pool_size, RpcClient::builder(peer_id)),
         };
 
         // Create the first RPC session to ensure that we can connect.

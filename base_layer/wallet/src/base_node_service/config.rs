@@ -31,8 +31,11 @@ pub struct BaseNodeServiceConfig {
     /// The refresh interval
     #[serde(with = "serializers::seconds")]
     pub base_node_monitor_max_refresh_interval: Duration,
-    /// The RPC client pool size
-    pub base_node_rpc_pool_size: usize,
+    /// The maximum client pool size for base node RPC. This should (but not required) be less than or equal to the per
+    /// peer RPC limit (rpc_max_sessions_per_peer currently defaults 10) on the base node. If it is greater, then this
+    /// will incur a communication overhead (base node has to first reject the new session, then the client pool
+    /// will reuse a previous session).
+    pub max_base_node_rpc_pool_size: usize,
     /// This is the size of the event channel used to communicate base node events to the wallet
     pub event_channel_size: usize,
 }
@@ -41,7 +44,7 @@ impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
             base_node_monitor_max_refresh_interval: Duration::from_secs(30),
-            base_node_rpc_pool_size: 3,
+            max_base_node_rpc_pool_size: 8,
             event_channel_size: 250,
         }
     }
