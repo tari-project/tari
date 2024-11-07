@@ -63,7 +63,6 @@ pub enum GrpcMethod {
     GetMempoolStats,
     GetActiveValidatorNodes,
     GetValidatorNodeChanges,
-    GetActiveValidatorNodesMr,
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
@@ -71,7 +70,7 @@ pub enum GrpcMethod {
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 38] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 37] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -105,7 +104,6 @@ impl GrpcMethod {
         GrpcMethod::ListConnectedPeers,
         GrpcMethod::GetMempoolStats,
         GrpcMethod::GetActiveValidatorNodes,
-        GrpcMethod::GetActiveValidatorNodesMr,
         GrpcMethod::GetValidatorNodeChanges,
         GrpcMethod::GetShardKey,
         GrpcMethod::GetTemplateRegistrations,
@@ -114,7 +112,7 @@ impl GrpcMethod {
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 38>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 37>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -162,7 +160,6 @@ impl FromStr for GrpcMethod {
             "list_connected_peers" => Ok(GrpcMethod::ListConnectedPeers),
             "get_mempool_stats" => Ok(GrpcMethod::GetMempoolStats),
             "get_active_validator_nodes" => Ok(GrpcMethod::GetActiveValidatorNodes),
-            "get_active_validator_nodes_mr" => Ok(GrpcMethod::GetActiveValidatorNodesMr),
             "get_validator_node_changes" => Ok(GrpcMethod::GetValidatorNodeChanges),
             "get_shard_key" => Ok(GrpcMethod::GetShardKey),
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),

@@ -31,11 +31,7 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common::configuration::Network;
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{BlockHash, FixedHash, HashOutput, PublicKey},
-};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
@@ -54,7 +50,7 @@ use crate::{
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
-    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
         randomx_difficulty,

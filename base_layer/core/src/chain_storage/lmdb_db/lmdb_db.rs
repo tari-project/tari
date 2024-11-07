@@ -1378,6 +1378,12 @@ impl LMDBDatabase {
         let constants = self.get_consensus_constants(header.height);
         let current_epoch = constants.block_height_to_epoch(header.height);
 
+        // skip already added validator node
+        if store.is_vn_exists(current_epoch, vn_reg.public_key(), vn_reg.sidechain_id().cloned())? {
+            warn!(target: LOG_TARGET, "Validator node has been already registered: {:?}", vn_reg.public_key().to_string());
+            return Ok(());
+        }
+
         let prev_shard_key = store.get_shard_key(
             0,
             current_epoch.as_u64() * constants.epoch_length(),
@@ -2491,7 +2497,6 @@ impl BlockchainBackend for LMDBDatabase {
         let end_epoch = constants.block_height_to_epoch(height);
         // Convert these back to height as validators regs are indexed by height
         let end_height = end_epoch.as_u64() * constants.epoch_length();
-        // TODO: replace with a call without start height
         let nodes = vn_store.get_vn_set(0, end_height)?;
         Ok(nodes)
     }

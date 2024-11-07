@@ -48,6 +48,7 @@ grpc_server_allow_methods = [
     #"list_connected_peers",
     #"get_mempool_stats",
     #"get_active_validator_nodes",
+    #"get_validator_node_changes",
     #"get_shard_key",
     #"get_template_registrations",
     #"get_side_chain_utxos",

@@ -134,6 +134,27 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         Ok(cursor)
     }
 
+    /// Checks if the given validator node (by it's public key and side chain ID)
+    /// exists until a given `end_epoch`.
+    pub fn is_vn_exists(
+        &self,
+        end_epoch: VnEpoch,
+        public_key: &PublicKey,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<bool, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        while let Ok(Some((_, vn_entry))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if vn_entry.public_key == *public_key &&
+                vn_entry.sidechain_id == sidechain_id &&
+                vn_entry.start_epoch <= end_epoch
+            {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Returns validator nodes until a given epoch.
     pub fn get_vn_count_until_epoch(
         &self,
