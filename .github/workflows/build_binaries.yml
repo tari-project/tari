@@ -114,13 +114,18 @@ jobs:
       - name: Declare TestNet for tags
         id: set-tari-network
         # Don't forget to comment out the below if, when force testing with GHA_NETWORK
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ ( startsWith(github.ref, 'refs/tags/v') ) || ( startsWith(github.ref, 'refs/heads/build-bins-nextnet') ) }}
         env:
           GHA_NETWORK: ${{ github.ref_name }}
           # GHA_NETWORK: "v1.0.0-rc.4"
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
+          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||')
+          if [[ "${BRANCH_NAME}" == "build-bins-nextnet"* ]]; then
+            source buildtools/multinet_envs.sh "v1.8.0-rc.0"
+          else
+            source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
+          fi
           echo ${TARI_NETWORK}
           echo ${TARI_TARGET_NETWORK}
           echo ${TARI_NETWORK_DIR}
