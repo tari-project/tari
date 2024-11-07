@@ -560,7 +560,6 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
 
                 if let Err(err) = self.handle_request(frame.freeze()).await {
                     if let Err(err) = self.framed.close().await {
-                        // let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
                         let level = err_to_log_level(&err);
 
                         log!(
