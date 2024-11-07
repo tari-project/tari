@@ -102,8 +102,7 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
@@ -138,7 +137,7 @@ where
             NodeCommsRequest::FetchHeaders(range) => {
                 let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))
-            }
+            },
             NodeCommsRequest::FetchHeadersByHashes(block_hashes) => {
                 if block_hashes.len() > MAX_REQUEST_BY_BLOCK_HASHES {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -156,18 +155,18 @@ where
                     match self.blockchain_db.fetch_chain_header_by_block_hash(block_hash).await? {
                         Some(block_header) => {
                             block_headers.push(block_header);
-                        }
+                        },
                         None => {
                             error!(target: LOG_TARGET, "Could not fetch headers with hashes:{}", block_hex);
                             return Err(CommsInterfaceError::InternalError(format!(
                                 "Could not fetch headers with hashes:{}",
                                 block_hex
                             )));
-                        }
+                        },
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
-            }
+            },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
                 for (output, spent) in (self
@@ -182,11 +181,11 @@ where
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
-            }
+            },
             NodeCommsRequest::FetchMatchingBlocks { range, compact } => {
                 let blocks = self.blockchain_db.fetch_blocks(range, compact).await?;
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            }
+            },
             NodeCommsRequest::FetchBlocksByKernelExcessSigs(excess_sigs) => {
                 if excess_sigs.len() > MAX_REQUEST_BY_KERNEL_EXCESS_SIGS {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -222,7 +221,7 @@ where
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            }
+            },
             NodeCommsRequest::FetchBlocksByUtxos(commitments) => {
                 if commitments.len() > MAX_REQUEST_BY_UTXO_HASHES {
                     return Err(CommsInterfaceError::InvalidRequest {
@@ -257,15 +256,15 @@ where
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
-            }
+            },
             NodeCommsRequest::GetHeaderByHash(hash) => {
                 let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
-            }
+            },
             NodeCommsRequest::GetBlockByHash(hash) => {
                 let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
                 Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
-            }
+            },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let last_seen_hash = self.mempool.get_last_seen_hash().await?;
@@ -339,7 +338,7 @@ where
                 );
 
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
-            }
+            },
             NodeCommsRequest::GetNewBlock(block_template) => {
                 let height = block_template.header.height;
                 let target_difficulty = block_template.target_difficulty;
@@ -361,7 +360,7 @@ where
                     error: None,
                     block: Some(block),
                 })
-            }
+            },
             NodeCommsRequest::GetBlockFromAllChains(hash) => {
                 let block_hex = hash.to_hex();
                 debug!(
@@ -399,7 +398,7 @@ where
                 };
 
                 Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
-            }
+            },
             NodeCommsRequest::FetchKernelByExcessSig(signature) => {
                 let kernels = match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
                     Ok(Some((kernel, _))) => vec![kernel],
@@ -407,11 +406,11 @@ where
                     Err(err) => {
                         error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
                         return Err(err.into());
-                    }
+                    },
                 };
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
-            }
+            },
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
                 let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
@@ -420,7 +419,7 @@ where
                         not_found,
                     },
                 ))
-            }
+            },
             NodeCommsRequest::FetchValidatorNodesKeys {
                 height,
                 validator_network,
@@ -432,11 +431,11 @@ where
                 Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
                     active_validator_nodes,
                 ))
-            }
+            },
             NodeCommsRequest::GetShardKey { height, public_key } => {
                 let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
                 Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
-            }
+            },
             NodeCommsRequest::FetchTemplateRegistrations {
                 start_height,
                 end_height,
@@ -448,11 +447,11 @@ where
                 Ok(NodeCommsResponse::FetchTemplateRegistrationsResponse(
                     template_registrations,
                 ))
-            }
+            },
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
-            }
+            },
             NodeCommsRequest::FetchValidatorNodeChanges {
                 start_height,
                 end_height,
@@ -479,7 +478,7 @@ where
                             node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChange {
                                 public_key: prev_node.public_key.clone(),
                                 state: ValidatorNodeChangeState::REMOVE,
-                                height: constants.epoch_to_block_height(prev_node.start_epoch), // TODO: revisit
+                                height: constants.epoch_to_block_height(prev_node.start_epoch),
                             });
                         }
                     });
@@ -511,7 +510,7 @@ where
                         })
                         .collect(),
                 ))
-            }
+            },
         }
     }
 
@@ -799,7 +798,7 @@ where
             Err(_) => {
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
-            }
+            },
             Ok(v) => v,
         };
         if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
@@ -840,14 +839,14 @@ where
                     "Invalid response from peer `{}`: Peer failed to provide the block that was propagated",
                     source_peer
                 )))
-            }
+            },
             Err(CommsInterfaceError::UnexpectedApiResponse) => {
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` sent unexpected API response.", source_peer
                 );
                 Err(CommsInterfaceError::UnexpectedApiResponse)
-            }
+            },
             Err(e) => Err(e),
         }
     }
@@ -922,7 +921,7 @@ where
                     }
                 }
                 Ok(block_hash)
-            }
+            },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
                 #[cfg(feature = "metrics")]
@@ -941,7 +940,7 @@ where
                 );
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
-            }
+            },
 
             Err(e) => {
                 #[cfg(feature = "metrics")]
@@ -949,7 +948,7 @@ where
 
                 self.publish_block_event(BlockEvent::AddBlockErrored { block });
                 Err(e.into())
-            }
+            },
         }
     }
 
@@ -1024,11 +1023,11 @@ where
                 PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
-                }
+                },
                 PowAlgorithm::RandomX => {
                     metrics::target_difficulty_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
-                }
+                },
             }
         }
 
@@ -1039,7 +1038,7 @@ where
                 metrics::tip_height().set(block.height() as i64);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
                 metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
-            }
+            },
             BlockAddResult::ChainReorg { added, removed } => {
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
                     #[allow(clippy::cast_possible_wrap)]
@@ -1052,11 +1051,11 @@ where
                 for block in added {
                     update_target_difficulty(block);
                 }
-            }
+            },
             BlockAddResult::OrphanBlock => {
                 metrics::orphaned_blocks().inc();
-            }
-            _ => {}
+            },
+            _ => {},
         }
         Ok(())
     }

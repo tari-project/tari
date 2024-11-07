@@ -26,8 +26,7 @@ use std::{
 };
 
 use tari_common_types::{
-    chain_metadata::ChainMetadata
-    ,
+    chain_metadata::ChainMetadata,
     types::{HashOutput, PrivateKey, PublicKey},
 };
 

@@ -1393,29 +1393,17 @@ impl LMDBDatabase {
         let mut next_epoch = current_epoch + VnEpoch(1);
 
         // looking for next available epoch
-        let current_vn_count = store.get_vn_count_until_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
+        let current_vn_count = store.get_vn_count_until_epoch(current_epoch, vn_reg.sidechain_id().cloned())?;
         let mut vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
-
-        // TODO: remove, only for debugging
-        info!(target: LOG_TARGET, "Current VN count: {:?}, VN count for next epoch({:?}): {:?}", current_vn_count, next_epoch, vn_count);
 
         if (current_vn_count == 0 && vn_count >= constants.vn_registration_max_vns_initial_epoch()) ||
             (current_vn_count > 0 && vn_count >= constants.vn_registration_max_vns_per_epoch())
         {
-            // TODO: remove, only for debugging
-            info!(target: LOG_TARGET, "Looking for a new epoch...");
-
-            while vn_count > constants.vn_registration_max_vns_per_epoch() {
+            while vn_count >= constants.vn_registration_max_vns_per_epoch() {
                 next_epoch += VnEpoch(1);
                 vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
-
-                // TODO: remove, only for debugging
-                info!(target: LOG_TARGET, "Next epoch({:?}) VN count: {:?}", next_epoch, vn_count);
             }
         }
-
-        // TODO: remove, only for debugging
-        info!(target: LOG_TARGET, "New VN start epoch: {:?}", next_epoch);
 
         let validator_node = ValidatorNodeEntry {
             shard_key,
