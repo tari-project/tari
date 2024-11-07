@@ -23,7 +23,6 @@
 use std::{
     fmt::Display,
     sync::{atomic, atomic::AtomicUsize, Arc},
-    time::{Duration, Instant},
 };
 
 use tari_network::{identity::PeerId, Peer};
@@ -31,13 +30,12 @@ use tari_network::{identity::PeerId, Peer};
 use crate::connectivity_service::WalletConnectivityError;
 
 /// The selected peer is a current base node and an optional list of backup peers.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BaseNodePeerManager {
     // The current base node that the wallet is connected to
     current_peer_index: Arc<AtomicUsize>,
     // The other base nodes that the wallet can connect to if the selected peer is not available
     peer_list: Arc<Vec<Peer>>,
-    local_last_connection_attempt: Option<Instant>,
 }
 
 impl BaseNodePeerManager {
@@ -57,20 +55,12 @@ impl BaseNodePeerManager {
         Ok(Self {
             current_peer_index: Arc::new(AtomicUsize::new(preferred_peer_index)),
             peer_list: Arc::new(peer_list),
-            local_last_connection_attempt: None,
         })
     }
 
     /// Get the current peer's PeerId
     pub fn get_current_peer_id(&self) -> PeerId {
         self.get_current_peer().peer_id()
-    }
-
-    pub fn select_next_peer_if_attempted(&mut self) -> &Peer {
-        if self.time_since_last_connection_attempt().is_some() {
-            self.select_next_peer();
-        }
-        self.get_current_peer()
     }
 
     /// Get the current peer.
@@ -84,10 +74,6 @@ impl BaseNodePeerManager {
     /// Changes to the next peer in the list, returning that peer
     pub fn select_next_peer(&mut self) -> &Peer {
         self.set_current_peer_index((self.current_peer_index() + 1) % self.peer_list.len());
-        if self.peer_list.len() > 1 {
-            // Reset the last attempt since we've moved onto another peer
-            self.local_last_connection_attempt = None;
-        }
         &self.peer_list[self.current_peer_index()]
     }
 
@@ -98,16 +84,6 @@ impl BaseNodePeerManager {
     /// Get the base node peer manager state
     pub fn get_state(&self) -> (usize, &[Peer]) {
         (self.current_peer_index(), &self.peer_list)
-    }
-
-    /// Set the last connection attempt stats
-    pub fn set_last_connection_attempt(&mut self) {
-        self.local_last_connection_attempt = Some(Instant::now());
-    }
-
-    /// Get the last connection attempt for the current peer
-    pub fn time_since_last_connection_attempt(&self) -> Option<Duration> {
-        self.local_last_connection_attempt.as_ref().map(|t| t.elapsed())
     }
 
     fn set_current_peer_index(&self, index: usize) {
@@ -121,15 +97,10 @@ impl BaseNodePeerManager {
 
 impl Display for BaseNodePeerManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let last_connection_attempt = match self.time_since_last_connection_attempt() {
-            Some(stats) => format!("{:?}", stats.as_secs()),
-            None => "Never".to_string(),
-        };
         write!(
             f,
-            "BaseNodePeerManager {{ current index: {}, last attempt (s): {}, peer list: {} entries }}",
+            "BaseNodePeerManager {{ current index: {}, peer list: {} entries }}",
             self.current_peer_index(),
-            last_connection_attempt,
             self.peer_list.len()
         )
     }

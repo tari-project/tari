@@ -69,6 +69,7 @@ pub struct WalletConnectivityService {
     current_pool: Option<ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
+    last_attempted_peer: Option<PeerId>,
 }
 
 struct ClientPoolContainer {
@@ -100,6 +101,7 @@ impl WalletConnectivityService {
             current_pool: None,
             pending_requests: Vec::new(),
             online_status_watch,
+            last_attempted_peer: None,
         }
     }
 
@@ -297,21 +299,14 @@ impl WalletConnectivityService {
     }
 
     async fn setup_base_node_connection(&mut self, mut peer_manager: BaseNodePeerManager) {
-        let mut peer = peer_manager.select_next_peer_if_attempted().clone();
+        let mut peer = if self.last_attempted_peer.is_some() {
+            peer_manager.select_next_peer().clone()
+        } else {
+            peer_manager.get_current_peer().clone()
+        };
 
         loop {
             self.set_online_status(OnlineStatus::Connecting);
-            let maybe_last_attempt = peer_manager.time_since_last_connection_attempt();
-
-            debug!(
-                target: LOG_TARGET,
-                "Attempting to connect to base node peer '{}'... (last attempt {:?})",
-                peer,
-                maybe_last_attempt
-            );
-
-            peer_manager.set_last_connection_attempt();
-
             match self.try_setup_rpc_pool(&peer).await {
                 Ok(true) => {
                     self.base_node_watch.send(Some(peer_manager.clone()));
@@ -328,20 +323,9 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "The peer has changed while connecting. Attempting to connect to new base node."
                     );
-
-                    // NOTE: we do not strictly need to update our local copy of BaseNodePeerManager since state is
-                    // atomically shared. However, since None is a possibility (although in practice
-                    // it should never be) we handle that here.
-                    peer_manager = match self.get_base_node_peer_manager() {
-                        Some(pm) => pm,
-                        None => {
-                            warn!(target: LOG_TARGET, "⚠️ NEVER HAPPEN: Base node peer manager set to None while connecting");
-                            return;
-                        },
-                    };
                     self.disconnect_base_node(peer.peer_id()).await;
                     self.set_online_status(OnlineStatus::Offline);
-                    continue;
+                    return;
                 },
                 Err(WalletConnectivityError::DialError(DialError::Aborted)) => {
                     debug!(target: LOG_TARGET, "Dial was cancelled.");
@@ -364,9 +348,6 @@ impl WalletConnectivityService {
                     CONNECTIVITY_WAIT.as_secs()
                 );
                 time::sleep(CONNECTIVITY_WAIT).await;
-            } else {
-                // Ensure that all services are aware of the next peer being attempted
-                self.base_node_watch.mark_changed();
             }
             peer = next_peer;
         }
@@ -380,6 +361,7 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer: &Peer) -> Result<bool, WalletConnectivityError> {
+        self.last_attempted_peer = Some(peer.peer_id());
         let peer_id = peer.peer_id();
         let dial_wait = self
             .network_handle
