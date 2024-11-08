@@ -338,6 +338,8 @@ mod tests {
                 sidechain_id: None,
                 shard_key,
                 start_epoch: Default::default(),
+                original_registration: Default::default(),
+                minimum_value_promise: Default::default(),
             });
         }
         nodes.sort_by(|a, b| a.sidechain_id.cmp(&b.sidechain_id).then(a.shard_key.cmp(&b.shard_key)));
