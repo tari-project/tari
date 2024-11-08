@@ -213,13 +213,14 @@ impl MempoolService {
                                 }
                             },
                             Ok(status) if status.is_stored() => {
+                                debug!(target: LOG_TARGET, "Already stored this transaction. Ignoring it.");
                                 // Already stored, we can forward the gossip
                                 if let Err(err) = self
                                     .network
                                     .report_gossip_message_validation_result(
                                         msg.message_id,
                                         msg.propagation_source,
-                                        gossipsub::MessageAcceptance::Accept,
+                                        gossipsub::MessageAcceptance::Ignore,
                                     )
                                     .await
                                 {
@@ -229,7 +230,6 @@ impl MempoolService {
                             Ok(status) => {
                                 // Technically unreachable since has_tx_with_excess_sig does not return this
                                 warn!(target: LOG_TARGET, "has_tx_with_excess_sig returned unexpected status {status}");
-                                // Already stored, we can forward the gossip
                                 if let Err(err) = self
                                     .network
                                     .report_gossip_message_validation_result(
@@ -261,7 +261,7 @@ impl MempoolService {
                         }
                     },
                     Err(_) => {
-                        debug!(target: LOG_TARGET, "NewTransaction message from gossip contained an invalid excess sig, ignoring");
+                        debug!(target: LOG_TARGET, "NewTransaction message from gossip contained an invalid excess sig, rejecting");
                         if let Err(err) = self
                             .network
                             .report_gossip_message_validation_result(
