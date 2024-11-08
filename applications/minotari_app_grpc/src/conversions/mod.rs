@@ -28,7 +28,6 @@ pub mod chain_metadata;
 pub mod com_and_pub_signature;
 pub mod commitment_signature;
 pub mod consensus_constants;
-pub mod error;
 pub mod historical_block;
 pub mod new_block_template;
 pub mod output_features;
