@@ -126,7 +126,7 @@ pub enum ValidatorNodeChangeState {
 pub struct ValidatorNodeChange {
     pub public_key: PublicKey,
     pub state: ValidatorNodeChangeState,
-    pub registration: Option<ValidatorNodeRegistration>,
+    pub registration: ValidatorNodeRegistration,
     pub minimum_value_promise: MicroMinotari,
     pub height: u64,
 }

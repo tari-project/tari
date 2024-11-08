@@ -13,10 +13,7 @@ impl From<&ValidatorNodeChange> for crate::tari_rpc::ValidatorNodeChange {
                 ValidatorNodeChangeState::REMOVE => crate::tari_rpc::ValidatorNodeChangeState::Remove.into(),
             },
             start_height: node_change.height,
-            registration: match &node_change.registration {
-                Some(registration) => Some(registration.into()),
-                None => None,
-            },
+            registration: Some((&node_change.registration).into()),
             minimum_value_promise: node_change.minimum_value_promise.into(),
         }
     }
