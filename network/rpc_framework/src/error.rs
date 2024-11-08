@@ -103,6 +103,8 @@ pub enum HandshakeRejectReason {
     UnsupportedVersion,
     #[error("no more RPC sessions available")]
     NoSessionsAvailable,
+    #[error("no more per peer RPC sessions available")]
+    NoPerPeerSessionsAvailable,
     #[error("protocol not supported")]
     ProtocolNotSupported,
     #[error("unknown protocol error: {0}")]
@@ -128,6 +130,7 @@ impl From<rpc_proto::rpc_session_reply::HandshakeRejectReason> for HandshakeReje
         match reason {
             UnsupportedVersion => HandshakeRejectReason::UnsupportedVersion,
             NoSessionsAvailable => HandshakeRejectReason::NoSessionsAvailable,
+            NoPerPeerSessionsAvailable => HandshakeRejectReason::NoPerPeerSessionsAvailable,
             ProtocolNotSupported => HandshakeRejectReason::ProtocolNotSupported,
             Unknown => HandshakeRejectReason::Unknown("reject reason is not known"),
         }
@@ -141,6 +144,7 @@ impl From<HandshakeRejectReason> for rpc_proto::rpc_session_reply::HandshakeReje
         match reason {
             HandshakeRejectReason::UnsupportedVersion => UnsupportedVersion,
             HandshakeRejectReason::NoSessionsAvailable => NoSessionsAvailable,
+            HandshakeRejectReason::NoPerPeerSessionsAvailable => NoPerPeerSessionsAvailable,
             HandshakeRejectReason::ProtocolNotSupported => ProtocolNotSupported,
             HandshakeRejectReason::Unknown(_) => Unknown,
         }

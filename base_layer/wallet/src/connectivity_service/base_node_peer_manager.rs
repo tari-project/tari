@@ -22,7 +22,7 @@
 
 use std::{
     fmt::Display,
-    time::{Duration, Instant},
+    sync::{atomic, atomic::AtomicUsize, Arc},
 };
 
 use tari_network::{identity::PeerId, Peer};
@@ -30,19 +30,12 @@ use tari_network::{identity::PeerId, Peer};
 use crate::connectivity_service::WalletConnectivityError;
 
 /// The selected peer is a current base node and an optional list of backup peers.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BaseNodePeerManager {
     // The current base node that the wallet is connected to
-    current_peer_index: usize,
+    current_peer_index: Arc<AtomicUsize>,
     // The other base nodes that the wallet can connect to if the selected peer is not available
-    peer_list: Vec<Peer>,
-    last_connection_attempt: Option<LastConnectionAttempt>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LastConnectionAttempt {
-    pub peer_index: usize,
-    pub attempt_time: Instant,
+    peer_list: Arc<Vec<Peer>>,
 }
 
 impl BaseNodePeerManager {
@@ -60,9 +53,8 @@ impl BaseNodePeerManager {
             )));
         }
         Ok(Self {
-            current_peer_index: preferred_peer_index,
-            peer_list,
-            last_connection_attempt: None,
+            current_peer_index: Arc::new(AtomicUsize::new(preferred_peer_index)),
+            peer_list: Arc::new(peer_list),
         })
     }
 
@@ -71,57 +63,44 @@ impl BaseNodePeerManager {
         self.get_current_peer().peer_id()
     }
 
-    /// Get the current peer
+    /// Get the current peer.
     pub fn get_current_peer(&self) -> &Peer {
         self.peer_list
-            .get(self.current_peer_index)
+            .get(self.current_peer_index())
+            // Panic: cannot panic because this instance cannot be constructed with an empty peer_list
             .unwrap_or(&self.peer_list[0])
     }
 
     /// Changes to the next peer in the list, returning that peer
     pub fn select_next_peer(&mut self) -> &Peer {
-        self.current_peer_index = (self.current_peer_index + 1) % self.peer_list.len();
-        &self.peer_list[self.current_peer_index]
+        self.set_current_peer_index((self.current_peer_index() + 1) % self.peer_list.len());
+        &self.peer_list[self.current_peer_index()]
+    }
+
+    pub fn peer_list(&self) -> &[Peer] {
+        &self.peer_list
     }
 
     /// Get the base node peer manager state
     pub fn get_state(&self) -> (usize, &[Peer]) {
-        (self.current_peer_index, &self.peer_list)
+        (self.current_peer_index(), &self.peer_list)
     }
 
-    /// Set the last connection attempt stats
-    pub fn set_last_connection_attempt(&mut self) {
-        self.last_connection_attempt = Some(LastConnectionAttempt {
-            peer_index: self.current_peer_index,
-            attempt_time: Instant::now(),
-        })
+    fn set_current_peer_index(&self, index: usize) {
+        self.current_peer_index.store(index, atomic::Ordering::SeqCst);
     }
 
-    /// Get the last connection attempt stats
-    pub fn time_since_last_connection_attempt(&self) -> Option<Duration> {
-        if let Some(stats) = self.last_connection_attempt.clone() {
-            if stats.peer_index == self.current_peer_index {
-                Some(stats.attempt_time.elapsed())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    fn current_peer_index(&self) -> usize {
+        self.current_peer_index.load(atomic::Ordering::SeqCst)
     }
 }
 
 impl Display for BaseNodePeerManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let last_connection_attempt = match self.time_since_last_connection_attempt() {
-            Some(stats) => format!("{:?}", stats.as_secs()),
-            None => "Never".to_string(),
-        };
         write!(
             f,
-            "BaseNodePeerManager {{ current index: {}, last attempt (s): {}, peer list: {} entries }}",
-            self.current_peer_index,
-            last_connection_attempt,
+            "BaseNodePeerManager {{ current index: {}, peer list: {} entries }}",
+            self.current_peer_index(),
             self.peer_list.len()
         )
     }

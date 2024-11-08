@@ -45,7 +45,7 @@ pub enum NetworkError {
     GossipPublishError(#[from] gossipsub::PublishError),
     #[error("Failed to send message to peer: {0}")]
     SwarmError(#[from] TariSwarmError),
-    #[error("Failed to invoke handle: {0}")]
+    #[error("Failed to invoke network handle: {0}")]
     NetworkingHandleError(#[from] NetworkingHandleError),
     #[error("Failed to subscribe to topic: {0}")]
     SubscriptionError(#[from] SubscriptionError),
@@ -96,7 +96,10 @@ pub enum DialError {
     DialPeerConditionFalse(dial_opts::PeerCondition),
     #[error("Pending connection attempt has been aborted.")]
     Aborted,
-    #[error("The peer identity obtained ({obtained}) on the connection did not match the one that was expected.")]
+    #[error(
+        "The peer ID obtained ({obtained}) on the connection did not match the one that was expected. This is usually \
+         because a different peer is listening on the provided address."
+    )]
     WrongPeerId { obtained: PeerId, endpoint: ConnectedPoint },
     #[error("One of the [`NetworkBehaviour`]s rejected the outbound connection: {cause}.")]
     Denied { cause: String },

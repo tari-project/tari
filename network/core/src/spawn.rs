@@ -74,7 +74,10 @@ where
     let swarm =
         tari_swarm::create_swarm::<ProstCodec<TMsg::Message>>(identity.clone(), HashSet::new(), config.swarm.clone())?;
     let local_peer_id = *swarm.local_peer_id();
-    let (tx_requests, rx_requests) = mpsc::channel(1);
+    // Why a large MPSC channel size greater than 1? There are some requests that do not have a reply oneshot (e.g.
+    // report_gossip_message_validation_result). In these cases we do not want the caller to have to wait for the
+    // network to get to this request before continuing.
+    let (tx_requests, rx_requests) = mpsc::channel(1000);
     let (tx_msg_requests, rx_msg_requests) = mpsc::channel(1000);
     let (tx_events, _) = broadcast::channel(100);
     let (autonat_status_sender, autonat_status_receiver) = watch::channel(AutonatStatus::Checking);

@@ -202,7 +202,10 @@ where TCodec: Codec + Send + Clone + 'static
         .boxed();
 
         if self.tasks.try_push(fut).is_err() {
-            tracing::warn!("Dropping inbound stream because we are at capacity")
+            tracing::warn!(
+                "Dropping inbound stream because we are at capacity for peer {}",
+                self.peer_id
+            )
         }
     }
 }

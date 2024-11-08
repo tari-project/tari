@@ -44,8 +44,8 @@ pub enum UiError {
     WalletError(#[from] WalletError),
     #[error(transparent)]
     WalletStorageError(#[from] WalletStorageError),
-    #[error("Could not convert string into Public Key")]
-    PublicKeyParseError,
+    #[error("The provided Tari address is invalid")]
+    TariAddressParseError,
     #[error("Could not convert string into Net Address")]
     AddressParseError,
     #[error("Peer did not include an address")]

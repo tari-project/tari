@@ -30,9 +30,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::types::BlockHash;
 use tari_network::{
+    gossipsub,
     identity::PeerId,
     GossipMessage,
     GossipSubscription,
+    InboundGossipError,
     NetworkHandle,
     NetworkingService,
     OutboundMessager,
@@ -164,8 +166,8 @@ where B: BlockchainBackend + 'static
                 },
 
                 // Incoming block messages from the network
-                Some(Ok(msg)) = block_subscription.next_message() => {
-                    self.spawn_handle_incoming_block(msg);
+                Some(result) = block_subscription.next_message() => {
+                    self.spawn_handle_incoming_block(result).await;
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -304,32 +306,135 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: GossipMessage<proto::common::NewBlock>) {
+    #[allow(clippy::too_many_lines)]
+    async fn spawn_handle_incoming_block(
+        &self,
+        result: Result<GossipMessage<proto::common::NewBlock>, InboundGossipError>,
+    ) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
-        if !(status_watch.borrow()).bootstrapped {
+        if !status_watch.borrow().bootstrapped {
             debug!(
                 target: LOG_TARGET,
-                "Propagated block from peer `{}` not processed while busy with initial sync.",
-                new_block.origin_or_source()
+                "Propagated block from peer not processed while busy with initial sync.",
             );
+
+            let (message_id, propagation_source) = match result {
+                Ok(msg) => (msg.message_id, msg.propagation_source),
+                Err(err) => (err.message_id, err.propagation_source),
+            };
+            if let Err(err) = self
+                .network
+                .report_gossip_message_validation_result(
+                    message_id,
+                    propagation_source,
+                    // We have not validated this message, so we do not propagate it however we do not want to penalise
+                    // the peer, therefore Ignore is used
+                    gossipsub::MessageAcceptance::Ignore,
+                )
+                .await
+            {
+                warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {err}");
+            }
             return;
         }
-        let inbound_nch = self.inbound_nch.clone();
+
+        let mut inbound_nch = self.inbound_nch.clone();
         let mut network = self.network.clone();
-        let source_peer = new_block.origin_or_source();
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
-            let result = handle_incoming_block(inbound_nch, new_block).await;
+            let new_block = match result {
+                Ok(msg) => msg,
+                Err(err) => {
+                    if let Err(err) = network
+                        .report_gossip_message_validation_result(
+                            err.message_id,
+                            err.propagation_source,
+                            gossipsub::MessageAcceptance::Reject,
+                        )
+                        .await
+                    {
+                        warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {err}");
+                    }
+                    return;
+                },
+            };
+            let source_peer = new_block.origin_or_source();
+            let GossipMessage::<_> {
+                message_id,
+                propagation_source,
+                origin,
+                message,
+                message_size,
+            } = new_block;
+
+            let from = origin.unwrap_or(propagation_source);
+
+            let new_block = match NewBlock::try_from(message).map_err(BaseNodeServiceError::InvalidBlockMessage) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Failed to convert GossipMessage to Block: {e}");
+                    if let Err(e) = network
+                        .report_gossip_message_validation_result(
+                            message_id,
+                            propagation_source,
+                            gossipsub::MessageAcceptance::Reject,
+                        )
+                        .await
+                    {
+                        warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {e}");
+                    }
+                    return;
+                },
+            };
+            debug!(
+                target: LOG_TARGET,
+                "New candidate block with hash `{}` received from `{}`. ({} bytes)",
+                new_block.header.hash().to_hex(),
+                from,
+                message_size
+            );
+
+            let result = inbound_nch.handle_new_block_message(new_block, from).await;
 
             match result {
-                Ok(()) => {},
-                Err(BaseNodeServiceError::CommsInterfaceError(CommsInterfaceError::ChainStorageError(
-                    ChainStorageError::AddBlockOperationLocked,
-                ))) => {
-                    // Special case, dont log this again as an error
+                // Special case, dont log this again as an error
+                Ok(()) | Err(CommsInterfaceError::ChainStorageError(ChainStorageError::AddBlockOperationLocked)) => {
+                    if let Err(e) = network
+                        .report_gossip_message_validation_result(
+                            message_id,
+                            propagation_source,
+                            gossipsub::MessageAcceptance::Accept,
+                        )
+                        .await
+                    {
+                        warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {e}");
+                    }
+                },
+                Err(CommsInterfaceError::ChainStorageError(e @ ChainStorageError::ValidationError { .. })) => {
+                    if let Some(ban_reason) = e.get_ban_reason() {
+                        let duration = match ban_reason.ban_duration {
+                            BanPeriod::Short => short_ban,
+                            BanPeriod::Long => long_ban,
+                        };
+                        let _drop = network
+                            .ban_peer(source_peer, ban_reason.reason, Some(duration))
+                            .await
+                            .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                    }
+                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e);
+                    if let Err(e) = network
+                        .report_gossip_message_validation_result(
+                            message_id,
+                            propagation_source,
+                            gossipsub::MessageAcceptance::Reject,
+                        )
+                        .await
+                    {
+                        warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {e}");
+                    }
                 },
                 Err(e) => {
                     if let Some(ban_reason) = e.get_ban_reason() {
@@ -342,7 +447,19 @@ where B: BlockchainBackend + 'static
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                     }
-                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e)
+                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e);
+                    if let Err(e) = network
+                        .report_gossip_message_validation_result(
+                            message_id,
+                            propagation_source,
+                            // Some other error occurred, we will not propagate, but we'll also not penalise the peer
+                            // for a failure not related to the message contents.
+                            gossipsub::MessageAcceptance::Ignore,
+                        )
+                        .await
+                    {
+                        warn!(target: LOG_TARGET, "spawn_handle_incoming_block call network: {e}");
+                    }
                 },
             }
         });
@@ -547,30 +664,4 @@ fn spawn_request_timeout(timeout_sender: mpsc::Sender<RequestKey>, request_key: 
         tokio::time::sleep(timeout).await;
         let _ = timeout_sender.send(request_key).await;
     });
-}
-
-async fn handle_incoming_block<B: BlockchainBackend + 'static>(
-    mut inbound_nch: InboundNodeCommsHandlers<B>,
-    domain_block_msg: GossipMessage<proto::common::NewBlock>,
-) -> Result<(), BaseNodeServiceError> {
-    let GossipMessage::<_> {
-        source,
-        origin,
-        message,
-        ..
-    } = domain_block_msg;
-
-    let from = origin.unwrap_or(source);
-
-    let new_block = NewBlock::try_from(message).map_err(BaseNodeServiceError::InvalidBlockMessage)?;
-    debug!(
-        target: LOG_TARGET,
-        "New candidate block with hash `{}` received from `{}`.",
-        new_block.header.hash().to_hex(),
-        from
-    );
-
-    inbound_nch.handle_new_block_message(new_block, from).await?;
-
-    Ok(())
 }

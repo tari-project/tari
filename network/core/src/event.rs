@@ -7,7 +7,7 @@ use tari_swarm::libp2p::{identity, PeerId, StreamProtocol};
 
 #[derive(Debug, Clone)]
 pub enum NetworkEvent {
-    IdentifiedPeer {
+    PeerIdentified {
         peer_id: PeerId,
         public_key: identity::PublicKey,
         agent_version: String,

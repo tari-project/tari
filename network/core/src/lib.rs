@@ -37,6 +37,6 @@ pub use spawn::*;
 pub use tari_swarm::{
     config::{Config as SwarmConfig, LimitPerInterval, RelayCircuitLimits, RelayReservationLimits},
     is_supported_multiaddr,
-    libp2p::{identity, multiaddr, swarm, StreamProtocol},
+    libp2p::{gossipsub, identity, multiaddr, swarm, StreamProtocol},
     ProtocolVersion,
 };

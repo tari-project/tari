@@ -61,11 +61,6 @@ impl WalletConnectivityHandle {
 #[async_trait::async_trait]
 impl WalletConnectivityInterface for WalletConnectivityHandle {
     fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
-        if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
-            if selected_peer.get_current_peer_id() == base_node_peer_manager.get_current_peer_id() {
-                return;
-            }
-        }
         self.base_node_watch.send(Some(base_node_peer_manager));
     }
 

@@ -108,7 +108,7 @@ impl Display for ContactsLivenessData {
             f,
             "Liveness event '{}' for contact {} ({}) {}",
             self.message_type,
-            self.address,
+            self.address.to_hex(),
             self.peer_id,
             if let Some(time) = self.last_seen {
                 let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())

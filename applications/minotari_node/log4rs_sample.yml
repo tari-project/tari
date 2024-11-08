@@ -36,7 +36,8 @@ appenders:
         pattern: "{{log_dir}}/log/base_node/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
-  # An appender named "network" that writes to a file with a custom pattern encoder
+
+  # An appender named "message_logging" that writes to a file with a custom pattern encoder
   message_logging:
     kind: rolling_file
     path: "{{log_dir}}/log/base_node/messages.log"
@@ -70,7 +71,7 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m} // {f}:{L}{n}"
 
-  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  # An appender named "grpc" that writes to a file with a custom pattern encoder
   grpc:
     kind: rolling_file
     path: "{{log_dir}}/log/base_node/grpc.log"
@@ -104,6 +105,23 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
 
+  # An appender named "libp2p" that writes to a file with a custom pattern encoder
+  libp2p:
+    kind: rolling_file
+    path: "{{log_dir}}/log/base_node/libp2p.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/base_node/libp2p.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
+
   # An appender named "fail2ban" that writes to a file with a custom pattern encoder
   fail2ban:
     kind: file
@@ -132,7 +150,7 @@ loggers:
     appenders:
       - grpc
 
-  # Route log events sent to the "core" logger to the "base_layer" appender
+  # base_layer
   c:
     level: debug
     appenders:
@@ -141,70 +159,149 @@ loggers:
     level: debug
     appenders:
       - base_layer
-
-  # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
     level: debug
     appenders:
       - base_layer
-  # Route log events sent to the "comms" logger to the "network" appender
+  tari_mm_proxy:
+    level: info
+    appenders:
+      - base_layer
+
+  # network
+  network:
+    level: debug
+    appenders:
+      - network
   comms:
     level: debug
     appenders:
       - network
-  # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: debug
     appenders:
       - network
 
-    # Route log events sent to the "yamux" logger to the "network" appender
   yamux:
     level: info
     appenders:
       - network
-  # Route log events sent to the "mio" logger to the "network" appender
   mio:
     level: error
     appenders:
       - network
-  # Route log events sent to the "rustyline" logger to the "other" appender
+
+  # other
   rustyline:
     level: error
     appenders:
       - other
     additive: false
-
-  # Route log events sent to the "tokio_util" logger to the "other" appender
   tokio_util:
     level: error
     appenders:
       - other
-  # Route PGP log events
   pgp:
     level: warn
     appenders:
       - other
-  # Route log events sent to the "minotari_mm_proxy" logger to the "base_layer" appender
-  tari_mm_proxy:
-    level: info
-    appenders:
-      - base_layer
-  # Route R2D2 log events
   r2d2:
     level: warn
     appenders:
       - other
     additive: false
 
+  # message_logging
   comms::middleware::message_logging:
-    # Set to `trace` to retrieve message logging
-    level: warn
+    level: warn # Set to `trace` to retrieve message logging
     appenders:
       - message_logging
+
   # fail2ban logs
   fail2ban:
     level: info
     appenders:
       - fail2ban
+    additive: false
+
+  # libp2p
+  libp2p_identify:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_noise:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_peersync:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_gossipsub:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  quinn:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  quinn_proto:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_core:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_mdns:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_swarm:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  hickory_proto:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  multistream_select:
+    level: info
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_tcp:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_quic:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_kad:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_ping:
+    level: debug
+    appenders:
+      - libp2p
+    additive: false
+  libp2p_messaging:
+    level: debug
+    appenders:
+      - libp2p
     additive: false

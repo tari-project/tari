@@ -65,6 +65,7 @@ use crate::{
     ConnectionDirection,
     DiscoveredPeer,
     DiscoveryResult,
+    GossipMessage,
     MessageSpec,
     MessagingMode,
     NetworkError,
@@ -92,15 +93,17 @@ where
     pending_kad_queries: HashMap<QueryId, oneshot::Sender<DiscoveryResult>>,
     substream_notifiers: Notifiers<Substream>,
     swarm: TariSwarm<ProstCodec<TMsg::Message>>,
-    // TODO: we'll replace this with a proper libp2p behaviour if needed
+    // TODO: we'll replace this with a proper libp2p behaviour if needed. There is a new libp2p behaviour called
+    //       allow_block_list which does this however does not support time-based bans
     ban_list: HashMap<PeerId, BannedPeer>,
     allow_list: HashSet<PeerId>,
-    gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<(PeerId, gossipsub::Message)>>,
+    gossipsub_subscriptions: HashMap<TopicHash, mpsc::UnboundedSender<GossipMessage<gossipsub::Message>>>,
     gossipsub_outbound_tx: mpsc::Sender<(IdentTopic, Vec<u8>)>,
     gossipsub_outbound_rx: Option<mpsc::Receiver<(IdentTopic, Vec<u8>)>>,
     config: crate::Config,
     relays: RelayState,
     seed_peers: Vec<Peer>,
+    added_peers: HashMap<PeerId, Peer>,
     autonat_status_sender: watch::Sender<AutonatStatus>,
     is_initial_bootstrap_complete: bool,
     shutdown_signal: ShutdownSignal,
@@ -138,6 +141,7 @@ where
             pending_kad_queries: HashMap::new(),
             relays: RelayState::new(known_relay_nodes),
             seed_peers,
+            added_peers: HashMap::new(),
             swarm,
             ban_list: HashMap::new(),
             allow_list: HashSet::new(),
@@ -240,12 +244,33 @@ where
 
                 let (tx_waiter, rx_waiter) = oneshot::channel();
                 let maybe_peer_id = dial_opts.get_peer_id();
-                info!(target: LOG_TARGET, "🤝 Dialing peer {:?}", dial_opts);
+                info!(target: LOG_TARGET, "☎️ Dialing peer {:?}", dial_opts);
+                // Kad can remove addresses if we fail to dial a peer (e.g. if they are temporarily offline)
+                // So we readd peers we've explicitly added
+                if let Some(peer_id) = maybe_peer_id {
+                    if let Some(addresses) = self.added_peers.get(&peer_id).map(|p| p.addresses()) {
+                        for address in addresses {
+                            self.swarm.add_peer_address(peer_id, address.clone());
+                        }
+                    }
+                }
 
                 match self.swarm.dial(dial_opts) {
                     Ok(_) => {
                         if let Some(peer_id) = maybe_peer_id {
                             self.pending_dial_requests.entry(peer_id).or_default().push(tx_waiter);
+                        }
+                        let _ignore = reply.send(Ok(rx_waiter.into()));
+                    },
+                    Err(err @ DialError::DialPeerConditionFalse(_)) => {
+                        debug!(target :LOG_TARGET, "{err}");
+                        if let Some(peer_id) = maybe_peer_id {
+                            if self.active_connections.contains_key(&peer_id) {
+                                let _ignore = tx_waiter.send(Ok(()));
+                            } else {
+                                // We can add to pending because an event will occur
+                                self.pending_dial_requests.entry(peer_id).or_default().push(tx_waiter);
+                            }
                         }
                         let _ignore = reply.send(Ok(rx_waiter.into()));
                     },
@@ -296,6 +321,19 @@ where
                 let hash = topic.hash();
                 let found = self.swarm.behaviour_mut().gossipsub.topics().any(|t| *t == hash);
                 let _ignore = reply.send(Ok(found));
+            },
+            NetworkingRequest::ReportGossipMessageValidationResult {
+                message_id,
+                propagation_source,
+                acceptance,
+            } => {
+                if let Err(err) = self.swarm.behaviour_mut().gossipsub.report_message_validation_result(
+                    &message_id,
+                    &propagation_source,
+                    acceptance,
+                ) {
+                    warn!(target: LOG_TARGET, "⚠️ Failed to report message validation result for message {message_id}: {err}")
+                }
             },
             NetworkingRequest::OpenSubstream {
                 peer_id,
@@ -379,13 +417,21 @@ where
                 let num_addresses = peer.addresses().len();
                 let peer_id = peer.peer_id();
                 let mut failed = 0usize;
-                for address in peer.addresses {
-                    let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, address);
+                for address in &peer.addresses {
+                    let update = self.swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                     if matches!(update, RoutingUpdate::Failed) {
                         failed += 1;
                     }
                 }
 
+                match self.added_peers.entry(peer.peer_id) {
+                    Entry::Occupied(mut p_mut) => {
+                        p_mut.get_mut().merge_addresses(peer.addresses);
+                    },
+                    Entry::Vacant(entry) => {
+                        entry.insert(peer);
+                    },
+                }
                 if failed == 0 {
                     let _ignore = reply.send(Ok(()));
                 } else {
@@ -418,7 +464,6 @@ where
                     return;
                 }
 
-                // TODO: mark the peer as banned and prevent connections,messages from coming through
                 self.ban_list.insert(peer_id, BannedPeer {
                     peer_id,
                     banned_at: Instant::now(),
@@ -557,7 +602,7 @@ where
     fn gossipsub_subscribe_topic(
         &mut self,
         topic: IdentTopic,
-        inbound: mpsc::UnboundedSender<(PeerId, gossipsub::Message)>,
+        inbound: mpsc::UnboundedSender<GossipMessage<gossipsub::Message>>,
     ) -> Result<(), NetworkError> {
         if !self.swarm.behaviour_mut().gossipsub.subscribe(&topic)? {
             warn!(target: LOG_TARGET, "Already subscribed to {topic}");
@@ -645,9 +690,10 @@ where
                 peer_id,
                 endpoint,
                 cause,
+                connection_id,
                 ..
             } => {
-                info!(target: LOG_TARGET, "🔌 Connection closed: peer_id={}, endpoint={:?}, cause={:?}", peer_id, endpoint, cause);
+                info!(target: LOG_TARGET, "🔌 Connection closed: id={}, peer_id={}, endpoint={:?}, cause={:?}", connection_id, peer_id, endpoint, cause);
                 match self.active_connections.entry(peer_id) {
                     Entry::Occupied(mut entry) => {
                         entry.get_mut().retain(|c| c.endpoint != endpoint);
@@ -867,12 +913,19 @@ where
         };
 
         debug!(target: LOG_TARGET, "📣 RX Gossipsub: {message_id} from {propagation_source} (size: {})", message.data.len());
+        let message = GossipMessage {
+            message_id,
+            propagation_source,
+            origin: message.source,
+            message_size: message.data.len(),
+            message,
+        };
 
-        if let Err(mpsc::error::SendError((_, message))) = sink.send((propagation_source, message)) {
-            warn!(target: LOG_TARGET, "📣 Gossipsub sink dropped for topic {}. Removing subscription channel. The node is still subscribed (use NetworkHandle::unsubscribe_topic).", message.topic);
+        if let Err(mpsc::error::SendError(message)) = sink.send(message) {
+            warn!(target: LOG_TARGET, "📣 Gossipsub sink dropped for topic {}. Removing subscription channel. The node is still subscribed (use NetworkHandle::unsubscribe_topic).", message.message.topic);
             // We could unsubscribe in this case, but this probably isn't very useful and this is probably a result of a
             // downstream bug.
-            let _drop = self.gossipsub_subscriptions.remove(&message.topic);
+            let _drop = self.gossipsub_subscriptions.remove(&message.message.topic);
         }
         Ok(())
     }
@@ -1012,7 +1065,7 @@ where
 
         if let Some(relay) = self.relays.selected_relay_mut() {
             if endpoint.is_dialer() && relay.peer_id == peer_id {
-                relay.dialled_address = Some(endpoint.get_remote_address().clone());
+                relay.remote_address = Some(endpoint.get_remote_address().clone());
             }
         }
 
@@ -1032,13 +1085,10 @@ where
             supported_protocols: vec![],
         });
 
-        let Some(waiters) = self.pending_dial_requests.remove(&peer_id) else {
-            debug!(target: LOG_TARGET, "No pending dial requests initiated by this service for peer {}", peer_id);
-            return Ok(());
-        };
-
-        for waiter in waiters {
-            let _ignore = waiter.send(Ok(()));
+        if let Some(waiters) = self.pending_dial_requests.remove(&peer_id) {
+            for waiter in waiters {
+                let _ignore = waiter.send(Ok(()));
+            }
         }
 
         self.publish_event(NetworkEvent::PeerConnected {
@@ -1104,6 +1154,9 @@ where
                     // Otherwise, if the peer advertises as a relay we'll add them
                     info!(target: LOG_TARGET, "📡 Adding peer {peer_id} {address} as a relay");
                     self.relays.add_possible_relay(peer_id, address.clone());
+                    if !self.relays.has_active_relay() {
+                        self.relays.set_relay_peer(peer_id, Some(address.clone()));
+                    }
                 } else {
                     // Nothing to do
                 }
@@ -1124,7 +1177,7 @@ where
             self.establish_relay_circuit_on_connect(&peer_id);
         }
 
-        self.publish_event(NetworkEvent::IdentifiedPeer {
+        self.publish_event(NetworkEvent::PeerIdentified {
             peer_id,
             public_key,
             agent_version,
@@ -1154,27 +1207,31 @@ where
 
     /// Establishes a relay circuit for the given peer if it is the selected relay peer. Returns true if the circuit
     /// was established from this call.
-    fn establish_relay_circuit_on_connect(&mut self, peer_id: &PeerId) -> bool {
+    fn establish_relay_circuit_on_connect(&mut self, connected_peer_id: &PeerId) -> bool {
         let Some(relay) = self.relays.selected_relay() else {
+            debug!(target: LOG_TARGET, "📡 No relay selected.");
             return false;
         };
 
-        // If the peer we've connected with is the selected relay that we previously dialled, then continue
-        if relay.peer_id != *peer_id {
+        // If the peer we've connected with is the selected relay that we previously connected with, then continue
+        if relay.peer_id != *connected_peer_id {
+            debug!(target: LOG_TARGET, "📡 Dialed peer is not set as a relay.");
             return false;
         }
 
         // If we've already established a circuit with the relay, there's nothing to do here
         if relay.is_circuit_established {
+            debug!(target: LOG_TARGET, "📡 Already have a circuit established with this relay peer.");
             return false;
         }
 
         // Check if we've got a confirmed address for the relay
-        let Some(dialled_address) = relay.dialled_address.as_ref() else {
+        let Some(remote_address) = relay.remote_address.as_ref() else {
+            debug!(target: LOG_TARGET, "📡 No remote addresses for relay peer.");
             return false;
         };
 
-        let circuit_addr = dialled_address.clone().with(Protocol::P2pCircuit);
+        let circuit_addr = remote_address.clone().with(Protocol::P2pCircuit);
 
         match self.swarm.listen_on(circuit_addr.clone()) {
             Ok(id) => {
@@ -1182,7 +1239,7 @@ where
                     .behaviour_mut()
                     .peer_sync
                     .add_known_local_public_addresses(vec![circuit_addr]);
-                info!(target: LOG_TARGET, "🌍️ Peer {peer_id} is a relay. Listening (id={id:?}) for circuit connections");
+                info!(target: LOG_TARGET, "🌍️ Peer {connected_peer_id} is a relay. Listening (id={id:?}) for circuit connections");
                 let Some(relay_mut) = self.relays.selected_relay_mut() else {
                     // unreachable
                     return false;

@@ -33,7 +33,7 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_network::multiaddr::Multiaddr;
+use tari_network::{multiaddr::Multiaddr, ReachabilityMode};
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 
@@ -128,6 +128,8 @@ impl Default for WalletConfig {
         let p2p = P2pConfig {
             enable_relay: false,
             enable_mdns: true,
+            reachability_mode: ReachabilityMode::Private,
+            max_inbound_connections_per_peer: Some(3),
             ..Default::default()
         };
         Self {

@@ -31,7 +31,7 @@ use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
 };
-use tari_network::multiaddr::Multiaddr;
+use tari_network::{multiaddr::Multiaddr, ReachabilityMode};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
@@ -226,6 +226,7 @@ pub fn get_default_cli() -> Cli {
         profile_with_tokio_console: false,
         view_private_key: None,
         spend_key: None,
+        reachability: Some(ReachabilityMode::Private),
     }
 }
 

@@ -63,6 +63,18 @@ where
         let mut pool = self.pool.lock().await;
         pool.get_least_used_or_connect().await
     }
+
+    pub async fn clear_unused_leases(&self) {
+        let mut pool = self.pool.lock().await;
+        pool.clear_unused_leases();
+    }
+
+    pub async fn close(self) {
+        let mut pool = self.pool.lock().await;
+        for mut client in pool.clients.drain(..) {
+            client.close();
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -96,10 +108,21 @@ where
                         Ok(c) => c,
                         // This is an edge case where the remote node does not have any further sessions available. This
                         // is gracefully handled by returning one of the existing used sessions.
-                        Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => self
-                            .get_least_used()
-                            .ok_or(RpcClientPoolError::NoMoreRemoteRpcSessions)?,
+                        Err(RpcClientPoolError::NoMoreRemoteRpcSessions) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "get_least_used_or_connect: no more remote rpc sessions, trying least used."
+                            );
+                            self.get_least_used().ok_or({
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "get_least_used_or_connect: lest used client not found."
+                                );
+                                RpcClientPoolError::NoMoreRemoteRpcSessions
+                            })?
+                        },
                         Err(err) => {
+                            trace!(target: LOG_TARGET, "get_least_used_or_connect: returning error ({})", err);
                             return Err(err);
                         },
                     }
@@ -108,6 +131,7 @@ where
 
             if !client.is_connected() {
                 self.prune();
+                trace!(target: LOG_TARGET, "get_least_used_or_connect: new client is not connected, pruning");
                 continue;
             }
 
@@ -116,10 +140,27 @@ where
         }
     }
 
-    // pub fn is_connected(&self) -> bool {
-    //     // We assume a connection if any of the clients are connected.
-    //     self.clients.iter().any(|lease| lease.is_connected())
-    // }
+    pub fn clear_unused_leases(&mut self) {
+        let initial_len = self.clients.len();
+        let cap = self.clients.capacity();
+        self.clients = self.clients.drain(..).fold(Vec::with_capacity(cap), |mut vec, c| {
+            // 1 lease is held by the pool
+            if c.is_connected() && c.lease_count() > 1 {
+                vec.push(c);
+            }
+            vec
+        });
+
+        let num_cleared = initial_len - self.clients.len();
+        if num_cleared > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Cleared {} unused client(s) (total: {})",
+                num_cleared,
+                self.clients.len()
+            )
+        }
+    }
 
     #[allow(dead_code)]
     pub(super) fn refresh_num_active_connections(&mut self) -> usize {
@@ -136,23 +177,28 @@ where
         // If the pool is full, we choose the client with the smallest lease_count (i.e. the one that is being used
         // the least or not at all).
         if self.is_full() {
+            debug!(target: LOG_TARGET, "get_next_lease: full using client with {} lease(s) (is_connected = {})", client.lease_count(), client.is_connected());
             return Some(client);
         }
 
         // Otherwise, if the least used connection is still in use and since there is capacity for more connections,
         // return None. This indicates that the best option is to create a new connection.
         if client.lease_count() > 0 {
+            debug!(target: LOG_TARGET, "get_next_lease: least used client has {} lease(s) but more capacity exists.", client.is_connected());
             return None;
         }
 
+        debug!(target: LOG_TARGET, "get_next_lease: least used client has no lease.");
         Some(client)
     }
 
     fn get_least_used(&self) -> Option<&RpcClientLease<T>> {
         let mut min_count = usize::MAX;
         let mut selected_client = None;
+        debug!(target: LOG_TARGET, "get_least_used: #clients: {}", self.clients.len());
         for client in &self.clients {
             let lease_count = client.lease_count();
+            debug!(target: LOG_TARGET, "get_least_used: lease count: {}, is_connected: {}", lease_count, client.is_connected());
             if lease_count == 0 {
                 return Some(client);
             }
@@ -172,6 +218,7 @@ where
 
     async fn add_new_client_session(&mut self) -> Result<&RpcClientLease<T>, RpcClientPoolError> {
         debug_assert!(!self.is_full(), "add_new_client called when pool is full");
+        debug!(target: LOG_TARGET, "Attempting new RPC pool session for {} (#clients = {})", self.client_config.peer_id(), self.clients.len());
         let client = self
             .connector
             .connect_rpc_using_builder(self.client_config.clone())
@@ -243,14 +290,20 @@ impl<T: RpcPoolClient> RpcPoolClient for RpcClientLease<T> {
     fn is_connected(&self) -> bool {
         self.inner.is_connected()
     }
+
+    fn close(&mut self) {
+        self.inner.close();
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum RpcClientPoolError {
     #[error("Peer connection to peer '{peer}' dropped")]
     PeerConnectionDropped { peer: PeerId },
-    #[error("No peer RPC sessions are available")]
+    #[error("No RPC sessions are available")]
     NoMoreRemoteRpcSessions,
+    #[error("No RPC sessions are available (per peer)")]
+    NoMoreRemotePerPeerRpcSessions,
     #[error("Failed to create client connection: {0}")]
     FailedToConnect(String),
 }
@@ -261,6 +314,9 @@ impl From<RpcError> for RpcClientPoolError {
             RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::NoSessionsAvailable)) => {
                 RpcClientPoolError::NoMoreRemoteRpcSessions
             },
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(
+                HandshakeRejectReason::NoPerPeerSessionsAvailable,
+            )) => RpcClientPoolError::NoMoreRemotePerPeerRpcSessions,
             err => RpcClientPoolError::FailedToConnect(err.to_string()),
         }
     }
@@ -268,10 +324,15 @@ impl From<RpcError> for RpcClientPoolError {
 
 pub trait RpcPoolClient {
     fn is_connected(&self) -> bool;
+    fn close(&mut self);
 }
 
 impl RpcPoolClient for RpcClient {
     fn is_connected(&self) -> bool {
         RpcClient::is_connected(self)
+    }
+
+    fn close(&mut self) {
+        RpcClient::close(self)
     }
 }

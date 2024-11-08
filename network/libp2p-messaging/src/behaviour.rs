@@ -8,7 +8,7 @@ use std::{
 };
 
 use libp2p::{
-    core::{transport::PortUse, Endpoint},
+    core::{transport::PortUse, ConnectedPoint, Endpoint},
     swarm::{
         dial_opts::DialOpts,
         AddressChange,
@@ -90,13 +90,13 @@ where TCodec: Codec + Send + Clone + 'static
             Some(connections) => {
                 // Return a currently active stream
                 if let Some(sink) = connections.next_active_sink() {
-                    tracing::debug!("return a currently active stream {}", sink.stream_id());
+                    tracing::debug!("return a currently active stream {} (peer={peer_id})", sink.stream_id());
                     return sink.clone();
                 }
 
                 // Otherwise, return a pending stream
                 if let Some(sink) = connections.next_pending_sink() {
-                    tracing::debug!("return a pending stream {}", sink.stream_id());
+                    tracing::debug!("return a pending stream {} (peer={peer_id})", sink.stream_id());
                     return sink.clone();
                 }
 
@@ -170,17 +170,18 @@ where TCodec: Codec + Send + Clone + 'static
             ..
         }: ConnectionClosed,
     ) {
-        let connections = self
-            .connected
-            .get_mut(&peer_id)
-            .expect("Expected some established connection to peer before closing.");
+        let Some(connections) = self.connected.get_mut(&peer_id) else {
+            return;
+        };
 
-        let connection = connections
+        let Some(connection) = connections
             .connections
             .iter()
             .position(|c| c.id == connection_id)
             .map(|p: usize| connections.connections.remove(p))
-            .expect("Expected connection to be established before closing.");
+        else {
+            return;
+        };
 
         debug_assert_eq!(connections.is_empty(), remaining_established == 0);
         if connections.is_empty() {
@@ -204,10 +205,15 @@ where TCodec: Codec + Send + Clone + 'static
             new,
             ..
         } = address_change;
+        let remote_address = match new {
+            ConnectedPoint::Dialer { address, .. } => Some(address),
+            ConnectedPoint::Listener { .. } => None,
+        };
+
         if let Some(connections) = self.connected.get_mut(&peer_id) {
             for connection in &mut connections.connections {
                 if connection.id == connection_id {
-                    connection.remote_address = Some(new.get_remote_address().clone());
+                    connection.remote_address = remote_address.cloned();
                     return;
                 }
             }
@@ -337,9 +343,10 @@ where TCodec: Codec + Send + Clone + 'static
     fn poll(&mut self, _cx: &mut Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         if let Some(event) = self.pending_events.pop_front() {
             return Poll::Ready(event);
-        }
-        if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
+        } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
             self.pending_events.shrink_to_fit();
+        } else {
+            // nothing
         }
 
         Poll::Pending

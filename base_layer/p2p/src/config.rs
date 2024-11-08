@@ -103,6 +103,8 @@ pub struct P2pConfig {
         deserialize_with = "deserialize_from_str",
         serialize_with = "serialize_string"
     )]
+    /// If set to `Private`, the node assume it has no public address and will try to establish a relay connection as
+    /// soon as possible. `Auto` will use auto NAT to try determine this automatically.
     pub reachability_mode: ReachabilityMode,
     /// The global maximum allowed RPC sessions.
     /// Default: 100
@@ -112,6 +114,7 @@ pub struct P2pConfig {
     pub rpc_max_sessions_per_peer: usize,
     pub enable_mdns: bool,
     pub enable_relay: bool,
+    pub max_inbound_connections_per_peer: Option<u32>,
 }
 
 impl Default for P2pConfig {
@@ -125,6 +128,7 @@ impl Default for P2pConfig {
             rpc_max_sessions_per_peer: 10,
             enable_mdns: true,
             enable_relay: false,
+            max_inbound_connections_per_peer: None,
         }
     }
 }

@@ -64,9 +64,10 @@ pub enum RpcServerError {
 }
 
 impl RpcServerError {
-    pub fn early_close_io(&self) -> Option<&io::Error> {
+    pub fn io(&self) -> Option<&io::Error> {
         match self {
             Self::EarlyClose(e) => e.io(),
+            Self::Io(e) => Some(e),
             _ => None,
         }
     }

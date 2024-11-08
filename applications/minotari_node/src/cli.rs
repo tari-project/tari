@@ -23,6 +23,7 @@
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
+use tari_network::ReachabilityMode;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -51,6 +52,9 @@ pub struct Cli {
     pub mining_enabled: bool,
     #[clap(long, env = "MINOTARI_NODE_SECOND_LAYER_GRPC_ENABLED", alias = "enable-second-layer")]
     pub second_layer_grpc_enabled: bool,
+    /// Set the node to unreachable mode, the node will not act as a relay and will attempt relayed connections.
+    #[clap(long)]
+    pub reachability: Option<ReachabilityMode>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -80,13 +84,20 @@ impl ConfigOverrideProvider for Cli {
             replace_or_add_override(&mut overrides, "base_node.grpc_enabled", "true");
             replace_or_add_override(&mut overrides, "base_node.second_layer_grpc_enabled", "true");
         }
+        if let Some(reachability) = self.reachability {
+            replace_or_add_override(
+                &mut overrides,
+                "base_node.p2p.reachability_mode",
+                reachability.to_string(),
+            );
+        }
         overrides
     }
 }
 
-fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+fn replace_or_add_override<T: Into<String>>(overrides: &mut Vec<(String, String)>, key: &str, value: T) {
     if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
         overrides.remove(index);
     }
-    overrides.push((key.to_string(), value.to_string()));
+    overrides.push((key.to_string(), value.into()));
 }

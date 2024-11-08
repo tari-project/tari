@@ -144,6 +144,15 @@ pub struct BaseNodeConfig {
 
 impl Default for BaseNodeConfig {
     fn default() -> Self {
+        let p2p = P2pConfig {
+            enable_relay: true,
+            enable_mdns: true,
+            // We should reduce this to something like 5 - however there seems (unconfirmed) to be an issue in some
+            // behaviours when the limit is hit (continuous connection closing)
+            max_inbound_connections_per_peer: Some(50),
+            ..Default::default()
+        };
+
         Self {
             override_from: None,
             network: Network::default(),
@@ -156,7 +165,7 @@ impl Default for BaseNodeConfig {
             second_layer_grpc_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: true,
-            p2p: P2pConfig::default(),
+            p2p,
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
             data_dir: PathBuf::from("data/base_node"),

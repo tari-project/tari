@@ -31,6 +31,15 @@ impl Peer {
         &self.public_key
     }
 
+    pub fn merge_addresses(&mut self, new: Vec<Multiaddr>) -> &mut Self {
+        for addr in new {
+            if self.addresses.iter().all(|a| *a != addr) {
+                self.addresses.push(addr);
+            }
+        }
+        self
+    }
+
     pub fn try_to_ristretto_public_key(&self) -> Result<RistrettoPublicKey, OtherVariantError> {
         let pk = self.public_key.clone().try_into_sr25519()?;
         Ok(pk.inner_key().clone())

@@ -34,7 +34,6 @@ use smallvec::SmallVec;
 use crate::{
     error::Error,
     event::Event,
-    stream::OpenStreamRequest,
     FromBehaviourEvent,
     ProtocolEvent,
     ProtocolNotification,
@@ -45,7 +44,6 @@ use crate::{
 pub struct Handler {
     peer_id: PeerId,
     protocols: Protocols<StreamProtocol>,
-    requested_streams: VecDeque<OpenStreamRequest>,
     pending_behaviour_events: VecDeque<FromBehaviourEvent>,
     pending_events: VecDeque<Event>,
 }
@@ -55,7 +53,6 @@ impl Handler {
         Self {
             peer_id,
             protocols: Protocols::new(protocols),
-            requested_streams: VecDeque::new(),
             pending_behaviour_events: VecDeque::new(),
             pending_events: VecDeque::new(),
         }
@@ -68,17 +65,11 @@ impl Handler {
     }
 
     fn on_dial_upgrade_error(&mut self, error: DialUpgradeError<StreamId, ChosenProtocol<StreamProtocol>>) {
-        let stream = self
-            .requested_streams
-            .pop_front()
-            .expect("negotiated a stream without a pending request");
-
         match error.error {
             StreamUpgradeError::Timeout => {
                 self.pending_events.push_back(Event::OutboundFailure {
                     peer_id: self.peer_id,
-                    protocol: stream.protocol().clone(),
-                    stream_id: stream.stream_id(),
+                    stream_id: error.info,
                     error: Error::ProtocolNegotiationTimeout,
                 });
             },
@@ -90,18 +81,25 @@ impl Handler {
                 // the remote peer does not support the requested protocol(s).
                 self.pending_events.push_back(Event::OutboundFailure {
                     peer_id: self.peer_id,
-                    protocol: stream.protocol().clone(),
-                    stream_id: stream.stream_id(),
+                    stream_id: error.info,
                     error: Error::ProtocolNotSupported,
                 });
             },
-            StreamUpgradeError::Apply(_infallible) => {},
+            StreamUpgradeError::Apply(_) => {
+                self.pending_events.push_back(Event::OutboundFailure {
+                    peer_id: self.peer_id,
+                    stream_id: error.info,
+                    error: Error::StreamUpgradeError,
+                });
+            },
             StreamUpgradeError::Io(e) => {
-                tracing::debug!(
-                    "outbound stream for request {} failed: {e}, retrying",
-                    stream.stream_id()
-                );
-                self.requested_streams.push_back(stream);
+                tracing::debug!("outbound stream for request {} failed: {e}, retrying", error.info,);
+
+                self.pending_events.push_back(Event::OutboundFailure {
+                    peer_id: self.peer_id,
+                    stream_id: error.info,
+                    error: Error::Io(e.to_string()),
+                });
             },
         }
     }
@@ -112,8 +110,6 @@ impl Handler {
     ) {
         let (stream, protocol) = outbound.protocol;
         let stream_id = outbound.info;
-        // Requested stream succeeded, remove it from the pending list.
-        let _request = self.requested_streams.pop_front();
 
         self.pending_events.push_back(Event::SubstreamOpen {
             peer_id: self.peer_id,
@@ -163,10 +159,9 @@ impl ConnectionHandler for Handler {
         // Emit outbound streams.
         if let Some(event) = self.pending_behaviour_events.pop_front() {
             match event {
-                FromBehaviourEvent::OpenRpcSessionRequest(stream) => {
+                FromBehaviourEvent::OpenSubstreamRequest(stream) => {
                     let protocol = stream.protocol().clone();
                     let stream_id = stream.stream_id();
-                    self.requested_streams.push_back(stream);
 
                     return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
                         protocol: SubstreamProtocol::new(ChosenProtocol { protocol }, stream_id),

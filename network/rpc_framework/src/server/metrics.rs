@@ -29,7 +29,7 @@ use crate::{RpcServerError, RpcStatusCode};
 pub fn num_sessions(peer_id: &PeerId, protocol: &StreamProtocol) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
-            "comms::rpc::server::num_sessions",
+            "network::rpc::server::num_sessions",
             "The number of active server sessions per peer per protocol",
             &["peer_id", "protocol"],
         )
@@ -42,7 +42,7 @@ pub fn num_sessions(peer_id: &PeerId, protocol: &StreamProtocol) -> IntGauge {
 pub fn handshake_error_counter(peer_id: &PeerId, protocol: &StreamProtocol) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
-            "comms::rpc::server::handshake_error_count",
+            "network::rpc::server::handshake_error_count",
             "The number of handshake errors per peer per protocol",
             &["peer_id", "protocol"],
         )
@@ -55,7 +55,7 @@ pub fn handshake_error_counter(peer_id: &PeerId, protocol: &StreamProtocol) -> I
 pub fn error_counter(peer_id: &PeerId, protocol: &StreamProtocol, err: &RpcServerError) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
-            "comms::rpc::server::error_count",
+            "network::rpc::server::error_count",
             "The number of RPC errors per peer per protocol",
             &["peer_id", "protocol", "error"],
         )
@@ -72,7 +72,7 @@ pub fn error_counter(peer_id: &PeerId, protocol: &StreamProtocol, err: &RpcServe
 pub fn status_error_counter(peer_id: &PeerId, protocol: &StreamProtocol, status_code: RpcStatusCode) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
-            "comms::rpc::server::status_error_count",
+            "network::rpc::server::status_error_count",
             "The number of RPC errors by status code per peer per protocol",
             &["peer_id", "protocol", "status"],
         )
@@ -89,7 +89,7 @@ pub fn status_error_counter(peer_id: &PeerId, protocol: &StreamProtocol, status_
 pub fn inbound_requests_bytes(peer_id: &PeerId, protocol: &StreamProtocol) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
-            "comms::rpc::server::inbound_request_bytes",
+            "network::rpc::server::inbound_request_bytes",
             "Avg. request bytes per peer per protocol",
             &["peer_id", "protocol"],
         )
@@ -102,7 +102,7 @@ pub fn inbound_requests_bytes(peer_id: &PeerId, protocol: &StreamProtocol) -> Hi
 pub fn outbound_response_bytes(peer_id: &PeerId, protocol: &StreamProtocol) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
-            "comms::rpc::server::outbound_response_bytes",
+            "network::rpc::server::outbound_response_bytes",
             "Avg. response bytes per peer per protocol",
             &["peer_id", "protocol"],
         )

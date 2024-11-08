@@ -390,7 +390,7 @@ async fn wait_for_comms(network: &NetworkHandle) -> Result<(), CommandError> {
     loop {
         tokio::select! {
             // Wait for the first base node to identify
-            Ok(NetworkEvent::IdentifiedPeer { agent_version, .. }) = events.recv() => {
+            Ok(NetworkEvent::PeerIdentified { agent_version, .. }) = events.recv() => {
                 if agent_version.contains("basenode") {
                     println!("✅");
                     return Ok(());

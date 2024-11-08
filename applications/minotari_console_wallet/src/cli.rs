@@ -34,7 +34,7 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
-use tari_network::multiaddr::Multiaddr;
+use tari_network::{multiaddr::Multiaddr, ReachabilityMode};
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
@@ -94,6 +94,9 @@ pub struct Cli {
     pub view_private_key: Option<String>,
     #[clap(long)]
     pub spend_key: Option<String>,
+    /// Set the node to unreachable mode, the node will not act as a relay and will attempt relayed connections.
+    #[clap(long)]
+    pub reachability: Option<ReachabilityMode>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -118,15 +121,18 @@ impl ConfigOverrideProvider for Cli {
         } else {
             // GRPC is disabled
         }
+        if let Some(reachability) = self.reachability {
+            replace_or_add_override(&mut overrides, "wallet.p2p.reachability_mode", reachability.to_string());
+        }
         overrides
     }
 }
 
-fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, value: &str) {
+fn replace_or_add_override<T: Into<String>>(overrides: &mut Vec<(String, String)>, key: &str, value: T) {
     if let Some(index) = overrides.iter().position(|(k, _)| k == key) {
         overrides.remove(index);
     }
-    overrides.push((key.to_string(), value.to_string()));
+    overrides.push((key.to_string(), value.into()));
 }
 
 #[allow(clippy::large_enum_variant)]

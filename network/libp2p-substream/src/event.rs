@@ -23,7 +23,6 @@ pub enum Event {
     },
     OutboundFailure {
         peer_id: PeerId,
-        protocol: StreamProtocol,
         stream_id: StreamId,
         error: Error,
     },

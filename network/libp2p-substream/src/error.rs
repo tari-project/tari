@@ -12,6 +12,8 @@ pub enum Error {
     ProtocolNotSupported,
     ProtocolNegotiationTimeout,
     ChannelClosed,
+    StreamUpgradeError,
+    Io(String),
 }
 
 impl Display for Error {
@@ -24,6 +26,8 @@ impl Display for Error {
             Self::ProtocolNotSupported => write!(f, "Protocol not supported"),
             Self::ProtocolNegotiationTimeout => write!(f, "Protocol negotiation timeout"),
             Self::ChannelClosed => write!(f, "Channel closed"),
+            Self::StreamUpgradeError => write!(f, "Stream upgrade error"),
+            Self::Io(err) => write!(f, "IO error: {err}"),
         }
     }
 }

@@ -36,7 +36,6 @@ use std::{
     fmt,
     future::Future,
     marker::PhantomData,
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -56,7 +55,7 @@ use log::*;
 use prost::Message;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
-    sync::{mpsc, oneshot, watch, Mutex},
+    sync::{mpsc, oneshot, watch},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -75,6 +74,7 @@ use crate::{
     RpcHandshakeError,
     RpcServerError,
     RpcStatus,
+    CHECK_BYTES,
 };
 
 const LOG_TARGET: &str = "network::rpc::client";
@@ -163,8 +163,8 @@ impl RpcClient {
     }
 
     /// Close the RPC session. Any subsequent calls will error.
-    pub async fn close(&mut self) {
-        self.connector.close().await;
+    pub fn close(&mut self) {
+        self.connector.close();
     }
 
     pub fn is_connected(&self) -> bool {
@@ -309,7 +309,7 @@ impl Default for RpcClientConfig {
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
     last_request_latency_rx: watch::Receiver<Option<Duration>>,
-    shutdown: Arc<Mutex<Shutdown>>,
+    shutdown: Shutdown,
 }
 
 impl ClientConnector {
@@ -321,13 +321,12 @@ impl ClientConnector {
         Self {
             inner: sender,
             last_request_latency_rx,
-            shutdown: Arc::new(Mutex::new(shutdown)),
+            shutdown,
         }
     }
 
-    pub async fn close(&mut self) {
-        let mut lock = self.shutdown.lock().await;
-        lock.trigger();
+    pub fn close(&mut self) {
+        self.shutdown.trigger();
     }
 
     pub fn get_last_request_latency(&mut self) -> Option<Duration> {
@@ -424,6 +423,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         self.protocol_id.as_ref()
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -470,6 +470,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 },
                 server_msg = self.framed.next() => {
                     match server_msg {
+                        Some(Ok(frame)) if frame.as_ref() == CHECK_BYTES.as_ref() => {
+                            trace!(target: LOG_TARGET, "Received check bytes");
+                        },
                         Some(Ok(msg)) => {
                             if let Err(err) = self.handle_interrupt_server_message(msg) {
                                 #[cfg(feature = "metrics")]
@@ -508,6 +511,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         }
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.peer_id, &self.protocol_id).dec();
+
+        if let Err(err) = self.send_polite_close().await {
+            debug!(
+                target: LOG_TARGET,
+                "(peer: {}) IO Error when sending close substream: {}",
+                self.peer_id,
+                err
+            );
+        }
 
         if let Err(err) = self.framed.close().await {
             debug!(
@@ -685,10 +697,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
             // Check if the response receiver has been dropped while receiving messages
             let resp_result = {
+                let shutdown_signal = self.shutdown_signal.clone();
                 let resp_fut = self.read_response(request_id);
                 tokio::pin!(resp_fut);
-                let closed_fut = response_tx.closed();
-                tokio::pin!(closed_fut);
+                let resp_closed = response_tx.closed();
+                tokio::pin!(resp_closed);
+                let closed_fut = shutdown_signal.select(resp_closed);
                 match future::select(resp_fut, closed_fut).await {
                     Either::Left((r, _)) => Some(r),
                     Either::Right(_) => None,
@@ -802,6 +816,19 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             method,
             flags: RpcMessageFlags::FIN.bits().into(),
             deadline: self.config.deadline.map(|d| d.as_secs()).unwrap_or(0),
+            ..Default::default()
+        };
+
+        // If we cannot set FIN quickly, just exit
+        if let Ok(res) = time::timeout(Duration::from_secs(2), self.send_request(req)).await {
+            res?;
+        }
+        Ok(())
+    }
+
+    async fn send_polite_close(&mut self) -> Result<(), RpcError> {
+        let req = proto::RpcRequest {
+            flags: RpcMessageFlags::FIN.bits().into(),
             ..Default::default()
         };
 
@@ -986,17 +1013,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn next(&mut self) -> Result<proto::RpcResponse, RpcError> {
-        // Wait until the timeout, allowing an extra grace period to account for latency
-        let next_msg_fut = match self.config.timeout_with_grace_period() {
-            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
-            None => Either::Right(self.framed.next().map(Ok)),
-        };
+        loop {
+            // Wait until the timeout, allowing an extra grace period to account for latency
+            let next_msg_fut = match self.config.timeout_with_grace_period() {
+                Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
+                None => Either::Right(self.framed.next().map(Ok)),
+            };
 
-        match next_msg_fut.await {
-            Ok(Some(Ok(resp))) => Ok(proto::RpcResponse::decode(resp)?),
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::ReplyTimeout),
+            match next_msg_fut.await {
+                Ok(Some(Ok(resp))) if resp == CHECK_BYTES => {
+                    trace!(target: LOG_TARGET, "Received CHECK_BYTES");
+                },
+                Ok(Some(Ok(resp))) => return Ok(proto::RpcResponse::decode(resp)?),
+                Ok(Some(Err(err))) => return Err(err.into()),
+                Ok(None) => return Err(RpcError::ServerClosedRequest),
+                Err(_) => return Err(RpcError::ReplyTimeout),
+            }
         }
     }
 }
