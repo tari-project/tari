@@ -149,11 +149,8 @@ impl CommandContext {
             },
         }
 
-        if relay_stats.num_active_relay_reservations > 0 || relay_stats.num_active_circuits > 0 {
-            status_line.add("relay");
-        }
-        if relay_stats.num_active_relay_reservations > 0 {
-            status_line.add_field("rsrv", relay_stats.num_active_relay_reservations.to_string());
+        if !relay_stats.active_relay_reservations.is_empty() {
+            status_line.add_field("rsrv", relay_stats.active_relay_reservations.len().to_string());
         }
         if relay_stats.num_active_circuits > 0 {
             status_line.add_field("circ", relay_stats.num_active_circuits.to_string());

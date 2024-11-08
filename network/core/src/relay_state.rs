@@ -106,9 +106,9 @@ pub(crate) struct RelayPeer {
     pub remote_address: Option<Multiaddr>,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RelayStats {
-    pub num_active_relay_reservations: usize,
+    pub active_relay_reservations: HashSet<PeerId>,
     pub num_active_circuits: usize,
     pub current_relay_peer: Option<PeerId>,
 }

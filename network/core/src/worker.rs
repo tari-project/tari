@@ -546,7 +546,7 @@ where
                 let _ignore = reply.send(Ok(self.seed_peers.clone()));
             },
             NetworkingRequest::GetRelayStats { reply } => {
-                let _ignore = reply.send(Ok(self.relay_stats));
+                let _ignore = reply.send(Ok(self.relay_stats.clone()));
             },
         }
     }
@@ -715,6 +715,7 @@ where
                 if self.relay_stats.current_relay_peer == Some(peer_id) {
                     self.relay_stats.current_relay_peer = None;
                 }
+                self.relay_stats.active_relay_reservations.remove(&peer_id);
 
                 self.publish_event(NetworkEvent::PeerDisconnected { peer_id });
             },
@@ -1201,14 +1202,9 @@ where
         #[allow(clippy::enum_glob_use)]
         use relay::Event::*;
         match event {
-            ReservationReqAccepted { .. } => {
-                self.relay_stats.num_active_relay_reservations += 1;
+            ReservationReqAccepted { src_peer_id, .. } => {
+                self.relay_stats.active_relay_reservations.insert(*src_peer_id);
             },
-            ReservationReqDenied { .. } => {},
-            ReservationTimedOut { .. } => {
-                self.relay_stats.num_active_relay_reservations -= 1;
-            },
-            CircuitReqDenied { .. } => {},
             CircuitReqAccepted { .. } => {
                 self.relay_stats.num_active_circuits += 1;
             },
