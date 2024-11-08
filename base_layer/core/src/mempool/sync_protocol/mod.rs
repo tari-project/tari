@@ -206,7 +206,7 @@ impl MempoolSyncProtocol {
                 if self.is_synched() || self.has_attempted_peer(peer_id) {
                     debug!(target: LOG_TARGET, "PeerConnected: Local node already synced or already attempted peer {peer_id}");
                 } else if supported_protocols.iter().any(|p| *p == MEMPOOL_SYNC_PROTOCOL) {
-                    debug!(target: LOG_TARGET, "PeerConnected: initiating sync with peer {peer_id}");
+                    debug!(target: LOG_TARGET, "PeerConnected:n  initiating sync with peer {peer_id}");
                     self.peers_attempted.insert(peer_id);
                     self.spawn_initiator_sync_protocol(peer_id, false);
                 } else {

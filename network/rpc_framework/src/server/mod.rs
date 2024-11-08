@@ -926,6 +926,8 @@ fn err_to_log_level(err: &io::Error) -> log::Level {
     match err.kind() {
         ErrorKind::ConnectionReset |
         ErrorKind::ConnectionAborted |
+        ErrorKind::ConnectionRefused |
+        ErrorKind::NotConnected |
         ErrorKind::BrokenPipe |
         ErrorKind::WriteZero |
         ErrorKind::UnexpectedEof |
