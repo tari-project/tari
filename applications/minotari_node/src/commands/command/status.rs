@@ -128,6 +128,7 @@ impl CommandContext {
         );
 
         let avg_latency = self.network.get_average_peer_latency().await?;
+        let relay_stats = self.network.get_relay_stats().await?;
 
         match self.network.get_autonat_status() {
             AutonatStatus::ConfiguredPrivate => {
@@ -137,11 +138,28 @@ impl CommandContext {
                 status_line.add(avg_latency.to_string());
             },
             AutonatStatus::Private => {
-                status_line.add(format!("️🔌 {avg_latency}"));
+                if relay_stats.current_relay_peer.is_some() {
+                    status_line.add(avg_latency.to_string());
+                } else {
+                    status_line.add(format!("️🔌 {avg_latency}"));
+                }
             },
             AutonatStatus::Public => {
                 status_line.add(format!("⚡️ {avg_latency}"));
             },
+        }
+
+        if relay_stats.num_active_relay_reservations > 0 || relay_stats.num_active_circuits > 0 {
+            status_line.add("relay");
+        }
+        if relay_stats.num_active_relay_reservations > 0 {
+            status_line.add_field("rsrv", relay_stats.num_active_relay_reservations.to_string());
+        }
+        if relay_stats.num_active_circuits > 0 {
+            status_line.add_field("circ", relay_stats.num_active_circuits.to_string());
+        }
+        if relay_stats.current_relay_peer.is_some() {
+            status_line.add("⚡️");
         }
 
         if full_log {
