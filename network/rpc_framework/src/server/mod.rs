@@ -346,6 +346,11 @@ where
                         #[cfg(feature = "metrics")]
                         metrics::handshake_error_counter(&peer_id, &notification.protocol).inc();
                     },
+                    Err(err @ RpcServerError::Io(_)) => {
+                        debug!(target: LOG_TARGET, "IO error: {}", err);
+                        #[cfg(feature = "metrics")]
+                        metrics::handshake_error_counter(&peer_id, &notification.protocol).inc();
+                    },
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
                     },
@@ -780,6 +785,10 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
                             debug!(target: LOG_TARGET, "Stream was interrupted by client: {}", err);
                             break;
                         },
+                        RpcServerError::Io(err) => {
+                            debug!(target: LOG_TARGET, "Stream was interrupted by client: IO error: {}", err);
+                            break;
+                        }
                         err => {
                             error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
                             return Err(err);
