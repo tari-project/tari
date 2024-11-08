@@ -43,6 +43,11 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
+/// Threshold of the protobuf encoded transaction bytes size to gossip a full transaction. If an encoded transaction is
+/// greater than this, a notification of a new transaction is gossiped. This is selected to be slightly less than the
+/// network default gossip message size of 64KiB.
+const MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES: usize = 62 * 1024;
+
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
 #[derive(Clone)]
@@ -96,9 +101,16 @@ impl MempoolInboundHandlers {
                     if tx.body.outputs().len() + tx.body.inputs().len() < 4 && tx.body().kernels().len() < 4 {
                         let msg =
                             proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
-                        // TODO: allow configuration of full vs reference byte size
                         let encoded_len = msg.encoded_len();
-                        if encoded_len <= 64 * 1024 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Transaction has {} input(s), {} output(s), and {} kernel(s). Encoded size = {}",
+                            tx.body.inputs().len(),
+                            tx.body.outputs().len(),
+                            tx.body.kernels().len(),
+                            encoded_len
+                        );
+                        if encoded_len <= MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES {
                             debug!(target: LOG_TARGET, "Transaction is less than 64KiB when encoded ({encoded_len}). Gossiping full transaction.");
                             transaction_too_large_to_gossip = false;
                             // Gossip the full transaction
