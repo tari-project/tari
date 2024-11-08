@@ -108,6 +108,7 @@ use crate::{
     output_mr_hash_from_smt,
     transactions::{
         aggregated_body::AggregateBody,
+        tari_amount::MicroMinotari,
         transaction_components::{
             OutputType,
             SpentOutput,
@@ -1288,8 +1289,9 @@ impl LMDBDatabase {
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
-                self.insert_validator_node(txn, header, &output.commitment, vn_reg)?;
+                self.insert_validator_node(txn, header, &output.commitment, output.minimum_value_promise, vn_reg)?;
             }
+
             if let Some(template_reg) = output
                 .features
                 .sidechain_feature
@@ -1372,6 +1374,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         commitment: &Commitment,
+        minimum_value_promise: MicroMinotari,
         vn_reg: &ValidatorNodeRegistration,
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
@@ -1418,6 +1421,7 @@ impl LMDBDatabase {
             commitment: commitment.clone(),
             sidechain_id: vn_reg.sidechain_id().cloned(),
             registration: vn_reg.clone(),
+            minimum_value_promise,
         };
 
         store.insert(header.height, &validator_node)?;

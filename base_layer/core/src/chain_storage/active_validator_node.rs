@@ -26,7 +26,7 @@ use tari_common_types::{
     types::{Commitment, PublicKey},
 };
 
-use crate::transactions::transaction_components::ValidatorNodeRegistration;
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ValidatorNodeEntry {
@@ -36,4 +36,5 @@ pub struct ValidatorNodeEntry {
     pub commitment: Commitment,
     pub sidechain_id: Option<PublicKey>,
     pub registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
 }

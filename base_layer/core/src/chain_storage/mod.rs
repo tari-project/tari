@@ -91,7 +91,7 @@ use tari_common_types::{
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
 
-use crate::transactions::transaction_components::ValidatorNodeRegistration;
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
@@ -106,4 +106,5 @@ pub struct ValidatorNodeRegistrationInfo {
     pub shard_key: [u8; 32],
     pub start_epoch: VnEpoch,
     pub original_registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
 }

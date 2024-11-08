@@ -503,6 +503,7 @@ message ValidatorNodeChange {
   ValidatorNodeChangeState state = 2;
   uint64 start_height = 3;
   ValidatorNodeRegistration registration = 4;
+  uint64 minimum_value_promise = 5;
 }
 
 message GetValidatorNodeChangesResponse {

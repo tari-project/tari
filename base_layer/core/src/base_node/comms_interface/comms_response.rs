@@ -34,11 +34,9 @@ use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
-    transactions::transaction_components::{
-        Transaction,
-        TransactionKernel,
-        TransactionOutput,
-        ValidatorNodeRegistration,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
     },
 };
 
@@ -129,5 +127,6 @@ pub struct ValidatorNodeChange {
     pub public_key: PublicKey,
     pub state: ValidatorNodeChangeState,
     pub registration: Option<ValidatorNodeRegistration>,
+    pub minimum_value_promise: MicroMinotari,
     pub height: u64,
 }

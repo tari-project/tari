@@ -215,6 +215,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     shard_key: vn.shard_key,
                     start_epoch: vn.start_epoch,
                     original_registration: vn.registration.clone(),
+                    minimum_value_promise: vn.minimum_value_promise,
                 }));
             },
             None => return Ok(Vec::new()),
@@ -240,6 +241,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 shard_key: vn.shard_key,
                 start_epoch: vn.start_epoch,
                 original_registration: vn.registration,
+                minimum_value_promise: vn.minimum_value_promise,
             }));
             i += 1;
         }

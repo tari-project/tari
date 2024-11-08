@@ -34,6 +34,7 @@ impl From<&ValidatorNodeChange> for crate::tari_rpc::ValidatorNodeChange {
                 }),
                 None => None,
             },
+            minimum_value_promise: node_change.minimum_value_promise.into(),
         }
     }
 }
