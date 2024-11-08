@@ -27,7 +27,8 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, HashOutput, PrivateKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tokio::time::Instant;
 
 use crate::{
@@ -178,8 +179,8 @@ impl UnconfirmedPool {
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig.get_signature())
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &RistrettoSecretKey) -> bool {
+        self.txs_by_signature.contains_key(excess_sig)
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
@@ -953,11 +954,11 @@ mod test {
             )
             .expect("Failed to insert many");
         // Check that lowest priority tx was removed to make room for new incoming transactions
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()));
         // Retrieve the set of highest priority unspent transactions
         let desired_weight = tx1.calculate_weight(&tx_weight).expect("Failed to get tx") +
             tx3.calculate_weight(&tx_weight).expect("Failed to get tx") +
@@ -1123,12 +1124,12 @@ mod test {
         let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()], &consensus);
         let _result = unconfirmed_pool.remove_published_and_discard_deprecated_transactions(&published_block);
 
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),);
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig),);
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig),);
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),);
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()),);
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()),);
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.get_signature()),);
 
         assert!(unconfirmed_pool.check_data_consistency());
     }
@@ -1198,12 +1199,12 @@ mod test {
 
         let _result = unconfirmed_pool.remove_published_and_discard_deprecated_transactions(&published_block); // Double spends are discarded
 
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
-        assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(unconfirmed_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!unconfirmed_pool.has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.get_signature()));
 
         assert!(unconfirmed_pool.check_data_consistency());
     }

@@ -64,9 +64,8 @@
 //! ```
 
 use std::{
-    collections::HashSet,
-    convert::TryFrom,
-    iter,
+    collections::{HashMap, HashSet},
+    future::poll_fn,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -74,36 +73,41 @@ use std::{
     time::Duration,
 };
 
-use error::MempoolProtocolError;
-use futures::{stream, SinkExt, Stream, StreamExt};
 pub use initializer::MempoolSyncInitializer;
 use libp2p_substream::{ProtocolEvent, ProtocolNotification, Substream};
 use log::*;
-use prost::{bytes::Bytes, Message};
-use tari_network::{identity::PeerId, NetworkEvent, NetworkHandle, StreamProtocol};
-use tari_p2p::{framing, framing::CanonicalFraming, proto as shared_proto, proto::mempool as proto};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_network::{
+    gossipsub::{MessageAcceptance, MessageId},
+    identity::PeerId,
+    NetworkEvent,
+    NetworkHandle,
+    StreamProtocol,
+};
+use tari_p2p::framing;
 use tokio::{
     sync::{broadcast, mpsc, Semaphore},
     task,
     time,
+    time::MissedTickBehavior,
 };
 
-#[cfg(feature = "metrics")]
-use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEventReceiver},
     chain_storage::BlockAddResult,
-    mempool::{Mempool, MempoolServiceConfig},
-    transactions::transaction_components::Transaction,
+    mempool::{
+        sync_protocol::protocol::MempoolPeerProtocol,
+        transaction_id::MempoolTransactionId,
+        Mempool,
+        MempoolServiceConfig,
+    },
 };
-
 // FIXME: fix these tests
 // #[cfg(test)]
 // mod test;
 
 mod error;
 mod initializer;
+mod protocol;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
@@ -119,6 +123,15 @@ pub struct MempoolSyncProtocol {
     permits: Arc<Semaphore>,
     network: NetworkHandle,
     block_event_stream: BlockEventReceiver,
+    want_list_rx: mpsc::UnboundedReceiver<NewTransactionNotification>,
+    pending_request_task: Option<task::JoinHandle<()>>,
+    inbound_tasks: futures_bounded::FuturesSet<()>,
+}
+
+pub struct NewTransactionNotification {
+    pub propagation_source: PeerId,
+    pub transaction_id: MempoolTransactionId,
+    pub message_id: MessageId,
 }
 
 impl MempoolSyncProtocol {
@@ -128,9 +141,9 @@ impl MempoolSyncProtocol {
         mempool: Mempool,
         network: NetworkHandle,
         block_event_stream: BlockEventReceiver,
+        want_list_rx: mpsc::UnboundedReceiver<NewTransactionNotification>,
     ) -> Self {
         Self {
-            config,
             protocol_notifier,
             mempool,
             peers_attempted: HashSet::new(),
@@ -138,19 +151,41 @@ impl MempoolSyncProtocol {
             permits: Arc::new(Semaphore::new(1)),
             network,
             block_event_stream,
+            want_list_rx,
+            inbound_tasks: futures_bounded::FuturesSet::new(
+                Duration::from_secs(60),
+                config.max_concurrent_inbound_tasks,
+            ),
+            pending_request_task: None,
+            config,
         }
     }
 
     pub async fn run(mut self, mut network_events: broadcast::Receiver<NetworkEvent>) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
 
+        let mut want_list_buffer = Vec::new();
+
+        let mut interval = time::interval(self.config.request_want_list_interval);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
         loop {
+            let mut inbound_tasks = poll_fn(|cx| self.inbound_tasks.poll_unpin(cx));
             tokio::select! {
+                _ = interval.tick() => {
+                    if self.is_done.load(Ordering::SeqCst) {
+                        self.request_wanted_transactions(&mut want_list_buffer).await;
+                    }
+                }
+
+                // Work on inbound tasks
+                _ = &mut inbound_tasks => {},
+
                 Ok(block_event) = self.block_event_stream.recv() => {
                     self.handle_block_event(&block_event).await;
                 },
                 Ok(event) = network_events.recv() => {
-                    self.handle_network_event(event).await;
+                    self.handle_network_event(event);
                 },
 
                 Some(notif) = self.protocol_notifier.recv() => {
@@ -160,7 +195,7 @@ impl MempoolSyncProtocol {
         }
     }
 
-    async fn handle_network_event(&mut self, event: NetworkEvent) {
+    fn handle_network_event(&mut self, event: NetworkEvent) {
         #[allow(clippy::single_match)]
         match event {
             NetworkEvent::PeerIdentified {
@@ -168,15 +203,108 @@ impl MempoolSyncProtocol {
                 supported_protocols,
                 ..
             } => {
-                if !self.is_synched() &&
-                    !self.has_attempted_peer(peer_id) &&
-                    supported_protocols.iter().any(|p| *p == MEMPOOL_SYNC_PROTOCOL)
-                {
-                    self.spawn_initiator_protocol(peer_id).await;
+                if self.is_synched() || self.has_attempted_peer(peer_id) {
+                    debug!(target: LOG_TARGET, "PeerConnected: Local node already synced or already attempted peer {peer_id}");
+                } else if supported_protocols.iter().any(|p| *p == MEMPOOL_SYNC_PROTOCOL) {
+                    debug!(target: LOG_TARGET, "PeerConnected: initiating sync with peer {peer_id}");
+                    self.peers_attempted.insert(peer_id);
+                    self.spawn_initiator_sync_protocol(peer_id, false);
+                } else {
+                    debug!(target: LOG_TARGET, "PeerConnected: remote peer {peer_id}s is not a mempool sync peer");
                 }
             },
             _ => {},
         }
+    }
+
+    async fn request_wanted_transactions(&mut self, buffer: &mut Vec<NewTransactionNotification>) {
+        if self.pending_request_task.as_ref().map_or(false, |t| !t.is_finished()) {
+            debug!(target: LOG_TARGET, "Want list request in progress");
+            return;
+        }
+        self.pending_request_task = None;
+
+        if self.want_list_rx.is_empty() {
+            trace!(target: LOG_TARGET, "No transactions in want list");
+            return;
+        }
+
+        let remaining_buf_space = self.config.max_request_transactions.saturating_sub(buffer.len());
+        if remaining_buf_space > 0 {
+            // Guaranteed to add at least one item and not await indefinitely because we check is_empty() above
+            self.want_list_rx.recv_many(buffer, remaining_buf_space).await;
+        }
+
+        let config = self.config.clone();
+        let mempool = self.mempool.clone();
+        let network = self.network.clone();
+        let mut grouped = HashMap::with_capacity(buffer.len());
+
+        buffer
+            .drain(..)
+            .map(|n| (n.propagation_source, n))
+            .for_each(|(key, val)| {
+                grouped.entry(key).or_insert_with(Vec::new).push(val);
+            });
+
+        let task = task::spawn(async move {
+            for (peer_id, notifs) in grouped {
+                match network
+                    .open_framed_substream(peer_id, &MEMPOOL_SYNC_PROTOCOL, MAX_FRAME_SIZE)
+                    .await
+                {
+                    Ok(framed) => {
+                        let mut protocol = MempoolPeerProtocol::new(&config, framed, peer_id, &mempool);
+                        let progress = protocol.request_transactions(notifs).await;
+                        // Resolve each of the processed messages for this peer
+                        let resolved = progress
+                            .accept
+                            .into_iter()
+                            .map(|id| (id, MessageAcceptance::Accept))
+                            .chain(progress.ignore.into_iter().map(|id| (id, MessageAcceptance::Ignore)))
+                            .chain(progress.reject.into_iter().map(|id| (id, MessageAcceptance::Reject)));
+
+                        for (id, acceptance) in resolved {
+                            if let Err(err) = network
+                                .report_gossip_message_validation_result(id, peer_id, acceptance)
+                                .await
+                            {
+                                // This can only happen if the network is shutdown or crashes. no further calls will be
+                                // possible so we can stop trying
+                                error!(target: LOG_TARGET, "Failed to notify network: {}", err);
+                                break;
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Unable to establish mempool request protocol substream to peer `{}`: {}",
+                            peer_id,
+                            err
+                        );
+                        // Fail for all peer notifications
+                        for notif in notifs {
+                            if let Err(err) = network
+                                .report_gossip_message_validation_result(
+                                    notif.message_id,
+                                    notif.propagation_source,
+                                    MessageAcceptance::Ignore,
+                                )
+                                .await
+                            {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "report_gossip_message_validation_result error: {}",
+                                     err
+                                )
+                            }
+                        }
+                    },
+                }
+            }
+        });
+        self.pending_request_task = Some(task);
     }
 
     async fn handle_block_event(&mut self, block_event: &BlockEvent) {
@@ -200,7 +328,6 @@ impl MempoolSyncProtocol {
         // we want to at least sync initial_sync_num_peers, so we reset the num_synced to 0, so it can run till
         // initial_sync_num_peers again. This is made to run as a best effort in that it will at least run the
         // initial_sync_num_peers
-        self.peers_attempted.clear();
         let connections = match self
             .network
             .select_random_connections(self.config.initial_sync_num_peers, Default::default())
@@ -222,7 +349,7 @@ impl MempoolSyncProtocol {
             },
         };
         for connection in connections {
-            self.spawn_initiator_protocol(connection.peer_id).await;
+            self.spawn_initiator_sync_protocol(connection.peer_id, true);
         }
     }
 
@@ -237,23 +364,23 @@ impl MempoolSyncProtocol {
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
         match notification.event {
             ProtocolEvent::NewInboundSubstream { peer_id, substream } => {
-                self.spawn_inbound_handler(peer_id, substream);
+                // TODO: we need to limit the number of sessions we handle - switch to using RPC?
+                self.start_inbound_handler(peer_id, substream);
             },
         }
     }
 
-    async fn spawn_initiator_protocol(&mut self, peer_id: PeerId) {
+    fn spawn_initiator_sync_protocol(&self, peer_id: PeerId, force_sync: bool) {
         let mempool = self.mempool.clone();
         let permits = self.permits.clone();
         let is_done = self.is_done.clone();
         let config = self.config.clone();
         let network = self.network.clone();
         let num_synced = self.peers_attempted.len();
-        self.peers_attempted.insert(peer_id);
         task::spawn(async move {
             // Only initiate this protocol with a single peer at a time
             let _permit = permits.acquire().await;
-            if is_done.load(Ordering::SeqCst) {
+            if !force_sync && is_done.load(Ordering::SeqCst) {
                 return;
             }
             match network
@@ -262,8 +389,8 @@ impl MempoolSyncProtocol {
             {
                 Ok(framed) => {
                     let initial_sync_num_peers = config.initial_sync_num_peers;
-                    let protocol = MempoolPeerProtocol::new(config, framed, peer_id, mempool);
-                    match protocol.start_initiator().await {
+                    let protocol = MempoolPeerProtocol::new(&config, framed, peer_id, &mempool);
+                    match protocol.start_initiator_sync().await {
                         Ok(_) => {
                             debug!(
                                 target: LOG_TARGET,
@@ -294,12 +421,12 @@ impl MempoolSyncProtocol {
         });
     }
 
-    fn spawn_inbound_handler(&self, peer_id: PeerId, substream: Substream) {
+    fn start_inbound_handler(&mut self, peer_id: PeerId, substream: Substream) {
         let mempool = self.mempool.clone();
         let config = self.config.clone();
-        task::spawn(async move {
+        let fut = async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
-            let mut protocol = MempoolPeerProtocol::new(config, framed, peer_id, mempool);
+            let mut protocol = MempoolPeerProtocol::new(&config, framed, peer_id, &mempool);
             match protocol.start_responder().await {
                 Ok(_) => {
                     debug!(
@@ -317,344 +444,9 @@ impl MempoolSyncProtocol {
                     );
                 },
             }
-        });
-    }
-}
-
-struct MempoolPeerProtocol {
-    config: MempoolServiceConfig,
-    framed: CanonicalFraming<Substream>,
-    mempool: Mempool,
-    peer_id: PeerId,
-}
-
-impl MempoolPeerProtocol {
-    pub fn new(
-        config: MempoolServiceConfig,
-        framed: CanonicalFraming<Substream>,
-        peer_id: PeerId,
-        mempool: Mempool,
-    ) -> Self {
-        Self {
-            config,
-            framed,
-            mempool,
-            peer_id,
+        };
+        if self.inbound_tasks.try_push(fut).is_err() {
+            warn!(target: LOG_TARGET, "Rejecting inbound task for peer {peer_id} because we've reached the max_concurrent_inbound_tasks ({})", self.config.max_concurrent_inbound_tasks);
         }
-    }
-
-    pub async fn start_initiator(mut self) -> Result<(), MempoolProtocolError> {
-        match self.start_initiator_inner().await {
-            Ok(_) => {
-                debug!(target: LOG_TARGET, "Initiator protocol complete");
-                Ok(())
-            },
-            Err(err) => {
-                if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {}", err);
-                }
-                if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {}", err);
-                }
-                Err(err)
-            },
-        }
-    }
-
-    async fn start_initiator_inner(&mut self) -> Result<(), MempoolProtocolError> {
-        debug!(
-            target: LOG_TARGET,
-            "Starting initiator mempool sync for peer `{}`",
-            self.peer_id,
-        );
-
-        let transactions = self.mempool.snapshot().await?;
-        let items = transactions
-            .iter()
-            .take(self.config.initial_sync_max_transactions)
-            .filter_map(|txn| txn.first_kernel_excess_sig())
-            .map(|excess| excess.get_signature().to_vec())
-            .collect();
-        let inventory = proto::TransactionInventory { items };
-
-        // Send an inventory of items currently in this node's mempool
-        debug!(
-            target: LOG_TARGET,
-            "Sending transaction inventory containing {} item(s) to peer `{}`",
-            inventory.items.len(),
-            self.peer_id,
-        );
-
-        self.write_message(inventory).await?;
-
-        self.read_and_insert_transactions_until_complete().await?;
-
-        let missing_items: proto::InventoryIndexes = self.read_message().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Received {} missing transaction index(es) from peer `{}`",
-            missing_items.indexes.len(),
-            self.peer_id,
-        );
-        let missing_txns = missing_items
-            .indexes
-            .iter()
-            .filter_map(|idx| transactions.get(*idx as usize).cloned())
-            .collect::<Vec<_>>();
-        debug!(
-            target: LOG_TARGET,
-            "Sending {} missing transaction(s) to peer `{}`",
-            missing_items.indexes.len(),
-            self.peer_id,
-        );
-
-        // If we don't have any transactions at the given indexes we still need to send back an empty if they requested
-        // at least one index
-        if !missing_items.indexes.is_empty() {
-            self.write_transactions(missing_txns).await?;
-        }
-
-        // Close the stream after writing
-        self.framed.close().await?;
-
-        Ok(())
-    }
-
-    pub async fn start_responder(&mut self) -> Result<(), MempoolProtocolError> {
-        match self.start_responder_inner().await {
-            Ok(_) => {
-                debug!(target: LOG_TARGET, "Responder protocol complete");
-                Ok(())
-            },
-            Err(err) => {
-                if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {}", err);
-                }
-                if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {}", err);
-                }
-                Err(err)
-            },
-        }
-    }
-
-    async fn start_responder_inner(&mut self) -> Result<(), MempoolProtocolError> {
-        debug!(
-            target: LOG_TARGET,
-            "Starting responder mempool sync for peer `{}`",
-            self.peer_id,
-        );
-
-        let inventory: proto::TransactionInventory = self.read_message().await?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Received inventory from peer `{}` containing {} item(s)",
-            self.peer_id,
-            inventory.items.len()
-        );
-
-        let transactions = self.mempool.snapshot().await?;
-
-        let mut duplicate_inventory_items = Vec::new();
-        let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
-            let excess_sig = transaction
-                .first_kernel_excess_sig()
-                .expect("transaction stored in mempool did not have any kernels");
-
-            let has_item = inventory
-                .items
-                .iter()
-                .position(|bytes| bytes.as_slice() == excess_sig.get_signature().as_bytes());
-
-            match has_item {
-                Some(pos) => {
-                    duplicate_inventory_items.push(pos);
-                    false
-                },
-                None => true,
-            }
-        });
-
-        debug!(
-            target: LOG_TARGET,
-            "Streaming {} transaction(s) to peer `{}`",
-            transactions.len(),
-            self.peer_id,
-        );
-
-        self.write_transactions(transactions).await?;
-
-        // Generate an index list of inventory indexes that this node does not have
-        #[allow(clippy::cast_possible_truncation)]
-        let missing_items = inventory
-            .items
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, _)| {
-                if duplicate_inventory_items.contains(&i) {
-                    None
-                } else {
-                    Some(i as u32)
-                }
-            })
-            .collect::<Vec<_>>();
-        debug!(
-            target: LOG_TARGET,
-            "Requesting {} missing transaction index(es) from peer `{}`",
-            missing_items.len(),
-            self.peer_id,
-        );
-
-        let missing_items = proto::InventoryIndexes { indexes: missing_items };
-        let num_missing_items = missing_items.indexes.len();
-        self.write_message(missing_items).await?;
-
-        if num_missing_items > 0 {
-            debug!(target: LOG_TARGET, "Waiting for missing transactions");
-            self.read_and_insert_transactions_until_complete().await?;
-        }
-
-        Ok(())
-    }
-
-    async fn read_and_insert_transactions_until_complete(&mut self) -> Result<(), MempoolProtocolError> {
-        let mut num_recv = 0;
-        while let Some(result) = self.framed.next().await {
-            let bytes = result?;
-            let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
-                MempoolProtocolError::DecodeFailed {
-                    source: err,
-                    peer: self.peer_id,
-                }
-            })?;
-
-            match item.transaction {
-                Some(txn) => {
-                    self.validate_and_insert_transaction(txn).await?;
-                    num_recv += 1;
-                },
-                None => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "All transaction(s) (count={}) received from peer `{}`. ",
-                        num_recv,
-                        self.peer_id,
-                    );
-                    break;
-                },
-            }
-        }
-
-        #[allow(clippy::cast_possible_truncation)]
-        #[allow(clippy::cast_possible_wrap)]
-        #[cfg(feature = "metrics")]
-        {
-            let stats = self.mempool.stats().await?;
-            metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
-            metrics::reorg_pool_size().set(stats.reorg_txs as i64);
-        }
-
-        Ok(())
-    }
-
-    async fn validate_and_insert_transaction(
-        &mut self,
-        txn: shared_proto::common::Transaction,
-    ) -> Result<(), MempoolProtocolError> {
-        let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
-            peer: self.peer_id,
-            message: err,
-        })?;
-        let excess_sig = txn
-            .first_kernel_excess_sig()
-            .ok_or_else(|| MempoolProtocolError::ExcessSignatureMissing(self.peer_id))?;
-        let excess_sig_hex = excess_sig.get_signature().to_hex();
-
-        debug!(
-            target: LOG_TARGET,
-            "Received transaction `{}` from peer `{}`",
-            excess_sig_hex,
-            self.peer_id,
-        );
-        let txn = Arc::new(txn);
-        let store_state = self.mempool.has_transaction(txn.clone()).await?;
-        if store_state.is_stored() {
-            return Ok(());
-        }
-
-        let stored_result = self.mempool.insert(txn).await?;
-        if stored_result.is_stored() {
-            #[cfg(feature = "metrics")]
-            metrics::inbound_transactions().inc();
-            debug!(
-                target: LOG_TARGET,
-                "Inserted transaction `{}` from peer `{}`",
-                excess_sig_hex,
-                self.peer_id,
-            );
-        } else {
-            #[cfg(feature = "metrics")]
-            metrics::rejected_inbound_transactions().inc();
-            debug!(
-                target: LOG_TARGET,
-                "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result
-            )
-        }
-
-        Ok(())
-    }
-
-    async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
-        let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
-            .filter_map(|txn| {
-                match shared_proto::common::Transaction::try_from(&*txn) {
-                    Ok(txn) =>   Some(proto::TransactionItem {
-                        transaction: Some(txn),
-                    }),
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Could not convert transaction: {}", e);
-                        None
-                    }
-                }
-            })
-            // Write an empty `TransactionItem` to indicate we're done
-            .chain(iter::once(proto::TransactionItem::empty()));
-
-        self.write_messages(stream::iter(txns)).await?;
-
-        Ok(())
-    }
-
-    async fn read_message<T: prost::Message + Default>(&mut self) -> Result<T, MempoolProtocolError> {
-        let msg = time::timeout(Duration::from_secs(10), self.framed.next())
-            .await
-            .map_err(|_| MempoolProtocolError::RecvTimeout)?
-            .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_id))??;
-
-        T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
-            source: err,
-            peer: self.peer_id,
-        })
-    }
-
-    async fn write_messages<S, T>(&mut self, stream: S) -> Result<(), MempoolProtocolError>
-    where
-        S: Stream<Item = T> + Unpin,
-        T: prost::Message,
-    {
-        let mut s = stream.map(|m| Bytes::from(m.encode_to_vec())).map(Ok);
-        self.framed.send_all(&mut s).await?;
-        Ok(())
-    }
-
-    async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
-        time::timeout(
-            Duration::from_secs(10),
-            self.framed.send(message.encode_to_vec().into()),
-        )
-        .await
-        .map_err(|_| MempoolProtocolError::SendTimeout)??;
-        Ok(())
     }
 }

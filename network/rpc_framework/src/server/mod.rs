@@ -593,7 +593,7 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             },
             Err(err) => {
                 if let Err(err) = self.framed.close().await {
-                    error!(
+                    debug!(
                         target: LOG_TARGET,
                         "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
                     );
@@ -929,6 +929,7 @@ fn err_to_log_level(err: &io::Error) -> log::Level {
         ErrorKind::BrokenPipe |
         ErrorKind::WriteZero |
         ErrorKind::UnexpectedEof |
+        ErrorKind::Other |
         ErrorKind::Interrupted => log::Level::Debug,
         _ => log::Level::Error,
     }

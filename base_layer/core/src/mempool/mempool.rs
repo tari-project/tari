@@ -23,7 +23,8 @@
 use std::sync::{Arc, RwLock};
 
 use log::debug;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tokio::task;
 
 use crate::{
@@ -158,7 +159,10 @@ impl Mempool {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub async fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+    pub async fn has_tx_with_excess_sig(
+        &self,
+        excess_sig: RistrettoSecretKey,
+    ) -> Result<TxStorageResponse, MempoolError> {
         self.with_read_access(move |storage| Ok(storage.has_tx_with_excess_sig(&excess_sig)))
             .await
     }

@@ -23,7 +23,8 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -328,7 +329,7 @@ impl MempoolStorage {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &RistrettoSecretKey) -> TxStorageResponse {
         if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig) {
             TxStorageResponse::UnconfirmedPool
         } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {
@@ -345,10 +346,10 @@ impl MempoolStorage {
             .iter()
             .fold(None, |stored, kernel| {
                 if stored.is_none() {
-                    return Some(self.has_tx_with_excess_sig(&kernel.excess_sig));
+                    return Some(self.has_tx_with_excess_sig(kernel.excess_sig.get_signature()));
                 }
                 let stored = stored.unwrap();
-                match (self.has_tx_with_excess_sig(&kernel.excess_sig), stored) {
+                match (self.has_tx_with_excess_sig(kernel.excess_sig.get_signature()), stored) {
                     // All (so far) in unconfirmed pool
                     (TxStorageResponse::UnconfirmedPool, TxStorageResponse::UnconfirmedPool) => {
                         Some(TxStorageResponse::UnconfirmedPool)

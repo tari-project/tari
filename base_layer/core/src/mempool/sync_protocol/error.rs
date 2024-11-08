@@ -45,4 +45,6 @@ pub enum MempoolProtocolError {
     SendTimeout,
     #[error("Receive timeout occurred")]
     RecvTimeout,
+    #[error("Invalid request: {details}")]
+    InvalidRequest { details: String },
 }

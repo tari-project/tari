@@ -7914,6 +7914,7 @@ dependencies = [
  "env_logger 0.7.1",
  "fs2",
  "futures 0.3.30",
+ "futures-bounded",
  "hex",
  "integer-encoding",
  "libp2p-substream",

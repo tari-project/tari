@@ -29,6 +29,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tokio::sync::mpsc;
 
 use crate::{
     base_node::comms_interface::LocalNodeCommsInterface,
@@ -40,6 +41,7 @@ use crate::{
             service::{MempoolService, MempoolStreams},
             MempoolHandle,
         },
+        sync_protocol::NewTransactionNotification,
     },
     topics::TRANSACTION_TOPIC,
 };
@@ -49,12 +51,13 @@ const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 /// Initializer for the Mempool service and service future.
 pub struct MempoolServiceInitializer {
     mempool: Mempool,
+    want_list_tx: mpsc::UnboundedSender<NewTransactionNotification>,
 }
 
 impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
-    pub fn new(mempool: Mempool) -> Self {
-        Self { mempool }
+    pub fn new(mempool: Mempool, want_list_tx: mpsc::UnboundedSender<NewTransactionNotification>) -> Self {
+        Self { mempool, want_list_tx }
     }
 }
 
@@ -71,6 +74,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
 
         context.register_handle(local_mp_interface);
         let mempool = self.mempool.clone();
+        let want_list_tx = self.want_list_tx.clone();
 
         context.spawn_until_shutdown(move |handles| async move {
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -92,7 +96,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
                 request_receiver,
             };
             debug!(target: LOG_TARGET, "Mempool service started");
-            if let Err(err) = MempoolService::new(inbound_handlers, network).start(streams).await {
+            if let Err(err) = MempoolService::new(inbound_handlers, network, want_list_tx).start(streams).await {
                 error!(target: LOG_TARGET, "Mempool service error: {}", err);
             }
         });

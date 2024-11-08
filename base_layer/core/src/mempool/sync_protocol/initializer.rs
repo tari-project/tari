@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
-        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
+        sync_protocol::{MempoolSyncProtocol, NewTransactionNotification, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
         MempoolServiceConfig,
     },
@@ -39,11 +39,20 @@ const LOG_TARGET: &str = "c::mempool::sync_protocol";
 pub struct MempoolSyncInitializer {
     config: MempoolServiceConfig,
     mempool: Mempool,
+    want_list_rx: Option<mpsc::UnboundedReceiver<NewTransactionNotification>>,
 }
 
 impl MempoolSyncInitializer {
-    pub fn new(config: MempoolServiceConfig, mempool: Mempool) -> Self {
-        Self { mempool, config }
+    pub fn new(
+        config: MempoolServiceConfig,
+        mempool: Mempool,
+        want_list_rx: mpsc::UnboundedReceiver<NewTransactionNotification>,
+    ) -> Self {
+        Self {
+            mempool,
+            config,
+            want_list_rx: Some(want_list_rx),
+        }
     }
 }
 
@@ -53,6 +62,10 @@ impl ServiceInitializer for MempoolSyncInitializer {
         debug!(target: LOG_TARGET, "Initializing Mempool Sync Service");
         let config = self.config.clone();
         let mempool = self.mempool.clone();
+        let want_list_rx = self
+            .want_list_rx
+            .take()
+            .expect("MempoolSyncInitializer initialized more than once");
 
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
@@ -89,7 +102,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             }
             let base_node_events = base_node.get_block_event_stream();
 
-            MempoolSyncProtocol::new(config, notif_rx, mempool, network, base_node_events)
+            MempoolSyncProtocol::new(config, notif_rx, mempool, network, base_node_events, want_list_rx)
                 .run(network_events)
                 .await;
         });

@@ -27,7 +27,8 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -168,8 +169,8 @@ impl ReorgPool {
     }
 
     /// Check if a transaction is stored in the ReorgPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig.get_signature())
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &RistrettoSecretKey) -> bool {
+        self.txs_by_signature.contains_key(excess_sig)
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
@@ -385,26 +386,26 @@ mod test {
         reorg_pool.insert(1, tx1.clone());
         reorg_pool.insert(2, tx2.clone());
 
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
 
         reorg_pool.insert(3, tx3.clone());
         reorg_pool.insert(4, tx4.clone());
         // Check that oldest utx was removed to make room for new incoming transactions
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
 
         reorg_pool.insert(5, tx5.clone());
         reorg_pool.insert(6, tx6.clone());
         assert_eq!(reorg_pool.len(), 2);
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.get_signature()));
     }
 
     #[tokio::test]
@@ -432,9 +433,9 @@ mod test {
         reorg_pool.insert(1, tx3.clone());
 
         let txs = reorg_pool.clear_and_retrieve_all();
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
         assert!(reorg_pool.txs_by_height.is_empty());
         assert!(reorg_pool.tx_by_key.is_empty());
         assert!(reorg_pool.txs_by_signature.is_empty());
@@ -491,12 +492,12 @@ mod test {
         ]);
         // Oldest transaction tx1 is removed to make space for new incoming transactions
         assert_eq!(reorg_pool.len(), 6);
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.get_signature()));
 
         let reorg_blocks = &[
             create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus).into(),
@@ -511,11 +512,11 @@ mod test {
         assert!(removed_txs.contains(&tx4));
 
         assert_eq!(reorg_pool.len(), 2);
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
-        assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
-        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx1.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.get_signature()));
+        assert!(!reorg_pool.has_tx_with_excess_sig(tx4.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.get_signature()));
+        assert!(reorg_pool.has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.get_signature()));
     }
 }

@@ -20,8 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-impl super::mempool::TransactionItem {
+use crate::{
+    proto,
+    proto::mempool::{MempoolSyncRequest, RequestSpecificTransactions, TransactionInventory},
+};
+
+impl proto::mempool::TransactionItem {
     pub fn empty() -> Self {
         Self { transaction: None }
+    }
+}
+
+impl From<RequestSpecificTransactions> for MempoolSyncRequest {
+    fn from(value: RequestSpecificTransactions) -> Self {
+        Self {
+            request: Some(proto::mempool::mempool_sync_request::Request::Specific(value)),
+        }
+    }
+}
+
+impl From<TransactionInventory> for MempoolSyncRequest {
+    fn from(value: TransactionInventory) -> Self {
+        Self {
+            request: Some(proto::mempool::mempool_sync_request::Request::Inventory(value)),
+        }
     }
 }
