@@ -6,7 +6,7 @@ use tari_utilities::ByteArray;
 
 impl From<&ValidatorNodeChange> for crate::tari_rpc::ValidatorNodeChange {
     fn from(node_change: &ValidatorNodeChange) -> Self {
-        crate::tari_rpc::ValidatorNodeChange {
+        Self {
             public_key: node_change.public_key.to_vec(),
             state: match node_change.state {
                 ValidatorNodeChangeState::ADD => crate::tari_rpc::ValidatorNodeChangeState::Add.into(),
@@ -14,24 +14,7 @@ impl From<&ValidatorNodeChange> for crate::tari_rpc::ValidatorNodeChange {
             },
             start_height: node_change.height,
             registration: match &node_change.registration {
-                Some(value) => Some(crate::tari_rpc::ValidatorNodeRegistration {
-                    public_key: value.public_key().to_vec(),
-                    signature: Some(crate::tari_rpc::Signature {
-                        public_nonce: value.signature().get_public_nonce().to_vec(),
-                        signature: value.signature().get_signature().to_vec(),
-                    }),
-                    claim_public_key: value.claim_public_key().to_vec(),
-                    sidechain_id: match value.sidechain_id() {
-                        None => vec![],
-                        Some(id) => id.to_vec(),
-                    },
-                    sidechain_id_knowledge_proof: value.sidechain_id_knowledge_proof().map(|signature| {
-                        crate::tari_rpc::Signature {
-                            public_nonce: signature.get_public_nonce().to_vec(),
-                            signature: signature.get_signature().to_vec(),
-                        }
-                    }),
-                }),
+                Some(registration) => Some(registration.into()),
                 None => None,
             },
             minimum_value_promise: node_change.minimum_value_promise.into(),

@@ -28,6 +28,7 @@ pub mod chain_metadata;
 pub mod com_and_pub_signature;
 pub mod commitment_signature;
 pub mod consensus_constants;
+pub mod error;
 pub mod historical_block;
 pub mod new_block_template;
 pub mod output_features;
@@ -41,6 +42,7 @@ pub mod transaction_kernel;
 pub mod transaction_output;
 pub mod unblinded_output;
 pub mod validator_node_change;
+pub mod validator_node_registration;
 
 use prost_types::Timestamp;
 
