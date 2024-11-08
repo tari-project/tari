@@ -424,8 +424,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -491,8 +491,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
@@ -549,8 +549,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -607,8 +607,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -659,8 +659,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
@@ -713,8 +713,8 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_vns_initial_epoch: 5,
+            vn_registration_max_vns_per_epoch: 2,
         }];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
