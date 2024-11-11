@@ -454,6 +454,7 @@ where B: BlockchainBackend + 'static
                 sidechain_id,
             } => {
                 let constants = self.consensus_manager.consensus_constants(start_height);
+                #[allow(clippy::mutable_key_type)]
                 let mut node_changes = HashMap::<PublicKey, ValidatorNodeChange>::new();
                 let mut nodes = self
                     .blockchain_db
