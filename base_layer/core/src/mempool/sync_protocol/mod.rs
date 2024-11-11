@@ -364,7 +364,6 @@ impl MempoolSyncProtocol {
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
         match notification.event {
             ProtocolEvent::NewInboundSubstream { peer_id, substream } => {
-                // TODO: we need to limit the number of sessions we handle - switch to using RPC?
                 self.start_inbound_handler(peer_id, substream);
             },
         }
@@ -446,7 +445,11 @@ impl MempoolSyncProtocol {
             }
         };
         if self.inbound_tasks.try_push(fut).is_err() {
-            warn!(target: LOG_TARGET, "Rejecting inbound task for peer {peer_id} because we've reached the max_concurrent_inbound_tasks ({})", self.config.max_concurrent_inbound_tasks);
+            warn!(
+                target: LOG_TARGET,
+                "Rejecting inbound task for peer {peer_id} because we've reached the max_concurrent_inbound_tasks ({})",
+                self.config.max_concurrent_inbound_tasks,
+            );
         }
     }
 }

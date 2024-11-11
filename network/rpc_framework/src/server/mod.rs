@@ -33,7 +33,6 @@ mod metrics;
 // TODO: tests
 // pub mod mock;
 
-mod early_close;
 mod router;
 
 use std::{
@@ -516,7 +515,6 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             metrics::error_counter(&self.peer_id, &self.protocol, &err).inc();
             let level = match &err {
                 RpcServerError::Io(e) => err_to_log_level(e),
-                RpcServerError::EarlyClose(e) => e.io().map(err_to_log_level).unwrap_or(log::Level::Error),
                 _ => log::Level::Error,
             };
             log!(

@@ -96,34 +96,27 @@ impl MempoolInboundHandlers {
                 let tx = Arc::new(tx);
                 let storage = self.insert_transaction(tx.clone()).await?;
                 if storage.is_stored() {
-                    let mut transaction_too_large_to_gossip = true;
-                    // TODO: determine more precisely the maximum size of each transaction element
-                    if tx.body.outputs().len() + tx.body.inputs().len() < 4 && tx.body().kernels().len() < 4 {
-                        let msg =
-                            proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
-                        let encoded_len = msg.encoded_len();
-                        debug!(
-                            target: LOG_TARGET,
-                            "Transaction has {} input(s), {} output(s), and {} kernel(s). Encoded size = {}",
-                            tx.body.inputs().len(),
-                            tx.body.outputs().len(),
-                            tx.body.kernels().len(),
-                            encoded_len
-                        );
-                        if encoded_len <= MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES {
-                            debug!(target: LOG_TARGET, "Transaction is less than 64KiB when encoded ({encoded_len}). Gossiping full transaction.");
-                            transaction_too_large_to_gossip = false;
-                            // Gossip the full transaction
-                            if let Err(err) = self.gossip_publisher.publish(msg.into()).await {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig.reveal(), err
-                                );
-                            }
+                    let msg =
+                        proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
+                    let encoded_len = msg.encoded_len();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Transaction has {} input(s), {} output(s), and {} kernel(s). Encoded size = {}",
+                        tx.body.inputs().len(),
+                        tx.body.outputs().len(),
+                        tx.body.kernels().len(),
+                        encoded_len
+                    );
+                    if encoded_len <= MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES {
+                        debug!(target: LOG_TARGET, "Transaction is less than 64KiB when encoded ({encoded_len}). Gossiping full transaction.");
+                        // Gossip the full transaction
+                        if let Err(err) = self.gossip_publisher.publish(msg.into()).await {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig.reveal(), err
+                            );
                         }
-                    }
-
-                    if transaction_too_large_to_gossip {
+                    } else {
                         debug!(target: LOG_TARGET, "Transaction too large. Gossiping reference to the transaction.");
                         // Gossip a reference to the transaction
                         if let Err(err) = self
