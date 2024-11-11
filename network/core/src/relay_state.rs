@@ -9,7 +9,7 @@ use tari_swarm::libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 use crate::Peer;
 
 #[derive(Debug, Clone, Default)]
-pub struct RelayState {
+pub(crate) struct RelayState {
     selected_relay: Option<RelayPeer>,
     possible_relays: HashMap<PeerId, HashSet<Multiaddr>>,
 }
@@ -99,9 +99,16 @@ impl RelayState {
 }
 
 #[derive(Debug, Clone)]
-pub struct RelayPeer {
+pub(crate) struct RelayPeer {
     pub peer_id: PeerId,
     pub addresses: Vec<Multiaddr>,
     pub is_circuit_established: bool,
     pub remote_address: Option<Multiaddr>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RelayStats {
+    pub active_relay_reservations: HashSet<PeerId>,
+    pub num_active_circuits: usize,
+    pub current_relay_peer: Option<PeerId>,
 }

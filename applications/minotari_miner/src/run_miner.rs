@@ -344,7 +344,8 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_decoding_message_size(10 * 1024 * 1024);
 
     Ok(node_conn)
 }

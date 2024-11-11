@@ -100,6 +100,7 @@ where B: BlockchainBackend + 'static
 
         let dispatcher = Dispatcher::new();
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
+        let (mempool_want_list_tx, mempool_want_list_rx) = mpsc::unbounded_channel();
         let handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
@@ -124,8 +125,15 @@ where B: BlockchainBackend + 'static
                 base_node_config.state_machine.clone(),
                 dispatcher.clone(),
             ))
-            .add_initializer(MempoolServiceInitializer::new(self.mempool.clone()))
-            .add_initializer(MempoolSyncInitializer::new(mempool_config, self.mempool.clone()))
+            .add_initializer(MempoolServiceInitializer::new(
+                self.mempool.clone(),
+                mempool_want_list_tx,
+            ))
+            .add_initializer(MempoolSyncInitializer::new(
+                mempool_config,
+                self.mempool.clone(),
+                mempool_want_list_rx,
+            ))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(base_node_config.metadata_auto_ping_interval),

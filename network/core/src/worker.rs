@@ -59,7 +59,7 @@ use crate::{
     handle::NetworkingRequest,
     messaging::MessagingRequest,
     notify::Notifiers,
-    relay_state::RelayState,
+    relay_state::{RelayState, RelayStats},
     AveragePeerLatency,
     BannedPeer,
     ConnectionDirection,
@@ -102,6 +102,7 @@ where
     gossipsub_outbound_rx: Option<mpsc::Receiver<(IdentTopic, Vec<u8>)>>,
     config: crate::Config,
     relays: RelayState,
+    relay_stats: RelayStats,
     seed_peers: Vec<Peer>,
     added_peers: HashMap<PeerId, Peer>,
     autonat_status_sender: watch::Sender<AutonatStatus>,
@@ -140,6 +141,7 @@ where
             pending_dial_requests: HashMap::new(),
             pending_kad_queries: HashMap::new(),
             relays: RelayState::new(known_relay_nodes),
+            relay_stats: RelayStats::default(),
             seed_peers,
             added_peers: HashMap::new(),
             swarm,
@@ -543,6 +545,9 @@ where
             NetworkingRequest::GetSeedPeers { reply } => {
                 let _ignore = reply.send(Ok(self.seed_peers.clone()));
             },
+            NetworkingRequest::GetRelayStats { reply } => {
+                let _ignore = reply.send(Ok(self.relay_stats.clone()));
+            },
         }
     }
 
@@ -707,6 +712,11 @@ where
                 }
                 shrink_hashmap_if_required(&mut self.active_connections);
 
+                if self.relay_stats.current_relay_peer == Some(peer_id) {
+                    self.relay_stats.current_relay_peer = None;
+                }
+                self.relay_stats.active_relay_reservations.remove(&peer_id);
+
                 self.publish_event(NetworkEvent::PeerDisconnected { peer_id });
             },
             SwarmEvent::OutgoingConnectionError {
@@ -806,6 +816,7 @@ where
                     "🌍️ Relay accepted our reservation request: peer_id={}, renewal={:?}, limit={:?}",
                     relay_peer_id, renewal, limit
                 );
+                self.relay_stats.current_relay_peer = Some(relay_peer_id)
             },
 
             RelayClient(event) => {
@@ -813,6 +824,7 @@ where
             },
             Relay(event) => {
                 info!(target: LOG_TARGET, "ℹ️ Relay event: {:?}", event);
+                self.on_relay_event(&event);
             },
             Gossipsub(gossipsub::Event::Message {
                 message_id,
@@ -1184,6 +1196,23 @@ where
             supported_protocols: protocols,
         });
         Ok(())
+    }
+
+    fn on_relay_event(&mut self, event: &relay::Event) {
+        #[allow(clippy::enum_glob_use)]
+        use relay::Event::*;
+        match event {
+            ReservationReqAccepted { src_peer_id, .. } => {
+                self.relay_stats.active_relay_reservations.insert(*src_peer_id);
+            },
+            CircuitReqAccepted { .. } => {
+                self.relay_stats.num_active_circuits += 1;
+            },
+            CircuitClosed { .. } => {
+                self.relay_stats.num_active_circuits -= 1;
+            },
+            _ => {},
+        }
     }
 
     fn update_connected_peers(

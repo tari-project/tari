@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use tari_common::SubConfigPath;
 
@@ -46,12 +48,18 @@ impl SubConfigPath for MempoolConfig {
 #[serde(deny_unknown_fields)]
 pub struct MempoolServiceConfig {
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
-    /// not initiate any more mempool syncs. Default: 2
+    /// not initiate any more mempool syncs.
     pub initial_sync_num_peers: usize,
-    /// The maximum number of transactions to sync in a single sync session Default: 10_000
+    /// The maximum number of transactions to sync in a single sync session
     pub initial_sync_max_transactions: usize,
     /// The maximum number of blocks added via sync or re-org to triggering a sync
     pub block_sync_trigger: usize,
+    /// The maximum number of transactions a peer can specifically request.
+    pub max_request_transactions: usize,
+    /// The length of time between checking and, if required, requesting the transactions from the want list.
+    pub request_want_list_interval: Duration,
+    /// Maximum concurrent inbound handler tasks.
+    pub max_concurrent_inbound_tasks: usize,
 }
 
 impl Default for MempoolServiceConfig {
@@ -60,6 +68,9 @@ impl Default for MempoolServiceConfig {
             initial_sync_num_peers: 2,
             initial_sync_max_transactions: 10_000,
             block_sync_trigger: 5,
+            max_request_transactions: 10_000,
+            request_want_list_interval: Duration::from_secs(5),
+            max_concurrent_inbound_tasks: 50,
         }
     }
 }

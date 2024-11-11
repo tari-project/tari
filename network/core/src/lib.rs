@@ -32,6 +32,7 @@ pub use handle::*;
 pub use message::*;
 pub use messaging::*;
 pub use peer::*;
+pub use relay_state::*;
 pub use service_trait::*;
 pub use spawn::*;
 pub use tari_swarm::{

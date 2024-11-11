@@ -1,0 +1,15 @@
+// Copyright 2024 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+syntax = "proto3";
+
+package tari.mempool;
+
+import "common/transaction.proto";
+
+message NewTransaction {
+  oneof payload {
+    bytes excess_sig = 1;
+    tari.common.Transaction transaction = 2;
+  }
+}

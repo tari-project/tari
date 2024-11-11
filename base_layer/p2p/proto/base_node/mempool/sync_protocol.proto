@@ -7,9 +7,21 @@ import "common/transaction.proto";
 
 package tari.mempool;
 
+message MempoolSyncRequest {
+  oneof request {
+    TransactionInventory inventory = 1;
+    RequestSpecificTransactions specific = 2;
+  }
+}
+
 message TransactionInventory {
   // A list of kernel excess sigs used to identify transactions
   repeated bytes items = 1;
+}
+
+message RequestSpecificTransactions {
+  // A list of kernel excess sigs used to identify transactions
+  repeated bytes ids = 1;
 }
 
 message TransactionItem {

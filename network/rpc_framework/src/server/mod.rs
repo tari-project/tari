@@ -33,7 +33,6 @@ mod metrics;
 // TODO: tests
 // pub mod mock;
 
-mod early_close;
 mod router;
 
 use std::{
@@ -346,6 +345,11 @@ where
                         #[cfg(feature = "metrics")]
                         metrics::handshake_error_counter(&peer_id, &notification.protocol).inc();
                     },
+                    Err(err @ RpcServerError::Io(_)) => {
+                        debug!(target: LOG_TARGET, "IO error: {}", err);
+                        #[cfg(feature = "metrics")]
+                        metrics::handshake_error_counter(&peer_id, &notification.protocol).inc();
+                    },
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
                     },
@@ -511,7 +515,6 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             metrics::error_counter(&self.peer_id, &self.protocol, &err).inc();
             let level = match &err {
                 RpcServerError::Io(e) => err_to_log_level(e),
-                RpcServerError::EarlyClose(e) => e.io().map(err_to_log_level).unwrap_or(log::Level::Error),
                 _ => log::Level::Error,
             };
             log!(
@@ -593,7 +596,7 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
             },
             Err(err) => {
                 if let Err(err) = self.framed.close().await {
-                    error!(
+                    debug!(
                         target: LOG_TARGET,
                         "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
                     );
@@ -780,6 +783,10 @@ where TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus
                             debug!(target: LOG_TARGET, "Stream was interrupted by client: {}", err);
                             break;
                         },
+                        RpcServerError::Io(err) => {
+                            debug!(target: LOG_TARGET, "Stream was interrupted by client: IO error: {}", err);
+                            break;
+                        }
                         err => {
                             error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
                             return Err(err);
@@ -926,9 +933,12 @@ fn err_to_log_level(err: &io::Error) -> log::Level {
     match err.kind() {
         ErrorKind::ConnectionReset |
         ErrorKind::ConnectionAborted |
+        ErrorKind::ConnectionRefused |
+        ErrorKind::NotConnected |
         ErrorKind::BrokenPipe |
         ErrorKind::WriteZero |
         ErrorKind::UnexpectedEof |
+        ErrorKind::Other |
         ErrorKind::Interrupted => log::Level::Debug,
         _ => log::Level::Error,
     }

@@ -58,6 +58,7 @@ use crate::{
     error::NetworkingHandleError,
     event::NetworkEvent,
     peer::{Peer, PeerInfo},
+    relay_state::RelayStats,
     BannedPeer,
     DialWaiter,
     DiscoveryResult,
@@ -171,6 +172,9 @@ pub enum NetworkingRequest {
     },
     GetSeedPeers {
         reply: Reply<Vec<Peer>>,
+    },
+    GetRelayStats {
+        reply: Reply<RelayStats>,
     },
 }
 
@@ -485,6 +489,15 @@ impl NetworkHandle {
         let (tx, rx) = oneshot::channel();
         self.tx_request
             .send(NetworkingRequest::GetAveragePeerLatency { reply: tx })
+            .await
+            .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
+        rx.await?
+    }
+
+    pub async fn get_relay_stats(&self) -> Result<RelayStats, NetworkError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_request
+            .send(NetworkingRequest::GetRelayStats { reply: tx })
             .await
             .map_err(|_| NetworkingHandleError::ServiceHasShutdown)?;
         rx.await?

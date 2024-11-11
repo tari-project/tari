@@ -68,6 +68,8 @@ pub use service::{MempoolServiceError, MempoolServiceInitializer};
 
 #[cfg(feature = "base_node")]
 mod sync_protocol;
+mod transaction_id;
+
 use core::fmt::{Display, Error, Formatter};
 use std::sync::Arc;
 
@@ -118,6 +120,11 @@ pub enum TxStorageResponse {
 impl TxStorageResponse {
     pub fn is_stored(&self) -> bool {
         matches!(self, Self::UnconfirmedPool | Self::ReorgPool)
+    }
+
+    /// Returns true if the transaction has not been seen before, otherwise false.
+    pub fn is_new(&self) -> bool {
+        matches!(self, Self::NotStored)
     }
 }
 

@@ -23,9 +23,10 @@
 use std::sync::Arc;
 
 use log::*;
+use prost::Message;
 use tari_network::{identity::PeerId, GossipPublisher};
 use tari_p2p::proto;
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -42,21 +43,30 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
+/// Threshold of the protobuf encoded transaction bytes size to gossip a full transaction. If an encoded transaction is
+/// greater than this, a notification of a new transaction is gossiped. This is selected to be slightly less than the
+/// network default gossip message size of 64KiB.
+const MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES: usize = 62 * 1024;
+
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
-    gossip_publisher: GossipPublisher<proto::common::Transaction>,
+    gossip_publisher: GossipPublisher<proto::mempool::NewTransaction>,
 }
 
 impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool, gossip_publisher: GossipPublisher<proto::common::Transaction>) -> Self {
+    pub fn new(mempool: Mempool, gossip_publisher: GossipPublisher<proto::mempool::NewTransaction>) -> Self {
         Self {
             mempool,
             gossip_publisher,
         }
+    }
+
+    pub(super) fn mempool(&self) -> &Mempool {
+        &self.mempool
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -67,30 +77,58 @@ impl MempoolInboundHandlers {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
             GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
             GetTxStateByExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
-                self.mempool.has_tx_with_excess_sig(excess_sig).await?,
+                self.mempool
+                    .has_tx_with_excess_sig(excess_sig.get_signature().clone())
+                    .await?,
             )),
             SubmitTransaction(tx) => {
                 let first_tx_kernel_excess_sig = tx
                     .first_kernel_excess_sig()
                     .ok_or(MempoolServiceError::TransactionNoKernels)?
                     .get_signature()
-                    .to_hex();
+                    .clone();
+
                 debug!(
                     target: LOG_TARGET,
                     "Transaction ({}) submitted using request.",
-                    first_tx_kernel_excess_sig,
+                    first_tx_kernel_excess_sig.reveal(),
                 );
                 let tx = Arc::new(tx);
-                let storage = self.submit_transaction(tx.clone()).await?;
+                let storage = self.insert_transaction(tx.clone()).await?;
                 if storage.is_stored() {
                     let msg =
                         proto::common::Transaction::try_from(&*tx).map_err(MempoolServiceError::ConversionError)?;
-                    // Gossip the transaction
-                    if let Err(err) = self.gossip_publisher.publish(msg).await {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig, err
-                        );
+                    let encoded_len = msg.encoded_len();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Transaction has {} input(s), {} output(s), and {} kernel(s). Encoded size = {}",
+                        tx.body.inputs().len(),
+                        tx.body.outputs().len(),
+                        tx.body.kernels().len(),
+                        encoded_len
+                    );
+                    if encoded_len <= MEMPOOL_TRANSACTION_FULL_PROPAGATION_THRESHOLD_BYTES {
+                        debug!(target: LOG_TARGET, "Transaction is less than 64KiB when encoded ({encoded_len}). Gossiping full transaction.");
+                        // Gossip the full transaction
+                        if let Err(err) = self.gossip_publisher.publish(msg.into()).await {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig.reveal(), err
+                            );
+                        }
+                    } else {
+                        debug!(target: LOG_TARGET, "Transaction too large. Gossiping reference to the transaction.");
+                        // Gossip a reference to the transaction
+                        if let Err(err) = self
+                            .gossip_publisher
+                            .publish(first_tx_kernel_excess_sig.as_bytes().to_vec().into())
+                            .await
+                        {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error publishing transaction {}: {}.", first_tx_kernel_excess_sig.reveal(), err
+                            );
+                        }
                     }
                 }
                 Ok(MempoolResponse::TxStorage(storage))
@@ -112,7 +150,7 @@ impl MempoolInboundHandlers {
             .first_kernel_excess_sig()
             .ok_or(MempoolServiceError::TransactionNoKernels)?
             .get_signature()
-            .to_hex();
+            .reveal();
         debug!(
             target: LOG_TARGET,
             "Transaction ({}) received from {}.",
@@ -120,12 +158,12 @@ impl MempoolInboundHandlers {
             source_peer
         );
         let tx = Arc::new(tx);
-        self.submit_transaction(tx).await?;
+        self.insert_transaction(tx).await?;
         Ok(())
     }
 
-    /// Submits a transaction to the mempool and propagate valid transactions.
-    async fn submit_transaction(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolServiceError> {
+    /// Validates and inserts a transaction in the mempool
+    async fn insert_transaction(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
 
         let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
@@ -142,7 +180,7 @@ impl MempoolInboundHandlers {
             return Ok(tx_storage);
         }
 
-        match self.mempool.insert(tx.clone()).await {
+        match self.mempool.insert(tx).await {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
