@@ -23,7 +23,10 @@
 use std::{collections::HashMap, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{Commitment, PublicKey},
+};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -131,6 +134,61 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         Ok(cursor)
     }
 
+    /// Checks if the given validator node (by it's public key and side chain ID)
+    /// exists until a given `end_epoch`.
+    pub fn is_vn_exists(
+        &self,
+        end_epoch: VnEpoch,
+        public_key: &PublicKey,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<bool, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        while let Ok(Some((_, vn_entry))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if vn_entry.public_key == *public_key &&
+                vn_entry.sidechain_id == sidechain_id &&
+                vn_entry.start_epoch <= end_epoch
+            {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Returns validator nodes count until a given epoch.
+    pub fn get_vn_count_until_epoch(
+        &self,
+        epoch: VnEpoch,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<u64, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        let mut result = 0;
+        while let Ok(Some((_, value))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if value.sidechain_id == sidechain_id && value.start_epoch <= epoch {
+                result += 1;
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Returns validator nodes count in a given epoch.
+    pub fn get_vn_count_in_epoch(
+        &self,
+        epoch: VnEpoch,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<u64, ChainStorageError> {
+        let mut cursor = self.db_read_cursor()?;
+        let mut result = 0;
+        while let Ok(Some((_, value))) = cursor.next::<ValidatorNodeStoreKey>() {
+            if value.sidechain_id == sidechain_id && value.start_epoch == epoch {
+                result += 1;
+            }
+        }
+
+        Ok(result)
+    }
+
     /// Returns a set of <public key, shard id> tuples ordered by height of registration.
     /// This set contains no duplicates. If a duplicate registration is found, the last registration is included.
     pub fn get_vn_set(
@@ -155,6 +213,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     public_key: vn.public_key,
                     sidechain_id: vn.sidechain_id,
                     shard_key: vn.shard_key,
+                    start_epoch: vn.start_epoch,
+                    original_registration: vn.registration.clone(),
+                    minimum_value_promise: vn.minimum_value_promise,
                 }));
             },
             None => return Ok(Vec::new()),
@@ -178,6 +239,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 public_key: vn.public_key,
                 sidechain_id: vn.sidechain_id,
                 shard_key: vn.shard_key,
+                start_epoch: vn.start_epoch,
+                original_registration: vn.registration,
+                minimum_value_promise: vn.minimum_value_promise,
             }));
             i += 1;
         }
@@ -273,6 +337,9 @@ mod tests {
                 public_key,
                 sidechain_id: None,
                 shard_key,
+                start_epoch: Default::default(),
+                original_registration: Default::default(),
+                minimum_value_promise: Default::default(),
             });
         }
         nodes.sort_by(|a, b| a.sidechain_id.cmp(&b.sidechain_id).then(a.shard_key.cmp(&b.shard_key)));

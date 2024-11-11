@@ -52,6 +52,7 @@ impl CommandContext {
             public_key,
             sidechain_id: validator_network,
             shard_key,
+            ..
         } in vns
         {
             table.add_row(row![

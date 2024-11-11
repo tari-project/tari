@@ -24,7 +24,12 @@ mod comms_request;
 pub use comms_request::{GetNewBlockTemplateRequest, MmrStateRequest, NodeCommsRequest};
 
 mod comms_response;
-pub use comms_response::{FetchMempoolTransactionsResponse, NodeCommsResponse};
+pub use comms_response::{
+    FetchMempoolTransactionsResponse,
+    NodeCommsResponse,
+    ValidatorNodeChange,
+    ValidatorNodeChangeState,
+};
 
 mod error;
 pub use error::CommsInterfaceError;

@@ -32,7 +32,7 @@ use futures::{channel::mpsc, SinkExt};
 use log::*;
 use minotari_app_grpc::{
     tari_rpc,
-    tari_rpc::{CalcType, Sorting},
+    tari_rpc::{CalcType, GetValidatorNodeChangesRequest, GetValidatorNodeChangesResponse, Sorting},
 };
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -159,6 +159,7 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetMempoolStats,
             GrpcMethod::GetTipInfo,
             GrpcMethod::GetActiveValidatorNodes,
+            GrpcMethod::GetValidatorNodeChanges,
             GrpcMethod::GetShardKey,
             GrpcMethod::GetTemplateRegistrations,
             GrpcMethod::GetHeaderByHash,
@@ -2315,6 +2316,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 public_key,
                 sidechain_id,
                 shard_key,
+                ..
             } in active_validator_nodes
             {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
@@ -2549,6 +2551,39 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Sending GetTemplateRegistrations response stream to client"
         );
         Ok(Response::new(rx))
+    }
+
+    async fn get_validator_node_changes(
+        &self,
+        request: Request<GetValidatorNodeChangesRequest>,
+    ) -> Result<Response<GetValidatorNodeChangesResponse>, Status> {
+        self.check_method_enabled(GrpcMethod::GetValidatorNodeChanges)?;
+        let request = request.into_inner();
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetValidatorNodeChanges");
+
+        let mut handler = self.node_service.clone();
+
+        let sidechain_id = if request.sidechain_id.is_empty() {
+            None
+        } else {
+            Some(
+                PublicKey::from_canonical_bytes(&request.sidechain_id)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid sidechain_id '{}'", e)))?,
+            )
+        };
+
+        let changes = handler
+            .get_validator_node_changes(request.start_height, request.end_height, sidechain_id)
+            .await
+            .map_err(|error| {
+                warn!(target: LOG_TARGET, "Base node service error: {}", error);
+                Status::internal("Internal error!")
+            })?
+            .iter()
+            .map(|node_change| node_change.into())
+            .collect();
+
+        Ok(Response::new(GetValidatorNodeChangesResponse { changes }))
     }
 }
 

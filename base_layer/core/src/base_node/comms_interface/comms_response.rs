@@ -27,14 +27,17 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{HashOutput, PrivateKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
-    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+    },
 };
 
 /// API Response enum
@@ -59,6 +62,7 @@ pub enum NodeCommsResponse {
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
     FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
+    FetchValidatorNodeChangesResponse(Vec<ValidatorNodeChange>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
@@ -98,6 +102,7 @@ impl Display for NodeCommsResponse {
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
+            FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
         }
     }
 }
@@ -107,4 +112,21 @@ impl Display for NodeCommsResponse {
 pub struct FetchMempoolTransactionsResponse {
     pub transactions: Vec<Arc<Transaction>>,
     pub not_found: Vec<PrivateKey>,
+}
+
+/// Represents a validator node state
+#[derive(Debug, Clone)]
+pub enum ValidatorNodeChangeState {
+    ADD,
+    REMOVE,
+}
+
+/// Represents a validator node state change
+#[derive(Debug, Clone)]
+pub struct ValidatorNodeChange {
+    pub public_key: PublicKey,
+    pub state: ValidatorNodeChangeState,
+    pub registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
+    pub height: u64,
 }

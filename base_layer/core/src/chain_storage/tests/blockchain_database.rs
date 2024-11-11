@@ -658,6 +658,9 @@ mod validator_node_merkle_root {
             public_key,
             sidechain_id: None,
             shard_key,
+            start_epoch: Default::default(),
+            original_registration: Default::default(),
+            minimum_value_promise: Default::default(),
         }])
         .unwrap();
 
@@ -715,6 +718,9 @@ mod validator_node_merkle_root {
             public_key,
             sidechain_id: Some(sidechain_public),
             shard_key,
+            start_epoch: Default::default(),
+            original_registration: Default::default(),
+            minimum_value_promise: Default::default(),
         }])
         .unwrap();
 

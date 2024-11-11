@@ -26,12 +26,15 @@ use tari_common_types::{
     types::{Commitment, PublicKey},
 };
 
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
     pub start_epoch: VnEpoch,
-    pub end_epoch: VnEpoch,
     pub public_key: PublicKey,
     pub commitment: Commitment,
     pub sidechain_id: Option<PublicKey>,
+    pub registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
 }

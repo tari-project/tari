@@ -40,6 +40,8 @@ pub mod transaction_input;
 pub mod transaction_kernel;
 pub mod transaction_output;
 pub mod unblinded_output;
+pub mod validator_node_change;
+pub mod validator_node_registration;
 
 use prost_types::Timestamp;
 

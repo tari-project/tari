@@ -37,8 +37,8 @@ tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
 tower = "0.4.11"
-hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls"] }
-hickory-resolver = "0.25.0-alpha.2"
+hickory-client = { version = "=0.25.0-alpha.2", features = ["dns-over-rustls"] }
+hickory-resolver = "=0.25.0-alpha.2"
 webpki-roots = "0.26.6"
 
 [dev-dependencies]

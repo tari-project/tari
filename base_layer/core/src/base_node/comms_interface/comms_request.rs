@@ -65,6 +65,11 @@ pub enum NodeCommsRequest {
         height: u64,
         validator_network: Option<PublicKey>,
     },
+    FetchValidatorNodeChanges {
+        start_height: u64,
+        end_height: u64,
+        sidechain_id: Option<PublicKey>,
+    },
     GetShardKey {
         height: u64,
         public_key: PublicKey,
@@ -139,6 +144,17 @@ impl Display for NodeCommsRequest {
             },
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
+            },
+            FetchValidatorNodeChanges {
+                start_height,
+                end_height,
+                sidechain_id,
+            } => {
+                write!(
+                    f,
+                    "FetchValidatorNodeChanges (Side chain ID:{:?}), Height range: {}-{}",
+                    sidechain_id, start_height, end_height
+                )
             },
         }
     }

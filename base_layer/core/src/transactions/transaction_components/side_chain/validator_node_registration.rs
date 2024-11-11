@@ -34,7 +34,7 @@ use tari_utilities::ByteArray;
 
 use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction_components::ValidatorNodeSignature};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
     claim_public_key: PublicKey,

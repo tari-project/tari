@@ -83,10 +83,15 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
-use tari_common_types::types::{HashOutput, PublicKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{HashOutput, PublicKey},
+};
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
+
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
@@ -99,4 +104,7 @@ pub struct ValidatorNodeRegistrationInfo {
     pub public_key: PublicKey,
     pub sidechain_id: Option<PublicKey>,
     pub shard_key: [u8; 32],
+    pub start_epoch: VnEpoch,
+    pub original_registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
 }

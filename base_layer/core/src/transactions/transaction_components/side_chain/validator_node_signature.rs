@@ -35,7 +35,7 @@ hash_domain!(
     0
 );
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
     public_key: PublicKey,
     signature: Signature,

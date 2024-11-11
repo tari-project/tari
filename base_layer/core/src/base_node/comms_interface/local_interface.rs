@@ -32,6 +32,7 @@ use tokio::sync::broadcast;
 use crate::{
     base_node::comms_interface::{
         comms_request::GetNewBlockTemplateRequest,
+        comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
         BlockEvent,
         NodeCommsRequest,
@@ -295,6 +296,26 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::FetchValidatorNodesKeysResponse(validator_node) => Ok(validator_node),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_validator_node_changes(
+        &mut self,
+        start_height: u64,
+        end_height: u64,
+        sidechain_id: Option<PublicKey>,
+    ) -> Result<Vec<ValidatorNodeChange>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchValidatorNodeChanges {
+                start_height,
+                end_height,
+                sidechain_id,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchValidatorNodeChangesResponse(validator_node_change) => Ok(validator_node_change),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

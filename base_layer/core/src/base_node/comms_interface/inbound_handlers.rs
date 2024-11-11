@@ -22,11 +22,16 @@
 
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
-use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
+use std::{
+    cmp::max,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Instant,
+};
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
@@ -35,6 +40,7 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
+        comms_response::{ValidatorNodeChange, ValidatorNodeChangeState},
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
         FetchMempoolTransactionsResponse,
@@ -441,6 +447,72 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
+            },
+            NodeCommsRequest::FetchValidatorNodeChanges {
+                start_height,
+                end_height,
+                sidechain_id,
+            } => {
+                let constants = self.consensus_manager.consensus_constants(start_height);
+                #[allow(clippy::mutable_key_type)]
+                let mut node_changes = HashMap::<PublicKey, ValidatorNodeChange>::new();
+                let mut nodes = self
+                    .blockchain_db
+                    .fetch_active_validator_nodes(start_height, sidechain_id.clone())
+                    .await?;
+                for height in start_height + 1..=end_height {
+                    let current_nodes = self
+                        .blockchain_db
+                        .fetch_active_validator_nodes(height, sidechain_id.clone())
+                        .await?;
+
+                    // remove nodes
+                    nodes.iter().for_each(|prev_node| {
+                        let prev_exists_in_new_set = current_nodes
+                            .iter()
+                            .any(|current_node| prev_node.public_key == current_node.public_key);
+                        if !prev_exists_in_new_set {
+                            node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChange {
+                                public_key: prev_node.public_key.clone(),
+                                state: ValidatorNodeChangeState::REMOVE,
+                                registration: prev_node.original_registration.clone(),
+                                minimum_value_promise: prev_node.minimum_value_promise,
+                                height: constants.epoch_to_block_height(prev_node.start_epoch),
+                            });
+                        }
+                    });
+
+                    // add nodes
+                    current_nodes.iter().for_each(|current_node| {
+                        let new_exists_in_prev = nodes
+                            .iter()
+                            .any(|prev_node| current_node.public_key == prev_node.public_key);
+                        if !new_exists_in_prev {
+                            node_changes.insert(current_node.public_key.clone(), ValidatorNodeChange {
+                                public_key: current_node.public_key.clone(),
+                                state: ValidatorNodeChangeState::ADD,
+                                registration: current_node.original_registration.clone(),
+                                minimum_value_promise: current_node.minimum_value_promise,
+                                height: constants.epoch_to_block_height(current_node.start_epoch),
+                            });
+                        }
+                    });
+
+                    nodes = current_nodes;
+                }
+
+                Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(
+                    node_changes
+                        .iter()
+                        .map(|(pub_key, change)| ValidatorNodeChange {
+                            public_key: pub_key.clone(),
+                            state: change.state.clone(),
+                            registration: change.registration.clone(),
+                            minimum_value_promise: change.minimum_value_promise,
+                            height: change.height,
+                        })
+                        .collect(),
+                ))
             },
         }
     }
