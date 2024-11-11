@@ -292,9 +292,14 @@ impl Callbacks {
 
     pub fn on_connectivity_status(&mut self, status: u64) {
         println!(
-            "{} Connectivity Status Changed to {}.",
+            "{} Connectivity Status Changed to '{}'.",
             chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
-            status
+            match status {
+                0 => "Connecting",
+                1 => "Online",
+                2 => "Offline",
+                _ => "Status undefined!",
+            }
         );
     }
 

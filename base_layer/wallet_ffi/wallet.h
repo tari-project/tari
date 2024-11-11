@@ -2630,7 +2630,9 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
  * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
  */
 TariCommsConfig *comms_config_create(const char *public_address,
-                                     const char *listen_address,
+                                     const char *listen_addresses,
+                                     bool enable_mdns,
+                                     bool reachability_mode_private,
                                      int *error_out);
 
 /**

@@ -68,7 +68,6 @@ fn main() {
         let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
-        .max_concurrent_scenarios(5)
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
             let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {

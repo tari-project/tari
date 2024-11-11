@@ -38,13 +38,22 @@ impl Drop for CommsConfig {
 }
 
 impl CommsConfig {
-    pub fn create(port: u64) -> Self {
+    pub fn create(tcp_port: u64, udp_port: u64) -> Self {
         let mut error = 0;
         let ptr;
         unsafe {
+            let _public_addr_tcp = format!("/ip4/127.0.0.1/tcp/{}", tcp_port);
+            let listen_addr_tcp = format!("/ip4/0.0.0.0/tcp/{}", tcp_port);
+            let _public_addr_udp = format!("/ip4/127.0.0.1/udp/{}/quic-v1", udp_port);
+            let listen_addr_udp = format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port);
+
             ptr = ffi_import::comms_config_create(
-                CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw(),
-                CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw(),
+                null_mut(),
+                CString::new(format!("{}, {}", listen_addr_tcp, listen_addr_udp))
+                    .unwrap()
+                    .into_raw(),
+                true,
+                false,
                 &mut error,
             );
             if error > 0 {

@@ -136,7 +136,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
 )]
 async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let wallet_address = world.get_wallet_address_base58(&wallet).await.unwrap();
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -195,7 +195,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     wallet: String,
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let wallet_address = world.get_wallet_address_base58(&wallet).await.unwrap();
     let script_key_id = &world.script_key_id().await;
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 

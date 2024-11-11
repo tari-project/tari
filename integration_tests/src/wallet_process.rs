@@ -37,7 +37,7 @@ use tari_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_peer_seeds, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_seeds, get_port, wait_for_service, ServiceType, TariWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -45,7 +45,8 @@ pub struct WalletProcess {
     pub grpc_port: u64,
     pub kill_signal: Shutdown,
     pub name: String,
-    pub port: u64,
+    pub tcp_port: u64,
+    pub udp_port: u64,
     pub temp_dir_path: PathBuf,
 }
 
@@ -67,19 +68,22 @@ pub async fn spawn_wallet(
     std::env::set_var("TARI_NETWORK", "localnet");
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let port: u64;
+    let tcp_port: u64;
+    let udp_port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
     let mut wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
-        port = wallet_ps.port;
+        tcp_port = wallet_ps.tcp_port;
+        udp_port = wallet_ps.udp_port;
         grpc_port = wallet_ps.grpc_port;
         temp_dir_path = wallet_ps.temp_dir_path.clone();
         wallet_config = wallet_ps.config.clone();
     } else {
         // each spawned wallet will use different ports
-        port = get_port(18000..18499).unwrap();
+        tcp_port = get_port(18000..18499).unwrap();
+        udp_port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
 
         temp_dir_path = world
@@ -96,19 +100,21 @@ pub async fn spawn_wallet(
     };
 
     let base_node = base_node_name.map(|name| {
-        let pubkey = world.base_nodes.get(&name).unwrap().public_key.clone();
-        let port = world.base_nodes.get(&name).unwrap().port;
-        let set_base_node_request = SetBaseNodeRequest {
-            net_address: format! {"/ip4/127.0.0.1/tcp/{}", port},
-            public_key_hex: pubkey.to_string(),
+        let bn_pubkey = world.base_nodes.get(&name).unwrap().public_key.clone();
+        let bn_udp_port = world.base_nodes.get(&name).unwrap().udp_port;
+        let bn_addr = format!("/ip4/127.0.0.1/udp/{}/quic-v1", bn_udp_port);
+        let base_node_request = SetBaseNodeRequest {
+            net_address: bn_addr.clone(),
+            public_key_hex: bn_pubkey.to_string(),
         };
+        let custom_base_node = format!("{}::{}", bn_pubkey, bn_addr);
 
-        (pubkey, port, set_base_node_request)
+        (custom_base_node, base_node_request)
     });
+    let base_node_cloned = base_node.clone();
 
     let peer_seeds = get_peer_seeds(world, &peer_seeds).await;
 
-    let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
     let mut send_to_thread_shutdown = shutdown.clone();
 
@@ -129,7 +135,10 @@ pub async fn spawn_wallet(
         };
 
         eprintln!("Using wallet temp_dir: {}", temp_dir_path.clone().display());
-        let listen_addr = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        let public_addr_tcp = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", tcp_port)).unwrap();
+        let listen_addr_tcp = Multiaddr::from_str(&format!("/ip4/0.0.0.0/tcp/{}", tcp_port)).unwrap();
+        let public_addr_udp = Multiaddr::from_str(&format!("/ip4/127.0.0.1/udp/{}/quic-v1", udp_port)).unwrap();
+        let listen_addr_udp = Multiaddr::from_str(&format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port)).unwrap();
 
         wallet_app_config.wallet.identity_file = Some(temp_dir_path.clone().join("wallet_id.json"));
         wallet_app_config.wallet.network = Network::LocalNet;
@@ -139,14 +148,15 @@ pub async fn spawn_wallet(
             Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
         wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
         wallet_app_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
-        wallet_app_config.wallet.p2p.enable_mdns = false;
+        wallet_app_config.wallet.p2p.enable_mdns = true;
         wallet_app_config.wallet.p2p.enable_relay = false;
+        wallet_app_config.wallet.p2p.reachability_mode = ReachabilityMode::Auto;
+        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![public_addr_tcp, public_addr_udp]);
+        wallet_app_config.wallet.p2p.listen_addresses = MultiaddrList::from(vec![listen_addr_tcp, listen_addr_udp]);
         wallet_app_config
             .wallet
             .base_node_service_config
             .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
-        wallet_app_config.wallet.p2p.listen_addresses = MultiaddrList::from(vec![listen_addr.clone()]);
-        wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![listen_addr]);
         if let Some(mech) = routing_mechanism {
             wallet_app_config
                 .wallet
@@ -154,9 +164,7 @@ pub async fn spawn_wallet(
                 .transaction_routing_mechanism = mech;
         }
 
-        // FIXME: wallet doesn't pick up the custom base node for some reason atm
-        wallet_app_config.wallet.custom_base_node =
-            base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
+        wallet_app_config.wallet.custom_base_node = base_node_cloned.map(|(custom_base_node, _)| custom_base_node);
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
@@ -177,23 +185,25 @@ pub async fn spawn_wallet(
     world.wallets.insert(wallet_name.clone(), WalletProcess {
         config: wallet_config,
         name: wallet_name.clone(),
-        port,
+        tcp_port,
         grpc_port,
         temp_dir_path: temp_dir,
         kill_signal: shutdown,
+        udp_port,
     });
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    wait_for_service(port).await;
-    wait_for_service(grpc_port).await;
+    wait_for_service(tcp_port, ServiceType::Tcp).await;
+    wait_for_service(udp_port, ServiceType::Udp).await;
+    wait_for_service(grpc_port, ServiceType::Tcp).await;
 
-    if let Some((_, _, hacky_request)) = base_node {
+    if let Some((_, base_node_request)) = base_node {
         let mut wallet_client = create_wallet_client(world, wallet_name.clone())
             .await
             .expect("wallet grpc client");
 
-        let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
+        let _resp = wallet_client.set_base_node(base_node_request).await.unwrap();
     }
 
     tokio::time::sleep(Duration::from_secs(2)).await;

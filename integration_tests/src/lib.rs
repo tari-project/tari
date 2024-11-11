@@ -24,7 +24,7 @@ use std::{convert::TryFrom, net::TcpListener, ops::Range, path::PathBuf, process
 
 use rand::Rng;
 use tari_p2p::peer_seeds::SeedPeer;
-use tokio::net::TcpSocket;
+use tokio::net::{TcpSocket, UdpSocket};
 
 pub mod base_node_process;
 // pub mod chat_client;
@@ -58,19 +58,34 @@ pub fn get_base_dir() -> PathBuf {
     crate_root.join(format!("tests/temp/cucumber_{}", process::id()))
 }
 
-pub async fn wait_for_service(port: u64) {
+#[derive(Debug)]
+pub enum ServiceType {
+    Tcp,
+    Udp,
+}
+
+pub async fn wait_for_service(port: u64, service_type: ServiceType) {
     // Check if we can open a socket to a port.
     let max_tries = 4 * 60;
     let mut attempts = 0;
     let addr = ([127u8, 0, 0, 1], u16::try_from(port).unwrap()).into();
 
     loop {
-        if TcpSocket::new_v4().unwrap().connect(addr).await.is_ok() {
-            return;
+        match service_type {
+            ServiceType::Tcp => {
+                if TcpSocket::new_v4().unwrap().connect(addr).await.is_ok() {
+                    return;
+                }
+            },
+            ServiceType::Udp => {
+                if UdpSocket::bind(addr).await.is_ok() {
+                    return;
+                }
+            },
         }
 
         if attempts >= max_tries {
-            panic!("Service on port {} never started", port);
+            panic!("Service {:?} on port {} never started", service_type, port);
         }
 
         tokio::time::sleep(Duration::from_millis(250)).await;
@@ -83,9 +98,12 @@ pub async fn get_peer_seeds(world: &TariWorld, seed_peer_names: &[String]) -> Ve
         .iter()
         .map(|peer_string| {
             let bn = world.base_nodes.get(peer_string.as_str()).unwrap();
-            SeedPeer::new(bn.public_key.clone(), vec![format!("/ip4/127.0.0.1/tcp/{}", bn.port)
-                .parse()
-                .unwrap()])
+            SeedPeer::new(bn.public_key.clone(), vec![format!(
+                "/ip4/127.0.0.1/tcp/{}",
+                bn.tcp_port
+            )
+            .parse()
+            .unwrap()])
             .to_string()
         })
         .collect()

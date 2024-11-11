@@ -186,23 +186,21 @@ where
             if send_result {
                 info!(
                     target: LOG_TARGET,
-                    "Transaction with TX_ID = {} received from {}. Reply Sent", data.tx_id, self.source_address,
+                    "Transaction with TX_ID = {} received from {}. Reply Sent",
+                    data.tx_id, self.source_address.to_base58(),
                 );
             } else {
                 error!(
                     target: LOG_TARGET,
                     "Transaction with TX_ID = {} received from {}. Reply could not be sent!",
-                    data.tx_id,
-                    self.source_address,
+                    data.tx_id, self.source_address.to_base58(),
                 );
             }
 
             trace!(
                 target: LOG_TARGET,
                 "Transaction (TX_ID: {}) - Amount: {} - Message: {}",
-                data.tx_id,
-                amount,
-                data.message,
+                data.tx_id, amount, data.message,
             );
 
             let _size = self
@@ -365,7 +363,7 @@ where
                 target: LOG_TARGET,
                 "Finalized Transaction with TX_ID = {} received from {}",
                 self.id,
-                self.source_address.clone()
+                self.source_address.to_base58()
             );
 
             // Find your own output in the transaction
@@ -456,8 +454,7 @@ where
             info!(
                 target: LOG_TARGET,
                 "Inbound Transaction with TX_ID = {} from {} moved to Completed Transactions",
-                self.id,
-                self.source_address.clone()
+                self.id, self.source_address.to_base58()
             );
 
             let _size = self

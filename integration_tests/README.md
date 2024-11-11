@@ -43,6 +43,24 @@ In its simplest form you can run the tests from the project route with `cargo te
   cargo test --release --test cucumber -- -i "tests/features/WalletTransactions*"
   ```
 
+## Concurrency
+
+- The set of wallet FFI tests (`"@wallet-ffi and not @broken"`) should not be run with `--concurrency` greater than 1, 
+  and because it defaults to 64, it should be limited to `--concurrency 1` on the command line. This is also true for 
+  running it in CI.
+
+  ```shell
+  cargo test --release --test cucumber -- --tags "@wallet-ffi and not @broken" --concurrency 1 --retry 2
+  ```
+ 
+- The set of non-wallet FFI tests (`"@critical and (not @long-running) and (not @wallet-ffi) and (not @chat-ffi) and 
+  (not @broken)"`) should not be run with `--concurrency` greater than 1, and because it defaults to 64, it should be 
+  limited to `--concurrency 1` on the command line. This is also true for running it in CI.
+
+  ```shell
+  cargo test --release --all-features --test cucumber -- --tags "@critical and (not @long-running) and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" --concurrency 1 --retry 2
+  ```
+  
 ## Notes
 
 This suite is still a work in progress. We have scenarios marked `@broken` that are known broken and require fixing.

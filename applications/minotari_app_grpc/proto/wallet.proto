@@ -59,6 +59,8 @@ service Wallet {
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
   // List currently connected peers
   rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+  // Upsert a new contact
+  rpc UpsertContact(UpsertContactRequest) returns (UpsertContactResponse);
   // Cancel pending transaction
   rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
   // Will trigger a complete revalidation of all wallet outputs.

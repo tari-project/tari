@@ -92,6 +92,16 @@ message ListConnectedPeersResponse {
   repeated ConnectedPeer connected_peers = 1;
 }
 
+message UpsertContactRequest {
+  string alias = 1;
+  bytes wallet_address = 2;
+}
+
+message UpsertContactResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
 message SoftwareUpdate {
   bool has_update = 1;
   string version = 2;

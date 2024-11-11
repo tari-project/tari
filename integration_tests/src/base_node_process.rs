@@ -25,27 +25,35 @@ use std::{
     fmt::{Debug, Formatter},
     net::TcpListener,
     path::PathBuf,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
+use log::*;
 use minotari_app_utilities::identity_management::save_identity;
 use minotari_node::{run_base_node, BaseNodeConfig, GrpcMethod, MetricsConfig};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use tari_common::{configuration::CommonConfig, network_check::set_network_if_choice_valid};
+use tari_common::{
+    configuration::{CommonConfig, MultiaddrList},
+    network_check::set_network_if_choice_valid,
+};
 use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_network::{identity, multiaddr::Multiaddr};
+use tari_network::{identity, multiaddr::Multiaddr, ReachabilityMode};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig};
 use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_seeds, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_seeds, get_port, wait_for_service, ServiceType, TariWorld};
+
+const LOG_TARGET: &str = "cucumber::bas_node_process";
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
     pub name: String,
-    pub port: u64,
+    pub tcp_port: u64,
+    pub udp_port: u64,
     pub grpc_port: u64,
     pub identity: identity::Keypair,
     pub public_key: RistrettoPublicKey,
@@ -57,8 +65,11 @@ pub struct BaseNodeProcess {
 }
 
 impl BaseNodeProcess {
-    pub fn get_listen_addr(&self) -> Multiaddr {
-        format!("/ip4/127.0.0.1/tcp/{}", self.port).parse().unwrap()
+    pub fn get_public_addresses(&self) -> Vec<Multiaddr> {
+        vec![
+            format!("/ip4/127.0.0.1/udp/{}/quic-v1", self.udp_port).parse().unwrap(),
+            format!("/ip4/127.0.0.1/tcp/{}", self.tcp_port).parse().unwrap(),
+        ]
     }
 }
 
@@ -73,7 +84,8 @@ impl Debug for BaseNodeProcess {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BaseNodeProcess")
             .field("name", &self.name)
-            .field("port", &self.port)
+            .field("tcp_port", &self.tcp_port)
+            .field("udp_port", &self.udp_port)
             .field("grpc_port", &self.grpc_port)
             .field("identity", &self.identity)
             .field("temp_dir_path", &self.temp_dir_path)
@@ -97,13 +109,15 @@ pub async fn spawn_base_node_with_config(
     std::env::set_var("TARI_NETWORK", "localnet");
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
-    let port: u64;
+    let tcp_port: u64;
+    let udp_port: u64;
     let grpc_port: u64;
     let temp_dir_path: PathBuf;
     let base_node_identity: identity::Keypair;
     let base_node_identity_path;
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
-        port = node_ps.port;
+        tcp_port = node_ps.tcp_port;
+        udp_port = node_ps.udp_port;
         grpc_port = node_ps.grpc_port;
         temp_dir_path = node_ps.temp_dir_path.clone();
         base_node_identity_path = temp_dir_path.join("base_node_key.bin");
@@ -112,7 +126,8 @@ pub async fn spawn_base_node_with_config(
         base_node_identity = node_ps.identity.clone();
     } else {
         // each spawned base node will use different ports
-        port = get_port(18000..18499).unwrap();
+        tcp_port = get_port(18000..18499).unwrap();
+        udp_port = get_port(18000..18499).unwrap();
         grpc_port = get_port(18500..18999).unwrap();
         // create a new temporary directory
         temp_dir_path = world
@@ -127,12 +142,14 @@ pub async fn spawn_base_node_with_config(
         save_identity(&base_node_identity_path, &base_node_identity).unwrap();
     };
 
+    debug!(target: LOG_TARGET, "Base node peer id: {}", base_node_identity.public().to_peer_id());
     println!("Base node peer id: {}", base_node_identity.public().to_peer_id());
 
     let shutdown = Shutdown::new();
     let process = BaseNodeProcess {
         name: bn_name.clone(),
-        port,
+        tcp_port,
+        udp_port,
         grpc_port,
         identity: base_node_identity.clone(),
         public_key: base_node_identity
@@ -153,6 +170,7 @@ pub async fn spawn_base_node_with_config(
 
     let peer_seeds = get_peer_seeds(world, &peers).await;
 
+    let public_addresses = process.get_public_addresses();
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     task::spawn(async move {
@@ -169,6 +187,10 @@ pub async fn spawn_base_node_with_config(
         };
 
         println!("Using base_node temp_dir: {}", temp_dir_path.clone().display());
+        debug!(target: LOG_TARGET, "Using base_node temp_dir: {}", temp_dir_path.clone().display());
+        let listen_addr_tcp = Multiaddr::from_str(&format!("/ip4/0.0.0.0/tcp/{}", tcp_port)).unwrap();
+        let listen_addr_udp = Multiaddr::from_str(&format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port)).unwrap();
+
         base_node_config.base_node.network = Network::LocalNet;
         base_node_config.base_node.grpc_enabled = true;
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
@@ -179,13 +201,13 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.identity_file = base_node_identity_path;
         // base_node_config.base_node.tor_identity_file = PathBuf::from("base_node_tor_id.json");
         base_node_config.base_node.max_randomx_vms = 1;
-        base_node_config.base_node.p2p.enable_mdns = false;
+        base_node_config.base_node.p2p.enable_mdns = true;
         base_node_config.base_node.p2p.enable_relay = false;
+        base_node_config.base_node.p2p.reachability_mode = ReachabilityMode::Auto;
+        base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(public_addresses);
+        base_node_config.base_node.p2p.listen_addresses = MultiaddrList::from(vec![listen_addr_tcp, listen_addr_udp]);
 
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
-        base_node_config.base_node.p2p.listen_addresses =
-            vec![format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()].into();
-        base_node_config.base_node.p2p.public_addresses = base_node_config.base_node.p2p.listen_addresses.clone();
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
@@ -195,13 +217,19 @@ pub async fn spawn_base_node_with_config(
         // Hierarchically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
 
+        debug!(
+            target: LOG_TARGET,
+            "Initializing base node: name={}; tcp_port={}; udp_port={}; grpc_port={}; is_seed_node={}",
+            name_cloned, tcp_port, udp_port, grpc_port, is_seed_node
+        );
         println!(
-            "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
-            name_cloned, port, grpc_port, is_seed_node
+            "Initializing base node: name={}; tcp_port={}; udp_port={}; grpc_port={}; is_seed_node={}",
+            name_cloned, tcp_port, udp_port, grpc_port, is_seed_node
         );
 
         let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
         if let Err(e) = result {
+            error!(target: LOG_TARGET,"{:?}", e);
             panic!("{:?}", e);
         }
     });
@@ -209,11 +237,18 @@ pub async fn spawn_base_node_with_config(
     // make the new base node able to be referenced by other processes
     world.base_nodes.insert(bn_name.clone(), process);
     if is_seed_node {
-        world.seed_nodes.push(bn_name);
+        world.seed_nodes.push(bn_name.clone());
     }
 
-    wait_for_service(port).await;
-    wait_for_service(grpc_port).await;
+    debug!(target: LOG_TARGET, "Wait for service...");
+    wait_for_service(tcp_port, ServiceType::Tcp).await;
+    wait_for_service(udp_port, ServiceType::Udp).await;
+    wait_for_service(grpc_port, ServiceType::Tcp).await;
+    debug!(
+        target: LOG_TARGET,
+        "Spawned base node: name={}; tcp_port={}; udp_port={}; grpc_port={}; is_seed_node={}",
+        bn_name, tcp_port, udp_port, grpc_port, is_seed_node
+    );
 }
 
 impl BaseNodeProcess {
@@ -225,7 +260,7 @@ impl BaseNodeProcess {
         self.kill_signal.trigger();
         loop {
             // lets wait till the port is cleared
-            if TcpListener::bind(("127.0.0.1", self.port.try_into().unwrap())).is_ok() {
+            if TcpListener::bind(("127.0.0.1", self.tcp_port.try_into().unwrap())).is_ok() {
                 break;
             }
         }

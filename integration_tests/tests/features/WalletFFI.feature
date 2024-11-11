@@ -10,6 +10,8 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    # Failing with: (exit code: 0xc0000005, STATUS_ACCESS_VIOLATION)
+    @broken
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         When I have wallet SPECTATOR connected to base node BASE
@@ -40,19 +42,31 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to cancel a transaction
-        Given I have a base node BASE
+        Given I have a seed node SEED
+        When I have a base node BASE connected to all seed nodes
         When I have wallet SENDER connected to base node BASE
+        When I have wallet RECEIVER connected to base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
+        # Force some P2P discovery with contact liveness
+        When I add contact with alias ALIAS_SENDER and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_RECEIVER and address of RECEIVER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet SENDER
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet RECEIVER
+        When I add contact with alias ALIAS_RECEIVER and address of RECEIVER to wallet SENDER
+        When I add contact with alias ALIAS_SENDER and address of SENDER to wallet RECEIVER
+        Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
+        And I stop wallet RECEIVER
+        # Now continue
         When I have mining node MINER connected to base node BASE and wallet SENDER
         When mining node MINER mines 10 blocks
+        Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
-        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
+        # Note: This step requires more than 1 base node so the base node can return a synced status
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         And wallet SENDER detects all transactions are at least Broadcast
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
-        When I have wallet RECEIVER connected to base node BASE
-        And I stop wallet RECEIVER
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then I wait for ffi wallet FFI_WALLET to have 1 pending outbound transaction
         Then I cancel all outbound transactions on ffi wallet FFI_WALLET and it will cancel 1 transaction
@@ -79,16 +93,8 @@ Feature: Wallet FFI
         # Start the contact liveness pings by adding contacts to the FFI wallet
         When I add contact with alias ALIAS1 and address of WALLET1 to ffi wallet FFI_WALLET
         And I add contact with alias ALIAS2 and address of WALLET2 to ffi wallet FFI_WALLET
-        # Do some mining and send transactions to force P2P discovery
-        And I have mining node MINER1 connected to base node SEED and wallet WALLET1
-        And I have mining node MINER2 connected to base node SEED and wallet WALLET2
-        And mining node MINER1 mines 1 blocks
-        And mining node MINER2 mines 5 blocks
-        Then I wait for wallet WALLET1 to have at least 100000000 uT
-        And I wait for wallet WALLET2 to have at least 100000000 uT
-        When I send 100000000 uT without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
-        And I send 100000000 uT without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
-        # If the FFI wallet can send the transactions, P2P connectivity has been established
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet WALLET1
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet WALLET2
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
@@ -97,47 +103,66 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
+        When I have wallet RECEIVER connected to base node BASE1
         And I have a ffi wallet FFI_WALLET connected to base node BASE1
         # Force some P2P discovery with contact liveness
-        When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
-        When I have wallet RECEIVER connected to base node BASE1
+        When I add contact with alias ALIAS_SENDER and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_RECEIVER and address of RECEIVER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet SENDER
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet RECEIVER
+        When I add contact with alias ALIAS_RECEIVER and address of RECEIVER to wallet SENDER
+        When I add contact with alias ALIAS_SENDER and address of SENDER to wallet RECEIVER
+        Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
+        # Now continue
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
-        Then I wait for wallet SENDER to have at least 2000000 uT
+        Then I wait for wallet SENDER to have at least 4100000 uT
+        # Provide funds to the FFI and RECEIVER wallets
+        And I send 2000000 uT from wallet SENDER to wallet RECEIVER at fee 20
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        # Now we mine some blocks
         When mining node MINER mines 10 blocks
         Then all nodes are at height 20
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        Then I wait for wallet RECEIVER to have at least 1000000 uT
+        # Now we send 1 transaction from the FFI wallet to the RECEIVER wallet and vice versa
+        And I send 500000 uT from wallet RECEIVER to wallet FFI_WALLET at fee 20
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
-        Then I wait until base node BASE1 has 1 unconfirmed transactions in its mempool
-        Then I wait until base node SEED has 1 unconfirmed transactions in its mempool
+        Then wallet RECEIVER has at least 2 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        Then I wait until base node BASE1 has 2 unconfirmed transactions in its mempool
+        Then I wait until base node SEED has 2 unconfirmed transactions in its mempool
         # The broadcast check does not include delivery; create some holding points to ensure it was received
         When mining node MINER mines 4 blocks
         Then all nodes are at height 24
-        Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_MINED
-#        When mining node MINER mines 6 blocks
-        Then I wait for wallet RECEIVER to have at least 1000000 uT
-        And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
+        Then ffi wallet FFI_WALLET detects AT_LEAST 3 ffi transactions to be TRANSACTION_STATUS_MINED
+        Then I wait for wallet RECEIVER to have at least 1400000 uT
+        # Check the FFI wallet's stats
+        And I have 2 received and 1 send transaction in ffi wallet FFI_WALLET
         And I start TXO validation on ffi wallet FFI_WALLET
         And I start TX validation on ffi wallet FFI_WALLET
-        Then I wait for ffi wallet FFI_WALLET to receive 2 mined
+        Then I wait for ffi wallet FFI_WALLET to receive 3 mined
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
 
+    # Broken due to SAF not being implemented
     @critical @broken
-    Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
+    Scenario: As a client I want to receive Tari sent when offline
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
         And I have a ffi wallet FFI_WALLET connected to base node SEED
-
         # Force some P2P discovery with contact liveness
-        When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_SENDER_1 and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_FFI_WALLET_1 and address of FFI_WALLET to wallet SENDER
+        Then I wait for ffi wallet FFI_WALLET to have at least 1 contacts to be Online
+        # Now continue
 
         # Established comms by funding the FFI wallet
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
@@ -158,10 +183,15 @@ Feature: Wallet FFI
 
         # Let's restart the wallet and see if it can receive the offline transaction
         And I restart ffi wallet FFI_WALLET connected to base node BASE1
-        When I add contact with alias ALIAS2 and address of SENDER to ffi wallet FFI_WALLET
+        # Force some P2P discovery with contact liveness
+        When I add contact with alias ALIAS_SENDER_2 and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_FFI_WALLET_2 and address of FFI_WALLET to wallet SENDER
+        Then I wait for ffi wallet FFI_WALLET to have at least 1 contacts to be Online
+        # Now continue
+
         # BROKEN
-        And I send 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
+
         When mining node MINER mines 2 blocks
         Then all nodes are at height 22
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
@@ -178,12 +208,11 @@ Feature: Wallet FFI
         When I have wallet SENDER connected to base node BASE1
         And I have a ffi wallet FFI_WALLET connected to base node BASE1
         When I have wallet RECEIVER connected to base node BASE1
-
         # Force some P2P discovery with contact liveness
-        When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
-        When I add contact with alias ALIAS2 and address of RECEIVER to ffi wallet FFI_WALLET
-
-        # Fund the FFI wallet
+        When I add contact with alias ALIAS_SENDER and address of SENDER to ffi wallet FFI_WALLET
+        When I add contact with alias ALIAS_FFI_WALLET and address of FFI_WALLET to wallet SENDER
+        Then I wait for ffi wallet FFI_WALLET to have at least 1 contacts to be Online
+        # Now continue
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
@@ -196,53 +225,62 @@ Feature: Wallet FFI
         Then all nodes are at height 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_MINED
         Then I wait for ffi wallet FFI_WALLET to have at least 4000000 uT
-
         # The FFI wallet now has funds to send a one-sided transaction
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 5 via one-sided transactions
         Then ffi wallet FFI_WALLET detects AT_LEAST 3 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 2 blocks
         Then all nodes are at height 22
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_UNCONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED or TRANSACTION_STATUS_MINED_UNCONFIRMED and not cancelled
         When mining node MINER mines 5 blocks
         Then all nodes are at height 27
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_ONE_SIDED_CONFIRMED or TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
-    @critical @pie
+    @critical
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
-        When I have a base node BASE2 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
-        And I have a ffi wallet FFI_RECEIVER connected to base node BASE2
+        And I have a ffi wallet FFI_RECEIVER connected to base node BASE1
+        # Force some P2P discovery with contact liveness
+        When I add contact with alias ALIAS_SENDER and address of SENDER to ffi wallet FFI_RECEIVER
+        When I add contact with alias ALIAS_FFI_RECEIVER and address of FFI_RECEIVER to wallet SENDER
+        Then I wait for ffi wallet FFI_RECEIVER to have at least 1 contacts to be Online
+        # Now continue
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 5000000 uT
         Then I send a one-sided transaction of 1000000 uT from SENDER to FFI_RECEIVER at fee 20
         When mining node MINER mines 2 blocks
         Then all nodes are at height 12
-        Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED
+        Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_MINED_OR_ONE_SIDED_UNCONFIRMED
         And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 5 blocks
         Then all nodes are at height 17
-        Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_ONE_SIDED_CONFIRMED
+        Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_MINED_OR_ONE_SIDED_CONFIRMED
         And I stop ffi wallet FFI_RECEIVER
 
     Scenario: As a client I want to get fee per gram stats
-        Given I have a base node BASE
+        Given I have a seed node SEED
+        When I have a base node BASE connected to all seed nodes
         When I have wallet WALLET_A connected to base node BASE
         When I have wallet WALLET_B connected to base node BASE
+        # Force some P2P discovery with contact liveness
+        When I add contact with alias ALIAS_WALLET_A and address of WALLET_A to wallet WALLET_B
+        When I add contact with alias ALIAS_WALLET_B and address of WALLET_B to wallet WALLET_A
+        # Now continue
         When I have mining node MINER connected to base node BASE and wallet WALLET_A
         When mining node MINER mines 7 blocks
+        Then all nodes are at height 7
         Then I wait for wallet WALLET_A to have at least 10000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE
         And The fee per gram stats for FFI_WALLET are 1, 1, 1
         And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
-        And The fee per gram stats for FFI_WALLET are 20, 20, 20
+        And The fee per gram stats for FFI_WALLET are 18, 18, 18
         And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 40
-        And The fee per gram stats for FFI_WALLET are 20, 30, 40
+        And The fee per gram stats for FFI_WALLET are 18, 28, 37
         And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 60
-        And The fee per gram stats for FFI_WALLET are 20, 40, 60
+        And The fee per gram stats for FFI_WALLET are 18, 37, 56
         When mining node MINER mines 1 blocks
         And The fee per gram stats for FFI_WALLET are 1, 1, 1

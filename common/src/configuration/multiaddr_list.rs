@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::str::FromStr;
+
 use libp2p::multiaddr::Multiaddr;
 
 use crate::configuration::ConfigList;
@@ -27,12 +29,25 @@ use crate::configuration::ConfigList;
 /// Supports deserialization from a sequence of strings or comma-delimited strings
 pub type MultiaddrList = ConfigList<Multiaddr>;
 
+impl FromStr for MultiaddrList {
+    type Err = <Multiaddr as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.split(',')
+            .map(|s| s.replace("\"", ""))
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().parse())
+            .collect::<Result<Vec<_>, _>>()
+            .map(Into::into)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{str::FromStr, vec};
 
     use config::Config;
-    use multiaddr::Multiaddr;
+    use multiaddr::{Error, Multiaddr};
     use serde::Deserialize;
 
     use crate::configuration::MultiaddrList;
@@ -125,5 +140,28 @@ mod tests {
             Multiaddr::from_str("/ip4/192.168.0.1/tcp/1234").unwrap(),
             Multiaddr::from_str("/ip4/10.0.0.1/tcp/1234").unwrap()
         ]);
+    }
+
+    #[test]
+    fn it_deserializes_from_string() {
+        let list_str_1 = "/ip4/127.0.0.1/tcp/1234, /ip4/192.168.0.1/tcp/1234, /ip4/10.0.0.1/udp/1234/quic-v1,";
+        let list_str_2 =
+            "\" /ip4/127.0.0.1/tcp/1234 \", \"/ip4/192.168.0.1/tcp/1234\", /ip4/10.0.0.1/udp/1234/quic-v1,";
+        let list_1 = MultiaddrList::from_str(list_str_1).unwrap();
+        let list_2 = MultiaddrList::from_str(list_str_2).unwrap();
+
+        assert_eq!(list_1, list_2);
+        assert_eq!(list_1.into_vec(), vec![
+            Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap(),
+            Multiaddr::from_str("/ip4/192.168.0.1/tcp/1234").unwrap(),
+            Multiaddr::from_str("/ip4/10.0.0.1/udp/1234/quic-v1").unwrap()
+        ]);
+
+        let list_str_err = "\" /ip4/127.0.0.1/udp/1234/some_unknown_protocol \"";
+        let list_err = MultiaddrList::from_str(list_str_err).unwrap_err();
+        match list_err {
+            Error::UnknownProtocolString(_) => {},
+            _ => panic!("Error variant not as expected"),
+        }
     }
 }

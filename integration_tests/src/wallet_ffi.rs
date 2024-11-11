@@ -54,17 +54,19 @@ use crate::{
 #[derive(Debug)]
 pub struct WalletFFI {
     pub name: String,
-    pub port: u64,
+    pub tcp_port: u64,
+    pub udp_port: u64,
     pub base_dir: PathBuf,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
 }
 
 impl WalletFFI {
     fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
-        let port = get_port(18000..18499).unwrap();
-        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
+        let tcp_port = get_port(18000..18499).unwrap();
+        let udp_port = get_port(18000..18499).unwrap();
+        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, tcp_port));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
-        let comms_config = ffi::CommsConfig::create(port);
+        let comms_config = ffi::CommsConfig::create(tcp_port, udp_port);
         let log_path = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
@@ -75,7 +77,8 @@ impl WalletFFI {
         let wallet = ffi::Wallet::create(comms_config, base_dir, log_path, seed_words_ptr);
         Self {
             name,
-            port,
+            tcp_port,
+            udp_port,
             base_dir: base_dir_path,
             wallet,
         }
@@ -175,9 +178,10 @@ impl WalletFFI {
 
     pub fn restart(&mut self) {
         self.wallet.lock().unwrap().destroy();
-        let port = get_port(18000..18499).unwrap();
+        let tcp_port = get_port(18000..18499).unwrap();
+        let udp_port = get_port(18000..18499).unwrap();
         let now: DateTime<Utc> = SystemTime::now().into();
-        let comms_config = ffi::CommsConfig::create(port);
+        let comms_config = ffi::CommsConfig::create(tcp_port, udp_port);
         let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
         let log_path = format!("{}/log/ffi_wallet.log", base_dir);
         self.wallet = ffi::Wallet::create(comms_config, base_dir, log_path, null());
