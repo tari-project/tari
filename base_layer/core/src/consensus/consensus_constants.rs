@@ -389,7 +389,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 2,
-            blockchain_version: 0,
+            blockchain_version: 1,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
@@ -509,7 +509,7 @@ impl ConsensusConstants {
             target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let consensus_constants1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
             blockchain_version: 0,
@@ -541,9 +541,13 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-        }];
+        };
+        let mut consensus_constants2 = consensus_constants1.clone();
+        consensus_constants2.blockchain_version = 1;
+        consensus_constants2.effective_from_height = 16000;
+        let consensus_constants = vec![consensus_constants1, consensus_constants2];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120, 120], &[50, 50], &[50, 50]);
         consensus_constants
     }
 
@@ -653,10 +657,13 @@ impl ConsensusConstants {
         let mut con_2 = con_1.clone();
         con_2.effective_from_height = 33000;
         con_2.coinbase_output_features_extra_max_length = 256;
+        let mut con_3 = con_2.clone();
+        con_3.effective_from_height = 55000;
+        con_3.blockchain_version = 1;
 
-        let consensus_constants = vec![con_1, con_2];
+        let consensus_constants = vec![con_1, con_2, con_3];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120, 120], &[50, 50], &[50, 50]);
+        assert_hybrid_pow_constants(&consensus_constants, &[120, 120, 120], &[50, 50, 50], &[50, 50, 50]);
         consensus_constants
     }
 

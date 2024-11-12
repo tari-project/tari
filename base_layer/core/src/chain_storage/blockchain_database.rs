@@ -49,6 +49,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;
 use crate::{
+    block_output_mr_hash_from_pruned_mmr,
     blocks::{
         Block,
         BlockAccumulatedData,
@@ -105,6 +106,7 @@ use crate::{
     OutputSmt,
     PrunedInputMmr,
     PrunedKernelMmr,
+    PrunedOutputMmr,
     ValidatorNodeBMT,
 };
 
@@ -1321,6 +1323,7 @@ pub struct MmrRoots {
     pub kernel_mmr_size: u64,
     pub input_mr: FixedHash,
     pub output_mr: FixedHash,
+    pub block_output_mr: FixedHash,
     pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
     pub validator_node_size: u64,
@@ -1333,6 +1336,7 @@ impl std::fmt::Display for MmrRoots {
         writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
         writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
         writeln!(f, "Output MR       : {}", self.output_mr)?;
+        writeln!(f, "Block Output MR : {}", self.block_output_mr)?;
         writeln!(f, "Output SMT Size : {}", self.output_smt_size)?;
         writeln!(f, "Validator MR    : {}", self.validator_node_mr)?;
         Ok(())
@@ -1372,6 +1376,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
@@ -1379,6 +1384,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let mut outputs_to_remove = Vec::new();
     for output in body.outputs() {
+        block_output_mmr.push(output.hash().to_vec())?;
         if !output.is_burned() {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
@@ -1426,11 +1432,18 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         (tip_header.validator_node_mr, 0)
     };
 
+    let block_output_mr = if block.version() > 0 {
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?
+    } else {
+        FixedHash::zero()
+    };
+
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
         output_mr: output_mr_hash_from_smt(output_smt)?,
+        block_output_mr,
         output_smt_size: output_smt.size(),
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
