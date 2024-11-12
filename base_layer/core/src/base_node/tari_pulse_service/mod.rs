@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::{error, net::SocketAddr, str::FromStr, time::Duration};
 
 use futures::future;
 use hickory_client::{
@@ -7,13 +7,15 @@ use hickory_client::{
     rr::{DNSClass, Name, RData, Record, RecordType},
     tcp::TcpClientStream,
 };
-use log::{error, info};
+use hickory_resolver::system_conf;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tari_core::base_node::LocalNodeCommsInterface;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time};
+
+use super::LocalNodeCommsInterface;
 
 const LOG_TARGET: &str = "c::bn::tari_pulse";
 
@@ -37,7 +39,19 @@ impl TariPulseService {
         Ok(Self { dns_name, config })
     }
 
+    fn socket_addr_and_dns_name(&self) -> Result<(SocketAddr, Option<String>), anyhow::Error> {
+        let (conf, _opts) = system_conf::read_system_conf()?;
+        let found = conf
+            .name_servers()
+            .iter()
+            .find(|ns| ns.tls_dns_name.is_some())
+            .or_else(|| conf.name_servers().first())
+            .ok_or_else(|| anyhow::anyhow!("No name servers found"))?;
+        Ok((found.socket_addr, found.tls_dns_name.clone()))
+    }
+
     async fn get_dns_client(&self) -> Result<AsyncClient, anyhow::Error> {
+        // let (socket_addr, dns_name) = self.socket_addr_and_dns_name();
         let (stream, sender) = TcpClientStream::<AsyncIoTokioAsStd<TokioTcpStream>>::new(([8, 8, 8, 8], 53).into());
         let client = AsyncClient::new(stream, sender, None);
         let (client, bg) = client.await.expect("connection failed");
@@ -71,12 +85,18 @@ impl TariPulseService {
                 },
             };
 
+            dns_checkpoints.iter().for_each(|(height, hash)| {
+                info!(target: LOG_TARGET, "DNS Checkpoint: Height: {}, Hash: {}", height, hash);
+            });
+            local_checkpoints.iter().for_each(|(height, hash)| {
+                info!(target: LOG_TARGET, "Local Checkpoint: Height: {}, Hash: {}", height, hash);
+            });
             let passed_checkpoints = dns_checkpoints.iter().all(|(height, hash)| {
                 local_checkpoints
                     .iter()
                     .any(|(local_height, local_hash)| height == local_height && hash == local_hash)
             });
-            notify_passed_checkpoints.send(passed_checkpoints).unwrap();
+            notify_passed_checkpoints.send(!passed_checkpoints).unwrap();
             interval.tick().await;
         }
     }
@@ -90,6 +110,7 @@ impl TariPulseService {
             let mut node_clone = base_node_service.clone();
             async move {
                 node_clone.get_header(height).await.map(|header| {
+                    error!(target: LOG_TARGET, "Header not found for height: {}", height);
                     let header = header.expect("Header not found");
                     (header.height(), header.hash().to_hex())
                 })
@@ -120,13 +141,21 @@ impl TariPulseService {
             })
             .collect();
 
+        debug!(target: LOG_TARGET, "DNS Checkpoints: {:?}", checkpoints);
         Ok(checkpoints)
     }
 }
 
-pub struct TariPulseHandler {
-    shutdown_signal: ShutdownSignal,
-    failed_checkpoints_notifier: watch::Receiver<bool>,
+#[derive(Clone)]
+pub struct TariPulseHandle {
+    pub shutdown_signal: ShutdownSignal,
+    pub failed_checkpoints_notifier: watch::Receiver<bool>,
+}
+
+impl TariPulseHandle {
+    pub fn get_failed_checkpoints_notifier(&self) -> watch::Ref<'_, bool> {
+        self.failed_checkpoints_notifier.borrow()
+    }
 }
 
 pub struct TariPulseServiceInitializer;
@@ -137,7 +166,7 @@ impl ServiceInitializer for TariPulseServiceInitializer {
         info!(target: LOG_TARGET, "Initializing Tari Pulse Service");
         let shutdown_signal = context.get_shutdown_signal();
         let (sender, receiver) = watch::channel(false);
-        context.register_handle(TariPulseHandler {
+        context.register_handle(TariPulseHandle {
             shutdown_signal: shutdown_signal.clone(),
             failed_checkpoints_notifier: receiver,
         });

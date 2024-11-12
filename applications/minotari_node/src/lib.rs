@@ -36,7 +36,6 @@ mod grpc_method;
 #[cfg(feature = "metrics")]
 mod metrics;
 mod recovery;
-mod tari_pulse;
 mod utils;
 use std::{process, sync::Arc};
 

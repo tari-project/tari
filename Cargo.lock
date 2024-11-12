@@ -6631,6 +6631,7 @@ dependencies = [
 name = "tari_core"
 version = "1.7.0-pre.3"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bincode",
  "bitflags 2.4.1",
@@ -6649,6 +6650,8 @@ dependencies = [
  "fs2",
  "futures 0.3.29",
  "hex",
+ "hickory-client",
+ "hickory-resolver",
  "integer-encoding",
  "libsqlite3-sys",
  "lmdb-zero",
