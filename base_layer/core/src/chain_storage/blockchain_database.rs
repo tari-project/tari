@@ -1378,14 +1378,20 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
     let mut outputs_to_remove = Vec::new();
+    let mut coinbases = Vec::new();
     for output in body.outputs() {
-        block_output_mmr.push(output.hash().to_vec())?;
+        if !output.features.is_coinbase() {
+            coinbases.push(output.hash())
+        } else {
+            normal_output_mmr.push(output.hash().to_vec())?;
+        }
         if !output.is_burned() {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
@@ -1400,6 +1406,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
             }
         }
     }
+    for coinbase in coinbases {
+        block_output_mmr.push(coinbase.to_vec())?;
+    }
+    block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
     let mut outputs_to_add = Vec::new();
     for input in body.inputs() {

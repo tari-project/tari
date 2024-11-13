@@ -273,7 +273,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
         block.header.block_output_mr =
-            FixedHash::from_hex("ab227bddf4ce2cfbebdbbd5c25c86d33f0a25ebdc0ea403ab5393c6d1091b60d").unwrap();
+            FixedHash::from_hex("9bbdb4cae1a1d46e61da5c301448924ebdd16293e3f801b535aec1648bb3486e").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -491,7 +491,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
             output_mr: FixedHash::zero(),
-            block_output_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2")
+            block_output_mr: FixedHash::from_hex("622720a6571c33d6bf6138d9e737d3468c77f1193640698ad459953d24ec0812")
                 .unwrap(),
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
@@ -672,10 +672,16 @@ mod test {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
         let mut output_smt = OutputSmt::new();
-        let mut output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut vn_nodes = Vec::new();
+        let mut coinbases = Vec::new();
         for o in block.block().body.outputs() {
-            output_mmr.push(o.hash().to_vec()).unwrap();
+            if !o.features.is_coinbase() {
+                coinbases.push(o.hash())
+            } else {
+                normal_output_mmr.push(o.hash().to_vec()).unwrap();
+            }
             let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
             let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
             output_smt.insert(smt_key, smt_node).unwrap();
@@ -693,6 +699,12 @@ mod test {
                 ));
             }
         }
+
+        for coinbase in coinbases {
+            block_output_mmr.push(coinbase.to_vec()).unwrap();
+        }
+        block_output_mmr.push(normal_output_mmr.get_merkle_root().unwrap().to_vec()).unwrap();
+
         for i in block.block().body.inputs() {
             let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
             output_smt.delete(&smt_key).unwrap();
@@ -742,7 +754,7 @@ mod test {
             );
         } else {
             assert_eq!(
-                block_output_mr_hash_from_pruned_mmr(&output_mmr)
+                block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
                     .unwrap()
                     .to_vec()
                     .to_hex(),
