@@ -8,10 +8,9 @@ use std::{
 };
 
 use libp2p::{
-    core::{transport::PortUse, ConnectedPoint, Endpoint},
+    core::{transport::PortUse, Endpoint},
     swarm::{
         dial_opts::DialOpts,
-        AddressChange,
         ConnectionClosed,
         ConnectionDenied,
         ConnectionHandler,
@@ -198,29 +197,7 @@ where TCodec: Codec + Send + Clone + 'static
         }
     }
 
-    fn on_address_change(&mut self, address_change: AddressChange) {
-        let AddressChange {
-            peer_id,
-            connection_id,
-            new,
-            ..
-        } = address_change;
-        let remote_address = match new {
-            ConnectedPoint::Dialer { address, .. } => Some(address),
-            ConnectedPoint::Listener { .. } => None,
-        };
-
-        if let Some(connections) = self.connected.get_mut(&peer_id) {
-            for connection in &mut connections.connections {
-                if connection.id == connection_id {
-                    connection.remote_address = remote_address.cloned();
-                    return;
-                }
-            }
-        }
-    }
-
-    fn on_dial_failure(&mut self, DialFailure { peer_id, .. }: DialFailure) {
+    fn on_dial_failure(&mut self, DialFailure { peer_id, error, .. }: DialFailure) {
         if let Some(peer) = peer_id {
             // If there are pending outgoing messages when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
@@ -233,7 +210,9 @@ where TCodec: Codec + Send + Clone + 'static
                     .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {
                         peer_id: peer,
                         stream_id: stream.stream_id(),
-                        error: Error::DialFailure,
+                        error: Error::DialFailure {
+                            details: error.to_string(),
+                        },
                     }));
             }
         }
@@ -244,9 +223,8 @@ where TCodec: Codec + Send + Clone + 'static
         handler: &mut Handler<TCodec>,
         peer_id: PeerId,
         connection_id: ConnectionId,
-        remote_address: Option<Multiaddr>,
     ) {
-        let mut connection = Connection::new(connection_id, remote_address);
+        let mut connection = Connection::new(connection_id);
 
         if let Some((sink, stream)) = self.pending_outbound_dials.remove(&peer_id) {
             connection.stream_id = Some(stream.stream_id());
@@ -273,10 +251,10 @@ where TCodec: Codec + Send + Clone + 'static
         connection_id: ConnectionId,
         peer: PeerId,
         _local_addr: &Multiaddr,
-        remote_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::<TCodec>::new(peer, self.protocol.clone(), &self.config);
-        self.on_connection_established(&mut handler, peer, connection_id, Some(remote_addr.clone()));
+        self.on_connection_established(&mut handler, peer, connection_id);
 
         Ok(handler)
     }
@@ -285,12 +263,12 @@ where TCodec: Codec + Send + Clone + 'static
         &mut self,
         connection_id: ConnectionId,
         peer: PeerId,
-        remote_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
         _role_override: Endpoint,
         _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(peer, self.protocol.clone(), &self.config);
-        self.on_connection_established(&mut handler, peer, connection_id, Some(remote_addr.clone()));
+        self.on_connection_established(&mut handler, peer, connection_id);
         Ok(handler)
     }
 
@@ -298,7 +276,6 @@ where TCodec: Codec + Send + Clone + 'static
         match event {
             FromSwarm::ConnectionEstablished(_) => {},
             FromSwarm::ConnectionClosed(connection_closed) => self.on_connection_closed(connection_closed),
-            FromSwarm::AddressChange(address_change) => self.on_address_change(address_change),
             FromSwarm::DialFailure(dial_failure) => self.on_dial_failure(dial_failure),
             _ => {},
         }
@@ -358,16 +335,14 @@ where TCodec: Codec + Send + Clone + 'static
 struct Connection<TMsg> {
     id: ConnectionId,
     stream_id: Option<StreamId>,
-    remote_address: Option<Multiaddr>,
     pending_sink: Option<MessageSink<TMsg>>,
     message_sink: Option<MessageSink<TMsg>>,
 }
 
 impl<TMsg> Connection<TMsg> {
-    fn new(id: ConnectionId, remote_address: Option<Multiaddr>) -> Self {
+    fn new(id: ConnectionId) -> Self {
         Self {
             id,
-            remote_address,
             stream_id: None,
             pending_sink: None,
             message_sink: None,
