@@ -712,10 +712,16 @@ where
                 }
                 shrink_hashmap_if_required(&mut self.active_connections);
 
-                if self.relay_stats.current_relay_peer == Some(peer_id) {
-                    self.relay_stats.current_relay_peer = None;
+                if let Some(selected) = self.relays.selected_relay() {
+                    if selected.circuit_connection_id == Some(connection_id) {
+                        if self.relay_stats.current_relay_peer == Some(peer_id) {
+                            self.relay_stats.current_relay_peer = None;
+                        }
+                        self.relay_stats.active_relay_reservations.remove(&peer_id);
+                        // Our selected relay has disconnected, attempt to reserve another
+                        self.attempt_relay_reservation();
+                    }
                 }
-                self.relay_stats.active_relay_reservations.remove(&peer_id);
 
                 self.publish_event(NetworkEvent::PeerDisconnected { peer_id });
             },
@@ -802,7 +808,7 @@ where
                 connection_id,
             }) => {
                 info!(target: LOG_TARGET, "👋 Received identify from {} with {} addresses on connection {}", peer_id, info.listen_addrs.len(), connection_id);
-                self.on_peer_identified(peer_id, info)?;
+                self.on_peer_identified(connection_id, peer_id, info)?;
             },
             Identify(event) => {
                 debug!(target: LOG_TARGET, "ℹ️ Identify event: {:?}", event);
@@ -1037,8 +1043,8 @@ where
             ) {
                 if is_dial_error_caused_by_remote(&err) {
                     self.relays.clear_selected_relay();
+                    warn!(target: LOG_TARGET, "🚨 Failed to dial relay: {}", err);
                 }
-                warn!(target: LOG_TARGET, "🚨 Failed to dial relay: {}", err);
             }
         }
     }
@@ -1111,7 +1117,12 @@ where
         Ok(())
     }
 
-    fn on_peer_identified(&mut self, peer_id: PeerId, info: identify::Info) -> Result<(), NetworkError> {
+    fn on_peer_identified(
+        &mut self,
+        connection_id: ConnectionId,
+        peer_id: PeerId,
+        info: identify::Info,
+    ) -> Result<(), NetworkError> {
         if !self.config.swarm.protocol_version.is_compatible(&info.protocol_version) {
             info!(target: LOG_TARGET, "🚨 Peer {} is using an incompatible protocol version: {}. Our version {}", peer_id, info.protocol_version, self.config.swarm.protocol_version);
             // Error can be ignored as the docs indicate that an error only occurs if there was no connection to the
@@ -1183,7 +1194,7 @@ where
         // If this peer is the selected relay that was dialled previously, listen on the circuit address
         // Note we only select a relay if autonat says we are not publicly accessible.
         if is_relay {
-            self.establish_relay_circuit_on_connect(&peer_id);
+            self.establish_relay_circuit_on_connect(&peer_id, connection_id);
         }
 
         self.publish_event(NetworkEvent::PeerIdentified {
@@ -1233,20 +1244,20 @@ where
 
     /// Establishes a relay circuit for the given peer if it is the selected relay peer. Returns true if the circuit
     /// was established from this call.
-    fn establish_relay_circuit_on_connect(&mut self, connected_peer_id: &PeerId) -> bool {
+    fn establish_relay_circuit_on_connect(&mut self, peer_id: &PeerId, connection_id: ConnectionId) -> bool {
         let Some(relay) = self.relays.selected_relay() else {
             debug!(target: LOG_TARGET, "📡 No relay selected.");
             return false;
         };
 
         // If the peer we've connected with is the selected relay that we previously connected with, then continue
-        if relay.peer_id != *connected_peer_id {
+        if relay.peer_id != *peer_id {
             debug!(target: LOG_TARGET, "📡 Dialed peer is not set as a relay.");
             return false;
         }
 
         // If we've already established a circuit with the relay, there's nothing to do here
-        if relay.is_circuit_established {
+        if relay.has_circuit() {
             debug!(target: LOG_TARGET, "📡 Already have a circuit established with this relay peer.");
             return false;
         }
@@ -1265,12 +1276,12 @@ where
                     .behaviour_mut()
                     .peer_sync
                     .add_known_local_public_addresses(vec![circuit_addr]);
-                info!(target: LOG_TARGET, "🌍️ Peer {connected_peer_id} is a relay. Listening (id={id:?}) for circuit connections");
+                info!(target: LOG_TARGET, "🌍️ Peer {peer_id} is a relay. Listening (id={id:?}) for circuit connections");
                 let Some(relay_mut) = self.relays.selected_relay_mut() else {
                     // unreachable
                     return false;
                 };
-                relay_mut.is_circuit_established = true;
+                relay_mut.circuit_connection_id = Some(connection_id);
                 true
             },
             Err(e) => {
