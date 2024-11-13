@@ -26,25 +26,16 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     types::{Commitment, FixedHash},
 };
-use tari_core::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
-    chain_storage::{
-        calculate_validator_node_mr,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-    },
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
-    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
-    transactions::{
-        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::MicroMinotari,
-        test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
+use tari_core::{blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate}, chain_storage::{
+    calculate_validator_node_mr,
+    BlockAddResult,
+    BlockchainBackend,
+    BlockchainDatabase,
+    ChainStorageError,
+}, consensus::{emission::Emission, ConsensusConstants, ConsensusManager}, input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, kernel_mr_hash_from_pruned_mmr, output_mr_hash_from_smt, proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty}, transactions::{
+    key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
+    tari_amount::MicroMinotari,
+    test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
     transaction_components::{
         CoinBaseExtra,
         KernelBuilder,
@@ -54,15 +45,10 @@ use tari_core::{
         Transaction,
         TransactionKernel,
         TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
-        },
+        TransactionOutput,
+        WalletOutput,
     },
-    KernelMmr,
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-};
+}, KernelMmr, OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
