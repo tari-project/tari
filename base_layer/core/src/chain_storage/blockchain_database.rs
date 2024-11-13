@@ -914,6 +914,7 @@ where B: BlockchainBackend
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
+        block.header.block_output_mr = roots.block_output_mr;
         block.header.output_smt_size = roots.output_smt_size;
         block.header.validator_node_mr = roots.validator_node_mr;
         block.header.validator_node_size = roots.validator_node_size;

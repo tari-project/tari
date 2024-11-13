@@ -302,7 +302,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Utxo",
+            kind: "Utxos",
         }));
     };
     if header.output_smt_size != mmr_roots.output_smt_size {
@@ -329,7 +329,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.block_output_mr,
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Utxo",
+            kind: "block outputs",
         }));
     };
     if header.input_mr != mmr_roots.input_mr {

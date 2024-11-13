@@ -45,15 +45,15 @@ use tari_core::{
         key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
-        transaction_components::{
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
+    transaction_components::{
+        CoinBaseExtra,
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        RangeProofType,
+        Transaction,
+        TransactionKernel,
+        TransactionKernelVersion,
             TransactionOutput,
             WalletOutput,
         },
@@ -206,7 +206,9 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let kernel_mmr = KernelMmr::new(kernel_hashes);
     header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr)?;
     let mut mmr = OutputSmt::new();
+    let mut output_mr = PrunedOutputMmr::new(PrunedHashSet::default());
     for output in body.outputs() {
+        let _ = output_mr.push(output.hash().to_vec());
         let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
         let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
         mmr.insert(smt_key, smt_node).unwrap();
@@ -214,6 +216,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     header.output_smt_size = body.outputs().len() as u64;
 
     header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
+    header.block_output_mr = FixedHash::try_from(output_mr.get_merkle_root().unwrap()).unwrap();
     Ok(Block { header, body })
 }
 

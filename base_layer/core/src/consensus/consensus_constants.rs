@@ -390,7 +390,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 2,
             blockchain_version: 1,
-            valid_blockchain_version_range: 0..=0,
+            valid_blockchain_version_range: 1..=1,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -545,6 +545,7 @@ impl ConsensusConstants {
         let mut consensus_constants2 = consensus_constants1.clone();
         consensus_constants2.blockchain_version = 1;
         consensus_constants2.effective_from_height = 16000;
+        consensus_constants2.valid_blockchain_version_range = 1..=1;
         let consensus_constants = vec![consensus_constants1, consensus_constants2];
         #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(&consensus_constants, &[120, 120], &[50, 50], &[50, 50]);
@@ -573,8 +574,8 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 0,
-            valid_blockchain_version_range: 0..=0,
+            blockchain_version: 1,
+            valid_blockchain_version_range: 1..=1,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
@@ -660,6 +661,7 @@ impl ConsensusConstants {
         let mut con_3 = con_2.clone();
         con_3.effective_from_height = 55000;
         con_3.blockchain_version = 1;
+        con_3.valid_blockchain_version_range = 1..=1;
 
         let consensus_constants = vec![con_1, con_2, con_3];
         #[cfg(any(test, debug_assertions))]
@@ -685,8 +687,8 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 720,
-            blockchain_version: 0,
-            valid_blockchain_version_range: 0..=0,
+            blockchain_version: 1,
+            valid_blockchain_version_range: 1..=1,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 127_795,
