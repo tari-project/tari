@@ -1385,10 +1385,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     }
 
     let mut outputs_to_remove = Vec::new();
-    let mut coinbases = Vec::new();
     for output in body.outputs() {
         if output.features.is_coinbase() {
-            coinbases.push(output.hash())
+            block_output_mmr.push(output.hash().to_vec())?;
         } else {
             normal_output_mmr.push(output.hash().to_vec())?;
         }
@@ -1405,9 +1404,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
                 return Err(e.into());
             }
         }
-    }
-    for coinbase in coinbases {
-        block_output_mmr.push(coinbase.to_vec())?;
     }
     block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 

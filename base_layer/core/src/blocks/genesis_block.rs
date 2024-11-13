@@ -273,7 +273,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
         block.header.block_output_mr =
-            FixedHash::from_hex("9bbdb4cae1a1d46e61da5c301448924ebdd16293e3f801b535aec1648bb3486e").unwrap();
+            FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -675,10 +675,9 @@ mod test {
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut vn_nodes = Vec::new();
-        let mut coinbases = Vec::new();
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
-                coinbases.push(o.hash())
+                block_output_mmr.push(o.hash().to_vec()).unwrap();
             } else {
                 normal_output_mmr.push(o.hash().to_vec()).unwrap();
             }
@@ -700,9 +699,6 @@ mod test {
             }
         }
 
-        for coinbase in coinbases {
-            block_output_mmr.push(coinbase.to_vec()).unwrap();
-        }
         block_output_mmr
             .push(normal_output_mmr.get_merkle_root().unwrap().to_vec())
             .unwrap();
