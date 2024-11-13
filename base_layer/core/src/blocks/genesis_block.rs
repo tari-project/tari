@@ -677,7 +677,7 @@ mod test {
         let mut vn_nodes = Vec::new();
         let mut coinbases = Vec::new();
         for o in block.block().body.outputs() {
-            if !o.features.is_coinbase() {
+            if o.features.is_coinbase() {
                 coinbases.push(o.hash())
             } else {
                 normal_output_mmr.push(o.hash().to_vec()).unwrap();

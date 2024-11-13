@@ -1387,7 +1387,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut outputs_to_remove = Vec::new();
     let mut coinbases = Vec::new();
     for output in body.outputs() {
-        if !output.features.is_coinbase() {
+        if output.features.is_coinbase() {
             coinbases.push(output.hash())
         } else {
             normal_output_mmr.push(output.hash().to_vec())?;
