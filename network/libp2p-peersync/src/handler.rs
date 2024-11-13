@@ -12,7 +12,6 @@ use std::{
 use async_semaphore::{Semaphore, SemaphoreGuardArc};
 use libp2p::{
     core::UpgradeInfo,
-    futures::FutureExt,
     swarm::{
         handler::{
             ConnectionEvent,
@@ -38,23 +37,31 @@ use crate::{
     error::Error,
     event::Event,
     inbound_task::inbound_sync_task,
-    outbound_task::outbound_sync_task,
+    outbound_task::outbound_request_want_list_task,
     proto,
     store::PeerStore,
     Config,
+    SignedPeerRecord,
     EMPTY_QUEUE_SHRINK_THRESHOLD,
     MAX_MESSAGE_SIZE,
 };
 
 pub(crate) type Framed<In, Out = In> = asynchronous_codec::Framed<Stream, quick_protobuf_codec::Codec<In, Out>>;
-pub(crate) type FramedOutbound = Framed<proto::WantPeers, proto::WantPeerResponse>;
-pub(crate) type FramedInbound = Framed<proto::WantPeerResponse, proto::WantPeers>;
+pub(crate) type FramedOutbound = Framed<proto::Message, proto::WantPeerResponse>;
+pub(crate) type FramedInbound = Framed<proto::WantPeerResponse, proto::Message>;
+
+#[derive(Debug)]
+pub enum HandlerAction {
+    PushLocalRecord(Arc<SignedPeerRecord>),
+    WantPeers(Arc<WantList>),
+}
 
 pub struct Handler<TStore> {
     peer_id: PeerId,
     protocol: StreamProtocol,
     must_request_substream: bool,
     is_complete: bool,
+    pending_local_peer_record: Option<Arc<SignedPeerRecord>>,
     failed_attempts: usize,
     current_want_list: Arc<WantList>,
     pending_events: VecDeque<Event>,
@@ -73,12 +80,14 @@ impl<TStore: PeerStore> Handler<TStore> {
         config: &Config,
         want_list: WantList,
         semaphore: Arc<Semaphore>,
+        pending_local_peer_record: Option<Arc<SignedPeerRecord>>,
     ) -> Self {
         Self {
             store,
             peer_id,
             protocol,
             is_complete: false,
+            pending_local_peer_record,
             failed_attempts: 0,
             current_want_list: Arc::new(want_list),
             pending_events: VecDeque::new(),
@@ -126,19 +135,26 @@ where TStore: PeerStore
     }
 
     fn on_fully_negotiated_outbound(&mut self, outbound: FullyNegotiatedOutbound<Protocol<StreamProtocol>, ()>) {
-        if self.current_want_list.is_empty() {
-            tracing::debug!("No peers wanted, ignoring outbound stream");
+        if self.current_want_list.is_empty() && self.pending_local_peer_record.is_none() {
+            tracing::trace!("No peers wanted or no local peer record update, ignoring outbound stream");
             return;
         }
+        tracing::debug!(
+            "peer-sync[{}]: Starting outbound protocol on outbound stream",
+            self.peer_id
+        );
         let (stream, _protocol) = outbound.protocol;
         let framed = new_framed_codec(stream, MAX_MESSAGE_SIZE);
         let store = self.store.clone();
-        if self.current_want_list.is_empty() {
-            tracing::debug!("No peers wanted, ignoring outbound stream");
-            return;
-        }
 
-        let fut = outbound_sync_task(self.peer_id, framed, store, self.current_want_list.clone()).boxed();
+        let pending_local_peer_record = self.pending_local_peer_record.take();
+        let fut = outbound_request_want_list_task(
+            self.peer_id,
+            framed,
+            store,
+            self.current_want_list.clone(),
+            pending_local_peer_record,
+        );
 
         if self.tasks.try_push(fut).is_err() {
             tracing::warn!("Dropping outbound peer sync because we are at capacity")
@@ -151,7 +167,7 @@ where TStore: PeerStore
         let framed = new_framed_codec(stream, MAX_MESSAGE_SIZE);
         let store = self.store.clone();
 
-        let fut = inbound_sync_task(self.peer_id, framed, store, config).boxed();
+        let fut = inbound_sync_task(self.peer_id, framed, store, config);
 
         if self.tasks.try_push(fut).is_err() {
             tracing::warn!("Dropping inbound peer sync because we are at capacity")
@@ -162,7 +178,7 @@ where TStore: PeerStore
 impl<TStore> ConnectionHandler for Handler<TStore>
 where TStore: PeerStore
 {
-    type FromBehaviour = Arc<WantList>;
+    type FromBehaviour = HandlerAction;
     type InboundOpenInfo = ();
     type InboundProtocol = Protocol<StreamProtocol>;
     type OutboundOpenInfo = ();
@@ -233,35 +249,32 @@ where TStore: PeerStore
         }
 
         // If we do not want any peers, there's nothing further to do
-        if self.current_want_list.is_empty() {
-            tracing::debug!(
-                "peer-sync[{}]: No peers wanted, waiting until peers are wanted",
-                self.peer_id
-            );
+        if self.current_want_list.is_empty() && self.pending_local_peer_record.is_none() {
             return Poll::Pending;
         }
         tracing::debug!(
-            "peer-sync[{}]: Want {} peers",
+            "peer-sync[{}]: Want {} peers, has pending local peer update = {}",
             self.peer_id,
-            self.current_want_list.len()
+            self.current_want_list.len(),
+            self.pending_local_peer_record.is_some()
         );
 
-        // Otherwise, wait until another sync is complete
-        if self.aquired.is_none() {
-            match self.semaphore.try_acquire_arc() {
-                Some(guard) => {
-                    self.aquired = Some(guard);
-                },
-                None => {
-                    return Poll::Pending;
-                },
-            }
-        }
-
-        tracing::debug!("peer-sync[{}]: Acquired semaphore", self.peer_id);
-
-        // Our turn, open the substream
+        // Our turn
         if self.must_request_substream {
+            // Wait until another sync is complete
+            if self.aquired.is_none() {
+                match self.semaphore.try_acquire_arc() {
+                    Some(guard) => {
+                        self.aquired = Some(guard);
+                    },
+                    None => {
+                        return Poll::Pending;
+                    },
+                }
+            }
+
+            tracing::debug!("peer-sync[{}]: Acquired semaphore", self.peer_id);
+
             let protocol = self.protocol.clone();
             self.must_request_substream = false;
 
@@ -274,10 +287,18 @@ where TStore: PeerStore
         Poll::Pending
     }
 
-    fn on_behaviour_event(&mut self, want_list: Self::FromBehaviour) {
-        // Sync from existing connections if there are more want-peers
-        self.is_complete = !want_list.is_empty();
-        self.current_want_list = want_list;
+    fn on_behaviour_event(&mut self, action: Self::FromBehaviour) {
+        match action {
+            HandlerAction::PushLocalRecord(local_record) => {
+                self.is_complete = false;
+                self.pending_local_peer_record = Some(local_record);
+            },
+            HandlerAction::WantPeers(want_list) => {
+                // Sync from existing connections if there are more want-peers
+                self.is_complete = !want_list.is_empty();
+                self.current_want_list = want_list;
+            },
+        }
     }
 
     fn on_connection_event(

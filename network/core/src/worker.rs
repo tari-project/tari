@@ -861,14 +861,11 @@ where
             Autonat(event) => {
                 self.on_autonat_event(event)?;
             },
-            PeerSync(peersync::Event::LocalPeerRecordUpdated { record }) => {
-                info!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Local peer record updated: {:?}",record);
-            },
             PeerSync(peersync::Event::PeerBatchReceived { new_peers, from_peer }) => {
-                info!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Peer batch received: from_peer={}, new_peers={}", from_peer, new_peers);
+                debug!(target: LOG_TARGET, "🧑‍🧑‍🧒‍🧒 Peer batch received: from_peer={}, new_peers={}", from_peer, new_peers);
             },
             PeerSync(event) => {
-                info!(target: LOG_TARGET, "ℹ️ PeerSync event: {:?}", event);
+                debug!(target: LOG_TARGET, "ℹ️ PeerSync event: {:?}", event);
             },
             Kad(kad::Event::OutboundQueryProgressed {
                 id,

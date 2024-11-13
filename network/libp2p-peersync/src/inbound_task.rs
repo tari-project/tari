@@ -28,8 +28,59 @@ async fn inbound_sync_task_inner<TPeerStore: PeerStore>(
     store: TPeerStore,
     config: Config,
 ) -> Result<Event, Error> {
-    let msg = framed.next().await.ok_or(Error::InboundStreamEnded)??;
+    let mut received_remote_peer_record = false;
+    loop {
+        let msg = framed.next().await.ok_or(Error::InboundStreamEnded)??;
 
+        match msg.payload {
+            proto::mod_Message::OneOfpayload::LocalRecord(msg) => {
+                // Only permitted once per session
+                if received_remote_peer_record {
+                    return Err(Error::InvalidMessage {
+                        peer_id,
+                        details: format!("peer {peer_id} sent more than one local peer record"),
+                    });
+                }
+
+                let msg = SignedPeerRecord::try_from(msg)?;
+                tracing::debug!(
+                    "Received local peer record from peer {peer_id} containing {} address(es)",
+                    msg.addresses.len()
+                );
+                if !msg.is_valid() {
+                    return Err(Error::InvalidSignedPeer {
+                        peer_id,
+                        details: format!("peer {peer_id} sent an invalid local peer record"),
+                    });
+                }
+                store.put(msg).await.map_err(|e| Error::StoreError(e.to_string()))?;
+                received_remote_peer_record = true;
+            },
+            proto::mod_Message::OneOfpayload::WantPeers(msg) => {
+                tracing::debug!(
+                    "Want peer request (size={}) from peer {peer_id}",
+                    msg.want_peer_ids.len()
+                );
+                return handle_want_peers(peer_id, &mut framed, &store, &config, msg).await;
+            },
+            proto::mod_Message::OneOfpayload::None => {
+                return Ok(Event::InboundRequestCompleted {
+                    peer_id,
+                    peers_sent: 0,
+                    requested: 0,
+                });
+            },
+        }
+    }
+}
+
+async fn handle_want_peers<TPeerStore: PeerStore>(
+    peer_id: PeerId,
+    framed: &mut FramedInbound,
+    store: &TPeerStore,
+    config: &Config,
+    msg: proto::WantPeers,
+) -> Result<Event, Error> {
     let mut store_stream = store.stream();
 
     let orig_want_list_len = msg.want_peer_ids.len();
@@ -58,7 +109,7 @@ async fn inbound_sync_task_inner<TPeerStore: PeerStore>(
 
     let event = loop {
         if remaining_want_list.is_empty() {
-            break Event::ResponseStreamComplete {
+            break Event::InboundRequestCompleted {
                 peer_id,
                 peers_sent: orig_want_list_len - remaining_want_list.len(),
                 requested: orig_want_list_len,
@@ -66,7 +117,7 @@ async fn inbound_sync_task_inner<TPeerStore: PeerStore>(
         }
 
         let Some(result) = store_stream.next().await else {
-            break Event::ResponseStreamComplete {
+            break Event::InboundRequestCompleted {
                 peer_id,
                 peers_sent: orig_want_list_len - remaining_want_list.len(),
                 requested: orig_want_list_len,

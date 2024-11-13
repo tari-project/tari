@@ -69,25 +69,33 @@ impl TryFrom<proto::SignedPeerRecord> for SignedPeerRecord {
     }
 }
 
-impl From<SignedPeerRecord> for proto::SignedPeerRecord {
-    fn from(value: SignedPeerRecord) -> Self {
+impl From<&SignedPeerRecord> for proto::SignedPeerRecord {
+    fn from(value: &SignedPeerRecord) -> Self {
         Self {
-            addresses: value.addresses.into_iter().map(|a| a.to_vec()).collect(),
+            addresses: value.addresses.iter().map(|a| a.to_vec()).collect(),
             ts_updated_at: value.updated_at.as_secs(),
-            signature: Some(value.signature.into()),
+            signature: Some(proto::PeerSignature::from(value.signature.clone())),
         }
     }
 }
 
-impl TryFrom<LocalPeerRecord> for SignedPeerRecord {
-    type Error = Error;
+impl From<SignedPeerRecord> for proto::SignedPeerRecord {
+    fn from(value: SignedPeerRecord) -> Self {
+        Self {
+            addresses: value.addresses.iter().map(|a| a.to_vec()).collect(),
+            ts_updated_at: value.updated_at.as_secs(),
+            signature: Some(proto::PeerSignature::from(value.signature)),
+        }
+    }
+}
 
-    fn try_from(value: LocalPeerRecord) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<LocalPeerRecord> for SignedPeerRecord {
+    fn from(value: LocalPeerRecord) -> Self {
+        Self {
             addresses: value.addresses.into_iter().collect(),
             updated_at: value.updated_at,
-            signature: value.signature.ok_or_else(|| Error::LocalPeerNotSigned)?,
-        })
+            signature: value.signature,
+        }
     }
 }
 
@@ -96,16 +104,19 @@ pub struct LocalPeerRecord {
     keypair: Arc<identity::Keypair>,
     addresses: HashSet<Multiaddr>,
     updated_at: Duration,
-    signature: Option<PeerSignature>,
+    signature: PeerSignature,
 }
 
 impl LocalPeerRecord {
     pub fn new(keypair: Arc<identity::Keypair>) -> Self {
+        let updated_at = epoch_time_now();
+        let addresses = HashSet::new();
+        let signature = sign_peer_rec(&keypair, &addresses, &updated_at);
         Self {
             keypair,
-            addresses: HashSet::new(),
-            updated_at: epoch_time_now(),
-            signature: None,
+            addresses,
+            updated_at,
+            signature,
         }
     }
 
@@ -127,18 +138,13 @@ impl LocalPeerRecord {
         &self.addresses
     }
 
-    pub fn is_signed(&self) -> bool {
-        self.signature.is_some()
-    }
-
     pub fn encode_to_proto(&self) -> Result<BytesMut, Error> {
-        SignedPeerRecord::try_from(self.clone())?.encode_to_proto()
+        SignedPeerRecord::from(self.clone()).encode_to_proto()
     }
 
     fn sign(&mut self) {
         self.updated_at = epoch_time_now();
-        let msg = peer_signature_challenge(&self.addresses, &self.updated_at);
-        self.signature = Some(PeerSignature::sign(&self.keypair, &msg));
+        self.signature = sign_peer_rec(&self.keypair, &self.addresses, &self.updated_at);
     }
 }
 
@@ -187,6 +193,11 @@ impl TryFrom<proto::PeerSignature> for PeerSignature {
             signature: value.signature,
         })
     }
+}
+
+fn sign_peer_rec(keypair: &identity::Keypair, addresses: &HashSet<Multiaddr>, updated_at: &Duration) -> PeerSignature {
+    let msg = peer_signature_challenge(addresses, updated_at);
+    PeerSignature::sign(keypair, &msg)
 }
 
 fn peer_signature_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
