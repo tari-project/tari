@@ -245,13 +245,18 @@ mod test {
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
 
-    fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>, ConsensusManager) {
+    fn setup() -> (
+        BlockHeaderSyncValidator<TempDatabase>,
+        AsyncBlockchainDb<TempDatabase>,
+        ConsensusManager,
+    ) {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (
             BlockHeaderSyncValidator::new(db.clone().into(), rules.clone(), randomx_factory),
-            db.into(),rules
+            db.into(),
+            rules,
         )
     }
 

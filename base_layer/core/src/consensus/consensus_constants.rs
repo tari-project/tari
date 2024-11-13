@@ -659,7 +659,7 @@ impl ConsensusConstants {
         con_2.effective_from_height = 33000;
         con_2.coinbase_output_features_extra_max_length = 256;
         let mut con_3 = con_2.clone();
-        con_3.effective_from_height = 55000;
+        con_3.effective_from_height = 52000;
         con_3.blockchain_version = 1;
         con_3.valid_blockchain_version_range = 1..=1;
 

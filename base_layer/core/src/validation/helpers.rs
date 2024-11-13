@@ -263,6 +263,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(

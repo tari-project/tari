@@ -26,29 +26,44 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     types::{Commitment, FixedHash},
 };
-use tari_core::{blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate}, chain_storage::{
-    calculate_validator_node_mr,
-    BlockAddResult,
-    BlockchainBackend,
-    BlockchainDatabase,
-    ChainStorageError,
-}, consensus::{emission::Emission, ConsensusConstants, ConsensusManager}, input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, kernel_mr_hash_from_pruned_mmr, output_mr_hash_from_smt, proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty}, transactions::{
-    key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::MicroMinotari,
-    test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
-    transaction_components::{
-        CoinBaseExtra,
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        RangeProofType,
-        Transaction,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        WalletOutput,
+use tari_core::{
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
+    chain_storage::{
+        calculate_validator_node_mr,
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
     },
-}, KernelMmr, OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr};
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_mmr,
+    kernel_mr_hash_from_pruned_mmr,
+    output_mr_hash_from_smt,
+    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
+    transactions::{
+        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
+        tari_amount::MicroMinotari,
+        test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
+        transaction_components::{
+            CoinBaseExtra,
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            WalletOutput,
+        },
+    },
+    KernelMmr,
+    OutputSmt,
+    PrunedInputMmr,
+    PrunedKernelMmr,
+    PrunedOutputMmr,
+};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
@@ -194,7 +209,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let mut mmr = OutputSmt::new();
     let mut output_mr = PrunedOutputMmr::new(PrunedHashSet::default());
     for output in body.outputs() {
-        let _ = output_mr.push(output.hash().to_vec());
+        output_mr.push(output.hash().to_vec()).unwrap();
         let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
         let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
         mmr.insert(smt_key, smt_node).unwrap();
