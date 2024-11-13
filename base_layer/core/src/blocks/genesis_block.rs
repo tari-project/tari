@@ -703,7 +703,9 @@ mod test {
         for coinbase in coinbases {
             block_output_mmr.push(coinbase.to_vec()).unwrap();
         }
-        block_output_mmr.push(normal_output_mmr.get_merkle_root().unwrap().to_vec()).unwrap();
+        block_output_mmr
+            .push(normal_output_mmr.get_merkle_root().unwrap().to_vec())
+            .unwrap();
 
         for i in block.block().body.inputs() {
             let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
