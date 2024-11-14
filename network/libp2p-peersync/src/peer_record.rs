@@ -133,6 +133,17 @@ impl LocalPeerRecord {
         false
     }
 
+    pub fn add_addresses<I: IntoIterator<Item = Multiaddr>>(&mut self, addresses: I) -> bool {
+        let len = self.addresses.len();
+        self.addresses.extend(addresses);
+        let any_changed = self.addresses.len() != len;
+        if any_changed {
+            // Sign only if any addresses were added
+            self.sign();
+        }
+        any_changed
+    }
+
     pub fn remove_address(&mut self, address: &Multiaddr) -> bool {
         if self.addresses.remove(address) {
             self.sign();

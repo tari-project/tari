@@ -108,17 +108,8 @@ where TPeerStore: PeerStore
         &self.local_peer_record
     }
 
-    pub fn add_known_local_public_addresses(&mut self, addrs: Vec<Multiaddr>) {
-        if addrs.is_empty() {
-            return;
-        }
-
-        let mut is_any_new = false;
-        for addr in addrs {
-            is_any_new |= self.local_peer_record.add_address(addr.clone());
-        }
-
-        if is_any_new {
+    pub fn add_known_local_public_addresses<I: IntoIterator<Item = Multiaddr>>(&mut self, addrs: I) {
+        if self.local_peer_record.add_addresses(addrs) {
             self.handle_update_local_record();
         }
     }

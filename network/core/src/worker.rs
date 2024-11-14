@@ -752,6 +752,16 @@ where
             },
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 info!(target: LOG_TARGET, "🌍️ External address confirmed: {}", address);
+                self.swarm
+                    .behaviour_mut()
+                    .peer_sync
+                    .add_known_local_public_addresses([address]);
+            },
+            SwarmEvent::ExternalAddrExpired { address } => {
+                info!(target: LOG_TARGET, "🌍️ External address expired: {}", address);
+                if is_relayed_address(&address) {
+                    self.attempt_relay_reservation();
+                }
             },
             SwarmEvent::Dialing { peer_id, connection_id } => {
                 if let Some(peer_id) = peer_id {
@@ -980,7 +990,7 @@ where
                     self.swarm
                         .behaviour_mut()
                         .peer_sync
-                        .add_known_local_public_addresses(vec![public_address]);
+                        .add_known_local_public_addresses([public_address]);
                 }
 
                 self.autonat_status_sender.send_if_modified(|prev| {
@@ -1159,7 +1169,7 @@ where
             .map(|conns| {
                 conns
                     .iter()
-                    .any(|c| c.endpoint.is_dialer() && is_through_relay_address(c.endpoint.get_remote_address()))
+                    .any(|c| c.endpoint.is_dialer() && is_relayed_address(c.endpoint.get_remote_address()))
             })
             .unwrap_or(false);
 
@@ -1174,7 +1184,7 @@ where
                     let _ignore = self
                         .swarm
                         .dial(DialOpts::peer_id(peer_id).addresses(vec![address.clone()]).build());
-                } else if is_relay && !is_through_relay_address(&address) {
+                } else if is_relay && !is_relayed_address(&address) {
                     // Otherwise, if the peer advertises as a relay we'll add them
                     info!(target: LOG_TARGET, "📡 Adding peer {peer_id} {address} as a relay");
                     self.relays.add_possible_relay(peer_id, address.clone());
@@ -1279,7 +1289,7 @@ where
                 self.swarm
                     .behaviour_mut()
                     .peer_sync
-                    .add_known_local_public_addresses(vec![circuit_addr]);
+                    .add_known_local_public_addresses([circuit_addr]);
                 info!(target: LOG_TARGET, "🌍️ Peer {peer_id} is a relay. Listening (id={id:?}) for circuit connections");
                 let Some(relay_mut) = self.relays.selected_relay_mut() else {
                     // unreachable
@@ -1376,7 +1386,7 @@ fn is_p2p_address(address: &Multiaddr) -> bool {
     address.iter().any(|p| matches!(p, Protocol::P2p(_)))
 }
 
-fn is_through_relay_address(address: &Multiaddr) -> bool {
+fn is_relayed_address(address: &Multiaddr) -> bool {
     let mut found_p2p_circuit = false;
     for protocol in address {
         if !found_p2p_circuit {
