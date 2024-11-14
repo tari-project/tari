@@ -113,11 +113,14 @@ where TPeerStore: PeerStore
             return;
         }
 
+        let mut is_any_new = false;
         for addr in addrs {
-            self.local_peer_record.add_address(addr.clone());
+            is_any_new |= self.local_peer_record.add_address(addr.clone());
         }
 
-        self.handle_update_local_record();
+        if is_any_new {
+            self.handle_update_local_record();
+        }
     }
 
     pub async fn want_peers<I: IntoIterator<Item = PeerId>>(&mut self, peers: I) -> Result<(), Error> {
@@ -263,14 +266,18 @@ where TPeerStore: PeerStore
             FromSwarm::ConnectionClosed(connection_closed) => self.on_connection_closed(connection_closed),
             FromSwarm::AddressChange(_) => {},
             FromSwarm::ExternalAddrConfirmed(addr_confirmed) => {
-                self.local_peer_record.add_address(addr_confirmed.addr.clone());
-                self.handle_update_local_record()
+                if self.local_peer_record.add_address(addr_confirmed.addr.clone()) {
+                    self.handle_update_local_record();
+                    self.pending_events
+                        .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated));
+                }
             },
             FromSwarm::ExternalAddrExpired(addr_expired) => {
-                self.local_peer_record.remove_address(addr_expired.addr);
-                self.handle_update_local_record();
-                self.pending_events
-                    .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated));
+                if self.local_peer_record.remove_address(addr_expired.addr) {
+                    self.handle_update_local_record();
+                    self.pending_events
+                        .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated));
+                }
             },
             _ => {},
         }
@@ -309,18 +316,6 @@ where TPeerStore: PeerStore
 
     fn poll(&mut self, cx: &mut Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         if let Some(event) = self.pending_events.pop_front() {
-            //     if let
-            //         ToSwarm::GenerateEvent(event) =
-            //         &event {
-            //         match event {
-            //             Event::InboundFailure { peer_id, .. } => {}
-            //             Event::OutboundFailure { peer_id, .. } => {}
-            //             Event::InboundStreamInterrupted { peer_id,  .. } => {}
-            //             Event::OutboundStreamInterrupted { peer_id, .. } => {}
-            //             Event::ResponseStreamComplete { peer_id, .. } => {}
-            //             Event::Error(_) => {}
-            //         }
-            //     }
             return Poll::Ready(event);
         }
         if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {

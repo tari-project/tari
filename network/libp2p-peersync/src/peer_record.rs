@@ -124,14 +124,21 @@ impl LocalPeerRecord {
         self.keypair.public().to_peer_id()
     }
 
-    pub fn add_address(&mut self, address: Multiaddr) {
-        self.addresses.insert(address);
-        self.sign();
+    pub fn add_address(&mut self, address: Multiaddr) -> bool {
+        if self.addresses.insert(address) {
+            // Sign only if the address was not already there
+            self.sign();
+            return true;
+        }
+        false
     }
 
-    pub fn remove_address(&mut self, address: &Multiaddr) {
-        self.addresses.remove(address);
-        self.sign();
+    pub fn remove_address(&mut self, address: &Multiaddr) -> bool {
+        if self.addresses.remove(address) {
+            self.sign();
+            return true;
+        }
+        false
     }
 
     pub fn addresses(&self) -> &HashSet<Multiaddr> {

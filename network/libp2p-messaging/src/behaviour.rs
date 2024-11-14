@@ -15,6 +15,7 @@ use libp2p::{
         ConnectionDenied,
         ConnectionHandler,
         ConnectionId,
+        DialError,
         DialFailure,
         FromSwarm,
         NetworkBehaviour,
@@ -128,12 +129,12 @@ where TCodec: Codec + Send + Clone + 'static
                 },
                 None => {
                     let stream_id = self.next_outbound_stream_id();
-                    tracing::debug!("create a new outbound dial {stream_id}");
                     let (sink, stream) = stream::channel(stream_id, peer_id);
 
-                    self.pending_events.push_back(ToSwarm::Dial {
-                        opts: DialOpts::peer_id(peer_id).build(),
-                    });
+                    let opts = DialOpts::peer_id(peer_id).build();
+                    let connection_id = opts.connection_id();
+                    self.pending_events.push_back(ToSwarm::Dial { opts });
+                    tracing::debug!("create a new outbound dial (conn_id={connection_id}, stream {stream_id})");
 
                     self.pending_outbound_dials.insert(peer_id, (sink.clone(), stream));
                     sink
@@ -198,13 +199,11 @@ where TCodec: Codec + Send + Clone + 'static
     }
 
     fn on_dial_failure(&mut self, DialFailure { peer_id, error, .. }: DialFailure) {
+        if matches!(error, DialError::DialPeerConditionFalse(_)) {
+            return;
+        }
+
         if let Some(peer) = peer_id {
-            // If there are pending outgoing messages when a dial failure occurs,
-            // it is implied that we are not connected to the peer, since pending
-            // outgoing messages are drained when a connection is established and
-            // only created when a peer is not connected when a request is made.
-            // Thus these requests must be considered failed, even if there is
-            // another, concurrent dialing attempt ongoing.
             if let Some((_sink, stream)) = self.pending_outbound_dials.remove(&peer) {
                 self.pending_events
                     .push_back(ToSwarm::GenerateEvent(Event::OutboundFailure {

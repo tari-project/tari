@@ -164,6 +164,10 @@ impl Behaviour {
     }
 
     fn on_dial_failure(&mut self, DialFailure { peer_id, error, .. }: DialFailure) {
+        if matches!(error, DialError::DialPeerConditionFalse(_)) {
+            return;
+        }
+
         if let Some(peer) = peer_id {
             // If there are pending outgoing stream requests when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
