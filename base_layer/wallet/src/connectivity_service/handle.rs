@@ -37,6 +37,7 @@ use crate::{
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
     ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
+    DisconnectBaseNode(NodeId),
 }
 
 #[derive(Clone)]
@@ -116,6 +117,13 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
             .ok()?;
 
         reply_rx.await.ok()
+    }
+
+    async fn disconnect_base_node(&mut self, node_id: NodeId) {
+        let _unused = self
+            .sender
+            .send(WalletConnectivityRequest::DisconnectBaseNode(node_id))
+            .await;
     }
 
     fn get_connectivity_status(&mut self) -> OnlineStatus {

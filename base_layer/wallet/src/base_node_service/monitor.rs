@@ -106,6 +106,9 @@ where
                         latency: None,
                     })
                     .await;
+                    if let Some(node_id) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
+                        self.wallet_connectivity.disconnect_base_node(node_id).await;
+                    }
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |

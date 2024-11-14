@@ -230,6 +230,7 @@ where B: BlockchainBackend + 'static
         let rpc_server = RpcServer::builder()
             .with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions)
             .with_maximum_sessions_per_client(config.rpc_max_sessions_per_peer)
+            .with_cull_oldest_peer_rpc_connection_on_full(config.cull_oldest_peer_rpc_connection_on_full)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊

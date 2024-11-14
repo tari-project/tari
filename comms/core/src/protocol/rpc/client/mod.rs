@@ -49,7 +49,7 @@ use futures::{
 };
 use log::*;
 use prost::Message;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::{oneshot_trigger::OneshotSignal, Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, watch, Mutex},
@@ -101,10 +101,12 @@ impl RpcClient {
         node_id: NodeId,
         framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
+        terminate_signal: Option<OneshotSignal<NodeId>>,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
     {
+        trace!(target: LOG_TARGET,"connect to {:?} with {:?}", node_id, config);
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
@@ -112,6 +114,7 @@ impl RpcClient {
         let connector = ClientConnector::new(request_tx, last_request_latency_rx, shutdown);
         let (ready_tx, ready_rx) = oneshot::channel();
         let tracing_id = tracing::Span::current().id();
+
         tokio::spawn({
             let span = span!(Level::TRACE, "start_rpc_worker");
             span.follows_from(tracing_id);
@@ -125,6 +128,7 @@ impl RpcClient {
                 ready_tx,
                 protocol_name,
                 shutdown_signal,
+                terminate_signal,
             )
             .run()
             .instrument(span)
@@ -207,6 +211,7 @@ pub struct RpcClientBuilder<TClient> {
     config: RpcClientConfig,
     protocol_id: Option<ProtocolId>,
     node_id: Option<NodeId>,
+    terminate_signal: Option<OneshotSignal<NodeId>>,
     _client: PhantomData<TClient>,
 }
 
@@ -216,6 +221,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
             config: Default::default(),
             protocol_id: None,
             node_id: None,
+            terminate_signal: None,
             _client: PhantomData,
         }
     }
@@ -266,6 +272,12 @@ impl<TClient> RpcClientBuilder<TClient> {
         self.node_id = Some(node_id);
         self
     }
+
+    /// Set a signal that indicates if this client should be immediately closed
+    pub fn with_terminate_signal(mut self, terminate_signal: OneshotSignal<NodeId>) -> Self {
+        self.terminate_signal = Some(terminate_signal);
+        self
+    }
 }
 
 impl<TClient> RpcClientBuilder<TClient>
@@ -282,6 +294,7 @@ where TClient: From<RpcClient> + NamedProtocolService
                 .as_ref()
                 .cloned()
                 .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
+            self.terminate_signal,
         )
         .await
         .map(Into::into)
@@ -404,6 +417,7 @@ struct RpcClientWorker<TSubstream> {
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
+    terminate_signal: Option<OneshotSignal<NodeId>>,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -418,6 +432,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
+        terminate_signal: Option<OneshotSignal<NodeId>>,
     ) -> Self {
         Self {
             config,
@@ -429,6 +444,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             last_request_latency_tx,
             protocol_id,
             shutdown_signal,
+            terminate_signal,
         }
     }
 
@@ -477,6 +493,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             },
         }
 
+        let mut terminate_signal = self
+            .terminate_signal
+            .take()
+            .map(|f| f.boxed())
+            .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
+
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
         loop {
@@ -486,18 +508,33 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 _ = &mut self.shutdown_signal => {
                     break;
                 }
+                node_id = &mut terminate_signal => {
+                    debug!(
+                        target: LOG_TARGET, "(stream={}) Peer '{}' connection has dropped. Worker is terminating.",
+                        self.stream_id(), node_id.unwrap_or_default()
+                    );
+                    break;
+                }
                 req = self.request_rx.recv() => {
                     match req {
                         Some(req) => {
                             if let Err(err) = self.handle_request(req).await {
                                 #[cfg(feature = "metrics")]
                                 metrics::client_errors(&self.node_id, &self.protocol_id).inc();
-                                error!(target: LOG_TARGET, "(stream={}) Unexpected error: {}. Worker is terminating.", self.stream_id(), err);
+                                error!(
+                                    target: LOG_TARGET,
+                                    "(stream={}) Unexpected error: {}. Worker is terminating.",
+                                    self.stream_id(), err
+                                );
                                 break;
                             }
                         }
                         None => {
-                            debug!(target: LOG_TARGET, "(stream={}) Request channel closed. Worker is terminating.", self.stream_id());
+                            debug!(
+                                target: LOG_TARGET,
+                                "(stream={}) Request channel closed. Worker is terminating.",
+                                self.stream_id()
+                            );
                             break
                         },
                     }

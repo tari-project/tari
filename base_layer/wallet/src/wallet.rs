@@ -412,14 +412,12 @@ where
                     peer_manager.add_peer(current_peer.clone()).await?;
                 }
             }
-            connectivity
-                .add_peer_to_allow_list(current_peer.node_id.clone())
-                .await?;
             let mut peer_list = vec![current_peer];
             if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
                 backup_peers.remove(pos);
             }
             peer_list.append(&mut backup_peers);
+            self.update_allow_list(&peer_list).await?;
             self.wallet_connectivity
                 .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         } else {
@@ -451,10 +449,23 @@ where
                 backup_peers.remove(pos);
             }
             peer_list.append(&mut backup_peers);
+            self.update_allow_list(&peer_list).await?;
             self.wallet_connectivity
                 .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         }
 
+        Ok(())
+    }
+
+    async fn update_allow_list(&mut self, peer_list: &[Peer]) -> Result<(), WalletError> {
+        let mut connectivity = self.comms.connectivity();
+        let current_allow_list = connectivity.get_allow_list().await?;
+        for peer in &current_allow_list {
+            connectivity.remove_peer_from_allow_list(peer.clone()).await?;
+        }
+        for peer in peer_list {
+            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
+        }
         Ok(())
     }
 

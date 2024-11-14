@@ -179,7 +179,7 @@ where
         Ok(())
     }
 
-    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
+    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
         debug!(
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
@@ -333,7 +333,7 @@ where
         &mut self,
         peer: &NodeId,
     ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        let mut connection = self.new_connection_to_peer(peer.clone()).await?;
         let client = connection
             .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
             .await?;
