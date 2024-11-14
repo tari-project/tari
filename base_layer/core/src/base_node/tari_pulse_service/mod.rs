@@ -1,14 +1,17 @@
-use std::{error, net::SocketAddr, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
 use futures::future;
 use hickory_client::{
-    client::{AsyncClient, ClientHandle},
-    proto::iocompat::AsyncIoTokioAsStd,
+    client::{AsyncDnssecClient, ClientHandle},
+    proto::{
+        iocompat::AsyncIoTokioAsStd,
+        rr::dnssec::{public_key::Rsa, SigSigner, TrustAnchor},
+        xfer::DnsMultiplexer,
+    },
     rr::{DNSClass, Name, RData, Record, RecordType},
     tcp::TcpClientStream,
 };
-use hickory_resolver::system_conf;
-use log::{debug, error, info};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
@@ -16,9 +19,9 @@ use tari_utilities::hex::Hex;
 use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time};
 
 use super::LocalNodeCommsInterface;
+use crate::base_node::comms_interface::CommsInterfaceError;
 
 const LOG_TARGET: &str = "c::bn::tari_pulse";
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TariPulseConfig {
@@ -34,28 +37,36 @@ impl TariPulseService {
     pub async fn new() -> Result<Self, anyhow::Error> {
         let dns_name = Name::from_str("checkpoints-nextnet.tari.com").unwrap();
         let config = TariPulseConfig {
-            check_interval: Some(Duration::from_secs(60)),
+            check_interval: Some(Duration::from_secs(120)),
         };
         Ok(Self { dns_name, config })
     }
 
-    fn socket_addr_and_dns_name(&self) -> Result<(SocketAddr, Option<String>), anyhow::Error> {
-        let (conf, _opts) = system_conf::read_system_conf()?;
-        let found = conf
-            .name_servers()
-            .iter()
-            .find(|ns| ns.tls_dns_name.is_some())
-            .or_else(|| conf.name_servers().first())
-            .ok_or_else(|| anyhow::anyhow!("No name servers found"))?;
-        Ok((found.socket_addr, found.tls_dns_name.clone()))
+    pub fn default_trust_anchor() -> TrustAnchor {
+        const ROOT_ANCHOR_ORIG: &[u8] = include_bytes!("20326.rsa");
+        const ROOT_ANCHOR_CURRENT: &[u8] = include_bytes!("38696.rsa");
+
+        let mut anchor = TrustAnchor::new();
+        anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_ORIG).expect("Invalid ROOT_ANCHOR_ORIG"));
+        anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_CURRENT).expect("Invalid ROOT_ANCHOR_CURRENT"));
+        anchor
     }
 
-    async fn get_dns_client(&self) -> Result<AsyncClient, anyhow::Error> {
-        // let (socket_addr, dns_name) = self.socket_addr_and_dns_name();
-        let (stream, sender) = TcpClientStream::<AsyncIoTokioAsStd<TokioTcpStream>>::new(([8, 8, 8, 8], 53).into());
-        let client = AsyncClient::new(stream, sender, None);
-        let (client, bg) = client.await.expect("connection failed");
+    async fn get_dns_client(&self) -> Result<AsyncDnssecClient, anyhow::Error> {
+        // let shutdown = Shutdown::new();
+        let timeout: Duration = Duration::from_secs(5);
+        let trust_anchor = Self::default_trust_anchor();
+
+        let (stream, handle) = TcpClientStream::<AsyncIoTokioAsStd<TokioTcpStream>>::new(([1, 1, 1, 1], 53).into());
+        let dns_muxer = DnsMultiplexer::<_, SigSigner>::with_timeout(stream, handle, timeout, None);
+        let (client, bg) = AsyncDnssecClient::builder(dns_muxer)
+            .trust_anchor(trust_anchor)
+            .build()
+            .await?;
+
         tokio::spawn(bg);
+        // task::spawn(future::select(shutdown.to_signal(), bg.fuse()));
+
         Ok(client)
     }
 
@@ -65,12 +76,13 @@ impl TariPulseService {
         notify_passed_checkpoints: watch::Sender<bool>,
     ) {
         let mut interval = time::interval(self.config.check_interval.unwrap());
+        let mut interval_failed = time::interval(Duration::from_millis(100));
         loop {
             let dns_checkpoints = match self.fetch_checkpoints().await {
                 Ok(checkpoints) => checkpoints,
                 Err(e) => {
                     error!(target: LOG_TARGET, "Error fetching DNS checkpoints: {:?}", e);
-                    interval.tick().await;
+                    interval_failed.tick().await;
                     continue;
                 },
             };
@@ -80,7 +92,7 @@ impl TariPulseService {
                 Ok(checkpoints) => checkpoints,
                 Err(e) => {
                     error!(target: LOG_TARGET, "Error fetching local checkpoints: {:?}", e);
-                    interval.tick().await;
+                    interval_failed.tick().await;
                     continue;
                 },
             };
@@ -96,6 +108,7 @@ impl TariPulseService {
                     .iter()
                     .any(|(local_height, local_hash)| height == local_height && hash == local_hash)
             });
+            info!(target: LOG_TARGET, "Checkpoints match: {}", passed_checkpoints);
             notify_passed_checkpoints.send(!passed_checkpoints).unwrap();
             interval.tick().await;
         }
@@ -109,10 +122,12 @@ impl TariPulseService {
         let historical_blocks = future::try_join_all(heights.into_iter().map(|height| {
             let mut node_clone = base_node_service.clone();
             async move {
-                node_clone.get_header(height).await.map(|header| {
-                    error!(target: LOG_TARGET, "Header not found for height: {}", height);
-                    let header = header.expect("Header not found");
-                    (header.height(), header.hash().to_hex())
+                node_clone.get_header(height).await.and_then(|header| match header {
+                    Some(header) => Ok((header.height(), header.hash().to_hex())),
+                    None => {
+                        error!(target: LOG_TARGET, "Header not found for height: {}", height);
+                        Err(CommsInterfaceError::InternalError("Header not found".to_string()).into())
+                    },
                 })
             }
         }))
@@ -124,7 +139,7 @@ impl TariPulseService {
     pub async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
         let mut client = self.get_dns_client().await?;
         let query = client.query(self.dns_name.clone(), DNSClass::IN, RecordType::TXT);
-        let response = query.await.unwrap();
+        let response = query.await?;
         let answers: &[Record] = response.answers();
         let checkpoints: Vec<(u64, String)> = answers
             .iter()
@@ -135,13 +150,12 @@ impl TariPulseService {
                         acc
                     });
                     let (height, hash) = ascii_txt.split_once(':')?;
-                    return Some((height.parse().unwrap(), hash.to_string()));
+                    return Some((height.parse().ok()?, hash.to_string()));
                 }
                 None
             })
             .collect();
 
-        debug!(target: LOG_TARGET, "DNS Checkpoints: {:?}", checkpoints);
         Ok(checkpoints)
     }
 }
