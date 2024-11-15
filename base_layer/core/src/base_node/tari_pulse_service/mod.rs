@@ -53,7 +53,6 @@ impl TariPulseService {
     }
 
     async fn get_dns_client(&self) -> Result<AsyncDnssecClient, anyhow::Error> {
-        // let shutdown = Shutdown::new();
         let timeout: Duration = Duration::from_secs(5);
         let trust_anchor = Self::default_trust_anchor();
 
@@ -65,7 +64,6 @@ impl TariPulseService {
             .await?;
 
         tokio::spawn(bg);
-        // task::spawn(future::select(shutdown.to_signal(), bg.fuse()));
 
         Ok(client)
     }

@@ -1656,11 +1656,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
-        let initial_sync_achieved = status_watch.borrow().bootstrapped;
-
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
-            initial_sync_achieved,
+            initial_sync_achieved: status_watch.borrow().bootstrapped,
             base_node_state: state.into(),
             failed_checkpoints,
         };
