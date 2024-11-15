@@ -170,7 +170,10 @@ where B: BlockchainBackend + 'static
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
             ))
-            .add_initializer(TariPulseServiceInitializer)
+            .add_initializer(TariPulseServiceInitializer::new(
+                base_node_config.tari_pulse_interval,
+                base_node_config.network,
+            ))
             .build()
             .await?;
 

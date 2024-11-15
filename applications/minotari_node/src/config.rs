@@ -142,6 +142,8 @@ pub struct BaseNodeConfig {
     pub state_machine: BaseNodeStateMachineConfig,
     /// Obscure GRPC error responses
     pub report_grpc_error: bool,
+    // Interval to check if the base node is still in sync with the network
+    pub tari_pulse_interval: Option<Duration>,
 }
 
 impl Default for BaseNodeConfig {
@@ -180,6 +182,7 @@ impl Default for BaseNodeConfig {
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             report_grpc_error: false,
+            tari_pulse_interval: None,
         }
     }
 }

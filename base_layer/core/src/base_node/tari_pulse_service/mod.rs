@@ -13,6 +13,7 @@ use hickory_client::{
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use tari_p2p::Network;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -25,7 +26,24 @@ const LOG_TARGET: &str = "c::bn::tari_pulse";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TariPulseConfig {
-    pub check_interval: Option<Duration>,
+    pub check_interval: Duration,
+    pub network: Network,
+}
+
+impl Default for TariPulseConfig {
+    fn default() -> Self {
+        Self {
+            check_interval: Duration::from_secs(120),
+            network: Network::default(),
+        }
+    }
+}
+
+fn get_network_dns_name(network: &Network) -> Name {
+    match network {
+        Network::NextNet => Name::from_str("checkpoints-nextnet.tari.com").unwrap(),
+        _ => panic!("Network not supported"),
+    }
 }
 
 pub struct TariPulseService {
@@ -34,11 +52,9 @@ pub struct TariPulseService {
 }
 
 impl TariPulseService {
-    pub async fn new() -> Result<Self, anyhow::Error> {
-        let dns_name = Name::from_str("checkpoints-nextnet.tari.com").unwrap();
-        let config = TariPulseConfig {
-            check_interval: Some(Duration::from_secs(120)),
-        };
+    pub async fn new(config: TariPulseConfig) -> Result<Self, anyhow::Error> {
+        let dns_name: Name = get_network_dns_name(&config.clone().network);
+        info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
         Ok(Self { dns_name, config })
     }
 
@@ -73,7 +89,7 @@ impl TariPulseService {
         mut base_node_service: LocalNodeCommsInterface,
         notify_passed_checkpoints: watch::Sender<bool>,
     ) {
-        let mut interval = time::interval(self.config.check_interval.unwrap());
+        let mut interval = time::interval(self.config.check_interval);
         let mut interval_failed = time::interval(Duration::from_millis(100));
         loop {
             let dns_checkpoints = match self.fetch_checkpoints().await {
@@ -85,8 +101,12 @@ impl TariPulseService {
                 },
             };
 
-            let heights = dns_checkpoints.iter().map(|(height, _)| *height).collect();
-            let local_checkpoints = match self.get_node_blocks(&mut base_node_service, heights).await {
+            let max_height_block = dns_checkpoints
+                .iter()
+                .max_by(|a, b| a.0.cmp(&b.0))
+                .ok_or(CommsInterfaceError::InternalError("No checkpoints found".to_string()))
+                .unwrap();
+            let local_checkpoints = match self.get_node_block(&mut base_node_service, max_height_block.0).await {
                 Ok(checkpoints) => checkpoints,
                 Err(e) => {
                     error!(target: LOG_TARGET, "Error fetching local checkpoints: {:?}", e);
@@ -94,37 +114,30 @@ impl TariPulseService {
                     continue;
                 },
             };
+            let passed_checkpoints = local_checkpoints.1 == max_height_block.1;
 
-            let passed_checkpoints = dns_checkpoints.iter().all(|(height, hash)| {
-                local_checkpoints
-                    .iter()
-                    .any(|(local_height, local_hash)| height == local_height && hash == local_hash)
-            });
             notify_passed_checkpoints.send(!passed_checkpoints).unwrap();
             interval.tick().await;
         }
     }
 
-    async fn get_node_blocks(
+    async fn get_node_block(
         &mut self,
         base_node_service: &mut LocalNodeCommsInterface,
-        heights: Vec<u64>,
-    ) -> Result<Vec<(u64, String)>, anyhow::Error> {
-        let historical_blocks = future::try_join_all(heights.into_iter().map(|height| {
-            let mut node_clone = base_node_service.clone();
-            async move {
-                node_clone.get_header(height).await.and_then(|header| match header {
-                    Some(header) => Ok((header.height(), header.hash().to_hex())),
-                    None => {
-                        error!(target: LOG_TARGET, "Header not found for height: {}", height);
-                        Err(CommsInterfaceError::InternalError("Header not found".to_string()).into())
-                    },
-                })
-            }
-        }))
-        .await?;
+        block_height: u64,
+    ) -> Result<(u64, String), anyhow::Error> {
+        let historical_block = base_node_service
+            .get_header(block_height)
+            .await
+            .and_then(|header| match header {
+                Some(header) => Ok((header.height(), header.hash().to_hex())),
+                None => {
+                    error!(target: LOG_TARGET, "Header not found for height: {}", block_height);
+                    Err(CommsInterfaceError::InternalError("Header not found".to_string()).into())
+                },
+            })?;
 
-        Ok(historical_blocks)
+        Ok(historical_block)
     }
 
     pub async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
@@ -163,7 +176,16 @@ impl TariPulseHandle {
     }
 }
 
-pub struct TariPulseServiceInitializer;
+pub struct TariPulseServiceInitializer {
+    interval: Option<Duration>,
+    network: Network,
+}
+
+impl TariPulseServiceInitializer {
+    pub fn new(interval: Option<Duration>, network: Network) -> Self {
+        Self { interval, network }
+    }
+}
 
 #[async_trait]
 impl ServiceInitializer for TariPulseServiceInitializer {
@@ -175,10 +197,14 @@ impl ServiceInitializer for TariPulseServiceInitializer {
             shutdown_signal: shutdown_signal.clone(),
             failed_checkpoints_notifier: receiver,
         });
+        let config = TariPulseConfig {
+            check_interval: self.interval.unwrap_or_default(),
+            network: self.network,
+        };
 
         context.spawn_when_ready(move |handles| async move {
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-            let mut tari_pulse_service = TariPulseService::new().await.unwrap();
+            let mut tari_pulse_service = TariPulseService::new(config).await.unwrap();
             let tari_pulse_service = tari_pulse_service.run(base_node_service, sender);
             futures::pin_mut!(tari_pulse_service);
             future::select(tari_pulse_service, shutdown_signal).await;
