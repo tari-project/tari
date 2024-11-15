@@ -94,6 +94,7 @@ async fn it_passes_if_large_output_block_is_valid() {
         .calculate_mmr_roots(chain_block.block().clone())
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_mr = mmr_roots.output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
@@ -131,6 +132,7 @@ async fn it_validates_when_a_coinbase_is_spent() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -173,6 +175,7 @@ async fn it_passes_if_large_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -203,6 +206,7 @@ async fn it_passes_if_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;

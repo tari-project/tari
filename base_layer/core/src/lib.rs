@@ -85,6 +85,7 @@ mod domain_hashing {
     hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
+    pub type PrunedOutputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 
     pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
@@ -109,6 +110,11 @@ mod domain_hashing {
     #[inline]
     pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {
         Ok(FixedHash::try_from(input_mmr.get_merkle_root()?)?)
+    }
+
+    #[inline]
+    pub fn block_output_mr_hash_from_pruned_mmr(output_mmr: &PrunedOutputMmr) -> Result<FixedHash, MrHashError> {
+        Ok(FixedHash::try_from(output_mmr.get_merkle_root()?)?)
     }
 
     #[derive(Debug, thiserror::Error)]

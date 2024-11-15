@@ -101,6 +101,6 @@ pub mod test {
         let mut header = get_header();
         header.nonce = 631;
         println!("{:?}", header);
-        assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(28).unwrap());
+        assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(13).unwrap());
     }
 }

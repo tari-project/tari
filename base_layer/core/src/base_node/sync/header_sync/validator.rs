@@ -245,13 +245,18 @@ mod test {
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
 
-    fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
+    fn setup() -> (
+        BlockHeaderSyncValidator<TempDatabase>,
+        AsyncBlockchainDb<TempDatabase>,
+        ConsensusManager,
+    ) {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (
-            BlockHeaderSyncValidator::new(db.clone().into(), rules, randomx_factory),
+            BlockHeaderSyncValidator::new(db.clone().into(), rules.clone(), randomx_factory),
             db.into(),
+            rules,
         )
     }
 
@@ -262,10 +267,11 @@ mod test {
         AsyncBlockchainDb<TempDatabase>,
         ChainHeader,
     ) {
-        let (validator, db) = setup();
+        let (validator, db, cm) = setup();
         let mut tip = db.fetch_tip_header().await.unwrap();
         for _ in 0..n {
             let mut header = BlockHeader::from_previous(tip.header());
+            header.version = cm.consensus_constants(header.height).blockchain_version();
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_smt_size += 1;
@@ -301,7 +307,7 @@ mod test {
 
         #[tokio::test]
         async fn it_errors_if_hash_does_not_exist() {
-            let (mut validator, _) = setup();
+            let (mut validator, _, _cm) = setup();
             let start_hash = vec![0; 32];
             let err = validator
                 .initialize_state(&start_hash.clone().try_into().unwrap())

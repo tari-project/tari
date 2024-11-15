@@ -95,6 +95,7 @@ pub async fn create_block(
     range_proof_type: Option<RangeProofType>,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
+    header.version = rules.consensus_constants(header.height).blockchain_version();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     let reward = spec.reward_override.unwrap_or_else(|| {

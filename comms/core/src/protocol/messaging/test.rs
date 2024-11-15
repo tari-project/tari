@@ -49,7 +49,6 @@ use crate::{
         mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
         node_id,
         node_identity::build_node_identity,
-        transport,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -108,34 +107,47 @@ async fn spawn_messaging_protocol() -> (
 
 #[tokio::test]
 async fn new_inbound_substream_handling() {
-    let (peer_manager, _, _, proto_tx, _, mut inbound_msg_rx, mut events_rx, _shutdown) =
+    let (peer_manager, _, conn_man_mock, proto_tx, outbound_msg_tx, mut inbound_msg_rx, mut events_rx, _shutdown) =
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
     let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-    peer_manager
-        .add_peer(Peer::new(
-            pk.clone(),
-            expected_node_id.clone(),
-            MultiaddressesWithStats::default(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_CLIENT,
-            Default::default(),
-            Default::default(),
-        ))
-        .await
-        .unwrap();
+    let peer1 = Peer::new(
+        pk.clone(),
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+    peer_manager.add_peer(peer1.clone()).await.unwrap();
 
-    // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
-    let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
+    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let peer2 = Peer::new(
+        pk.clone(),
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
 
-    let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    let (_, conn1_state, conn2, _conn2_state) = create_peer_connection_mock_pair(peer1.clone(), peer2.clone()).await;
 
-    let mut framed_ours = MessagingProtocol::framed(stream_ours);
-    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
+    conn_man_mock.add_active_connection(conn2).await;
 
-    // Notify the messaging protocol that a new substream has been established that wants to talk the messaging.
-    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
+    let (reply_tx, _reply_rx) = oneshot::channel();
+    let out_msg = OutboundMessage {
+        tag: MessageTag::new(),
+        reply: reply_tx.into(),
+        peer_node_id: peer1.node_id.clone(),
+        body: TEST_MSG1.clone(),
+    };
+    outbound_msg_tx.send(out_msg).unwrap();
+
+    let stream_theirs = conn1_state.next_incoming_substream().await.unwrap();
     proto_tx
         .send(ProtocolNotification::new(
             MESSAGING_PROTOCOL_ID.clone(),
@@ -352,30 +364,35 @@ async fn many_concurrent_send_message_requests_that_fail() {
 
 #[tokio::test]
 async fn new_inbound_substream_only_single_session_permitted() {
-    let (peer_manager, _, _, proto_tx, _, mut inbound_msg_rx, _, _shutdown) = spawn_messaging_protocol().await;
+    let (peer_manager, node_identity_1, conn_man_mock, proto_tx, _, mut inbound_msg_rx, _, _shutdown) =
+        spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
+    let peer1 = node_identity_1.to_peer();
+
     let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-    peer_manager
-        .add_peer(Peer::new(
-            pk.clone(),
-            expected_node_id.clone(),
-            MultiaddressesWithStats::default(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_CLIENT,
-            Default::default(),
-            Default::default(),
-        ))
-        .await
-        .unwrap();
+    let peer2 = Peer::new(
+        pk.clone(),
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+    peer_manager.add_peer(peer2.clone()).await.unwrap();
+
+    let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(peer1.clone(), peer2.clone()).await;
+
+    conn_man_mock.add_active_connection(conn1).await;
 
     // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
-    let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
+    // let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
     // Spawn a task to deal with incoming substreams
     tokio::spawn({
         let expected_node_id = expected_node_id.clone();
         async move {
-            while let Some(stream_theirs) = muxer_theirs.incoming_mut().next().await {
+            while let Some(stream_theirs) = conn2_state.next_incoming_substream().await {
                 proto_tx
                     .send(ProtocolNotification::new(
                         MESSAGING_PROTOCOL_ID.clone(),
@@ -388,7 +405,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
     });
 
     // Open first stream
-    let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    let stream_ours = conn1_state.open_substream().await.unwrap();
     let mut framed_ours = MessagingProtocol::framed(stream_ours);
     framed_ours.send(TEST_MSG1.clone()).await.unwrap();
 
@@ -401,7 +418,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
     assert_eq!(in_msg.body, TEST_MSG1);
 
     // Check the second stream closes immediately
-    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    let stream_ours2 = conn1_state.open_substream().await.unwrap();
 
     let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
     // Check that it eventually exits. The first send will initiate the substream and send. Once the other side closes
@@ -431,7 +448,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
     framed_ours.close().await.unwrap();
 
     // Open another one for messaging
-    let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    let stream_ours = conn1_state.open_substream().await.unwrap();
     let mut framed_ours = MessagingProtocol::framed(stream_ours);
     framed_ours.send(TEST_MSG1.clone()).await.unwrap();
 

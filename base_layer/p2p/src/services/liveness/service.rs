@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc, time::Instant};
+use std::{
+    iter,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -54,6 +58,8 @@ use crate::{
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
+
+pub const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(30);
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream, TPingStream> {
@@ -131,9 +137,7 @@ where
                         warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
                     }
                     if self.config.max_allowed_ping_failures > 0 {
-                        if let Err(err) = self.disconnect_failed_peers().await {
-                            error!(target: LOG_TARGET, "Error occurred while disconnecting failed peers: {}", err);
-                        }
+                        self.disconnect_failed_peers().await;
                     }
                 },
 
@@ -184,7 +188,7 @@ where
                 self.send_pong(ping_pong_msg.nonce, public_key).await?;
                 self.state.inc_pongs_sent();
 
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Received ping from peer '{}' with useragent '{}' (Trace: {})",
                     node_id.short_str(),
@@ -192,7 +196,7 @@ where
                     message_tag,
                 );
 
-                let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into());
+                let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into(), ping_pong_msg.nonce);
                 self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
             },
             PingPong::Pong => {
@@ -208,7 +212,7 @@ where
                 }
 
                 let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
                     node_id.short_str(),
@@ -219,7 +223,12 @@ where
                     message_tag,
                 );
 
-                let pong_event = PingPongEvent::new(node_id.clone(), maybe_latency, ping_pong_msg.metadata.into());
+                let pong_event = PingPongEvent::new(
+                    node_id.clone(),
+                    maybe_latency,
+                    ping_pong_msg.metadata.into(),
+                    ping_pong_msg.nonce,
+                );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
                 if let Some(address) = source_peer.last_address_used() {
@@ -232,9 +241,14 @@ where
         Ok(())
     }
 
-    async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+    async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-        self.state.add_inflight_ping(msg.nonce, node_id.clone());
+        let nonce = msg.nonce;
+        self.state.add_inflight_ping(
+            nonce,
+            node_id.clone(),
+            self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+        );
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
@@ -246,7 +260,7 @@ where
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
 
-        Ok(())
+        Ok(nonce)
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
@@ -267,9 +281,17 @@ where
         use LivenessRequest::*;
         match request {
             SendPing(node_id) => {
-                self.send_ping(node_id).await?;
+                let nonce = self.send_ping(node_id).await?;
                 self.state.inc_pings_sent();
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(Some(vec![nonce])))
+            },
+            SendPings(node_ids) => {
+                let mut nonces = Vec::with_capacity(node_ids.len());
+                for node_id in node_ids {
+                    nonces.push(self.send_ping(node_id).await?);
+                    self.state.inc_pings_sent();
+                }
+                Ok(LivenessResponse::Ok(Some(nonces)))
             },
             GetPingCount => {
                 let ping_count = self.get_ping_count();
@@ -289,21 +311,21 @@ where
             },
             SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             AddMonitoredPeer(node_id) => {
                 let node_id_exists = { self.monitored_peers.read().await.iter().any(|val| val == &node_id) };
                 if !node_id_exists {
                     self.monitored_peers.write().await.push(node_id.clone());
                 }
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             RemoveMonitoredPeer(node_id) => {
                 let node_id_exists = { self.monitored_peers.read().await.iter().position(|val| *val == node_id) };
                 if let Some(pos) = node_id_exists {
                     self.monitored_peers.write().await.swap_remove(pos);
                 }
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
         }
     }
@@ -333,7 +355,11 @@ where
 
         for peer in selected_peers {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-            self.state.add_inflight_ping(msg.nonce, peer.clone());
+            self.state.add_inflight_ping(
+                msg.nonce,
+                peer.clone(),
+                self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+            );
             self.outbound_messaging
                 .send_direct_node_id(
                     peer,
@@ -348,24 +374,31 @@ where
         Ok(())
     }
 
-    async fn disconnect_failed_peers(&mut self) -> Result<(), LivenessError> {
+    async fn disconnect_failed_peers(&mut self) {
         let max_allowed_ping_failures = self.config.max_allowed_ping_failures;
+        let mut node_ids = Vec::new();
         for node_id in self
             .state
             .failed_pings_iter()
             .filter(|(_, n)| **n > max_allowed_ping_failures)
             .map(|(node_id, _)| node_id)
         {
-            if let Some(mut conn) = self.connectivity.get_connection(node_id.clone()).await? {
+            if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone()).await {
                 debug!(
                     target: LOG_TARGET,
                     "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
                 );
-                conn.disconnect(Minimized::No).await?;
+                match conn.disconnect(Minimized::No).await {
+                    Ok(_) => {
+                        node_ids.push(node_id.clone());
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", node_id, err);
+                    },
+                }
             }
         }
-        self.state.clear_failed_pings();
-        Ok(())
+        self.state.clear_failed_pings(&node_ids);
     }
 
     fn publish_event(&mut self, event: LivenessEvent) {
@@ -613,6 +646,7 @@ mod test {
         state.add_inflight_ping(
             msg.inner.as_ref().map(|i| i.nonce).unwrap(),
             msg.source_peer.node_id.clone(),
+            MAX_INFLIGHT_TTL,
         );
 
         // A stream which emits an inflight pong message and an unexpected one

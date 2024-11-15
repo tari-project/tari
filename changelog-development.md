@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.9.0-pre.0](https://github.com/tari-project/tari/compare/v1.8.0-pre.0...v1.9.0-pre.0) (2024-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* add new header field (#6686)
+
+### Features
+
+* add new header field ([#6686](https://github.com/tari-project/tari/issues/6686)) ([69a5872](https://github.com/tari-project/tari/commit/69a5872e52d8332e0b46e50614b2105bed0d22c9))
+* update ledger instructions ([#6673](https://github.com/tari-project/tari/issues/6673)) ([06f7a68](https://github.com/tari-project/tari/commit/06f7a6830661ffdc88cd0b90cf4e139123786225))
+* verify active base node peer connections and disconnect if stale ([#6655](https://github.com/tari-project/tari/issues/6655)) ([e61b5e2](https://github.com/tari-project/tari/commit/e61b5e2d172f782e953f351a81723713b150c57d))
+
+
+### Bug Fixes
+
+* **comms:** ensure that inbound messaging terminates on disconnect ([#6653](https://github.com/tari-project/tari/issues/6653)) ([47b4877](https://github.com/tari-project/tari/commit/47b48770f84e05c3dce1926d0a8d21eee4ccfe21))
+
 ## [1.8.0-pre.0](https://github.com/tari-project/tari/compare/v1.7.0-pre.4...v1.8.0-pre.0) (2024-10-28)
 
 
