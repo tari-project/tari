@@ -1646,12 +1646,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
-        let failed_checkpoints_status = *self.tari_pulse.get_failed_checkpoints_notifier();
-        info!(
-            target: LOG_TARGET,
-            "Sending TipInfo response to client. Failed checkpoints: {}",
-            failed_checkpoints_status
-        );
+        let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
 
         let meta = handler
             .get_metadata()
@@ -1662,17 +1657,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
         let initial_sync_achieved = status_watch.borrow().bootstrapped;
-        info!(
-            target: LOG_TARGET,
-            "Sending TipInfo response to client. Bootstrapped: {}",
-            initial_sync_achieved
-        );
 
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
             initial_sync_achieved,
             base_node_state: state.into(),
-            failed_checkpoints: failed_checkpoints_status,
+            failed_checkpoints,
         };
 
         trace!(target: LOG_TARGET, "Sending MetaData response to client");

@@ -97,18 +97,11 @@ impl TariPulseService {
                 },
             };
 
-            dns_checkpoints.iter().for_each(|(height, hash)| {
-                info!(target: LOG_TARGET, "DNS Checkpoint: Height: {}, Hash: {}", height, hash);
-            });
-            local_checkpoints.iter().for_each(|(height, hash)| {
-                info!(target: LOG_TARGET, "Local Checkpoint: Height: {}, Hash: {}", height, hash);
-            });
             let passed_checkpoints = dns_checkpoints.iter().all(|(height, hash)| {
                 local_checkpoints
                     .iter()
                     .any(|(local_height, local_hash)| height == local_height && hash == local_hash)
             });
-            info!(target: LOG_TARGET, "Checkpoints match: {}", passed_checkpoints);
             notify_passed_checkpoints.send(!passed_checkpoints).unwrap();
             interval.tick().await;
         }
