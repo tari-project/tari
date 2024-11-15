@@ -218,12 +218,12 @@ jobs:
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')
         run: |
-          vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
+          # vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
-          choco upgrade llvm -y
+          # choco upgrade llvm -y
           # psutils is out of date
           # choco upgrade psutils -y
-          choco upgrade openssl -y
+          # choco upgrade openssl -y
           # Should already be installed
           # choco upgrade strawberryperl -y
           choco upgrade protoc -y
