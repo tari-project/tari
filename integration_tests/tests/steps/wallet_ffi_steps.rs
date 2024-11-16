@@ -78,11 +78,13 @@ async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
 
 #[then(expr = "I stop ffi wallet {word}")]
 async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
-    let address = world.get_wallet_address_base58(&wallet).await.unwrap();
-    let ffi_wallet = world.ffi_wallets.get_mut(&wallet).unwrap();
-    println!("Adding wallet {}", wallet);
-    world.stopped_wallet_addresses.insert(wallet, address);
-    ffi_wallet.destroy();
+    if let Ok(address) = world.get_wallet_address_base58(&wallet).await {
+        println!("Adding wallet '{}' to stopped_wallet_addresses", wallet);
+        world.stopped_wallet_addresses.insert(wallet.clone(), address);
+    }
+    if let Some(ffi_wallet) = world.ffi_wallets.get_mut(&wallet) {
+        ffi_wallet.destroy();
+    }
 }
 
 #[then(expr = "I retrieve the mnemonic word list for {word}")]

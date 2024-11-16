@@ -64,7 +64,7 @@ pub enum ServiceType {
     Udp,
 }
 
-pub async fn wait_for_service(port: u64, service_type: ServiceType) {
+pub async fn wait_for_service(port: u64, service_type: ServiceType, process_name: &str) {
     // Check if we can open a socket to a port.
     let max_tries = 4 * 60;
     let mut attempts = 0;
@@ -74,18 +74,35 @@ pub async fn wait_for_service(port: u64, service_type: ServiceType) {
         match service_type {
             ServiceType::Tcp => {
                 if TcpSocket::new_v4().unwrap().connect(addr).await.is_ok() {
+                    println!(
+                        "Service '{:?}' on port '{}' started for '{}' after {} ms",
+                        service_type,
+                        port,
+                        process_name,
+                        attempts * 250
+                    );
                     return;
                 }
             },
             ServiceType::Udp => {
                 if UdpSocket::bind(addr).await.is_ok() {
+                    println!(
+                        "Service '{:?}' on port '{}' started for '{}' after {} ms",
+                        service_type,
+                        port,
+                        process_name,
+                        attempts * 250
+                    );
                     return;
                 }
             },
         }
 
         if attempts >= max_tries {
-            panic!("Service {:?} on port {} never started", service_type, port);
+            panic!(
+                "Service '{:?}' on port '{}' never started for '{}'",
+                service_type, port, process_name
+            );
         }
 
         tokio::time::sleep(Duration::from_millis(250)).await;

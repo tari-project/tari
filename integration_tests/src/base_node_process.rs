@@ -241,9 +241,9 @@ pub async fn spawn_base_node_with_config(
     }
 
     debug!(target: LOG_TARGET, "Wait for service...");
-    wait_for_service(tcp_port, ServiceType::Tcp).await;
-    wait_for_service(udp_port, ServiceType::Udp).await;
-    wait_for_service(grpc_port, ServiceType::Tcp).await;
+    wait_for_service(tcp_port, ServiceType::Tcp, &bn_name).await;
+    // wait_for_service(udp_port, ServiceType::Udp, &bn_name).await;
+    wait_for_service(grpc_port, ServiceType::Tcp, &bn_name).await;
     debug!(
         target: LOG_TARGET,
         "Spawned base node: name={}; tcp_port={}; udp_port={}; grpc_port={}; is_seed_node={}",

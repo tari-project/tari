@@ -44,11 +44,11 @@ impl CommsConfig {
         unsafe {
             let _public_addr_tcp = format!("/ip4/127.0.0.1/tcp/{}", tcp_port);
             let listen_addr_tcp = format!("/ip4/0.0.0.0/tcp/{}", tcp_port);
-            let _public_addr_udp = format!("/ip4/127.0.0.1/udp/{}/quic-v1", udp_port);
+            let public_addr_udp = format!("/ip4/127.0.0.1/udp/{}/quic-v1", udp_port);
             let listen_addr_udp = format!("/ip4/0.0.0.0/udp/{}/quic-v1", udp_port);
 
             ptr = ffi_import::comms_config_create(
-                null_mut(),
+                CString::new(public_addr_udp).unwrap().into_raw(),
                 CString::new(format!("{}, {}", listen_addr_tcp, listen_addr_udp))
                     .unwrap()
                     .into_raw(),

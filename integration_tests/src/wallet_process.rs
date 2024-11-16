@@ -194,9 +194,9 @@ pub async fn spawn_wallet(
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    wait_for_service(tcp_port, ServiceType::Tcp).await;
-    wait_for_service(udp_port, ServiceType::Udp).await;
-    wait_for_service(grpc_port, ServiceType::Tcp).await;
+    wait_for_service(tcp_port, ServiceType::Tcp, &wallet_name).await;
+    // wait_for_service(udp_port, ServiceType::Udp, &wallet_name).await;
+    wait_for_service(grpc_port, ServiceType::Tcp, &wallet_name).await;
 
     if let Some((_, base_node_request)) = base_node {
         let mut wallet_client = create_wallet_client(world, wallet_name.clone())
