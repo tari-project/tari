@@ -64,14 +64,10 @@ strum = { version = "0.22", features = ["derive"] }
 thiserror = "^1.0.26"
 tokio = { version = "1.36", features = ["signal"] }
 tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }
-hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls"] }
 
 # Metrics
 tari_metrics = { path = "../../infrastructure/metrics", optional = true, features = [
     "server",
-] }
-tokio-stream = { version = "0.1.9", default-features = false, features = [
-    "time",
 ] }
 
 [features]

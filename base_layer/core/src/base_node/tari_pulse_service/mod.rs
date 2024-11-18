@@ -1,3 +1,25 @@
+// Copyright 2024. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{str::FromStr, time::Duration};
 
 use futures::future;
@@ -39,10 +61,14 @@ impl Default for TariPulseConfig {
     }
 }
 
-fn get_network_dns_name(network: &Network) -> Name {
+fn get_network_dns_name(network: Network) -> Name {
     match network {
-        Network::NextNet => Name::from_str("checkpoints-nextnet.tari.com").unwrap(),
-        _ => panic!("Network not supported"),
+        Network::NextNet => Name::from_str("checkpoints-nextnet.tari.com").expect("infallible"),
+        Network::MainNet => Name::from_str("checkpoints-mainnet.tari.com").expect("infallible"),
+        Network::Esmeralda => Name::from_str("checkpoints-esmeralda.tari.com").expect("infallible"),
+        Network::StageNet => Name::from_str("checkpoints-stagenet.tari.com").expect("infallible"),
+        Network::Igor => Name::from_str("checkpoints-igor.tari.com").expect("infallible"),
+        Network::LocalNet => Name::from_str("checkpoints-localnet.tari.com").expect("infallible"),
     }
 }
 
@@ -53,7 +79,7 @@ pub struct TariPulseService {
 
 impl TariPulseService {
     pub async fn new(config: TariPulseConfig) -> Result<Self, anyhow::Error> {
-        let dns_name: Name = get_network_dns_name(&config.clone().network);
+        let dns_name: Name = get_network_dns_name(config.clone().network);
         info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
         Ok(Self { dns_name, config })
     }
@@ -84,7 +110,7 @@ impl TariPulseService {
         Ok(client)
     }
 
-    async fn run(
+    pub async fn run(
         &mut self,
         mut base_node_service: LocalNodeCommsInterface,
         notify_passed_checkpoints: watch::Sender<bool>,
@@ -92,33 +118,34 @@ impl TariPulseService {
         let mut interval = time::interval(self.config.check_interval);
         let mut interval_failed = time::interval(Duration::from_millis(100));
         loop {
-            let dns_checkpoints = match self.fetch_checkpoints().await {
-                Ok(checkpoints) => checkpoints,
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Error fetching DNS checkpoints: {:?}", e);
+            let passed_checkpoints = match self.passed_checkpoints(&mut base_node_service).await {
+                Ok(passed) => passed,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "Error checking if node passed checkpoints: {:?}", err);
                     interval_failed.tick().await;
                     continue;
                 },
             };
 
-            let max_height_block = dns_checkpoints
-                .iter()
-                .max_by(|a, b| a.0.cmp(&b.0))
-                .ok_or(CommsInterfaceError::InternalError("No checkpoints found".to_string()))
-                .unwrap();
-            let local_checkpoints = match self.get_node_block(&mut base_node_service, max_height_block.0).await {
-                Ok(checkpoints) => checkpoints,
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Error fetching local checkpoints: {:?}", e);
-                    interval_failed.tick().await;
-                    continue;
-                },
-            };
-            let passed_checkpoints = local_checkpoints.1 == max_height_block.1;
-
-            notify_passed_checkpoints.send(!passed_checkpoints).unwrap();
+            notify_passed_checkpoints
+                .send(!passed_checkpoints)
+                .expect("Channel should be open");
             interval.tick().await;
         }
+    }
+
+    async fn passed_checkpoints(
+        &mut self,
+        base_node_service: &mut LocalNodeCommsInterface,
+    ) -> Result<bool, anyhow::Error> {
+        let dns_checkpoints = self.fetch_checkpoints().await?;
+
+        let max_height_block = dns_checkpoints
+            .iter()
+            .max_by(|a, b| a.0.cmp(&b.0))
+            .ok_or(CommsInterfaceError::InternalError("No checkpoints found".to_string()))?;
+        let local_checkpoints = self.get_node_block(base_node_service, max_height_block.0).await?;
+        Ok(local_checkpoints.1 == max_height_block.1)
     }
 
     async fn get_node_block(
@@ -133,14 +160,14 @@ impl TariPulseService {
                 Some(header) => Ok((header.height(), header.hash().to_hex())),
                 None => {
                     error!(target: LOG_TARGET, "Header not found for height: {}", block_height);
-                    Err(CommsInterfaceError::InternalError("Header not found".to_string()).into())
+                    Err(CommsInterfaceError::InternalError("Header not found".to_string()))
                 },
             })?;
 
         Ok(historical_block)
     }
 
-    pub async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
+    async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
         let mut client = self.get_dns_client().await?;
         let query = client.query(self.dns_name.clone(), DNSClass::IN, RecordType::TXT);
         let response = query.await?;
@@ -177,12 +204,12 @@ impl TariPulseHandle {
 }
 
 pub struct TariPulseServiceInitializer {
-    interval: Option<Duration>,
+    interval: Duration,
     network: Network,
 }
 
 impl TariPulseServiceInitializer {
-    pub fn new(interval: Option<Duration>, network: Network) -> Self {
+    pub fn new(interval: Duration, network: Network) -> Self {
         Self { interval, network }
     }
 }
@@ -198,13 +225,15 @@ impl ServiceInitializer for TariPulseServiceInitializer {
             failed_checkpoints_notifier: receiver,
         });
         let config = TariPulseConfig {
-            check_interval: self.interval.unwrap_or_default(),
+            check_interval: self.interval,
             network: self.network,
         };
 
         context.spawn_when_ready(move |handles| async move {
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-            let mut tari_pulse_service = TariPulseService::new(config).await.unwrap();
+            let mut tari_pulse_service = TariPulseService::new(config)
+                .await
+                .expect("Should be able to get the service");
             let tari_pulse_service = tari_pulse_service.run(base_node_service, sender);
             futures::pin_mut!(tari_pulse_service);
             future::select(tari_pulse_service, shutdown_signal).await;

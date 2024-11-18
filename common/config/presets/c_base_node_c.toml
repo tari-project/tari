@@ -45,6 +45,9 @@
 # Obscure GRPC error responses (default = false)
 #report_grpc_error = false
 
+# Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
+# tari_pulse_interval = 120
+
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024
