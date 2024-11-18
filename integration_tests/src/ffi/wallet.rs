@@ -301,8 +301,8 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_tari_interactive_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_interactive_address error {}", error);
-                panic!("wallet_get_tari_interactive_address error");
+                println!("wallet_get_tari_interactive_address (get_address)  error {}", error);
+                panic!("wallet_get_tari_interactive_address (get_address) error");
             }
         }
         WalletAddress::from_ptr(ptr)

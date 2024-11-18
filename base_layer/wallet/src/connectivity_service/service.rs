@@ -56,7 +56,7 @@ pub(crate) const CONNECTIVITY_WAIT: Duration = Duration::from_secs(5);
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {
-    Connecting,
+    Connecting = 0,
     Online,
     Offline,
 }

@@ -227,7 +227,9 @@ impl fmt::Display for TransactionServiceRequest {
             } => write!(
                 f,
                 "SendTransaction (amount: {}, to: {}, message: {})",
-                amount, destination, message
+                amount,
+                destination.to_base58(),
+                message
             ),
             Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
             Self::SpendBackupPreMineUtxo {

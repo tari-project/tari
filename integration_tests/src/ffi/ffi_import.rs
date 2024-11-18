@@ -362,7 +362,9 @@ extern "C" {
     // pub fn transport_config_destroy(transport: *mut TariTransportConfig);
     pub fn comms_config_create(
         public_address: *const c_char,
-        listen_address: *const c_char,
+        listen_addresses: *const c_char,
+        enable_mdns: bool,
+        reachability_mode_private: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;
     pub fn comms_config_destroy(wc: *mut TariCommsConfig);

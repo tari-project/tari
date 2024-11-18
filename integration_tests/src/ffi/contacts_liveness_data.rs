@@ -20,9 +20,10 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::{convert::TryFrom, ptr::null_mut};
 
 use libc::c_void;
+use tari_contacts::contacts_service::service::ContactMessageType;
 
 use super::{ffi_import, FFIString, WalletAddress};
 
@@ -81,17 +82,23 @@ impl ContactsLivenessData {
         FFIString::from_ptr(ptr).as_string()
     }
 
-    pub fn get_message_type(&self) -> i32 {
+    pub fn get_message_type(&self) -> ContactMessageType {
         let message_type;
         let mut error = 0;
         unsafe {
             message_type = ffi_import::liveness_data_get_message_type(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_message_type error {}", error);
-                panic!("liveness_data_get_message_type error");
+                println!("liveness_data_get_message_type ffi error {}", error);
+                panic!("liveness_data_get_message_type ffi error");
             }
         }
-        message_type
+        match ContactMessageType::from_byte(u8::try_from(message_type).unwrap()) {
+            Some(val) => val,
+            None => {
+                println!("liveness_data_get_message_type conversion error");
+                panic!("liveness_data_get_message_type conversion error");
+            },
+        }
     }
 
     pub fn get_online_status(&self) -> String {
