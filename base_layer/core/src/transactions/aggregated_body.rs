@@ -21,29 +21,36 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
     cmp::max,
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::hex::Hex;
 
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
-    transaction_components::{
-        KernelFeatures,
-        OutputType,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    block_output_mr_hash_from_pruned_mmr,
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroMinotari,
+        transaction_components::{
+            KernelFeatures,
+            OutputType,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
     },
-    weight::TransactionWeight,
+    MrHashError,
+    PrunedOutputMmr,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -445,6 +452,28 @@ impl AggregateBody {
         self.outputs
             .iter()
             .any(|k| k.features.output_type == OutputType::Coinbase)
+    }
+
+    pub fn calculate_header_block_output_mr(
+        normal_output_mr: FixedHash,
+        coinbases: &Vec<TransactionOutput>,
+    ) -> Result<FixedHash, MrHashError> {
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in coinbases {
+            block_output_mmr.push(o.hash().to_vec())?;
+        }
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+    }
+
+    pub fn calculate_header_normal_output_mr(&self) -> Result<FixedHash, MrHashError> {
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in self.outputs() {
+            if !o.features.is_coinbase() {
+                normal_output_mmr.push(o.hash().to_vec())?;
+            }
+        }
+        Ok(FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?)
     }
 }
 
