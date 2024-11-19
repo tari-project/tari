@@ -29,33 +29,24 @@ pub type TariPendingInboundTransaction = c_void;
 pub type TariCompletedTransaction = c_void;
 pub type TariTransactionSendStatus = c_void;
 pub type TariContactsLivenessData = c_void;
+pub type TariRangeProof = c_void;
 pub type TariBalance = c_void;
 pub type TariWallet = c_void;
 pub type TariWalletAddress = c_void;
 pub type ByteVector = c_void;
-#[allow(dead_code)]
 pub type TariFeePerGramStat = c_void;
-#[allow(dead_code)]
 pub type TariTypeTag = c_void;
 pub type TariVector = c_void;
 pub type TariCoinPreview = c_void;
 pub type TariTransactionKernel = c_void;
 pub type TariPublicKey = c_void;
-#[allow(dead_code)]
 pub type TariPublicKeys = c_void;
-#[allow(dead_code)]
 pub type TariPrivateKey = c_void;
-#[allow(dead_code)]
 pub type TariComAndPubSignature = c_void;
-#[allow(dead_code)]
 pub type TariOutputFeatures = c_void;
-#[allow(dead_code)]
 pub type TariCovenant = c_void;
-#[allow(dead_code)]
 pub type TariEncryptedOpenings = c_void;
-#[allow(dead_code)]
 pub type TariUnblindedOutput = c_void;
-#[allow(dead_code)]
 pub type TariUnblindedOutputs = c_void;
 pub type TariContact = c_void;
 pub type TariContacts = c_void;
@@ -63,13 +54,11 @@ pub type TariCompletedTransactions = c_void;
 pub type TariPendingOutboundTransactions = c_void;
 pub type TariPendingOutboundTransaction = c_void;
 pub type TariPendingInboundTransactions = c_void;
-#[allow(dead_code)]
 pub type TariUtxoSort = c_void;
-#[allow(dead_code)]
 pub type EmojiSet = c_void;
-#[allow(dead_code)]
 pub type TariFeePerGramStats = c_void;
 pub type TariBaseNodeState = c_void;
+pub type ContactsServiceHandle = c_void;
 
 #[cfg_attr(windows, link(name = "minotari_wallet_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "minotari_wallet_ffi"))]
@@ -107,11 +96,6 @@ extern "C" {
     pub fn tari_address_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn tari_address_destroy(address: *mut TariWalletAddress);
     pub fn tari_address_get_bytes(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut ByteVector;
-    pub fn tari_address_from_private_key(
-        secret_key: *mut TariPrivateKey,
-        network: c_uint,
-        error_out: *mut c_int,
-    ) -> *mut TariWalletAddress;
     pub fn tari_address_from_base58(address: *const c_char, error_out: *mut c_int) -> *mut TariWalletAddress;
     pub fn tari_address_to_emoji_id(address: *mut TariWalletAddress, error_out: *mut c_int) -> *mut c_char;
     pub fn emoji_id_to_tari_address(emoji: *const c_char, error_out: *mut c_int) -> *mut TariWalletAddress;
@@ -137,6 +121,7 @@ extern "C" {
         encrypted_data: *mut TariEncryptedOpenings,
         minimum_value_promise: c_ulonglong,
         script_lock_height: c_ulonglong,
+        range_proof: *mut TariRangeProof,
         error_out: *mut c_int,
     ) -> *mut TariUnblindedOutput;
     pub fn tari_unblinded_output_destroy(output: *mut TariUnblindedOutput);
@@ -176,6 +161,7 @@ extern "C" {
         output_type: c_ushort,
         maturity: c_ulonglong,
         metadata: *const ByteVector,
+        range_proof_type: c_ushort,
         error_out: *mut c_int,
     ) -> *mut TariOutputFeatures;
     pub fn output_features_destroy(output_features: *mut TariOutputFeatures);
@@ -186,7 +172,12 @@ extern "C" {
     ) -> *mut TariSeedWords;
     pub fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint;
     pub fn seed_words_get_at(seed_words: *mut TariSeedWords, position: c_uint, error_out: *mut c_int) -> *mut c_char;
-    pub fn seed_words_push_word(seed_words: *mut TariSeedWords, word: *const c_char, error_out: *mut c_int) -> c_uchar;
+    pub fn seed_words_push_word(
+        seed_words: *mut TariSeedWords,
+        word: *const c_char,
+        passphrase: *const c_char,
+        error_out: *mut c_int,
+    ) -> c_uchar;
     pub fn seed_words_destroy(seed_words: *mut TariSeedWords);
     pub fn contact_create(
         alias: *const c_char,
@@ -204,7 +195,7 @@ extern "C" {
         liveness_data: *mut TariContactsLivenessData,
         error_out: *mut c_int,
     ) -> *mut TariWalletAddress;
-    pub fn liveness_data_get_latency(liveness_data: *mut TariContactsLivenessData, error_out: *mut c_int) -> c_int;
+    pub fn liveness_data_get_latency(liveness_data: *mut TariContactsLivenessData, error_out: *mut c_int) -> c_uint;
     pub fn liveness_data_get_last_seen(
         liveness_data: *mut TariContactsLivenessData,
         error_out: *mut c_int,
@@ -381,7 +372,7 @@ extern "C" {
         database_name: *const c_char,
         datastore_path: *const c_char,
         log_path: *const c_char,
-        log_level: c_int,
+        log_verbosity: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
@@ -430,7 +421,7 @@ extern "C" {
         callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
         callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
-        callback_base_node_state_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
+        callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;
@@ -508,8 +499,8 @@ extern "C" {
         amount: c_ulonglong,
         commitments: *mut TariVector,
         fee_per_gram: c_ulonglong,
-        num_kernels: c_ulonglong,
-        num_outputs: c_ulonglong,
+        num_kernels: c_uint,
+        num_outputs: c_uint,
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn wallet_get_num_confirmations_required(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong;
@@ -624,5 +615,5 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat);
-    pub fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut c_void;
+    pub fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut ContactsServiceHandle;
 }

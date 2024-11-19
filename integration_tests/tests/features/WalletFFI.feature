@@ -10,8 +10,7 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    # Failing with: (exit code: 0xc0000005, STATUS_ACCESS_VIOLATION)
-    @broken
+    @critical
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         When I have wallet SPECTATOR connected to base node BASE
@@ -284,3 +283,4 @@ Feature: Wallet FFI
         And The fee per gram stats for FFI_WALLET are 18, 37, 56
         When mining node MINER mines 1 blocks
         And The fee per gram stats for FFI_WALLET are 1, 1, 1
+        And I stop ffi wallet FFI_WALLET

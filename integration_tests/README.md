@@ -45,9 +45,10 @@ In its simplest form you can run the tests from the project route with `cargo te
 
 ## Concurrency
 
-- The set of wallet FFI tests (`"@wallet-ffi and not @broken"`) should not be run with `--concurrency` greater than 1, 
-  and because it defaults to 64, it should be limited to `--concurrency 1` on the command line. This is also true for 
-  running it in CI.
+- The set of wallet FFI tests (`"@wallet-ffi and not @broken"`) should not be run with `--concurrency` greater than 1. 
+  We coded `.max_concurrent_scenarios(1)`, as concurrency defaults to 64, but it can also be limited to 
+  `--concurrency 1` on the command line. This is also true for running it in CI.
+  **Note:** Specifying `--concurrency X` on the command line overrides `max_concurrent_scenarios(1)` set in the code.  
 
   ```shell
   cargo test --release --test cucumber -- --tags "@wallet-ffi and not @broken" --concurrency 1 --retry 2

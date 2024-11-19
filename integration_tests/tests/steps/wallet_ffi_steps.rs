@@ -516,10 +516,13 @@ async fn ffi_fee_per_gram_stats(world: &mut TariWorld, wallet: String, min: u64,
     let fee_per_gram_stats = ffi_wallet.get_fee_per_gram_stats(5);
     for i in 0..fee_per_gram_stats.get_length() {
         let fee_per_gram_stat = fee_per_gram_stats.get_at(i);
-        println!("order {}", fee_per_gram_stat.get_order());
-        println!("min {}", fee_per_gram_stat.get_min_fee_per_gram());
-        println!("avg {}", fee_per_gram_stat.get_avg_fee_per_gram());
-        println!("max {}", fee_per_gram_stat.get_max_fee_per_gram());
+        println!(
+            "order {}, min {}, avg {}, max {}",
+            fee_per_gram_stat.get_order(),
+            fee_per_gram_stat.get_min_fee_per_gram(),
+            fee_per_gram_stat.get_avg_fee_per_gram(),
+            fee_per_gram_stat.get_max_fee_per_gram()
+        );
         assert_eq!(fee_per_gram_stat.get_min_fee_per_gram(), min);
         assert_eq!(fee_per_gram_stat.get_avg_fee_per_gram(), avg);
         assert_eq!(fee_per_gram_stat.get_max_fee_per_gram(), max);

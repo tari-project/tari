@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::CString, ptr::null_mut};
+use std::{ffi::CString, ptr, ptr::null_mut};
 
 use libc::c_void;
 
@@ -96,7 +96,12 @@ impl SeedWords {
         let mut error = 0;
         let result;
         unsafe {
-            result = ffi_import::seed_words_push_word(self.ptr, CString::new(word).unwrap().into_raw(), &mut error);
+            result = ffi_import::seed_words_push_word(
+                self.ptr,
+                CString::new(word).unwrap().into_raw(),
+                ptr::null(),
+                &mut error,
+            );
             if error > 0 {
                 println!("seed_words_push_word error {}", error);
                 panic!("seed_words_push_word error");
