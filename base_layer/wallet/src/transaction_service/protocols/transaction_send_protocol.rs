@@ -678,7 +678,8 @@ where
 
         info!(
             target: LOG_TARGET,
-            "Attempting to Send Transaction (TxId: {}) to recipient with address: {}", self.id, self.dest_address,
+            "Attempting to Send Transaction (TxId: {}) to recipient with address: {}",
+            self.id, self.dest_address.to_base58(),
         );
 
         match self

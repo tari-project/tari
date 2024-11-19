@@ -36,10 +36,10 @@ use tari_utilities::hex::Hex;
 async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
     spawn_wallet_ffi(world, wallet.clone(), null());
     let base_node = world.get_node(&base_node).unwrap();
-    world
-        .get_ffi_wallet(&wallet)
-        .unwrap()
-        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        base_node.public_key.to_hex(),
+        base_node.get_public_addresses()[0].to_string(),
+    );
 }
 
 #[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
@@ -47,19 +47,19 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
     spawn_wallet_ffi(world, wallet.clone(), null());
     assert!(world.all_seed_nodes().contains(&seed_node), "Seed node not found.");
     let seed_node = world.get_node(&seed_node).unwrap();
-    world
-        .get_ffi_wallet(&wallet)
-        .unwrap()
-        .add_base_node(seed_node.public_key.to_hex(), seed_node.get_listen_addr().to_string());
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        seed_node.public_key.to_hex(),
+        seed_node.get_public_addresses()[0].to_string(),
+    );
 }
 
 #[given(expr = "I set base node {word} for ffi wallet {word}")]
 async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
     let base_node = world.get_node(&base_node).unwrap();
-    world
-        .get_ffi_wallet(&wallet)
-        .unwrap()
-        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
+    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
+        base_node.public_key.to_hex(),
+        base_node.get_public_addresses()[0].to_string(),
+    );
 }
 
 #[then(expr = "I want to get public key of ffi wallet {word}")]
@@ -73,21 +73,18 @@ async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
 async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
     let wallet = world.get_ffi_wallet(&wallet).unwrap();
     let emoji_id = wallet.get_emoji_id();
-    assert_eq!(
-        emoji_id.len(),
-        132,
-        "Emoji id {} is expected to be of length 132",
-        emoji_id
-    );
+    assert!(TariAddress::from_emoji_string(&emoji_id).is_ok());
 }
 
 #[then(expr = "I stop ffi wallet {word}")]
 async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
-    let address = world.get_wallet_address(&wallet).await.unwrap();
-    let ffi_wallet = world.ffi_wallets.get_mut(&wallet).unwrap();
-    println!("Adding wallet {}", wallet);
-    world.wallet_addresses.insert(wallet, address);
-    ffi_wallet.destroy();
+    if let Ok(address) = world.get_wallet_address_base58(&wallet).await {
+        println!("Adding wallet '{}' to stopped_wallet_addresses", wallet);
+        world.stopped_wallet_addresses.insert(wallet.clone(), address);
+    }
+    if let Some(ffi_wallet) = world.ffi_wallets.get_mut(&wallet) {
+        ffi_wallet.destroy();
+    }
 }
 
 #[then(expr = "I retrieve the mnemonic word list for {word}")]
@@ -127,7 +124,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
         println!(
             "wallet {}, port {}, balance: available {} incoming {} time locked {}",
             ffi_wallet.name,
-            ffi_wallet.port,
+            ffi_wallet.tcp_port,
             ffi_balance.get_available(),
             ffi_balance.get_pending_incoming(),
             ffi_balance.get_time_locked()
@@ -140,7 +137,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
         ffi_balance.get_available() >= balance,
         "Wallet {}:{} doesn't have enough available funds: available {} incoming {} time locked {}",
         ffi_wallet.name,
-        ffi_wallet.port,
+        ffi_wallet.tcp_port,
         ffi_balance.get_available(),
         ffi_balance.get_pending_incoming(),
         ffi_balance.get_time_locked()
@@ -151,7 +148,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
 async fn ffi_add_contact(world: &mut TariWorld, alias: String, pubkey: String, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
 
-    let address = world.get_wallet_address(&pubkey).await.unwrap();
+    let address = world.get_wallet_address_base58(&pubkey).await.unwrap();
     let contact = create_contact(alias, address);
 
     assert!(ffi_wallet.upsert_contact(contact));
@@ -160,7 +157,7 @@ async fn ffi_add_contact(world: &mut TariWorld, alias: String, pubkey: String, w
 async fn check_contact(world: &mut TariWorld, alias: String, pubkey: Option<String>, wallet: String) -> bool {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let address: Option<String> = match pubkey {
-        Some(pubkey) => Some(world.get_wallet_address(&pubkey).await.unwrap()),
+        Some(pubkey) => Some(world.get_wallet_address_base58(&pubkey).await.unwrap()),
         None => None,
     };
     let contacts = ffi_wallet.get_contacts();
@@ -208,7 +205,7 @@ async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: Stri
 #[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}")]
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
+    let dest_pub_key = world.get_wallet_address_base58(&dest).await.unwrap();
     let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, false);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
@@ -218,7 +215,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 #[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
+    let dest_pub_key = world.get_wallet_address_base58(&dest).await.unwrap();
     let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, true);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
@@ -418,8 +415,8 @@ async fn ffi_detects_transaction(
         "TRANSACTION_STATUS_BROADCAST",
         "TRANSACTION_STATUS_MINED_UNCONFIRMED",
         "TRANSACTION_STATUS_MINED",
-        "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED",
-        "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED"
+        "TRANSACTION_STATUS_MINED_OR_ONE_SIDED_UNCONFIRMED",
+        "TRANSACTION_STATUS_MINED_OR_ONE_SIDED_CONFIRMED"
     ]
     .contains(&status.as_str()));
     println!(
@@ -432,12 +429,12 @@ async fn ffi_detects_transaction(
             "TRANSACTION_STATUS_BROADCAST" => ffi_wallet.get_counters().get_transaction_broadcast(),
             "TRANSACTION_STATUS_MINED_UNCONFIRMED" => ffi_wallet.get_counters().get_transaction_mined_unconfirmed(),
             "TRANSACTION_STATUS_MINED" => ffi_wallet.get_counters().get_transaction_mined(),
-            "TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED" => {
+            "TRANSACTION_STATUS_MINED_OR_ONE_SIDED_UNCONFIRMED" => {
                 let mut count = ffi_wallet.get_counters().get_transaction_faux_unconfirmed();
                 count += ffi_wallet.get_counters().get_transaction_mined_unconfirmed();
                 count
             },
-            "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED" => {
+            "TRANSACTION_STATUS_MINED_OR_ONE_SIDED_CONFIRMED" => {
                 let mut count = ffi_wallet.get_counters().get_transaction_faux_confirmed();
                 count += ffi_wallet.get_counters().get_transaction_mined();
                 count
@@ -494,10 +491,10 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     spawn_wallet_ffi(world, ffi_wallet_name.clone(), seed_words.get_ptr());
 
     let base_node = world.get_node(&base_node).unwrap();
-    world
-        .get_ffi_wallet(&ffi_wallet_name)
-        .unwrap()
-        .add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
+    world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
+        base_node.public_key.to_hex(),
+        base_node.get_public_addresses()[0].to_string(),
+    );
 }
 
 #[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
@@ -506,7 +503,10 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
     ffi_wallet.restart();
     let base_node = world.get_node(&base_node).unwrap();
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    ffi_wallet.add_base_node(base_node.public_key.to_hex(), base_node.get_listen_addr().to_string());
+    ffi_wallet.add_base_node(
+        base_node.public_key.to_hex(),
+        base_node.get_public_addresses()[0].to_string(),
+    );
 }
 
 #[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]

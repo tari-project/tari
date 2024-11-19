@@ -98,9 +98,10 @@ pub struct BlockHeader {
     pub timestamp: EpochTime,
     /// This is the Merkle root of the inputs in this block
     pub input_mr: FixedHash,
-    /// This is the UTXO merkle root of the outputs
-    /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
+    /// This is the UTXO merkle root of the outputs on the blockchain
     pub output_mr: FixedHash,
+    /// This is the block_output_mr
+    pub block_output_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_smt_size: u64,
     /// This is the MMR root of the kernels
@@ -130,6 +131,7 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -164,6 +166,7 @@ impl BlockHeader {
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             output_smt_size: prev.output_smt_size,
+            block_output_mr: FixedHash::zero(),
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
@@ -222,7 +225,7 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
+        let incomplete = DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
@@ -235,9 +238,12 @@ impl BlockHeader {
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
             .chain(&self.validator_node_mr)
-            .chain(&self.validator_node_size)
-            .finalize()
-            .into()
+            .chain(&self.validator_node_size);
+
+        match self.version {
+            0 => incomplete.finalize().into(),
+            _ => incomplete.chain(&self.block_output_mr).finalize().into(),
+        }
     }
 
     pub fn merge_mining_hash(&self) -> FixedHash {
@@ -273,6 +279,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,

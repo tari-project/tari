@@ -79,6 +79,8 @@ use minotari_app_grpc::tari_rpc::{
     TransferRequest,
     TransferResponse,
     TransferResult,
+    UpsertContactRequest,
+    UpsertContactResponse,
     ValidateRequest,
     ValidateResponse,
 };
@@ -97,6 +99,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, PublicKey, Signature},
 };
+use tari_contacts::contacts_service::types::Contact;
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -925,6 +928,30 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
 
         Ok(Response::new(resp))
+    }
+
+    async fn upsert_contact(
+        &self,
+        request: Request<UpsertContactRequest>,
+    ) -> Result<Response<UpsertContactResponse>, Status> {
+        let message = request.into_inner();
+        let alias = message.alias;
+        let wallet_address = TariAddress::from_bytes(&message.wallet_address)
+            .map_err(|e| Status::invalid_argument(format!("Invalid wallet address: {}", e)))?;
+
+        let contact = Contact::new(alias, wallet_address, None, None, false);
+
+        let mut wallet = self.wallet.clone();
+        match wallet.contacts_service.upsert_contact(contact).await {
+            Ok(_) => Ok(Response::new(UpsertContactResponse {
+                success: true,
+                error_message: String::new(),
+            })),
+            Err(e) => Ok(Response::new(UpsertContactResponse {
+                success: false,
+                error_message: e.to_string(),
+            })),
+        }
     }
 
     async fn cancel_transaction(

@@ -105,7 +105,7 @@ jobs:
             --release \
             --package tari_integration_tests \
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
-            -c 5 \
+            -c 1 \
             --retry 2
 
       - name: upload artifact

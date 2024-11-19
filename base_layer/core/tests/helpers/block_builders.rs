@@ -62,6 +62,7 @@ use tari_core::{
     OutputSmt,
     PrunedInputMmr,
     PrunedKernelMmr,
+    PrunedOutputMmr,
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_mmr::{
@@ -206,7 +207,9 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let kernel_mmr = KernelMmr::new(kernel_hashes);
     header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr)?;
     let mut mmr = OutputSmt::new();
+    let mut output_mr = PrunedOutputMmr::new(PrunedHashSet::default());
     for output in body.outputs() {
+        output_mr.push(output.hash().to_vec()).unwrap();
         let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
         let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
         mmr.insert(smt_key, smt_node).unwrap();
@@ -214,6 +217,7 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     header.output_smt_size = body.outputs().len() as u64;
 
     header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
+    header.block_output_mr = FixedHash::try_from(output_mr.get_merkle_root().unwrap()).unwrap();
     Ok(Block { header, body })
 }
 

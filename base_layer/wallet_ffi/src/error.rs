@@ -60,8 +60,8 @@ pub enum InterfaceError {
     InternalError(String),
     #[error("Balance Unavailable")]
     BalanceError,
-    #[error("Invalid multiaddr")]
-    InvalidMultiaddr,
+    #[error("Invalid multiaddr: `{0}`")]
+    InvalidMultiaddr(String),
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -113,9 +113,9 @@ impl From<InterfaceError> for LibWalletError {
                 code: 10,
                 message: format!("{:?}", v),
             },
-            InterfaceError::InvalidMultiaddr => Self {
+            InterfaceError::InvalidMultiaddr(_) => Self {
                 code: 11,
-                message: v.to_string(),
+                message: format!("{:?}", v),
             },
         }
     }

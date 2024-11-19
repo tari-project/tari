@@ -22,12 +22,13 @@
 
 use std::{
     collections::VecDeque,
-    fmt::{Debug, Formatter},
+    fmt::{Debug, Display, Formatter},
     path::PathBuf,
 };
 
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
+use log::*;
 use rand::rngs::OsRng;
 use serde_json::Value;
 // use tari_chat_client::ChatClient;
@@ -57,6 +58,8 @@ use crate::{
     wallet_process::WalletProcess,
 };
 
+const LOG_TARGET: &str = "cucumber::world";
+
 #[derive(Error, Debug)]
 pub enum TariWorldError {
     #[error("Base node process not found: {0}")]
@@ -71,6 +74,8 @@ pub enum TariWorldError {
     MergeMinerProcessNotFound(String),
     #[error("No base node, or wallet client found: {0}")]
     ClientNotFound(String),
+    #[error("Conversion error: {0}")]
+    ConversionError(String),
 }
 
 #[derive(cucumber::World)]
@@ -86,7 +91,7 @@ pub struct TariWorld {
     // pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
-    pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
+    pub stopped_wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
     pub utxos: IndexMap<String, WalletOutput>,
     pub output_hash: Option<String>,
     pub pre_image: Option<String>,
@@ -128,7 +133,7 @@ impl Default for TariWorld {
             // chat_clients: Default::default(),
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
-            wallet_addresses: Default::default(),
+            stopped_wallet_addresses: Default::default(),
             utxos: Default::default(),
             output_hash: None,
             pre_image: None,
@@ -157,7 +162,7 @@ impl Debug for TariWorld {
             .field("merge_mining_proxies", &self.merge_mining_proxies)
             // .field("chat_clients", &self.chat_clients.keys())
             .field("transactions", &self.transactions)
-            .field("wallet_addresses", &self.wallet_addresses)
+            .field("stopped_wallet_addresses", &self.stopped_wallet_addresses)
             .field("utxos", &self.utxos)
             .field("output_hash", &self.output_hash)
             .field("pre_image", &self.pre_image)
@@ -177,14 +182,20 @@ pub enum NodeClient {
 }
 
 impl TariWorld {
-    pub async fn get_node_client<S: AsRef<str>>(
+    pub async fn get_node_client<S: AsRef<str> + Display>(
         &self,
         name: &S,
     ) -> anyhow::Result<minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
-        self.get_node(name)?.get_grpc_client().await
+        match self.get_node(name) {
+            Ok(node) => node.get_grpc_client().await,
+            Err(err) => {
+                error!(target: LOG_TARGET, "get_node_client '{}': {}", name, err);
+                Err(err)
+            },
+        }
     }
 
-    pub async fn get_base_node_or_wallet_client<S: core::fmt::Debug + AsRef<str>>(
+    pub async fn get_base_node_or_wallet_client<S: Debug + AsRef<str> + Display>(
         &self,
         name: S,
     ) -> anyhow::Result<NodeClient> {
@@ -192,28 +203,38 @@ impl TariWorld {
             Ok(client) => Ok(NodeClient::BaseNode(client)),
             Err(_) => match self.get_wallet_client(&name).await {
                 Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
-                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+                Err(err) => {
+                    error!(target: LOG_TARGET, "get_base_node_or_wallet_client '{}': {}", name, err);
+                    Err(TariWorldError::ClientNotFound(err.to_string()).into())
+                },
             },
         }
     }
 
-    pub async fn get_wallet_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
-        if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
+    pub async fn get_wallet_address_base58<S: AsRef<str> + Display>(&self, name: &S) -> anyhow::Result<String> {
+        if let Some(address) = self.stopped_wallet_addresses.get(name.as_ref()) {
+            if let Err(err) = TariAddress::from_base58(address) {
+                error!(target: LOG_TARGET, "get_wallet_address conversion '{}': {}", name, err);
+                return Err(TariWorldError::ConversionError(err.to_string()).into());
+            }
             return Ok(address.clone());
         }
         let address_bytes = match self.get_wallet_client(name).await {
-            Ok(wallet) => {
-                let mut wallet = wallet;
-
-                wallet
-                    .get_address(minotari_wallet_grpc_client::grpc::Empty {})
-                    .await
-                    .unwrap()
-                    .into_inner()
-                    .interactive_address
+            Ok(mut wallet) => match wallet.get_address(minotari_wallet_grpc_client::grpc::Empty {}).await {
+                Ok(response) => response.into_inner().interactive_address,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "get_wallet_address no client '{}': {}", name, err);
+                    return Err(TariWorldError::ClientNotFound(err.to_string()).into());
+                },
             },
             Err(_) => {
-                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+                let ffi_wallet = match self.get_ffi_wallet(name) {
+                    Ok(wallet) => wallet,
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "get_wallet_address no FFI wallet '{}': {}", name.as_ref(), err);
+                        return Err(TariWorldError::FFIWalletNotFound(err.to_string()).into());
+                    },
+                };
 
                 ffi_wallet.get_address().address().get_vec()
             },
@@ -222,64 +243,90 @@ impl TariWorld {
         Ok(tari_address.to_base58())
     }
 
-    #[allow(dead_code)]
-    pub async fn get_wallet_client<S: AsRef<str>>(
+    pub async fn get_wallet_client<S: AsRef<str> + Display>(
         &self,
         name: &S,
     ) -> anyhow::Result<minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
-        self.get_wallet(name)?.get_grpc_client().await
+        match self.get_wallet(name) {
+            Ok(wallet) => wallet.get_grpc_client().await,
+            Err(err) => {
+                error!(target: LOG_TARGET, "get_wallet_client '{}': {}", name, err);
+                Err(err)
+            },
+        }
     }
 
-    pub fn get_node<S: AsRef<str>>(&self, node_name: &S) -> anyhow::Result<&BaseNodeProcess> {
-        Ok(self
-            .base_nodes
-            .get(node_name.as_ref())
-            .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?)
+    pub fn get_node<S: AsRef<str> + Display>(&self, node_name: &S) -> anyhow::Result<&BaseNodeProcess> {
+        match self.base_nodes.get(node_name.as_ref()) {
+            Some(node) => Ok(node),
+            None => {
+                error!(target: LOG_TARGET, "get_node '{}' process not found", node_name);
+                Err(TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()).into())
+            },
+        }
     }
 
-    pub fn get_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletProcess> {
-        Ok(self
-            .wallets
-            .get(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()))?)
+    pub fn get_wallet<S: AsRef<str> + Display>(&self, wallet_name: &S) -> anyhow::Result<&WalletProcess> {
+        match self.wallets.get(wallet_name.as_ref()) {
+            Some(wallet) => Ok(wallet),
+            None => {
+                error!(target: LOG_TARGET, "get_wallet '{}' process not found", wallet_name);
+                Err(TariWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()).into())
+            },
+        }
     }
 
-    pub fn get_ffi_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletFFI> {
-        Ok(self
-            .ffi_wallets
-            .get(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+    pub fn get_ffi_wallet<S: AsRef<str> + Display>(&self, wallet_name: &S) -> anyhow::Result<&WalletFFI> {
+        match self.ffi_wallets.get(wallet_name.as_ref()) {
+            Some(wallet) => Ok(wallet),
+            None => {
+                error!(target: LOG_TARGET, "get_ffi_wallet '{}' process not found", wallet_name);
+                Err(TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()).into())
+            },
+        }
     }
 
     pub fn get_mut_ffi_wallet<S: AsRef<str>>(&mut self, wallet_name: &S) -> anyhow::Result<&mut WalletFFI> {
-        Ok(self
-            .ffi_wallets
-            .get_mut(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+        match self.ffi_wallets.get_mut(wallet_name.as_ref()) {
+            Some(wallet) => Ok(wallet),
+            None => {
+                error!(target: LOG_TARGET, "get_mut_ffi_wallet '{}' process not found", wallet_name.as_ref());
+                Err(TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()).into())
+            },
+        }
     }
 
     pub fn get_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MinerProcess> {
-        Ok(self
-            .miners
-            .get(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MinerProcessNotFound(miner_name.as_ref().to_string()))?)
+        match self.miners.get(miner_name.as_ref()) {
+            Some(miner) => Ok(miner),
+            None => {
+                error!(target: LOG_TARGET, "get_miner '{}' process not found", miner_name.as_ref());
+                Err(TariWorldError::MinerProcessNotFound(miner_name.as_ref().to_string()).into())
+            },
+        }
     }
 
     pub fn get_merge_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MergeMiningProxyProcess> {
-        Ok(self
-            .merge_mining_proxies
-            .get(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
+        match self.merge_mining_proxies.get(miner_name.as_ref()) {
+            Some(miner) => Ok(miner),
+            None => {
+                error!(target: LOG_TARGET, "get_merge_miner '{}' process not found", miner_name.as_ref());
+                Err(TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()).into())
+            },
+        }
     }
 
     pub fn get_mut_merge_miner<S: AsRef<str>>(
         &mut self,
         miner_name: S,
     ) -> anyhow::Result<&mut MergeMiningProxyProcess> {
-        Ok(self
-            .merge_mining_proxies
-            .get_mut(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
+        match self.merge_mining_proxies.get_mut(miner_name.as_ref()) {
+            Some(miner) => Ok(miner),
+            None => {
+                error!(target: LOG_TARGET, "get_mut_merge_miner '{}' process not found", miner_name.as_ref());
+                Err(TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()).into())
+            },
+        }
     }
 
     pub fn all_seed_nodes(&self) -> &[String] {
@@ -303,7 +350,7 @@ impl TariWorld {
         }
         for (name, mut p) in self.base_nodes.drain(..) {
             println!("Shutting down base node {}", name);
-            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
+            // You have explicitly triggered the shutdown now because of the change to use Arc/Mutex in tari_shutdown
             p.kill_signal.trigger();
         }
     }

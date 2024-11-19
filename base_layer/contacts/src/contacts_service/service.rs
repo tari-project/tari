@@ -57,9 +57,20 @@ pub const SUBSCRIPTION_LABEL: &str = "Chat";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContactMessageType {
-    Ping,
+    Ping = 0,
     Pong,
     NoMessage,
+}
+
+impl ContactMessageType {
+    pub fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Ping),
+            1 => Some(Self::Pong),
+            2 => Some(Self::NoMessage),
+            _ => None,
+        }
+    }
 }
 
 impl Display for ContactMessageType {

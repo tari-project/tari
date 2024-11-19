@@ -118,7 +118,7 @@ async fn test_monero_blocks() {
             max_difficulty: Difficulty::min(),
             target_time: 200,
         })
-        .with_blockchain_version(0)
+        .with_blockchain_version(1)
         .build();
     let cm = ConsensusManager::builder(network)
         .add_consensus_constants(cc)

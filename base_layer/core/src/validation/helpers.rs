@@ -263,6 +263,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
@@ -302,7 +303,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Utxo",
+            kind: "Utxos",
         }));
     };
     if header.output_smt_size != mmr_roots.output_smt_size {
@@ -318,7 +319,20 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             expected: mmr_roots.output_smt_size,
             actual: header.output_smt_size,
         }));
-    }
+    };
+    if header.block_output_mr != mmr_roots.block_output_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header block output MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
+            header.hash().to_hex(),
+            header.block_output_mr,
+            mmr_roots.block_output_mr,
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: "block outputs",
+        }));
+    };
     if header.input_mr != mmr_roots.input_mr {
         warn!(
             target: LOG_TARGET,

@@ -5270,42 +5270,56 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
-    listen_address: *const c_char,
+    listen_addresses: *const c_char,
+    enable_mdns: bool,
+    reachability_mode_private: bool,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
     *error_out = 0;
 
     let mut ignore_error = 0;
     let public_address_str = c_char_ptr_to_string(public_address, &mut ignore_error as *mut c_int);
-    let listen_address = c_char_ptr_to_string(listen_address, &mut ignore_error as *mut c_int);
-    let listen_multiaddr = listen_address
-        .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<Multiaddr>())
-        .transpose();
+    let listen_addresses = c_char_ptr_to_string(listen_addresses, &mut ignore_error as *mut c_int);
+
     let public_multiaddr = public_address_str
         .filter(|s| !s.is_empty())
         .map(|s| s.parse::<Multiaddr>())
         .transpose();
-    let Ok(listen_multiaddr) = listen_multiaddr else {
-        *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr).code;
-        return ptr::null_mut();
+    let public_multiaddr = match public_multiaddr {
+        Ok(val) => val,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr(e.to_string())).code;
+            return ptr::null_mut();
+        },
     };
-    let Ok(public_multiaddr) = public_multiaddr else {
-        *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr).code;
-        return ptr::null_mut();
+
+    let listen_addresses = if let Some(list_str) = listen_addresses {
+        match MultiaddrList::from_str(&list_str) {
+            Ok(val) => val,
+            Err(e) => {
+                *error_out = LibWalletError::from(InterfaceError::InvalidMultiaddr(e.to_string())).code;
+                return ptr::null_mut();
+            },
+        }
+    } else {
+        TariCommsConfig::default().listen_addresses
     };
 
     let config = TariCommsConfig {
         override_from: None,
         public_addresses: MultiaddrList::from_iter(public_multiaddr),
-        listen_addresses: listen_multiaddr.into_iter().collect(),
+        listen_addresses,
         // Wallets will eagerly use a relay
-        reachability_mode: ReachabilityMode::Private,
-        rpc_max_simultaneous_sessions: 0,
-        rpc_max_sessions_per_peer: 0,
-        enable_mdns: true,
+        reachability_mode: if reachability_mode_private {
+            ReachabilityMode::Private
+        } else {
+            ReachabilityMode::Auto
+        },
+        rpc_max_simultaneous_sessions: 100,
+        rpc_max_sessions_per_peer: 10,
+        enable_mdns,
         enable_relay: false,
-        max_inbound_connections_per_peer: Some(1),
+        max_inbound_connections_per_peer: Some(3),
     };
 
     Box::into_raw(Box::new(config))
@@ -10297,7 +10311,7 @@ mod test {
             let address_alice_str = str_to_pointer(LISTEN_MULTIADDR);
             let alice_network_str = str_to_pointer(NETWORK_STRING);
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
             assert_eq!(*error_ptr, 0);
 
             let passphrase: *const c_char =
@@ -10468,7 +10482,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
@@ -10689,7 +10703,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(ptr::null(), address_str, error_ptr);
+            let config = comms_config_create(ptr::null(), address_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
@@ -10747,7 +10761,7 @@ mod test {
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
             let address_str = CString::new(LISTEN_MULTIADDR).unwrap().into_raw() as *const c_char;
 
-            let config = comms_config_create(ptr::null(), address_str, error_ptr);
+            let config = comms_config_create(ptr::null(), address_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
@@ -10826,7 +10840,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
@@ -10997,7 +11011,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
@@ -11129,7 +11143,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
@@ -11342,7 +11356,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
@@ -11567,7 +11581,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), address_alice_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), address_alice_str, true, true, error_ptr);
             assert_eq!(error, 0, "comms_config_create errored");
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
@@ -11818,7 +11832,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(ptr::null(), address_str, error_ptr);
+            let config = comms_config_create(ptr::null(), address_str, true, true, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
@@ -12182,7 +12196,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(ptr::null(), alice_address_str, error_ptr);
+            let alice_config = comms_config_create(ptr::null(), alice_address_str, true, true, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
@@ -12240,7 +12254,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let bob_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let bob_config = comms_config_create(ptr::null(), bob_address_str, error_ptr);
+            let bob_config = comms_config_create(ptr::null(), bob_address_str, true, true, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
@@ -12426,19 +12440,21 @@ mod test {
             // Bob's peer connection to Alice will still be active for a short while until Bob figures out Alice is
             // gone, and a 'dial_peer' command to Alice from Bob may return the previous connection state, but it
             // should not be possible to do anything with the connection.
-            let bob_comms_dial_peer =
-                bob_wallet_runtime.block_on(async { bob_wallet_comms.dial_peer(alice_peer_id).await.unwrap().await });
-            if bob_comms_dial_peer.is_ok() &&
-                bob_wallet_runtime
-                    .block_on(bob_wallet_comms.open_substream(
-                        alice_peer_id,
-                        // TODO: this will cause this to fail even if the peer is active
-                        &StreamProtocol::new("/test/me"),
-                    ))
-                    .is_ok()
-            {
-                panic!("Connection to Alice should not be active!");
-            }
+            bob_wallet_runtime.block_on(async {
+                if let Ok(dial_result) = bob_wallet_comms.dial_peer(alice_peer_id).await {
+                    if (dial_result.await).is_ok() &&
+                        bob_wallet_runtime
+                            .block_on(bob_wallet_comms.open_substream(
+                                alice_peer_id,
+                                // TODO: this will cause this to fail even if the peer is active
+                                &StreamProtocol::new("/test/me"),
+                            ))
+                            .is_ok()
+                    {
+                        panic!("Connection to Alice should not be active!");
+                    }
+                }
+            });
 
             // - Bob can still retrieve messages Alice sent
             let bob_contacts_get_messages =
