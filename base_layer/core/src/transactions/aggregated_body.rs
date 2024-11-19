@@ -30,28 +30,26 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+#[cfg(feature = "base_node")]
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::hex::Hex;
 
-use crate::{
-    block_output_mr_hash_from_pruned_mmr,
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            KernelFeatures,
-            OutputType,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
+use crate::transactions::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        KernelFeatures,
+        OutputType,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
-    MrHashError,
-    PrunedOutputMmr,
+    weight::TransactionWeight,
 };
+#[cfg(feature = "base_node")]
+use crate::{block_output_mr_hash_from_pruned_mmr, MrHashError, PrunedOutputMmr};
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
@@ -454,6 +452,7 @@ impl AggregateBody {
             .any(|k| k.features.output_type == OutputType::Coinbase)
     }
 
+    #[cfg(feature = "base_node")]
     pub fn calculate_header_block_output_mr(
         normal_output_mr: FixedHash,
         coinbases: &Vec<TransactionOutput>,
@@ -466,6 +465,7 @@ impl AggregateBody {
         block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
     }
 
+    #[cfg(feature = "base_node")]
     pub fn calculate_header_normal_output_mr(&self) -> Result<FixedHash, MrHashError> {
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         for o in self.outputs() {
