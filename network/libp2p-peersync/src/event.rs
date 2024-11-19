@@ -3,7 +3,7 @@
 
 use libp2p::PeerId;
 
-use crate::{error::Error, LocalPeerRecord};
+use crate::error::Error;
 
 #[derive(Debug)]
 pub enum Event {
@@ -25,13 +25,11 @@ pub enum Event {
     OutboundStreamInterrupted {
         peer_id: PeerId,
     },
-    ResponseStreamComplete {
+    InboundRequestCompleted {
         peer_id: PeerId,
         peers_sent: usize,
         requested: usize,
     },
-    LocalPeerRecordUpdated {
-        record: LocalPeerRecord,
-    },
+    LocalPeerRecordUpdated,
     Error(Error),
 }

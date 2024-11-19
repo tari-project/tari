@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use rand::seq::IteratorRandom;
 use tari_swarm::libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
 
-use crate::Peer;
+use crate::{swarm::ConnectionId, Peer};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RelayState {
@@ -54,7 +54,7 @@ impl RelayState {
             self.selected_relay = Some(RelayPeer {
                 peer_id,
                 addresses: addrs.iter().cloned().collect(),
-                is_circuit_established: false,
+                circuit_connection_id: None,
                 remote_address: dialled_address,
             });
             return true;
@@ -71,10 +71,7 @@ impl RelayState {
     }
 
     pub fn has_active_relay(&self) -> bool {
-        self.selected_relay
-            .as_ref()
-            .map(|r| r.is_circuit_established)
-            .unwrap_or(false)
+        self.selected_relay.as_ref().map(|r| r.has_circuit()).unwrap_or(false)
     }
 
     pub fn add_possible_relay(&mut self, peer: PeerId, address: Multiaddr) {
@@ -92,7 +89,7 @@ impl RelayState {
         self.selected_relay = Some(RelayPeer {
             peer_id: *peer,
             addresses: addrs.iter().cloned().collect(),
-            is_circuit_established: false,
+            circuit_connection_id: None,
             remote_address: None,
         });
     }
@@ -102,8 +99,14 @@ impl RelayState {
 pub(crate) struct RelayPeer {
     pub peer_id: PeerId,
     pub addresses: Vec<Multiaddr>,
-    pub is_circuit_established: bool,
+    pub circuit_connection_id: Option<ConnectionId>,
     pub remote_address: Option<Multiaddr>,
+}
+
+impl RelayPeer {
+    pub fn has_circuit(&self) -> bool {
+        self.circuit_connection_id.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Default)]

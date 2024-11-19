@@ -35,4 +35,4 @@ pub use event::*;
 pub use peer_record::*;
 
 /// The maximum message size permitted for peer messages
-pub(crate) const MAX_MESSAGE_SIZE: usize = 1024;
+pub(crate) const MAX_MESSAGE_SIZE: usize = 3 * 1024;

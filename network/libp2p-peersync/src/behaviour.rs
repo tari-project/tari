@@ -13,8 +13,6 @@ use libp2p::{
     futures::executor::block_on,
     identity::Keypair,
     swarm::{
-        behaviour::ExternalAddrConfirmed,
-        AddressChange,
         ConnectionClosed,
         ConnectionDenied,
         ConnectionId,
@@ -34,7 +32,7 @@ use libp2p::{
 use crate::{
     error::Error,
     event::Event,
-    handler::Handler,
+    handler::{Handler, HandlerAction},
     store::PeerStore,
     Config,
     LocalPeerRecord,
@@ -72,7 +70,7 @@ where TPeerStore: PeerStore
         Self::with_custom_protocol(keypair, DEFAULT_PROTOCOL_NAME, store, config)
     }
 
-    pub fn with_custom_protocol(
+    fn with_custom_protocol(
         keypair: Keypair,
         protocol: StreamProtocol,
         peer_store: TPeerStore,
@@ -88,7 +86,7 @@ where TPeerStore: PeerStore
             active_outbound_connections: HashMap::new(),
             remaining_want_peers: HashSet::new(),
             pending_syncs: VecDeque::new(),
-            pending_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(1000), 1024),
+            pending_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(30), 1024),
             sync_semaphore: Arc::new(async_semaphore::Semaphore::new(1)),
         }
     }
@@ -106,16 +104,14 @@ where TPeerStore: PeerStore
             .map_err(|e| Error::StoreError(e.to_string()))
     }
 
-    pub fn add_known_local_public_addresses(&mut self, addrs: Vec<Multiaddr>) {
-        if addrs.is_empty() {
-            return;
-        }
+    pub fn local_peer_record(&self) -> &LocalPeerRecord {
+        &self.local_peer_record
+    }
 
-        for addr in addrs {
-            self.local_peer_record.add_address(addr.clone());
+    pub fn add_known_local_public_addresses<I: IntoIterator<Item = Multiaddr>>(&mut self, addrs: I) {
+        if self.local_peer_record.add_addresses(addrs) {
+            self.handle_update_local_record();
         }
-
-        self.handle_update_local_record();
     }
 
     pub async fn want_peers<I: IntoIterator<Item = PeerId>>(&mut self, peers: I) -> Result<(), Error> {
@@ -151,7 +147,7 @@ where TPeerStore: PeerStore
                 self.pending_events.push_back(ToSwarm::NotifyHandler {
                     peer_id: *peer_id,
                     handler: NotifyHandler::One(*conn_id),
-                    event: list.clone(),
+                    event: HandlerAction::WantPeers(list.clone()),
                 });
             }
         }
@@ -174,31 +170,14 @@ where TPeerStore: PeerStore
         }
     }
 
-    fn on_address_change(&mut self, _address_change: AddressChange) {}
-
-    fn on_external_addr_confirmed(&mut self, addr_confirmed: ExternalAddrConfirmed) {
-        self.local_peer_record.add_address(addr_confirmed.addr.clone());
-        self.handle_update_local_record()
-    }
-
     fn handle_update_local_record(&mut self) {
         let store = self.peer_store.clone();
         let local_peer_record = self.local_peer_record.clone();
-        if !local_peer_record.is_signed() {
-            return;
-        }
-        let peer_rec = match local_peer_record.clone().try_into() {
-            Ok(peer_rec) => peer_rec,
-            Err(err) => {
-                tracing::error!("Failed to convert local peer record to signed peer record: {}", err);
-                return;
-            },
-        };
+        let local_peer_rec = SignedPeerRecord::from(local_peer_record);
+        let local_rec = Arc::new(local_peer_rec.clone());
         let task = async move {
-            match store.put(peer_rec).await {
-                Ok(_) => Event::LocalPeerRecordUpdated {
-                    record: local_peer_record,
-                },
+            match store.put(local_peer_rec).await {
+                Ok(_) => Event::LocalPeerRecordUpdated,
                 Err(err) => {
                     tracing::error!("Failed to add local peer record to store: {}", err);
                     Event::Error(Error::StoreError(err.to_string()))
@@ -206,7 +185,16 @@ where TPeerStore: PeerStore
             }
         };
         match self.pending_tasks.try_push(task) {
-            Ok(()) => {},
+            Ok(()) => {
+                self.pending_events.reserve(self.active_outbound_connections.len());
+                for (peer_id, conn_id) in &self.active_outbound_connections {
+                    self.pending_events.push_back(ToSwarm::NotifyHandler {
+                        peer_id: *peer_id,
+                        handler: NotifyHandler::One(*conn_id),
+                        event: HandlerAction::PushLocalRecord(local_rec.clone()),
+                    });
+                }
+            },
             Err(_) => {
                 self.pending_events.push_back(ToSwarm::GenerateEvent(Event::Error(
                     Error::ExceededMaxNumberOfPendingTasks,
@@ -225,17 +213,18 @@ where TPeerStore: PeerStore
     fn handle_established_inbound_connection(
         &mut self,
         _connection_id: ConnectionId,
-        peer: PeerId,
+        peer_id: PeerId,
         _local_addr: &Multiaddr,
         _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let handler = Handler::new(
-            peer,
+            peer_id,
             self.peer_store.clone(),
             self.protocol.clone(),
             &self.config,
             self.remaining_want_peers.clone(),
             self.sync_semaphore.clone(),
+            None,
         );
         Ok(handler)
     }
@@ -248,6 +237,7 @@ where TPeerStore: PeerStore
         _role_override: Endpoint,
         _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
+        tracing::debug!("outbound connection to peer {}", peer);
         let handler = Handler::new(
             peer,
             self.peer_store.clone(),
@@ -255,6 +245,7 @@ where TPeerStore: PeerStore
             &self.config,
             self.remaining_want_peers.clone(),
             self.sync_semaphore.clone(),
+            Some(Arc::new(self.local_peer_record.clone().into())),
         );
         self.active_outbound_connections.insert(peer, connection_id);
         Ok(handler)
@@ -264,16 +255,20 @@ where TPeerStore: PeerStore
         match event {
             FromSwarm::ConnectionEstablished(_) => {},
             FromSwarm::ConnectionClosed(connection_closed) => self.on_connection_closed(connection_closed),
-            FromSwarm::AddressChange(address_change) => self.on_address_change(address_change),
+            FromSwarm::AddressChange(_) => {},
             FromSwarm::ExternalAddrConfirmed(addr_confirmed) => {
-                self.on_external_addr_confirmed(addr_confirmed);
+                if self.local_peer_record.add_address(addr_confirmed.addr.clone()) {
+                    self.handle_update_local_record();
+                    self.pending_events
+                        .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated));
+                }
             },
             FromSwarm::ExternalAddrExpired(addr_expired) => {
-                self.local_peer_record.remove_address(addr_expired.addr);
-                self.pending_events
-                    .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated {
-                        record: self.local_peer_record.clone(),
-                    }));
+                if self.local_peer_record.remove_address(addr_expired.addr) {
+                    self.handle_update_local_record();
+                    self.pending_events
+                        .push_back(ToSwarm::GenerateEvent(Event::LocalPeerRecordUpdated));
+                }
             },
             _ => {},
         }
@@ -302,7 +297,7 @@ where TPeerStore: PeerStore
             },
             Event::InboundStreamInterrupted { .. } => {},
             Event::OutboundStreamInterrupted { .. } => {},
-            Event::ResponseStreamComplete { .. } => {},
+            Event::InboundRequestCompleted { .. } => {},
             Event::LocalPeerRecordUpdated { .. } => {},
             Event::Error(_) => {},
         }

@@ -7,10 +7,9 @@ use std::{
 };
 
 use libp2p::{
-    core::{transport::PortUse, ConnectedPoint, Endpoint},
+    core::{transport::PortUse, Endpoint},
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
-        AddressChange,
         ConnectionClosed,
         ConnectionDenied,
         ConnectionHandler,
@@ -164,29 +163,11 @@ impl Behaviour {
         }
     }
 
-    fn on_address_change(&mut self, address_change: AddressChange) {
-        let AddressChange {
-            peer_id,
-            connection_id,
-            new,
-            ..
-        } = address_change;
-        let remote_address = match new {
-            ConnectedPoint::Dialer { address, .. } => Some(address),
-            ConnectedPoint::Listener { .. } => None,
-        };
-
-        if let Some(connections) = self.connected.get_mut(&peer_id) {
-            for connection in connections {
-                if connection.id == connection_id {
-                    connection.remote_address = remote_address.cloned();
-                    return;
-                }
-            }
-        }
-    }
-
     fn on_dial_failure(&mut self, DialFailure { peer_id, error, .. }: DialFailure) {
+        if matches!(error, DialError::DialPeerConditionFalse(_)) {
+            return;
+        }
+
         if let Some(peer) = peer_id {
             // If there are pending outgoing stream requests when a dial failure occurs,
             // it is implied that we are not connected to the peer, since pending
@@ -215,14 +196,8 @@ impl Behaviour {
         }
     }
 
-    fn on_connection_established(
-        &mut self,
-        handler: &mut Handler,
-        peer_id: PeerId,
-        connection_id: ConnectionId,
-        remote_address: Option<Multiaddr>,
-    ) {
-        let mut connection = Connection::new(connection_id, remote_address);
+    fn on_connection_established(&mut self, handler: &mut Handler, peer_id: PeerId, connection_id: ConnectionId) {
+        let mut connection = Connection::new(connection_id);
 
         if let Some(pending_streams) = self.pending_outbound_streams.remove(&peer_id) {
             for stream in pending_streams {
@@ -248,10 +223,10 @@ impl NetworkBehaviour for Behaviour {
         connection_id: ConnectionId,
         peer: PeerId,
         _local_addr: &Multiaddr,
-        remote_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(peer, self.protocols.clone());
-        self.on_connection_established(&mut handler, peer, connection_id, Some(remote_addr.clone()));
+        self.on_connection_established(&mut handler, peer, connection_id);
 
         Ok(handler)
     }
@@ -260,12 +235,12 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         connection_id: ConnectionId,
         peer: PeerId,
-        remote_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
         _role_override: Endpoint,
         _port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(peer, self.protocols.clone());
-        self.on_connection_established(&mut handler, peer, connection_id, Some(remote_addr.clone()));
+        self.on_connection_established(&mut handler, peer, connection_id);
         Ok(handler)
     }
 
@@ -273,7 +248,6 @@ impl NetworkBehaviour for Behaviour {
         match event {
             FromSwarm::ConnectionEstablished(_) => {},
             FromSwarm::ConnectionClosed(connection_closed) => self.on_connection_closed(connection_closed),
-            FromSwarm::AddressChange(address_change) => self.on_address_change(address_change),
             FromSwarm::DialFailure(dial_failure) => self.on_dial_failure(dial_failure),
             _ => {},
         }
@@ -319,15 +293,13 @@ impl NetworkBehaviour for Behaviour {
 #[derive(Debug)]
 struct Connection {
     id: ConnectionId,
-    remote_address: Option<Multiaddr>,
     pending_outbound_streams: HashSet<StreamId>,
 }
 
 impl Connection {
-    fn new(id: ConnectionId, remote_address: Option<Multiaddr>) -> Self {
+    fn new(id: ConnectionId) -> Self {
         Self {
             id,
-            remote_address,
             pending_outbound_streams: HashSet::new(),
         }
     }
