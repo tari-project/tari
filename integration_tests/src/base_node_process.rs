@@ -47,7 +47,7 @@ use tonic::transport::Channel;
 
 use crate::{get_peer_seeds, get_port, wait_for_service, ServiceType, TariWorld};
 
-const LOG_TARGET: &str = "cucumber::bas_node_process";
+const LOG_TARGET: &str = "cucumber_detail::base_node_process";
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {

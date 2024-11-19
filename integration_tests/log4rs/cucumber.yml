@@ -145,6 +145,22 @@ appenders:
         pattern: "{{log_dir}}/log/libp2p.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  # An appender named "cucumber_detail" that writes to a file with a custom pattern encoder
+  cucumber_detail:
+    kind: rolling_file
+    path: "{{log_dir}}/log/cucumber_detail.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/cucumber_detail.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {f}.{L} {i} [{t}] {l:5} {m}{n}"
 
 # We don't want prints during cucumber test, everything useful will in logs.
 # root:
@@ -167,6 +183,10 @@ loggers:
     level: info # we have only single print, and it's info
     appenders:
       - stdout
+  cucumber_detail:
+    level: debug
+    appenders:
+      - cucumber_detail
   c:
     level: debug #trace #debug
     appenders:
@@ -210,7 +230,7 @@ loggers:
 
   # merge mining proxy
   minotari_mm_proxy::proxy:
-    level: debug
+    level: debug #trace #debug
     appenders:
       - proxy
     additive: false

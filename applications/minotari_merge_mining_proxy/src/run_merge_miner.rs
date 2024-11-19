@@ -57,10 +57,13 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
+    trace!(target: LOG_TARGET, "{:?}", cli);
     let config_path = cli.common.config_path();
     let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
+    trace!(target: LOG_TARGET, "{:?}", cfg);
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
+    trace!(target: LOG_TARGET, "{:?}", config);
 
     // Get reputable monerod URLs
     let mut assigned_dynamic_fail = false;

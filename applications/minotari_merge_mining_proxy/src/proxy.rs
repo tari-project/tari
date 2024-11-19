@@ -1141,7 +1141,7 @@ mod test {
                 "id": "0",
                 "method": rpc_method,
                 "params": {
-                    "wallet_address": "489r43gR8bDMJNBf4Q6sL9CNERvZQrTqjRCSESqgWQEWWq2UGAfj2voaw3zBtD7U8CQ391Nc1PDHUHiN85yhbZnCDasqzyX",
+                    "wallet_address": "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A",
                 }
             }),
             Method::GetVersion => json!({
