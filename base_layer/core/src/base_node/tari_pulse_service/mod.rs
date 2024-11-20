@@ -121,25 +121,28 @@ impl TariPulseService {
         notify_passed_checkpoints: watch::Sender<bool>,
     ) {
         let mut interval = time::interval(self.config.check_interval);
-        let mut interval_failed = time::interval(Duration::from_secs(60));
         let mut shutdown_signal = self.shutdown_signal.clone();
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
                     let passed_checkpoints = match self.passed_checkpoints(&mut base_node_service).await {
-                        Ok(passed) => passed,
+                        Ok(passed) => {
+                            interval = time::interval(self.config.check_interval); // reset interval if back to healthy
+                            interval.tick().await;
+                            passed
+                        },
                         Err(err) => {
-                            error!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {:?}", err);
-                            let interval_in_secs = interval_failed.period().as_secs();
+                            warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {:?}", err);
+                            let interval_in_secs = interval.period().as_secs();
                             if interval_in_secs > (60 * 30) {
                                 warn!(target: LOG_TARGET, "Reached maximum retry interval of 30 minutes. Exiting");
                                 break;
                             }
-                            error!(target: LOG_TARGET, "Retrying in {} minutes", interval_in_secs/60);
-                            interval_failed.tick().await;
-                            interval_failed.tick().await;
-                            interval_failed = time::interval(Duration::from_secs(interval_in_secs * 2));
+                            info!(target: LOG_TARGET, "Retrying in {} seconds", interval_in_secs);
+                            // increase interval if node repeatly fails to fetch checkpoints
+                            interval = time::interval(Duration::from_secs(interval_in_secs * 2));
+                            interval.tick().await;
                             continue;
                         },
                     };
