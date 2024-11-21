@@ -143,6 +143,7 @@ pub struct BaseNodeConfig {
     /// Obscure GRPC error responses
     pub report_grpc_error: bool,
     // Interval to check if the base node is still in sync with the network
+    #[serde(with = "serializers::seconds")]
     pub tari_pulse_interval: Duration,
 }
 
