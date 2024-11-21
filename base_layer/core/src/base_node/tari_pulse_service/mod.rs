@@ -118,6 +118,7 @@ impl TariPulseService {
         let mut interval = time::interval(self.config.check_interval);
         let mut interval_failed = time::interval(Duration::from_millis(100));
         loop {
+            interval.tick().await;
             let passed_checkpoints = match self.passed_checkpoints(&mut base_node_service).await {
                 Ok(passed) => passed,
                 Err(err) => {
@@ -130,7 +131,6 @@ impl TariPulseService {
             notify_passed_checkpoints
                 .send(!passed_checkpoints)
                 .expect("Channel should be open");
-            interval.tick().await;
         }
     }
 
