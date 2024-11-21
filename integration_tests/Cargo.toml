@@ -49,6 +49,7 @@ thiserror = "^1.0.20"
 time = "0.3.36"
 tokio = { version = "1.36", features = ["macros", "time", "sync", "rt-multi-thread"] }
 tonic = "0.12.3"
+regex = "1.11.0"
 
 [package.metadata.cargo-machete]
 ignored = ["minotari_wallet_ffi", "minotari_chat_ffi"]

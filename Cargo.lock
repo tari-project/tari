@@ -8034,6 +8034,7 @@ dependencies = [
  "minotari_wallet_ffi",
  "minotari_wallet_grpc_client",
  "rand",
+ "regex",
  "reqwest",
  "serde_json",
  "tari_common",

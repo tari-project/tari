@@ -56,7 +56,7 @@ impl ContactsLivenessData {
         WalletAddress::from_ptr(ptr)
     }
 
-    pub fn get_latency(&self) -> i32 {
+    pub fn get_latency(&self) -> u32 {
         let latency;
         let mut error = 0;
         unsafe {

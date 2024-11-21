@@ -22,6 +22,7 @@
 
 use std::{convert::TryInto, thread};
 
+use log::*;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_merge_mining_proxy::{merge_miner, Cli};
 use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
@@ -34,6 +35,8 @@ use tonic::transport::Channel;
 
 use super::get_port;
 use crate::TariWorld;
+
+const LOG_TARGET: &str = "cucumber_detail::merge_mining_process";
 
 #[derive(Clone, Debug)]
 pub struct MergeMiningProxyProcess {
@@ -105,20 +108,6 @@ impl MergeMiningProxyProcess {
                             format!("/ip4/127.0.0.1/tcp/{}", base_node_grpc_port),
                         ),
                         (
-                            "merge_mining_proxy.monerod_url".to_string(),
-                            [
-                                "http://stagenet.xmr-tw.org:38081",
-                                "http://node.monerodevs.org:38089",
-                                "http://node3.monerodevs.org:38089",
-                                "http://xmr-lux.boldsuck.org:38081",
-                                "http://singapore.node.xmr.pm:38081",
-                            ]
-                            .join(","),
-                        ),
-                        ("merge_mining_proxy.monerod_use_auth".to_string(), "false".to_string()),
-                        ("merge_mining_proxy.monerod_username".to_string(), "".to_string()),
-                        ("merge_mining_proxy.monerod_password".to_string(), "".to_string()),
-                        (
                             "merge_mining_proxy.wait_for_initial_sync_at_startup".to_string(),
                             "false".to_string(),
                         ),
@@ -138,9 +127,10 @@ impl MergeMiningProxyProcess {
                 },
                 non_interactive_mode: false,
             };
+            debug!(target: LOG_TARGET, "{:?}", cli);
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
             if let Err(e) = rt.block_on(merge_miner(cli)) {
-                println!("Error running merge mining proxy : {:?}", e);
+                println!("Error running merge mining proxy : {}", e);
                 panic!("Error running merge mining proxy");
             }
         });
@@ -148,12 +138,19 @@ impl MergeMiningProxyProcess {
 
     async fn get_response(&self, path: &str) -> Value {
         let full_address = format!("http://127.0.0.1:{}", self.port);
-        reqwest::get(format!("{}/{}", full_address, path))
-            .await
-            .unwrap()
-            .json::<Value>()
-            .await
-            .unwrap()
+        match reqwest::get(format!("{}/{}", full_address, path)).await {
+            Ok(response) => match response.json::<Value>().await {
+                Ok(value) => value,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "response.json ({})", err);
+                    panic!("Error parsing response ({})", err);
+                },
+            },
+            Err(err) => {
+                error!(target: LOG_TARGET, "reqwest::get ({})", err);
+                panic!("Error reqwest::get ({})", err);
+            },
+        }
     }
 
     async fn json_rpc_call(&mut self, method_name: &str, params: &Value) -> Value {
@@ -164,19 +161,24 @@ impl MergeMiningProxyProcess {
             "params": params,
             "id":self.id}
         );
-        println!("json_rpc_call {}", method_name);
-        println!("json payload {}", json);
+        debug!(target: LOG_TARGET, "json_rpc_call {}", method_name);
+        debug!(target: LOG_TARGET, "json payload {}", json);
         self.id += 1;
         let full_address = format!("http://127.0.0.1:{}/json_rpc", self.port);
-        client
-            .post(full_address)
-            .json(&json)
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap()
+
+        match client.post(full_address).json(&json).send().await {
+            Ok(response) => match response.json().await {
+                Ok(value) => value,
+                Err(err) => {
+                    error!(target: LOG_TARGET, "response.json() {}", err);
+                    panic!("Error parsing response ({})", err);
+                },
+            },
+            Err(err) => {
+                error!(target: LOG_TARGET, "client.post ({})", err);
+                panic!("Error client.post ({})", err);
+            },
+        }
     }
 
     pub async fn get_height(&self) -> Value {
@@ -185,8 +187,7 @@ impl MergeMiningProxyProcess {
 
     pub async fn get_block_template(&mut self) -> Value {
         let params = json!({
-            "wallet_address":"5AUoj81i63cBUbiKY5jybsZXRDYb9CppmSjiZXC8ZYT6HZH6ebsQvBecYfRKDYoyzKF2uML9FKkTAc7nJvHKdoDYQEeteRW",
-            "reserve_size":60
+            "wallet_address": "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A"
         });
         self.json_rpc_call("getblocktemplate", &params).await
     }

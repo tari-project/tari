@@ -21,7 +21,6 @@ Feature: Mempool
     Then SENDER has TX1 in MEMPOOL state
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
-    @broken
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     When I have a base node SENDER connected to all seed nodes
@@ -34,7 +33,6 @@ Feature: Mempool
     Then SENDER has TX1 in MEMPOOL state
     Then TX1 is in the MEMPOOL of all nodes
     When I have a base node NODE1 connected to all seed nodes
-    # Keeps returning not stored. Maybe initial sync ins't receiving it.
     # mempool needs to sync more than 5 blocks before it starts syncing
     Then NODE1 has TX1 in MEMPOOL state
     When I mine 1 blocks on SENDER

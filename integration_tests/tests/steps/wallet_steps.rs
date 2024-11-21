@@ -77,7 +77,7 @@ use tari_utilities::hex::Hex;
 
 use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
-const LOG_TARGET: &str = "cucumber::wallet_steps";
+const LOG_TARGET: &str = "cucumber_detail::wallet_steps";
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
