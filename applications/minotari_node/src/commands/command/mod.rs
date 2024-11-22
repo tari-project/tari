@@ -97,6 +97,12 @@ pub struct Args {
     pub command: Command,
 }
 
+impl Args {
+    pub fn is_quit(&self) -> bool {
+        matches!(self.command, Command::Quit(_) | Command::Exit(_))
+    }
+}
+
 #[derive(Debug, Subcommand, EnumVariantNames)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Command {
