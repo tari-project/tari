@@ -134,15 +134,17 @@ impl TariPulseService {
                         },
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {:?}", err);
-                            let interval_in_secs = interval.period().as_secs();
-                            if interval_in_secs > (60 * 30) {
-                                warn!(target: LOG_TARGET, "Reached maximum retry interval of 30 minutes. Exiting");
-                                break;
-                            }
-                            info!(target: LOG_TARGET, "Retrying in {} seconds", interval_in_secs);
-                            // increase interval if node repeatly fails to fetch checkpoints
-                            interval = time::interval(Duration::from_secs(interval_in_secs * 2));
-                            interval.tick().await;
+                            let old_interval = interval.period().as_secs();
+                            let new_interval = if old_interval > (60 * 30) {
+                                warn!(target: LOG_TARGET, "Reached maximum retry interval of 30 minutes.");
+                                old_interval
+                            } else {
+                                // increase interval if node repeatedly (up to 30 min) fails to fetch checkpoints
+                                interval = time::interval(Duration::from_secs(old_interval * 2));
+                                interval.tick().await;
+                                interval.period().as_secs()
+                            };
+                            warn!(target: LOG_TARGET, "Retrying in {} seconds", new_interval);
                             continue;
                         },
                     };
