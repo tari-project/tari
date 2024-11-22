@@ -45,6 +45,7 @@ use tari_core::{
     base_node::{
         comms_interface::CommsInterfaceError,
         state_machine_service::states::StateInfo,
+        tari_pulse_service::TariPulseHandle,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -114,6 +115,7 @@ pub struct BaseNodeGrpcServer {
     comms: CommsNode,
     liveness: LivenessHandle,
     report_grpc_error: bool,
+    tari_pulse: TariPulseHandle,
     config: BaseNodeConfig,
 }
 
@@ -129,6 +131,7 @@ impl BaseNodeGrpcServer {
             comms: ctx.base_node_comms().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
+            tari_pulse: ctx.tari_pulse(),
             config,
         }
     }
@@ -1637,6 +1640,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
+        let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
 
         let meta = handler
             .get_metadata()
@@ -1650,6 +1654,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             metadata: Some(meta.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
             base_node_state: state.into(),
+            failed_checkpoints,
         };
 
         trace!(target: LOG_TARGET, "Sending MetaData response to client");

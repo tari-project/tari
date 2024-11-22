@@ -2573,6 +2573,7 @@ dependencies = [
  "idna 0.5.0",
  "ipnet",
  "once_cell",
+ "openssl",
  "rand",
  "ring",
  "rustls",
@@ -6629,6 +6630,7 @@ dependencies = [
 name = "tari_core"
 version = "1.9.0-pre.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bincode",
  "bitflags 2.4.1",
@@ -6647,6 +6649,7 @@ dependencies = [
  "fs2",
  "futures 0.3.29",
  "hex",
+ "hickory-client",
  "integer-encoding",
  "libsqlite3-sys",
  "lmdb-zero",

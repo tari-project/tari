@@ -30,7 +30,12 @@ use tari_common::{
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
+    base_node::{
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
@@ -118,6 +123,10 @@ impl BaseNodeContext {
 
     /// Returns a software update handle
     pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
+    }
+
+    pub fn tari_pulse(&self) -> TariPulseHandle {
         self.base_node_handles.expect_handle()
     }
 

@@ -751,6 +751,15 @@ mod test {
                 block.header().block_output_mr.to_vec().to_hex(),
             );
         } else {
+            let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
+            let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+            assert_eq!(
+                AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+                    .unwrap()
+                    .to_vec()
+                    .to_hex(),
+                block.header().block_output_mr.to_vec().to_hex(),
+            );
             assert_eq!(
                 block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
                     .unwrap()

@@ -38,18 +38,18 @@ use tari_comms::{
 };
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node,
     base_node::{
+        self,
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::BaseNodeServiceInitializer,
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
+        tari_pulse_service::TariPulseServiceInitializer,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    mempool,
-    mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
@@ -170,6 +170,10 @@ where B: BlockchainBackend + 'static
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
             ))
+            .add_initializer(TariPulseServiceInitializer::new(
+                base_node_config.tari_pulse_interval,
+                base_node_config.network,
+            ))
             .build()
             .await?;
 
@@ -221,7 +225,6 @@ where B: BlockchainBackend + 'static
         };
 
         handles.register(comms);
-
         Ok(handles)
     }
 
