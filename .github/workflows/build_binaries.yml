@@ -226,6 +226,7 @@ jobs:
           # choco upgrade openssl -y
           # Should already be installed
           # choco upgrade strawberryperl -y
+          choco install openssl -y
           choco upgrade protoc -y
           rustup target add ${{ matrix.builds.target }}
 
