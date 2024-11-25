@@ -218,14 +218,8 @@ jobs:
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')
         run: |
-          vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
-          choco upgrade llvm -y
-          # psutils is out of date
-          # choco upgrade psutils -y
-          choco upgrade openssl -y
-          # Should already be installed
-          # choco upgrade strawberryperl -y
+          vcpkg install openssl:x64-windows-static
           choco upgrade protoc -y
           rustup target add ${{ matrix.builds.target }}
 
@@ -277,10 +271,8 @@ jobs:
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TS_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
-          echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
-          echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
+          echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static" >> $GITHUB_ENV
 
       - name: Cache cargo files and outputs
         if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) && ( env.CARGO_CACHE ) }}
@@ -319,6 +311,10 @@ jobs:
           echo "cargo command is: ${{ env.CARGO }}"
           echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
           echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Debug environment variables - Windows
+        if: startsWith(runner.os,'Windows')
+        run: printenv
 
       - name: Build release binaries
         shell: bash
