@@ -129,7 +129,6 @@ impl TariPulseService {
                     let passed_checkpoints = match self.passed_checkpoints(&mut base_node_service).await {
                         Ok(passed) => {
                             interval = time::interval(self.config.check_interval); // reset interval if back to healthy
-                            interval.tick().await;
                             passed
                         },
                         Err(err) => {
