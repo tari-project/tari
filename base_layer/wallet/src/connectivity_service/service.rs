@@ -34,7 +34,7 @@ use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSync
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time,
-    time::MissedTickBehavior,
+    time::{timeout, Duration as TokioDuration, MissedTickBehavior},
 };
 
 use crate::{
@@ -392,11 +392,21 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer_node_id: NodeId) -> Result<bool, WalletConnectivityError> {
-        let conn = match self.try_dial_peer(peer_node_id.clone()).await? {
-            Some(c) => c,
-            None => {
+        let dial_timeout = TokioDuration::from_secs(40);
+        let conn = match timeout(dial_timeout, self.try_dial_peer(peer_node_id.clone())).await {
+            Ok(Ok(Some(c))) => c,
+            Ok(Ok(None)) => {
                 warn!(target: LOG_TARGET, "Could not dial base node peer '{}'", peer_node_id);
                 return Ok(false);
+            },
+            Ok(Err(e)) => return Err(e),
+            Err(_) => {
+                return Err(WalletConnectivityError::ConnectivityError(
+                    ConnectivityError::ClientCancelled(format!(
+                        "Could not connect to '{}' in {:?}",
+                        peer_node_id, dial_timeout
+                    )),
+                ));
             },
         };
         debug!(
