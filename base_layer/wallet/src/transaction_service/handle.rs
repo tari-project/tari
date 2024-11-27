@@ -231,7 +231,7 @@ impl fmt::Display for TransactionServiceRequest {
                     "ScrapeWallet (destination: {}, fee_per_gram: {})",
                     destination, fee_per_gram
                 )
-            }
+            },
             Self::SendTransaction {
                 destination,
                 amount,
@@ -292,7 +292,7 @@ impl fmt::Display for TransactionServiceRequest {
                         .collect::<Vec<String>>(),
                     script_signature_public_nonces
                         .iter()
-                        .map(|v| format!("(public nonce: {})", v.to_hex(), ))
+                        .map(|v| format!("(public nonce: {})", v.to_hex(),))
                         .collect::<Vec<String>>(),
                     sender_offset_public_key_shares
                         .iter()
@@ -309,14 +309,14 @@ impl fmt::Display for TransactionServiceRequest {
                     recipient_address,
                     original_maturity,
                 ))
-            }
+            },
             Self::FetchUnspentOutputs { output_hashes } => {
                 write!(
                     f,
                     "FetchUnspentOutputs({:?})",
                     output_hashes.iter().map(|v| v.to_hex()).collect::<Vec<String>>()
                 )
-            }
+            },
             Self::FinalizeSentAggregateTransaction {
                 tx_id,
                 total_meta_data_signature,
@@ -359,7 +359,7 @@ impl fmt::Display for TransactionServiceRequest {
             ),
             Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg)
-            }
+            },
             Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
             Self::ImportUtxoWithStatus {
                 amount,
@@ -387,14 +387,14 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
-                write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count, )
-            }
+                write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
+            },
             TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
-            }
+            },
             TransactionServiceRequest::GetCodeTemplateFee { template_name, .. } => {
                 write!(f, "GetCodeTemplateFee: {}", template_name)
-            }
+            },
         }
     }
 }
@@ -509,34 +509,34 @@ impl fmt::Display for TransactionEvent {
         match self {
             TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {
                 write!(f, "MempoolBroadcastTimedOut for tx:{tx_id}")
-            }
+            },
             TransactionEvent::ReceivedTransaction(tx) => {
                 write!(f, "ReceivedTransaction for {tx}")
-            }
+            },
             TransactionEvent::ReceivedTransactionReply(tx) => {
                 write!(f, "ReceivedTransactionReply for {tx}")
-            }
+            },
             TransactionEvent::ReceivedFinalizedTransaction(tx) => {
                 write!(f, "ReceivedFinalizedTransaction for {tx}")
-            }
+            },
             TransactionEvent::TransactionDiscoveryInProgress(tx) => {
                 write!(f, "TransactionDiscoveryInProgress for {tx}")
-            }
+            },
             TransactionEvent::TransactionSendResult(tx, status) => {
                 write!(f, "TransactionSendResult for {tx}: {status}")
-            }
+            },
             TransactionEvent::TransactionCompletedImmediately(tx) => {
                 write!(f, "TransactionCompletedImmediately for {tx}")
-            }
+            },
             TransactionEvent::TransactionCancelled(tx, rejection) => {
                 write!(f, "TransactionCancelled for {tx}:{:?}", rejection)
-            }
+            },
             TransactionEvent::TransactionBroadcast(tx) => {
                 write!(f, "TransactionBroadcast for {tx}")
-            }
+            },
             TransactionEvent::TransactionImported(tx) => {
                 write!(f, "TransactionImported for {tx}")
-            }
+            },
             TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations,
@@ -547,16 +547,16 @@ impl fmt::Display for TransactionEvent {
                     "DetectedTransactionUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. \
                      is_valid: {is_valid}"
                 )
-            }
+            },
             TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid } => {
                 write!(f, "DetectedTransactionConfirmed for {tx_id}. is_valid: {is_valid}")
-            }
+            },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
                 write!(f, "TransactionMined for {tx_id}. is_valid: {is_valid}")
-            }
+            },
             TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
                 write!(f, "TransactionMinedRequestTimedOut for {tx}")
-            }
+            },
             TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
                 num_confirmations,
@@ -567,19 +567,19 @@ impl fmt::Display for TransactionEvent {
                     "TransactionMinedUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. is_valid: \
                      {is_valid}",
                 )
-            }
+            },
             TransactionEvent::Error(error) => {
                 write!(f, "Error:{error}")
-            }
+            },
             TransactionEvent::TransactionValidationStateChanged(operation_id) => {
                 write!(f, "Transaction validation state changed: {operation_id}")
-            }
+            },
             TransactionEvent::TransactionValidationCompleted(operation_id) => {
                 write!(f, "Transaction validation(#{operation_id}) completed")
-            }
+            },
             TransactionEvent::TransactionValidationFailed(operation_id, reason) => {
                 write!(f, "Transaction validation(#{operation_id}) failed: {reason}")
-            }
+            },
         }
     }
 }
@@ -755,9 +755,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::CodeTemplateRegistrationFeeResponse {
-                fee
-            } => Ok(fee),
+            TransactionServiceResponse::CodeTemplateRegistrationFeeResponse { fee } => Ok(fee),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -1238,7 +1236,7 @@ impl TransactionServiceHandle {
             TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
                 let (tx_id, pre_image, output) = *boxed;
                 Ok((tx_id, pre_image, output))
-            }
+            },
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
