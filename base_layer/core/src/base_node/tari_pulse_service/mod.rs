@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::max, str::FromStr, time::Duration};
+use std::{cmp::min, str::FromStr, time::Duration};
 
 use futures::future;
 use hickory_client::{
@@ -135,7 +135,7 @@ impl TariPulseService {
                     trace!(target: LOG_TARGET, "Interval tick: {}", count);
                     if skipped_ticks < skip_ticks {
                         skipped_ticks += 1;
-                        debug!(target: LOG_TARGET, "Sipping {} of {} ticks", skipped_ticks, skip_ticks);
+                        debug!(target: LOG_TARGET, "Skipping {} of {} ticks", skipped_ticks, skip_ticks);
                         continue;
                     }
                     let passed_checkpoints = {
@@ -147,7 +147,7 @@ impl TariPulseService {
                             },
                             Err(err) => {
                                 warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {:?}", err);
-                                skip_ticks = max(skip_ticks + 1, 30 * 60 / self.config.check_interval.as_secs());
+                                skip_ticks = min(skip_ticks + 1, 30 * 60 / self.config.check_interval.as_secs());
                                 skipped_ticks = 0;
                                 continue;
                             },
