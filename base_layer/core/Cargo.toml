@@ -20,6 +20,7 @@ base_node = [
     "base_node_proto",
     "monero",
     "randomx-rs",
+    "hickory-client",
 ]
 base_node_proto = []
 benches = ["base_node"]
@@ -93,7 +94,7 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
 dirs-next = "1.0.2"
-hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls", "dnssec-openssl"] }
+hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls", "dnssec-openssl"], optional = true }
 anyhow = "1.0.53"
 
 [dev-dependencies]
