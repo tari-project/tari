@@ -51,7 +51,10 @@ use tari_p2p::{
     initialization::P2pInitializer,
     message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    services::{
+        liveness::{config::LivenessConfig, LivenessInitializer},
+        monitor_peers::MonitorPeersInitializer,
+    },
     Dispatcher,
     P2pConfig,
 };
@@ -141,6 +144,9 @@ where B: BlockchainBackend + 'static
                     ..Default::default()
                 },
                 dispatcher.clone(),
+            ))
+            .add_initializer(MonitorPeersInitializer::new(
+                base_node_config.metadata_auto_ping_interval,
             ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(

@@ -45,6 +45,7 @@ pub use handle::{LivenessEvent, LivenessHandle, LivenessRequest, LivenessRespons
 
 mod message;
 mod service;
+pub use service::MAX_INFLIGHT_TTL;
 
 mod state;
 pub use state::Metadata;
@@ -64,6 +65,7 @@ use tari_service_framework::{
 use tokio::sync::{broadcast, mpsc};
 
 use self::service::LivenessService;
+pub use crate::proto::liveness::MetadataKey;
 use crate::{
     message::TariNodeMessageSpec,
     proto::message::TariMessageType,
@@ -74,7 +76,7 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
-    config: Option<LivenessConfig>,
+    pub(crate) config: Option<LivenessConfig>,
     dispatcher: Dispatcher,
 }
 

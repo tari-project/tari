@@ -22,4 +22,5 @@
 
 pub mod dispatcher;
 pub mod liveness;
+pub mod monitor_peers;
 // pub mod utils;
