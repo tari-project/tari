@@ -360,6 +360,15 @@ where
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
+            OutputManagerRequest::GetPayToSelfTransactionFee {
+                amount,
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+            } => self
+                .pay_to_self_transaction_fee(amount, selection_criteria, *output_features, fee_per_gram)
+                .await
+                .map(OutputManagerResponse::PayToSelfTransactionFee),
             OutputManagerRequest::FeeEstimate {
                 amount,
                 selection_criteria,
@@ -1533,10 +1542,10 @@ where
                 &aggregated_metadata_ephemeral_public_key_shares,
             )
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
+            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
         let total_metadata_ephemeral_public_key =
             aggregated_metadata_ephemeral_public_key_shares + output.metadata_signature.ephemeral_pubkey();
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
@@ -1849,10 +1858,10 @@ where
                 &recipient_address,
             )
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
+            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
-            .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
         // signatures are not yet complete.
@@ -1875,6 +1884,101 @@ where
         let fee = stp.get_fee_amount()?;
 
         Ok((tx, amount, fee))
+    }
+
+    /// Returns the transaction fee for a pay to self transaction.
+    /// If there are not enough funds, we do an estimation with minimal input/output count.
+    /// This is needed to NOT lock up any UTXOs, just calculate fees without any data modification.
+    async fn pay_to_self_transaction_fee(
+        &mut self,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<MicroMinotari, OutputManagerError> {
+        let covenant = Covenant::default();
+
+        let features_and_scripts_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight_params()
+            .round_up_features_and_scripts_size(
+                output_features
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    TariScript::default()
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    covenant
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+            );
+
+        let input_selection = match self
+            .select_utxos(
+                amount,
+                selection_criteria,
+                fee_per_gram,
+                1,
+                features_and_scripts_byte_size,
+            )
+            .await
+        {
+            Ok(v) => Ok(v),
+            Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "We dont have enough funds available to make a fee estimate, so we estimate 1 input and 1 change"
+                );
+                let fee_calc = self.get_fee_calc();
+                // note that this is the minimal use case for estimation, so at least 1 input and 2 outputs
+                return Ok(fee_calc.calculate(fee_per_gram, 1, 1, 2, features_and_scripts_byte_size));
+            },
+            Err(e) => Err(e),
+        }?;
+
+        // Create builder with no recipients (other than ourselves)
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_kernel_features(KernelFeatures::empty());
+
+        for kmo in input_selection.iter() {
+            builder.with_input(kmo.wallet_output.clone()).await?;
+        }
+
+        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant).await?;
+
+        builder
+            .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
+            .await
+            .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
+
+        let (change_commitment_mask_key_id, change_script_public_key) = self
+            .resources
+            .key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await?;
+        builder.with_change_data(
+            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
+            ExecutionStack::default(),
+            change_script_public_key.key_id.clone(),
+            change_commitment_mask_key_id.key_id,
+            Covenant::default(),
+            self.resources.interactive_tari_address.clone(),
+        );
+
+        let stp = builder
+            .build()
+            .await
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        Ok(stp.get_fee_amount()?)
     }
 
     async fn create_pay_to_self_transaction(

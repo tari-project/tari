@@ -1077,6 +1077,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(response))
     }
 
+    /// Returns the fee to register a template.
+    /// This method is needed by Tari CLI now, so it provides a better UX and tells the user instantly
+    /// how much a new template registration will cost.
     async fn get_template_registration_fee(
         &self,
         request: Request<CreateTemplateRegistrationRequest>,

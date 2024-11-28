@@ -2525,12 +2525,12 @@ where
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
         template_registration.author_signature = author_sig;
-        let tx_id = TxId::new_random();
         let output_features = OutputFeatures::for_template_registration(template_registration);
-        let (fee, _) = self
+
+        let fee = self
             .resources
             .output_manager_service
-            .create_pay_to_self_transaction(tx_id, 0.into(), selection_criteria, output_features, fee_per_gram, None)
+            .pay_to_self_transaction_fee(0.into(), selection_criteria, output_features, fee_per_gram)
             .await?;
 
         Ok(fee)

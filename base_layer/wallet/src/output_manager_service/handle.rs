@@ -101,6 +101,12 @@ pub enum OutputManagerRequest {
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
     },
+    GetPayToSelfTransactionFee {
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroMinotari,
+    },
     CreatePayToSelfWithOutputs {
         outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroMinotari,
@@ -263,6 +269,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            GetPayToSelfTransactionFee { .. } => write!(f, "GetPayToSelfTransactionFee"),
         }
     }
 }
@@ -290,6 +297,7 @@ pub enum OutputManagerResponse {
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
+    PayToSelfTransactionFee(MicroMinotari),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
@@ -920,6 +928,29 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get pay to self transaction fee without locking any UTXOs.
+    pub async fn pay_to_self_transaction_fee(
+        &mut self,
+        amount: MicroMinotari,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<MicroMinotari, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetPayToSelfTransactionFee {
+                amount,
+                selection_criteria: utxo_selection,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+            })
+            .await??
+        {
+            OutputManagerResponse::PayToSelfTransactionFee(fee) => Ok(fee),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
