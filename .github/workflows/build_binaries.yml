@@ -122,7 +122,7 @@ jobs:
         run: |
           BRANCH_NAME=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||')
           if [[ "${BRANCH_NAME}" == "build-bins-nextnet"* ]]; then
-            source buildtools/multinet_envs.sh "v1.8.0-rc.0"
+            source buildtools/multinet_envs.sh "v1.9.0-rc.0"
           else
             source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
           fi
