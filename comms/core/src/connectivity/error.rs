@@ -43,8 +43,6 @@ pub enum ConnectivityError {
     OnlineWaitTimeout(usize),
     #[error("Pending dial was cancelled")]
     DialCancelled,
-    #[error("Client cancelled: '{0}'")]
-    ClientCancelled(String),
 }
 
 impl From<ConnectionManagerError> for ConnectivityError {
