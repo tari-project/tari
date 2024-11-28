@@ -69,5 +69,8 @@ pub mod proto;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod rpc;
 
+#[cfg(feature = "base_node")]
+pub mod tari_pulse_service;
+
 pub const BAN_DURATION_LONG: Duration = Duration::from_secs(2 * 60 * 60);
 pub const BAN_DURATION_SHORT: Duration = Duration::from_secs(2 * 60);
