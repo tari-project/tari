@@ -40,6 +40,8 @@ pub enum WalletConnectivityError {
     PeerIndexOutOfBounds(String),
     #[error("Rpc client pool error: {0}")]
     RpcClientPoolError(#[from] RpcClientPoolError),
+    #[error("Client cancelled: '{0}'")]
+    ClientCancelled(String),
 }
 
 impl From<mpsc::SendError> for WalletConnectivityError {

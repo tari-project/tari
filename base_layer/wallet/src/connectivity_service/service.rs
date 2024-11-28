@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{mem, pin::pin, time::Duration};
+use std::{
+    cmp::{max, min},
+    mem,
+    pin::pin,
+    time::Duration,
+};
 
 use futures::{future, future::Either};
 use log::*;
@@ -41,7 +46,7 @@ use tari_rpc_framework::{
 use tokio::{
     sync::{mpsc, oneshot},
     time,
-    time::MissedTickBehavior,
+    time::{timeout, Duration as TokioDuration, MissedTickBehavior},
 };
 
 use crate::{
@@ -305,9 +310,12 @@ impl WalletConnectivityService {
             peer_manager.get_current_peer().clone()
         };
 
+        let mut loop_count = 0;
+        let number_of_seeds = peer_manager.get_state().1.len();
         loop {
+            loop_count += 1;
             self.set_online_status(OnlineStatus::Connecting);
-            match self.try_setup_rpc_pool(&peer).await {
+            match self.try_setup_rpc_pool(&peer, loop_count / number_of_seeds + 1).await {
                 Ok(true) => {
                     self.base_node_watch.send(Some(peer_manager.clone()));
                     self.notify_pending_requests().await;
@@ -360,7 +368,7 @@ impl WalletConnectivityService {
         self.online_status_watch.send(status);
     }
 
-    async fn try_setup_rpc_pool(&mut self, peer: &Peer) -> Result<bool, WalletConnectivityError> {
+    async fn try_setup_rpc_pool(&mut self, peer: &Peer, dial_cycle: usize) -> Result<bool, WalletConnectivityError> {
         self.last_attempted_peer = Some(peer.peer_id());
         let peer_id = peer.peer_id();
         let dial_wait = self
@@ -385,10 +393,20 @@ impl WalletConnectivityService {
 
         // Create the first RPC session to ensure that we can connect.
         {
+            // dial_timeout: 1 = 1s, 2 = 10s, 3 = 20s, 4 = 30s, 5 = 40s, 6 = 50s, 7 = 60s, 8 = 70s, 9 = 80s, 10 = 90s
+            let dial_timeout = TokioDuration::from_secs(min((max(1, 10 * (dial_cycle.saturating_sub(1)))) as u64, 90));
+            trace!(target: LOG_TARGET, "Attempt dial with client timeout {:?}", dial_timeout);
+
             let mut bn_changed_fut = pin!(self.base_node_watch.changed());
-            match future::select(dial_wait, &mut bn_changed_fut).await {
-                Either::Left((result, _)) => result?,
-                Either::Right(_) => return Ok(false),
+            match timeout(dial_timeout, future::select(dial_wait, &mut bn_changed_fut)).await {
+                Ok(Either::Left((result, _))) => result?,
+                Ok(Either::Right(_)) => return Ok(false),
+                Err(_) => {
+                    return Err(WalletConnectivityError::ClientCancelled(format!(
+                        "Could not connect to '{}' in {:?}",
+                        peer_id, dial_timeout
+                    )))
+                },
             };
             debug!(target: LOG_TARGET, "Dial succeeded for {peer_id}");
             let connect_fut = pin!(container.base_node_wallet_rpc_client.get());
