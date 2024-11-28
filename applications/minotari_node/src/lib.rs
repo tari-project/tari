@@ -159,7 +159,7 @@ pub async fn run_base_node_with_cli(
     }
 
     // Run, node, run!
-    let context = CommandContext::new(&ctx, shutdown);
+    let context = CommandContext::new(&ctx, shutdown.clone());
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
     if cli.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
