@@ -53,4 +53,10 @@ impl Connection {
     pub fn is_wallet_user_agent(&self) -> bool {
         self.user_agent.as_ref().map_or(false, |x| x.contains("wallet"))
     }
+
+    pub fn is_node(&self) -> bool {
+        self.supported_protocols
+            .iter()
+            .any(|p| p.as_ref().contains("/tari/mempool"))
+    }
 }

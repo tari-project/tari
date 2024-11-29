@@ -28,7 +28,12 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
+    base_node::{
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
@@ -109,6 +114,10 @@ impl BaseNodeContext {
 
     /// Returns a software update handle
     pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
+    }
+
+    pub fn tari_pulse(&self) -> TariPulseHandle {
         self.base_node_handles.expect_handle()
     }
 

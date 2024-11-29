@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, iter, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet,
+    iter,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -44,6 +49,8 @@ use crate::{
     proto::message::TariMessage,
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
 };
+
+pub const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(30);
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream> {
@@ -163,7 +170,8 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
                     message_tag,
                 );
 
-                let ping_event = PingPongEvent::new(source_peer_id, None, ping_pong_msg.metadata.into());
+                let ping_event =
+                    PingPongEvent::new(source_peer_id, None, ping_pong_msg.metadata.into(), ping_pong_msg.nonce);
                 self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
             },
             PingPong::Pong => {
@@ -188,19 +196,29 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
                     message_tag,
                 );
 
-                let pong_event = PingPongEvent::new(source_peer_id, maybe_latency, ping_pong_msg.metadata.into());
+                let pong_event = PingPongEvent::new(
+                    source_peer_id,
+                    maybe_latency,
+                    ping_pong_msg.metadata.into(),
+                    ping_pong_msg.nonce,
+                );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
             },
         }
         Ok(())
     }
 
-    async fn send_ping(&mut self, peer_id: PeerId) -> Result<(), LivenessError> {
+    async fn send_ping(&mut self, peer_id: PeerId) -> Result<u64, LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-        self.state.add_inflight_ping(msg.nonce, peer_id);
+        let nonce = msg.nonce;
+        self.state.add_inflight_ping(
+            msg.nonce,
+            peer_id,
+            self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+        );
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", peer_id);
         self.outbound_messaging.send_message(peer_id, msg).await?;
-        Ok(())
+        Ok(nonce)
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: PeerId) -> Result<(), LivenessError> {
@@ -214,9 +232,17 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
         use LivenessRequest::*;
         match request {
             SendPing(peer_id) => {
-                self.send_ping(peer_id).await?;
+                let nonce = self.send_ping(peer_id).await?;
                 self.state.inc_pings_sent();
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(Some(vec![nonce])))
+            },
+            SendPings(peer_ids) => {
+                let mut nonces = Vec::with_capacity(peer_ids.len());
+                for peer_id in peer_ids {
+                    nonces.push(self.send_ping(peer_id).await?);
+                    self.state.inc_pings_sent();
+                }
+                Ok(LivenessResponse::Ok(Some(nonces)))
             },
             GetPingCount => {
                 let ping_count = self.get_ping_count();
@@ -236,15 +262,15 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
             },
             SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             AddMonitoredPeer(peer_id) => {
                 self.monitored_peers.insert(peer_id);
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
             RemoveMonitoredPeer(peer_id) => {
                 self.monitored_peers.remove(&peer_id);
-                Ok(LivenessResponse::Ok)
+                Ok(LivenessResponse::Ok(None))
             },
         }
     }
@@ -270,7 +296,11 @@ where TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<Liven
 
         for peer_id in iter {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-            self.state.add_inflight_ping(msg.nonce, peer_id);
+            self.state.add_inflight_ping(
+                msg.nonce,
+                peer_id,
+                self.config.auto_ping_interval.unwrap_or(MAX_INFLIGHT_TTL),
+            );
             self.outbound_messaging.send_message(peer_id, msg).await?;
             count += 1;
         }

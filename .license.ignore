@@ -2,6 +2,8 @@
 ./applications/minotari_node/assets/tari_logo.rs
 ./applications/minotari_node/osx-pkg/entitlements.xml
 ./base_layer/contacts/src/schema.rs
+./base_layer/core/src/base_node/tari_pulse_service/20326.rsa
+./base_layer/core/src/base_node/tari_pulse_service/38696.rsa
 ./base_layer/key_manager/src/schema.rs
 ./base_layer/wallet/src/schema.rs
 ./docs/src/theme/book.js

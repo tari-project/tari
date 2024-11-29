@@ -25,7 +25,7 @@ pub enum NetworkEvent {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ConnectionDirection {
     Inbound,
     Outbound,

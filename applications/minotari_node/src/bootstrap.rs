@@ -29,18 +29,18 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_core::{
-    base_node,
     base_node::{
+        self,
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::BaseNodeServiceInitializer,
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
+        tari_pulse_service::TariPulseServiceInitializer,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    mempool,
-    mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
@@ -51,7 +51,10 @@ use tari_p2p::{
     initialization::P2pInitializer,
     message::TariNodeMessageSpec,
     peer_seeds::SeedPeer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    services::{
+        liveness::{config::LivenessConfig, LivenessInitializer},
+        monitor_peers::MonitorPeersInitializer,
+    },
     Dispatcher,
     P2pConfig,
 };
@@ -142,6 +145,9 @@ where B: BlockchainBackend + 'static
                 },
                 dispatcher.clone(),
             ))
+            .add_initializer(MonitorPeersInitializer::new(
+                base_node_config.metadata_auto_ping_interval,
+            ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
@@ -150,6 +156,10 @@ where B: BlockchainBackend + 'static
                 self.factories,
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
+            ))
+            .add_initializer(TariPulseServiceInitializer::new(
+                base_node_config.tari_pulse_interval,
+                base_node_config.network,
             ))
             .build()
             .await?;

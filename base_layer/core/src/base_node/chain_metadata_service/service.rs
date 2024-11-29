@@ -365,6 +365,7 @@ mod test {
             metadata,
             peer_id,
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -387,6 +388,7 @@ mod test {
             metadata,
             peer_id: node_id,
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -405,6 +407,7 @@ mod test {
             metadata,
             peer_id: node_id,
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));

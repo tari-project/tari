@@ -18,7 +18,7 @@ use tokio::{signal, task::JoinError, time};
 use crate::{
     commands::{
         cli,
-        command::{CommandContext, WatchCommand},
+        command::{Args, CommandContext, WatchCommand},
         parser::Parser,
         reader::CommandReader,
     },
@@ -89,7 +89,9 @@ impl CliLoop {
         } else {
             while !self.done {
                 self.watch_loop().await;
-                self.execute_command().await;
+                if !self.done {
+                    self.execute_command().await;
+                }
             }
         }
     }
@@ -144,12 +146,19 @@ impl CliLoop {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
                 let mut events = EventStream::new();
-                loop {
+                while !self.done {
                     let interval = time::sleep(interval);
                     tokio::select! {
                         _ = interval => {
                             if let Err(err) = self.context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
+                            } else {
+                                let args: Result<Args, _> = line.parse();
+                                if let Ok(command) = args {
+                                    if command.is_quit() {
+                                        self.done = true;
+                                    }
+                                }
                             }
                             continue;
                         },
@@ -177,7 +186,9 @@ impl CliLoop {
                             }
                         }
                     }
-                    crossterm::execute!(io::stdout(), cursor::MoveToNextLine(1)).ok();
+                    if !self.done {
+                        crossterm::execute!(io::stdout(), cursor::MoveToNextLine(1)).ok();
+                    }
                 }
                 terminal::disable_raw_mode().ok();
             }
@@ -202,6 +213,13 @@ impl CliLoop {
                         _ = interval => {
                             if let Err(err) = self.context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
+                            } else {
+                                let args: Result<Args, _> = line.parse();
+                                if let Ok(command) = args {
+                                    if command.is_quit() {
+                                        self.done = true;
+                                    }
+                                }
                             }
                             continue;
                         },
@@ -260,6 +278,9 @@ impl CliLoop {
                     }
                 } else {
                     self.done = true;
+                }
+                if self.done && !self.shutdown_signal.is_triggered() {
+                    self.context.shutdown.trigger();
                 }
             },
             _ = self.shutdown_signal.wait() => {

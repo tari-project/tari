@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "1.8.0-pre.0"
+version = "1.9.0-pre.0"
 edition = "2021"
 
 [features]
@@ -20,6 +20,7 @@ base_node = [
     "base_node_proto",
     "monero",
     "randomx-rs",
+    "hickory-client",
 ]
 base_node_proto = []
 benches = ["base_node"]
@@ -27,27 +28,28 @@ ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
 
 [dependencies]
-minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.8.0-pre.0", optional = true }
-tari_common = { path = "../../common", version = "1.8.0-pre.0" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.8.0-pre.0" }
+minotari_ledger_wallet_comms = { path = "../../applications/minotari_ledger_wallet/comms", version = "1.9.0-pre.0", optional = true }
+tari_common = { path = "../../common", version = "1.9.0-pre.0" }
+tari_common_types = { path = "../../base_layer/common_types", version = "1.9.0-pre.0" }
+
 libp2p-substream = { workspace = true }
 tari_network = { workspace = true }
 tari_rpc_framework = { workspace = true }
 tari_rpc_macros = { workspace = true }
 tari_crypto = { version = "0.21.0", features = ["borsh"] }
 tari_max_size = { path = "../../infrastructure/max_size" }
-tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.8.0-pre.0" }
-tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.8.0-pre.0" }
-tari_p2p = { path = "../../base_layer/p2p", version = "1.8.0-pre.0" }
-tari_script = { path = "../../infrastructure/tari_script", version = "1.8.0-pre.0" }
-tari_service_framework = { path = "../service_framework", version = "1.8.0-pre.0" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.8.0-pre.0" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.8.0-pre.0" }
-tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.8.0-pre.0" }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true, version = "1.9.0-pre.0" }
+tari_mmr = { path = "../../base_layer/mmr", optional = true, version = "1.9.0-pre.0" }
+tari_p2p = { path = "../../base_layer/p2p", version = "1.9.0-pre.0" }
+tari_script = { path = "../../infrastructure/tari_script", version = "1.9.0-pre.0" }
+tari_service_framework = { path = "../service_framework", version = "1.9.0-pre.0" }
+tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.9.0-pre.0" }
+tari_storage = { path = "../../infrastructure/storage", version = "1.9.0-pre.0" }
+tari_test_utils = { path = "../../infrastructure/test_utils", version = "1.9.0-pre.0" }
 tari_utilities = { version = "0.8", features = ["borsh"] }
 tari_key_manager = { path = "../key_manager", features = [
     "key_manager_service",
-], version = "1.8.0-pre.0" }
+], version = "1.9.0-pre.0" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_hashing = { path = "../../hashing" }
 
@@ -95,6 +97,12 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
 dirs-next = "1.0.2"
+hickory-client = { version = "0.25.0-alpha.2", features = [
+    "dns-over-native-tls",
+    "dnssec-openssl"
+], optional = true }
+openssl = { version = "0.10.66", features = ["vendored"] }
+anyhow = "1.0.53"
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
@@ -110,7 +118,8 @@ quickcheck = "1.0"
 serial_test = "0.5"
 
 [build-dependencies]
-tari_features = { path = "../../common/tari_features", version = "1.8.0-pre.0" }
+tari_features = { path = "../../common/tari_features", version = "1.9.0-pre.0" }
+
 
 [[bench]]
 name = "mempool"
@@ -122,3 +131,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
 ] }
+
+[package.metadata.cargo-machete]
+openssl = [
+    # We need to specify extra features for openssl even though it is not used directly in this crate
+    "openssl",
+]
