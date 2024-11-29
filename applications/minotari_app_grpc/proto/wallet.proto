@@ -80,6 +80,9 @@ service Wallet {
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+
+  // Get calculated fees for a `CreateTemplateRegistrationRequest`
+  rpc GetTemplateRegistrationFee(CreateTemplateRegistrationRequest) returns (GetTemplateRegistrationFeeResponse);
 }
 
 message GetVersionRequest {}
@@ -288,6 +291,10 @@ message CreateTemplateRegistrationRequest {
 message CreateTemplateRegistrationResponse {
   uint64 tx_id = 1;
   bytes template_address = 2;
+}
+
+message GetTemplateRegistrationFeeResponse {
+  uint64 fee = 1;
 }
 
 message CancelTransactionRequest {

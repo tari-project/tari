@@ -55,6 +55,7 @@ use minotari_app_grpc::tari_rpc::{
     GetConnectivityRequest,
     GetIdentityRequest,
     GetIdentityResponse,
+    GetTemplateRegistrationFeeResponse,
     GetTransactionInfoRequest,
     GetTransactionInfoResponse,
     GetUnspentAmountsResponse,
@@ -1074,6 +1075,62 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         };
         Ok(Response::new(response))
+    }
+
+    /// Returns the fee to register a template.
+    /// This method is needed by Tari CLI now, so it provides a better UX and tells the user instantly
+    /// how much a new template registration will cost.
+    async fn get_template_registration_fee(
+        &self,
+        request: Request<CreateTemplateRegistrationRequest>,
+    ) -> Result<Response<GetTemplateRegistrationFeeResponse>, Status> {
+        let message = request.into_inner();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let fee_per_gram = message.fee_per_gram.into();
+        let fee = transaction_service
+            .code_template_fee(
+                message
+                    .template_name
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
+                message
+                    .template_version
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
+                if let Some(tt) = message.template_type {
+                    tt.try_into()
+                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("template type is missing"));
+                },
+                if let Some(bi) = message.build_info {
+                    bi.try_into()
+                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("build info is missing"));
+                },
+                message
+                    .binary_sha
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
+                message
+                    .binary_url
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
+                fee_per_gram,
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        RistrettoSecretKey::from_canonical_bytes(&message.sidechain_deployment_key)
+                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
+                    )
+                },
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetTemplateRegistrationFeeResponse { fee: fee.as_u64() }))
     }
 }
 

@@ -150,6 +150,16 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
     },
+    GetCodeTemplateFee {
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: MaxSizeString<255>,
+        fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+    },
     SendOneSidedTransaction {
         destination: TariAddress,
         amount: MicroMinotari,
@@ -382,6 +392,9 @@ impl fmt::Display for TransactionServiceRequest {
             TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
+            TransactionServiceRequest::GetCodeTemplateFee { template_name, .. } => {
+                write!(f, "GetCodeTemplateFee: {}", template_name)
+            },
         }
     }
 }
@@ -430,6 +443,9 @@ pub enum TransactionServiceResponse {
     CodeRegistrationTransactionSent {
         tx_id: TxId,
         template_address: FixedHash,
+    },
+    CodeTemplateRegistrationFeeResponse {
+        fee: MicroMinotari,
     },
 }
 
@@ -710,6 +726,36 @@ impl TransactionServiceHandle {
                 tx_id,
                 template_address,
             } => Ok((tx_id, template_address)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn code_template_fee(
+        &mut self,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: MaxSizeString<255>,
+        fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+    ) -> Result<MicroMinotari, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCodeTemplateFee {
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+                fee_per_gram,
+                sidechain_deployment_key,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CodeTemplateRegistrationFeeResponse { fee } => Ok(fee),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

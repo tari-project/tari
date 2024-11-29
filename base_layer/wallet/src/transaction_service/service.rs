@@ -974,6 +974,31 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
+            TransactionServiceRequest::GetCodeTemplateFee {
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+                fee_per_gram,
+                sidechain_deployment_key,
+            } => {
+                let fee = self
+                    .code_template_fee(
+                        fee_per_gram,
+                        template_name.to_string(),
+                        template_version,
+                        template_type,
+                        build_info,
+                        binary_sha,
+                        binary_url,
+                        sidechain_deployment_key,
+                        UtxoSelectionCriteria::default(),
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::CodeTemplateRegistrationFeeResponse { fee })
+            },
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -2440,6 +2465,75 @@ where
         )
         .await?;
         Ok(())
+    }
+
+    pub async fn code_template_fee(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        template_name: String,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: MaxSizeString<255>,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+    ) -> Result<MicroMinotari, TransactionServiceError> {
+        let author_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .await?;
+        let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let nonce_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(nonce_secret)
+            .await?;
+        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
+            Some(k) => (
+                Some(PublicKey::from_secret_key(&k)),
+                Some(
+                    SchnorrSignature::sign(&k, author_key.pub_key.as_bytes(), &mut OsRng)
+                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
+                ),
+            ),
+            None => (None, None),
+        };
+        let mut template_registration = CodeTemplateRegistration {
+            author_public_key: author_key.pub_key.clone(),
+            author_signature: Signature::default(),
+            template_name: template_name
+                .try_into()
+                .map_err(|_| TransactionServiceError::InvalidDataError {
+                    field: "template_name".to_string(),
+                })?,
+            template_version,
+            template_type,
+            build_info,
+            binary_sha,
+            binary_url,
+            sidechain_id,
+            sidechain_id_knowledge_proof,
+        };
+        let challenge = template_registration.create_challenge(&nonce_pub);
+        let author_sig = self
+            .resources
+            .transaction_key_manager_service
+            .sign_with_nonce_and_challenge(&author_key.key_id, &nonce_id, &challenge)
+            .await
+            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+
+        template_registration.author_signature = author_sig;
+        let output_features = OutputFeatures::for_template_registration(template_registration);
+
+        let fee = self
+            .resources
+            .output_manager_service
+            .pay_to_self_transaction_fee(0.into(), selection_criteria, output_features, fee_per_gram)
+            .await?;
+
+        Ok(fee)
     }
 
     pub async fn register_code_template(
