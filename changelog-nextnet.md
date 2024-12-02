@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+
+## [1.9.1-rc.0](https://github.com/tari-project/tari/compare/v1.9.0-rc.0...v1.9.1-rc.0) (2024-12-02)
+
+
+### Features
+
+* add connectivity timeout ([#6703](https://github.com/tari-project/tari/issues/6703)) ([e22bc0e](https://github.com/tari-project/tari/commit/e22bc0eb073cc93a86a2ffdbb4eb9c1a4ffeebc5))
+* fix base node shutdown ([#6697](https://github.com/tari-project/tari/issues/6697)) ([d22ef65](https://github.com/tari-project/tari/commit/d22ef6582e9a671577efc419e5d121c384972aad))
+* fix tari pulse running as fast as possible ([#6704](https://github.com/tari-project/tari/issues/6704)) ([a75e0c6](https://github.com/tari-project/tari/commit/a75e0c6f1b51b61aa1576bf671bd0d74bd45490f))
+* make hickory dns optional ([#6705](https://github.com/tari-project/tari/issues/6705)) ([eaa0306](https://github.com/tari-project/tari/commit/eaa0306d1928f5a31b29f08863a070ea1343cbf0))
+* validate blockchain fetch from DNS server with local state ([#6658](https://github.com/tari-project/tari/issues/6658)) ([0610bcc](https://github.com/tari-project/tari/commit/0610bcceb5debb91484191f6178e2591db123263))
+
 ## [1.9.0-rc.0](https://github.com/tari-project/tari/compare/v1.8.0-rc.0...v1.9.0-rc.0) (2024-11-14)
 
 
