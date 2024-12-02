@@ -138,14 +138,14 @@ impl CompletedTransaction {
     }
 
     #[allow(dead_code)]
-    pub fn get_message(&self) -> String {
+    pub fn get_payment_id(&self) -> String {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::completed_transaction_get_message(self.ptr, &mut error);
+            ptr = ffi_import::completed_transaction_get_payment_id(self.ptr, &mut error);
             if error > 0 {
-                println!("completed_transaction_get_message error {}", error);
-                panic!("completed_transaction_get_message error");
+                println!("completed_transaction_get_payment_id error {}", error);
+                panic!("completed_transaction_get_payment_id error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()

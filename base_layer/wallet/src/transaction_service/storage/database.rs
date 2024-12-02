@@ -22,7 +22,6 @@
 
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -32,7 +31,7 @@ use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
 use tari_core::transactions::{
@@ -689,22 +688,18 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
         amount: MicroMinotari,
         source_address: TariAddress,
-        comms_address: TariAddress,
-        message: String,
-        import_status: ImportStatus,
+        destination_address: TariAddress,
+        status: TransactionStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
+        direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
-        let payment_id = match payment_id {
-            PaymentId::Empty => None,
-            v => Some(v),
-        };
         let transaction = CompletedTransaction::new(
             tx_id,
             source_address,
-            comms_address,
+            destination_address,
             amount,
             MicroMinotari::from(0),
             Transaction::new(
@@ -714,10 +709,9 @@ where T: TransactionBackend + 'static
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::try_from(import_status)?,
-            message,
+            status,
             mined_timestamp.unwrap_or(Utc::now()),
-            TransactionDirection::Inbound,
+            direction,
             current_height,
             mined_timestamp,
             payment_id,

@@ -269,6 +269,7 @@ async fn generate_sender_transaction_message(
             Covenant::default(),
             MicroMinotari::zero(),
             amount,
+            TariAddress::default(),
         )
         .await
         .unwrap();
@@ -400,10 +401,11 @@ async fn test_utxo_selection_no_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap_err();
@@ -436,10 +438,11 @@ async fn test_utxo_selection_no_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            String::new(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -530,10 +533,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap_err();
@@ -612,10 +616,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -640,10 +645,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -735,10 +741,11 @@ async fn test_utxo_selection_with_tx_priority() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -781,10 +788,11 @@ async fn send_not_enough_funds() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
     {
@@ -848,10 +856,11 @@ async fn send_no_change() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -914,10 +923,11 @@ async fn send_not_enough_for_change() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
     {
@@ -955,10 +965,11 @@ async fn cancel_transaction() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1060,10 +1071,11 @@ async fn test_get_balance() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1131,10 +1143,11 @@ async fn sending_transaction_persisted_while_offline() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1164,10 +1177,11 @@ async fn sending_transaction_persisted_while_offline() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1475,10 +1489,11 @@ async fn test_txo_validation() {
             OutputFeatures::default(),
             MicroMinotari::from(10),
             TransactionMetadata::default(),
-            "".to_string(),
             TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();

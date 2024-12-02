@@ -7,6 +7,7 @@ use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -147,7 +148,7 @@ impl TransactionsTab {
             )));
 
             column3_items.push(ListItem::new(Span::styled(
-                t.message.as_str(),
+                t.payment_id.clone().unwrap_or_default().user_data_as_string(),
                 Style::default().fg(text_color),
             )));
         }
@@ -159,11 +160,12 @@ impl TransactionsTab {
             .add_column(Some("Source/Destination address"), Some(95), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
-            .add_column(Some("Message"), None, column3_items);
+            .add_column(Some("Payment ID"), None, column3_items);
 
         column_list.render(f, area, &mut pending_list_state);
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw_completed_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         //  Completed Transactions
@@ -205,44 +207,57 @@ impl TransactionsTab {
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
 
-        for t in windowed_view {
-            let cancelled = t.cancelled.is_some();
+        for tx in windowed_view {
+            let cancelled = tx.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
 
-            let address_text = match (&t.direction, &t.coinbase, &t.burn) {
+            let (status, burn) = if let Some(PaymentId::TransactionInfo { burn, .. }) = tx.payment_id.clone() {
+                (
+                    match tx.status {
+                        TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
+                        TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
+                        _ => tx.status.clone(),
+                    },
+                    burn,
+                )
+            } else {
+                (tx.status.clone(), tx.burn)
+            };
+
+            let address_text = match (&tx.direction, &tx.coinbase, burn) {
                 (_, true, _) => "Mining reward",
                 (_, _, true) => "Burned output",
-                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(t.destination_address.to_base58()),
-                _ => &app_state.get_alias(t.source_address.to_base58()),
+                (TransactionDirection::Outbound, _, _) => &app_state.get_alias(tx.destination_address.to_base58()),
+                _ => &app_state.get_alias(tx.source_address.to_base58()),
             };
             column0_items.push(ListItem::new(Span::styled(
                 app_state.get_alias(address_text.to_string()),
                 Style::default().fg(text_color),
             )));
-            if t.direction == TransactionDirection::Outbound {
-                let amount_style = if t.cancelled.is_some() {
+            if tx.direction == TransactionDirection::Outbound {
+                let amount_style = if tx.cancelled.is_some() {
                     Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                let amount = format!("{}", t.amount);
+                let amount = format!("{}", tx.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
-                let color = match (t.cancelled.is_some(), chain_height) {
+                let color = match (tx.cancelled.is_some(), chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,
                     // not mature yet
-                    (_, Some(height)) if t.maturity > height => Color::Yellow,
+                    (_, Some(height)) if tx.maturity > height => Color::Yellow,
                     // default
                     _ => Color::Green,
                 };
                 let amount_style = Style::default().fg(color);
-                let amount = format!("{}", t.amount);
+                let amount = format!("{}", tx.amount);
                 column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
 
             column2_items.push(ListItem::new(Span::styled(
-                match t.mined_timestamp {
+                match tx.mined_timestamp {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
@@ -253,14 +268,17 @@ impl TransactionsTab {
                 Style::default().fg(text_color),
             )));
 
-            let status = if matches!(t.cancelled, Some(TxCancellationReason::UserCancelled)) {
+            let status_display = if matches!(tx.cancelled, Some(TxCancellationReason::UserCancelled)) {
                 "Cancelled".to_string()
-            } else if t.cancelled.is_some() {
+            } else if tx.cancelled.is_some() {
                 "Rejected".to_string()
             } else {
-                t.status.to_string()
+                status.to_string()
             };
-            column3_items.push(ListItem::new(Span::styled(status, Style::default().fg(text_color))));
+            column3_items.push(ListItem::new(Span::styled(
+                status_display,
+                Style::default().fg(text_color),
+            )));
         }
 
         let column_list = MultiColumnList::new()
@@ -291,7 +309,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 14];
+        let constraints = [Constraint::Length(1); 13];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let excess_sig = Span::styled("Excess sig(nonce, sig):", Style::default().fg(Color::Magenta));
@@ -301,7 +319,6 @@ impl TransactionsTab {
         let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
-        let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
         let imported_timestamp = Span::styled("Imported At (Local):", Style::default().fg(Color::Magenta));
         let mined_timestamp = Span::styled("Mined At (Local):", Style::default().fg(Color::Magenta));
         let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
@@ -324,65 +341,105 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[5]);
         let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[6]);
-        let paragraph = Paragraph::new(message).wrap(trim);
-        f.render_widget(paragraph, label_layout[7]);
         let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
-        f.render_widget(paragraph, label_layout[8]);
+        f.render_widget(paragraph, label_layout[7]);
         let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
-        f.render_widget(paragraph, label_layout[9]);
+        f.render_widget(paragraph, label_layout[8]);
         let paragraph = Paragraph::new(confirmations).wrap(trim);
-        f.render_widget(paragraph, label_layout[10]);
+        f.render_widget(paragraph, label_layout[9]);
         let paragraph = Paragraph::new(mined_height).wrap(trim);
-        f.render_widget(paragraph, label_layout[11]);
+        f.render_widget(paragraph, label_layout[10]);
         let paragraph = Paragraph::new(maturity).wrap(trim);
-        f.render_widget(paragraph, label_layout[12]);
+        f.render_widget(paragraph, label_layout[11]);
         let paragraph = Paragraph::new(payment_id).wrap(trim);
-        f.render_widget(paragraph, label_layout[13]);
+        f.render_widget(paragraph, label_layout[12]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 14];
+            let constraints = [Constraint::Length(1); 13];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
+            let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
+                if let Some(PaymentId::TransactionInfo {
+                    fee,
+                    weight,
+                    inputs_count,
+                    outputs_count,
+                    ..
+                }) = tx.payment_id.clone()
+                {
+                    let status = match tx.status {
+                        TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
+                        TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
+                        _ => tx.status.clone(),
+                    };
+
+                    (
+                        status,
+                        tx.direction.clone(),
+                        tx.amount,
+                        fee,
+                        weight,
+                        inputs_count,
+                        outputs_count,
+                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.source_address.clone(),
+                        tx.destination_address.clone(),
+                    )
+                } else {
+                    (
+                        tx.status.clone(),
+                        tx.direction.clone(),
+                        tx.amount,
+                        tx.fee,
+                        tx.weight,
+                        tx.inputs_count,
+                        tx.outputs_count,
+                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.source_address.clone(),
+                        tx.destination_address.clone(),
+                    )
+                };
+
             let source_address =
-                if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Outbound {
+                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Outbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{}", tx.source_address), Style::default().fg(Color::White))
+                    Span::styled(format!("{}", source), Style::default().fg(Color::White))
                 };
             let destination_address =
-                if tx.status == TransactionStatus::Pending && tx.direction == TransactionDirection::Inbound {
+                if tx.status == TransactionStatus::Pending && direction == TransactionDirection::Inbound {
                     Span::raw("")
                 } else {
-                    Span::styled(format!("{}", tx.destination_address), Style::default().fg(Color::White))
+                    Span::styled(format!("{}", destination), Style::default().fg(Color::White))
                 };
-            let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
-            let amount = tx.amount.to_string();
+
+            let direction = Span::styled(format!("{}", direction), Style::default().fg(Color::White));
+            let amount = amount.to_string();
             let content = &amount;
             let amount = Span::styled(content, Style::default().fg(Color::White));
             let fee_details = {
                 Span::styled(
                     format!(
                         " (weight: {}g, #inputs: {}, #outputs: {})",
-                        tx.weight, tx.inputs_count, tx.outputs_count
+                        weight, inputs_count, outputs_count
                     ),
                     Style::default().fg(Color::Gray),
                 )
             };
             let fee = Spans::from(vec![
-                Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
+                Span::styled(format!("{}", fee), Style::default().fg(Color::White)),
                 fee_details,
             ]);
             let status_msg = if let Some(reason) = tx.cancelled {
                 format!("Cancelled: {}", reason)
             } else {
-                tx.status.to_string()
+                status.to_string()
             };
 
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
-            let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
 
             // let mined_time = DateTime::<Local>::from_naive_utc_and_offset(tx.mined_timestamp,
             // Local::now().offset().to_owned());
@@ -439,19 +496,6 @@ impl TransactionsTab {
             };
             let maturity = Span::styled(maturity, Style::default().fg(Color::White));
 
-            let payment_id = match tx.payment_id.clone() {
-                Some(v) => {
-                    let bytes = v.get_data();
-                    if bytes.is_empty() {
-                        format!("#{}", v)
-                    } else {
-                        String::from_utf8(bytes)
-                            .unwrap_or_else(|_| "Invalid string".to_string())
-                            .to_string()
-                    }
-                },
-                None => "None".to_string(),
-            };
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
             let paragraph = Paragraph::new(excess_sig).wrap(trim);
@@ -468,20 +512,18 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[5]);
             let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[6]);
-            let paragraph = Paragraph::new(message).wrap(trim);
-            f.render_widget(paragraph, content_layout[7]);
             let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
-            f.render_widget(paragraph, content_layout[8]);
+            f.render_widget(paragraph, content_layout[7]);
             let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
-            f.render_widget(paragraph, content_layout[9]);
+            f.render_widget(paragraph, content_layout[8]);
             let paragraph = Paragraph::new(confirmations).wrap(trim);
-            f.render_widget(paragraph, content_layout[10]);
+            f.render_widget(paragraph, content_layout[9]);
             let paragraph = Paragraph::new(mined_height).wrap(trim);
-            f.render_widget(paragraph, content_layout[11]);
+            f.render_widget(paragraph, content_layout[10]);
             let paragraph = Paragraph::new(maturity).wrap(trim);
-            f.render_widget(paragraph, content_layout[12]);
+            f.render_widget(paragraph, content_layout[11]);
             let paragraph = Paragraph::new(payment_id).wrap(trim);
-            f.render_widget(paragraph, content_layout[13]);
+            f.render_widget(paragraph, content_layout[12]);
         }
     }
 }
@@ -494,7 +536,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(16),
+                    Constraint::Length(15),
                 ]
                 .as_ref(),
             )

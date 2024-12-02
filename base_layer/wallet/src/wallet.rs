@@ -556,7 +556,6 @@ where
         input_data: ExecutionStack,
         source_address: TariAddress,
         features: OutputFeatures,
-        message: String,
         metadata_signature: ComAndPubSignature,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
@@ -565,6 +564,7 @@ where
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         range_proof: Option<RangeProof>,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -581,7 +581,7 @@ where
             minimum_value_promise,
             range_proof,
         );
-        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, payment_id)
             .await
     }
 
@@ -592,24 +592,24 @@ where
         &mut self,
         unblinded_output: UnblindedOutput,
         source_address: TariAddress,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
             .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
             .await?;
+
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
                 value,
                 source_address,
-                message,
                 ImportStatus::Imported,
                 None,
                 None,
                 None,
                 wallet_output.to_transaction_output(&self.key_manager_service).await?,
-                PaymentId::Empty,
+                payment_id,
             )
             .await?;
         // As non-rewindable
@@ -676,7 +676,7 @@ where
         amount_per_split: MicroMinotari,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -687,7 +687,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -704,7 +704,7 @@ where
         commitments: Vec<Commitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -715,7 +715,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -732,7 +732,7 @@ where
         commitments: Vec<Commitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -743,7 +743,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -758,7 +758,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         fee_per_gram: MicroMinotari,
-        msg: Option<String>,
+        payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self
             .output_manager_service
@@ -769,7 +769,7 @@ where
             Ok((tx_id, tx, output_value)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or_default())
+                    .submit_transaction(tx_id, tx, output_value, payment_id.unwrap_or_default())
                     .await;
 
                 match coin_tx {

@@ -354,7 +354,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                message.message,
+                PaymentId::from_bytes(&message.payment_id),
             )
             .await
         {
@@ -414,7 +414,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        "Claiming HTLC transaction with pre-image".to_string(),
+                        PaymentId::open_from_str("Claiming HTLC transaction with pre-image"),
                     )
                     .await
                 {
@@ -465,7 +465,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         {
             Ok((tx_id, _fee, amount, tx)) => {
                 match transaction_service
-                    .submit_transaction(tx_id, tx, amount, "Creating HTLC refund transaction".to_string())
+                    .submit_transaction(
+                        tx_id,
+                        tx,
+                        amount,
+                        PaymentId::open_from_str("Creating HTLC refund transaction"),
+                    )
                     .await
                 {
                     Ok(()) => TransferResult {
@@ -512,7 +517,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     address,
                     dest.amount,
                     dest.fee_per_gram,
-                    dest.message,
                     dest.payment_type,
                     dest.payment_id,
                 ))
@@ -521,10 +525,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, message, payment_type, payment_id) in recipients {
-            let payment_id = PaymentId::from_bytes(&payment_id)
-                .map_err(|_| "Invalid payment id".to_string())
-                .map_err(Status::invalid_argument)?;
+        for (hex_address, address, amount, fee_per_gram, payment_type, payment_id) in recipients {
+            let payment_id = PaymentId::from_bytes(&payment_id);
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
@@ -537,7 +539,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
+                                payment_id,
                             )
                             .await
                     } else if payment_type == PaymentType::OneSided as i32 {
@@ -548,7 +550,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
                                 payment_id,
                             )
                             .await
@@ -560,7 +561,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
                                 payment_id,
                             )
                             .await
@@ -611,7 +611,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                message.message,
+                PaymentId::from_bytes(&message.payment_id),
                 if message.claim_public_key.is_empty() {
                     None
                 } else {
@@ -789,8 +789,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
-                        message: txn.message.clone(),
-                        payment_id: txn.payment_id.as_ref().map(|id| id.to_bytes()).unwrap_or_default(),
+                        payment_id: txn.payment_id.to_bytes(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -832,7 +831,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                message.message,
+                PaymentId::Empty,
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -862,7 +861,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        "Imported via gRPC".to_string(),
+                        PaymentId::from_bytes(&message.payment_id),
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
@@ -971,8 +970,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         )
         .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
         let fee_per_gram = message.fee_per_gram;
+        let template_name = template_registration.template_name.clone();
 
-        let message = format!("Template registration {}", template_registration.template_name);
         let mut output = output_manager
             .create_output_with_features(1 * T, OutputFeatures {
                 output_type: OutputType::CodeTemplateRegistration,
@@ -985,7 +984,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         output = output.with_script(script![Nop].map_err(|e| Status::invalid_argument(e.to_string()))?);
 
         let (tx_id, transaction) = output_manager
-            .create_send_to_self_with_output(vec![output], fee_per_gram.into(), UtxoSelectionCriteria::default())
+            .create_send_to_self_with_output(
+                vec![output],
+                fee_per_gram.into(),
+                UtxoSelectionCriteria::default(),
+                PaymentId::open_from_str(&format!("Template registration {}", template_name)),
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1003,7 +1007,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_address = reg_output.hash();
 
         transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .submit_transaction(tx_id, transaction, 0.into(), PaymentId::Empty)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1039,7 +1043,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_signature,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                request.message,
+                PaymentId::from_bytes(&request.payment_id),
             )
             .await
         {
@@ -1106,7 +1110,6 @@ fn simple_event(event: &str) -> TransactionEvent {
         status: event.to_string(),
         direction: event.to_string(),
         amount: 0,
-        message: String::default(),
         payment_id: vec![],
     }
 }
@@ -1128,8 +1131,7 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: 0,
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            message: tx.message,
-            payment_id: vec![],
+            payment_id: tx.payment_id.to_bytes(),
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1142,8 +1144,7 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: tx.fee.into(),
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            message: tx.message,
-            payment_id: vec![],
+            payment_id: tx.payment_id.to_bytes(),
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1160,8 +1161,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 .first_kernel_excess_sig()
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
-            message: tx.message,
-            payment_id: tx.payment_id.map(|id| id.to_bytes()).unwrap_or_default(),
+            payment_id: tx.payment_id.to_bytes(),
         },
     }
 }

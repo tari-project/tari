@@ -178,7 +178,12 @@ mod test {
             key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::{OutputFeatures, TransactionKernelVersion, TransactionOutputVersion},
+            transaction_components::{
+                encrypted_data::PaymentId,
+                OutputFeatures,
+                TransactionKernelVersion,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 TransactionMetadata,
@@ -202,7 +207,7 @@ mod test {
             public_excess: sender_test_params.kernel_nonce_key_pk, // any random key will do
             public_nonce: sender_test_params.public_nonce_key_pk,  // any random key will do
             metadata: m.clone(),
-            message: "".to_string(),
+            payment_id: PaymentId::Empty,
             features,
             script,
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,

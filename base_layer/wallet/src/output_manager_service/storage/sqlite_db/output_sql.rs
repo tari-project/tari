@@ -676,15 +676,7 @@ impl OutputSql {
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let payment_id = match self.payment_id {
-            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create payment id from stored bytes"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: "payment id could not be converted from bytes".to_string(),
-                }
-            })?,
+            Some(bytes) => PaymentId::from_bytes(&bytes),
             None => PaymentId::Empty,
         };
 

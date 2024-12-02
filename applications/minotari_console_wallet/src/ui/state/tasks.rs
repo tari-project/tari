@@ -61,7 +61,7 @@ pub async fn send_transaction_task(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -76,7 +76,7 @@ pub async fn send_transaction_task(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
+            payment_id,
         )
         .await
     {
@@ -137,7 +137,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -152,7 +151,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
             payment_id,
         )
         .await
@@ -193,7 +191,7 @@ pub async fn send_burn_transaction_task(
     claim_public_key: Option<PublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
@@ -207,7 +205,7 @@ pub async fn send_burn_transaction_task(
     // ----------------------------------------------------------------------------
 
     let (burn_tx_id, original_proof) = match transaction_service_handle
-        .burn_tari(amount, selection_criteria, fee_per_gram, message, claim_public_key)
+        .burn_tari(amount, selection_criteria, fee_per_gram, payment_id, claim_public_key)
         .await
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),

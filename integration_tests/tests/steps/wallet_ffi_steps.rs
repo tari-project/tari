@@ -24,6 +24,7 @@ use std::{convert::TryFrom, io::BufRead, ptr::null, time::Duration};
 
 use cucumber::{given, then, when};
 use tari_common_types::tari_address::TariAddress;
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tari_integration_tests::{
     wallet_ffi::{create_contact, create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
     TariWorld,
@@ -209,8 +210,8 @@ async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: Stri
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, false);
+    let payment_id = PaymentId::open_from_str(&format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee));
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, false);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 
@@ -219,8 +220,8 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, true);
+    let payment_id = PaymentId::open_from_str(&format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee));
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, true);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 

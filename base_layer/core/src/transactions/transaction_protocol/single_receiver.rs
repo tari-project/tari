@@ -285,7 +285,7 @@ mod test {
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
-            message: "".to_string(),
+            payment_id: PaymentId::Empty,
             features: OutputFeatures::default(),
             script: script.clone(),
             sender_offset_public_key,

@@ -39,7 +39,7 @@ use tari_core::{
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
-        transaction_components::OutputFeatures,
+        transaction_components::{encrypted_data::PaymentId, OutputFeatures},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -92,7 +92,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInt
     dest_address: TariAddress,
     amount: MicroMinotari,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
@@ -117,7 +117,7 @@ where
         dest_address: TariAddress,
         amount: MicroMinotari,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
         tx_meta: TransactionMetadata,
         service_request_reply_channel: Option<
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
@@ -133,7 +133,7 @@ where
             dest_address,
             amount,
             fee_per_gram,
-            message,
+            payment_id,
             service_request_reply_channel,
             stage,
             tx_meta,
@@ -224,10 +224,11 @@ where
                 OutputFeatures::default(),
                 self.fee_per_gram,
                 self.tx_meta.clone(),
-                self.message.clone(),
                 TariScript::default(),
                 Covenant::default(),
                 MicroMinotari::zero(),
+                self.dest_address.clone(),
+                self.payment_id.clone(),
             )
             .await
         {
@@ -289,7 +290,7 @@ where
             MicroMinotari::zero(), // This does not matter for the check
             sender_protocol.clone(),
             TransactionStatus::Pending, // This does not matter for the check
-            self.message.clone(),
+            self.payment_id.clone(),
             Utc::now(),
             true, // This does not matter for the check
         );
@@ -343,7 +344,7 @@ where
                 fee,
                 sender_protocol.clone(),
                 initial_send.transaction_status.clone(),
-                self.message.clone(),
+                self.payment_id.clone(),
                 Utc::now(),
                 initial_send.direct_send_result,
             );
@@ -599,12 +600,11 @@ where
             outbound_tx.fee,
             tx.clone(),
             TransactionStatus::Completed,
-            outbound_tx.message.clone(),
             Utc::now(),
             TransactionDirection::Outbound,
             None,
             None,
-            None,
+            outbound_tx.payment_id.clone(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

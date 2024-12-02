@@ -49,7 +49,7 @@ mod test {
     };
     use tari_core::transactions::{
         tari_amount::{uT, MicroMinotari},
-        transaction_components::Transaction,
+        transaction_components::{encrypted_data::PaymentId, Transaction},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
@@ -319,7 +319,7 @@ mod test {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            "1".to_string(),
+            PaymentId::open_from_str("1"),
             Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
@@ -349,12 +349,11 @@ mod test {
                 PrivateKey::default(),
             ),
             TransactionStatus::Completed,
-            "2".to_string(),
             Utc::now(),
             TransactionDirection::Inbound,
             None,
             None,
-            None,
+            PaymentId::open_from_str("2"),
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -373,7 +372,7 @@ mod test {
             23 * uT,
             stp,
             TransactionStatus::Pending,
-            "3".to_string(),
+            PaymentId::open_from_str("3"),
             Utc::now(),
             false,
         );
@@ -421,12 +420,11 @@ mod test {
                 PrivateKey::default(),
             ),
             TransactionStatus::OneSidedUnconfirmed,
-            "6".to_string(),
             Utc::now(),
             TransactionDirection::Inbound,
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
-            None,
+            PaymentId::open_from_str("6"),
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -456,12 +454,11 @@ mod test {
                 PrivateKey::default(),
             ),
             TransactionStatus::OneSidedConfirmed,
-            "7".to_string(),
             Utc::now(),
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
-            None,
+            PaymentId::open_from_str("7"),
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())

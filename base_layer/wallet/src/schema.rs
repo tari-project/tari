@@ -25,7 +25,6 @@ diesel::table! {
         fee -> BigInt,
         transaction_protocol -> Binary,
         status -> Integer,
-        message -> Text,
         timestamp -> Timestamp,
         cancelled -> Nullable<Integer>,
         direction -> Nullable<Integer>,
@@ -47,12 +46,12 @@ diesel::table! {
         source_address -> Binary,
         amount -> BigInt,
         receiver_protocol -> Binary,
-        message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
+        payment_id -> Nullable<Binary>,
     }
 }
 
@@ -73,12 +72,12 @@ diesel::table! {
         amount -> BigInt,
         fee -> BigInt,
         sender_protocol -> Binary,
-        message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
+        payment_id -> Nullable<Binary>,
     }
 }
 

@@ -155,7 +155,7 @@ where
                 amount,
                 rtp,
                 TransactionStatus::Pending,
-                data.message.clone(),
+                data.payment_id.clone(),
                 Utc::now(),
             );
 
@@ -200,10 +200,10 @@ where
 
             trace!(
                 target: LOG_TARGET,
-                "Transaction (TX_ID: {}) - Amount: {} - Message: {}",
+                "Transaction (TX_ID: {}) - Amount: {} - Payment ID: {}",
                 data.tx_id,
                 amount,
-                data.message,
+                data.payment_id,
             );
 
             let _size = self
@@ -442,12 +442,11 @@ where
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,
-                inbound_tx.message.clone(),
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
                 None,
                 None,
-                None,
+                inbound_tx.payment_id.clone(),
             )
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

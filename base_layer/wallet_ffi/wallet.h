@@ -1165,7 +1165,7 @@ struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *walle
 unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
                                                                  TariUnblindedOutput *output,
                                                                  TariWalletAddress *source_address,
-                                                                 const char *message,
+                                                                 const char *payment_id,
                                                                  int *error_out);
 
 /**
@@ -2197,25 +2197,7 @@ unsigned long long completed_transaction_get_timestamp(TariCompletedTransaction 
                                                        int *error_out);
 
 /**
- * Gets the message of a TariCompletedTransaction
- *
- * ## Arguments
- * `transaction` - The pointer to a TariCompletedTransaction
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
- * to an empty char array if transaction is null
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
- */
-const char *completed_transaction_get_message(TariCompletedTransaction *transaction,
-                                              int *error_out);
-
-/**
- * Gets the payment id of a TariCompletedTransaction
+ * Gets the payment ID of a TariCompletedTransaction
  *
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
@@ -2431,7 +2413,7 @@ unsigned long long pending_outbound_transaction_get_timestamp(TariPendingOutboun
                                                               int *error_out);
 
 /**
- * Gets the message of a TariPendingOutboundTransaction
+ * Gets the payment ID of a TariPendingOutboundTransaction
  *
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
@@ -2446,8 +2428,8 @@ unsigned long long pending_outbound_transaction_get_timestamp(TariPendingOutboun
  *  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
  * leak
  */
-const char *pending_outbound_transaction_get_message(TariPendingOutboundTransaction *transaction,
-                                                     int *error_out);
+const char *pending_outbound_transaction_get_payment_id(TariPendingOutboundTransaction *transaction,
+                                                        int *error_out);
 
 /**
  * Gets the status of a TariPendingOutboundTransaction
@@ -2562,7 +2544,7 @@ unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundT
                                                              int *error_out);
 
 /**
- * Gets the message of a TariPendingInboundTransaction
+ * Gets the payment ID of a TariPendingInboundTransaction
  *
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
@@ -2577,8 +2559,8 @@ unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundT
  *  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
  * leak
  */
-const char *pending_inbound_transaction_get_message(TariPendingInboundTransaction *transaction,
-                                                    int *error_out);
+const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransaction *transaction,
+                                                       int *error_out);
 
 /**
  * Gets the status of a TariPendingInboundTransaction
@@ -3454,7 +3436,6 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
-                                           const char *message,
                                            bool one_sided,
                                            const char *payment_id_string,
                                            int *error_out);

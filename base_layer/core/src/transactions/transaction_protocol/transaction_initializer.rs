@@ -26,7 +26,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
@@ -44,6 +44,7 @@ use crate::{
         transaction_components::{
             encrypted_data::PaymentId,
             OutputFeatures,
+            OutputType,
             TransactionOutput,
             TransactionOutputVersion,
             WalletOutput,
@@ -55,6 +56,7 @@ use crate::{
             KernelFeatures,
             TransactionMetadata,
         },
+        weight::TransactionWeight,
     },
 };
 
@@ -79,6 +81,7 @@ pub(super) struct RecipientDetails {
     pub recipient_covenant: Covenant,
     pub recipient_minimum_value_promise: MicroMinotari,
     pub recipient_ephemeral_public_key_nonce: TariKeyId,
+    pub recipient_address: TariAddress,
 }
 
 /// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
@@ -97,7 +100,7 @@ pub struct SenderTransactionInitializer<KM> {
     sender_custom_outputs: Vec<OutputPair>,
     change: Option<ChangeDetails>,
     recipient: Option<RecipientDetails>,
-    recipient_text_message: Option<String>,
+    payment_id: Option<PaymentId>,
     prevent_fee_gt_amount: bool,
     tx_id: Option<TxId>,
     kernel_features: KernelFeatures,
@@ -129,7 +132,7 @@ where KM: TransactionKeyManagerInterface
             inputs: Vec::new(),
             sender_custom_outputs: Vec::new(),
             change: None,
-            recipient_text_message: None,
+            payment_id: None,
             prevent_fee_gt_amount: true,
             recipient: None,
             kernel_features: KernelFeatures::empty(),
@@ -162,6 +165,7 @@ where KM: TransactionKeyManagerInterface
         recipient_covenant: Covenant,
         recipient_minimum_value_promise: MicroMinotari,
         amount: MicroMinotari,
+        recipient_address: TariAddress,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let recipient_ephemeral_public_key_nonce = self
             .key_manager
@@ -179,6 +183,7 @@ where KM: TransactionKeyManagerInterface
             recipient_minimum_value_promise,
             recipient_ephemeral_public_key_nonce: recipient_ephemeral_public_key_nonce.key_id,
             amount,
+            recipient_address,
         };
         self.recipient = Some(recipient_details);
         Ok(self)
@@ -247,9 +252,9 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    /// Provide a text message for receiver
-    pub fn with_message(&mut self, message: String) -> &mut Self {
-        self.recipient_text_message = Some(message);
+    /// Provide a payment id for receiver
+    pub fn with_payment_id(&mut self, payment_id: PaymentId) -> &mut Self {
+        self.payment_id = Some(payment_id);
         self
     }
 
@@ -395,14 +400,63 @@ where KM: TransactionKeyManagerInterface
                             .ok_or("Change covenant was not provided")?
                             .change_covenant
                             .clone();
-                        let address = self
+                        let own_address = self
                             .change
                             .as_ref()
                             .ok_or("address was not provided")?
                             .own_address
                             .clone();
 
-                        let payment_id = PaymentId::Address(address);
+                        let weight_without_change = TransactionWeight::latest().calculate(
+                            1,
+                            num_inputs,
+                            num_outputs,
+                            features_and_scripts_size_without_change,
+                        );
+                        let weight_of_change =
+                            TransactionWeight::latest().calculate(0, 0, 1, change_features_and_scripts_size);
+                        let sender_one_sided = !self
+                            .change
+                            .as_ref()
+                            .ok_or("address was not provided")?
+                            .own_address
+                            .features()
+                            .contains(TariAddressFeatures::INTERACTIVE);
+                        let burn = if let Some(recipient) = self.recipient.clone() {
+                            recipient.recipient_output_features.output_type == OutputType::Burn
+                        } else {
+                            false
+                        };
+                        let burn = burn ||
+                            self.sender_custom_outputs
+                                .iter()
+                                .any(|v| v.output.features.output_type == OutputType::Burn) ||
+                            self.burn_commitment.is_some();
+
+                        let mut payment_id = PaymentId::TransactionInfo {
+                            recipient_address: TariAddress::default(),
+                            sender_one_sided,
+                            amount: MicroMinotari::default(),
+                            fee: fee_without_change + change_fee,
+                            weight: weight_without_change + weight_of_change,
+                            inputs_count: num_inputs,
+                            outputs_count: num_outputs + 1,
+                            burn,
+                            user_data: if let Some(data) = self.payment_id.clone() {
+                                data.user_data_as_bytes()
+                            } else {
+                                vec![]
+                            },
+                        };
+                        if let Some(recipient) = self.recipient.clone() {
+                            payment_id.transaction_info_set_amount(recipient.amount);
+                            if !burn {
+                                payment_id.transaction_info_set_address(recipient.recipient_address);
+                            }
+                        } else {
+                            payment_id.transaction_info_set_amount(total_to_self);
+                            payment_id.transaction_info_set_address(own_address);
+                        }
 
                         let encrypted_data = self
                             .key_manager
@@ -589,7 +643,7 @@ where KM: TransactionKeyManagerInterface
             },
             inputs: self.inputs,
             outputs: self.sender_custom_outputs,
-            text_message: self.recipient_text_message.unwrap_or_default(),
+            payment_id: self.payment_id.unwrap_or_default(),
             sender_address: self.sender_address.clone(),
         };
 
@@ -878,6 +932,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari(500),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -927,6 +982,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari::zero(),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -994,6 +1050,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari(2500),
+                TariAddress::default(),
             )
             .await
             .unwrap();

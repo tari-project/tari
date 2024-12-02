@@ -5,7 +5,7 @@ use std::fs;
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -34,7 +34,7 @@ pub struct BurnTab {
     claim_public_key_field: String,
     amount_field: String,
     fee_field: String,
-    message_field: String,
+    payment_id_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
@@ -53,7 +53,7 @@ impl BurnTab {
             claim_public_key_field: String::new(),
             amount_field: String::new(),
             fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
-            message_field: String::new(),
+            payment_id_field: String::new(),
             error_message: None,
             success_message: None,
             offline_message: None,
@@ -92,22 +92,22 @@ impl BurnTab {
         let instructions = Paragraph::new(vec![
             Spans::from(vec![
                 Span::raw("Press "),
-                Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled("V", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Burn Proof Filepath", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
+                Span::raw(", "),
                 Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Claim Public Key", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
+                Span::raw(", "),
                 Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" and "),
+                Span::raw(", "),
                 Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field,"),
+                Span::raw(" and "),
                 Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to view burnt proofs."),
             ]),
@@ -129,7 +129,7 @@ impl BurnTab {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Save burn proof to file(p)ath:"),
+                    .title("Sa(v)e burn proof to file path:"),
             );
         f.render_widget(burnt_proof_filepath_input, vert_chunks[1]);
 
@@ -162,13 +162,13 @@ impl BurnTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
         f.render_widget(fee_input, amount_fee_layout[1]);
 
-        let message_input = Paragraph::new(self.message_field.as_ref())
+        let payment_id_input = Paragraph::new(self.payment_id_field.as_ref())
             .style(match self.burn_input_mode {
-                BurnInputMode::Message => Style::default().fg(Color::Magenta),
+                BurnInputMode::PaymentId => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
-            .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
-        f.render_widget(message_input, vert_chunks[4]);
+            .block(Block::default().borders(Borders::ALL).title("(P)ayment-id:"));
+        f.render_widget(payment_id_input, vert_chunks[4]);
 
         match self.burn_input_mode {
             BurnInputMode::None => (),
@@ -198,9 +198,9 @@ impl BurnTab {
                 // Move one line down, from the border to the input line
                 amount_fee_layout[1].y + 1,
             ),
-            BurnInputMode::Message => f.set_cursor(
+            BurnInputMode::PaymentId => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[4].x + self.message_field.width() as u16 + 1,
+                vert_chunks[4].x + self.payment_id_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
                 vert_chunks[4].y + 1,
             ),
@@ -311,7 +311,11 @@ impl BurnTab {
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
-                                self.message_field.clone(),
+                                if self.payment_id_field.is_empty() {
+                                    PaymentId::Empty
+                                } else {
+                                    PaymentId::open_from_str(&self.payment_id_field)
+                                },
                                 tx,
                             )) {
                                 Err(e) => {
@@ -355,7 +359,7 @@ impl BurnTab {
                         self.claim_public_key_field = "".to_string();
                         self.amount_field = "".to_string();
                         self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
-                        self.message_field = "".to_string();
+                        self.payment_id_field = "".to_string();
                         self.burn_input_mode = BurnInputMode::None;
                         self.burn_result_watch = Some(rx);
                     }
@@ -390,7 +394,7 @@ impl BurnTab {
                     },
                 },
                 BurnInputMode::Amount => match c {
-                    '\n' => self.burn_input_mode = BurnInputMode::Message,
+                    '\n' => self.burn_input_mode = BurnInputMode::PaymentId,
                     c => {
                         if c.is_numeric() || ['t', 'T', 'u', 'U'].contains(&c) {
                             self.amount_field.push(c);
@@ -407,10 +411,10 @@ impl BurnTab {
                         return KeyHandled::Handled;
                     },
                 },
-                BurnInputMode::Message => match c {
+                BurnInputMode::PaymentId => match c {
                     '\n' => self.burn_input_mode = BurnInputMode::None,
                     c => {
-                        self.message_field.push(c);
+                        self.payment_id_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
@@ -546,7 +550,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     area,
                     "Confirm Burning Transaction".to_string(),
                     format!(
-                        "Are you sure you want to burn {} Minotari with a Claim Public Key {}?\n(Y)es / (N)o",
+                        "Are you sure you want to burn {} Minotari with a Claim Public Key\n{}?\n(Y)es / (N)o",
                         self.amount_field, self.claim_public_key_field
                     ),
                     Color::Red,
@@ -608,13 +612,13 @@ impl<B: Backend> Component<B> for BurnTab {
         }
 
         match c {
-            'p' => self.burn_input_mode = BurnInputMode::BurntProofPath,
+            'v' => self.burn_input_mode = BurnInputMode::BurntProofPath,
             'c' => self.burn_input_mode = BurnInputMode::ClaimPublicKey,
             'a' => {
                 self.burn_input_mode = BurnInputMode::Amount;
             },
             'f' => self.burn_input_mode = BurnInputMode::Fee,
-            'm' => self.burn_input_mode = BurnInputMode::Message,
+            'p' => self.burn_input_mode = BurnInputMode::PaymentId,
             'b' => {
                 self.show_proofs = !self.show_proofs;
             },
@@ -669,8 +673,8 @@ impl<B: Backend> Component<B> for BurnTab {
             BurnInputMode::Fee => {
                 let _ = self.fee_field.pop();
             },
-            BurnInputMode::Message => {
-                let _ = self.message_field.pop();
+            BurnInputMode::PaymentId => {
+                let _ = self.payment_id_field.pop();
             },
             BurnInputMode::None => {},
         }
@@ -683,7 +687,7 @@ pub enum BurnInputMode {
     BurntProofPath,
     ClaimPublicKey,
     Amount,
-    Message,
+    PaymentId,
     Fee,
 }
 

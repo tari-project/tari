@@ -32,7 +32,10 @@ use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
-use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
+use crate::transactions::{
+    transaction_components::encrypted_data::PaymentId,
+    transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
+};
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {
@@ -102,7 +105,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .metadata
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
-        let message = data.message;
+        let payment_id = PaymentId::from_bytes(&data.payment_id);
         let ephemeral_public_nonce =
             PublicKey::from_canonical_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
         let features = data
@@ -127,7 +130,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             public_excess,
             public_nonce,
             metadata,
-            message,
+            payment_id,
             features,
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             sender_offset_public_key,
@@ -155,7 +158,7 @@ impl TryFrom<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_excess: sender_data.public_excess.to_vec(),
             public_nonce: sender_data.public_nonce.to_vec(),
             metadata: Some(sender_data.metadata.into()),
-            message: sender_data.message,
+            payment_id: sender_data.payment_id.to_bytes(),
             features: Some(sender_data.features.into()),
             script: sender_data.script.to_bytes(),
             sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),

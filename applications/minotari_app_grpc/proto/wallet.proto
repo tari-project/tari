@@ -105,8 +105,8 @@ message SendShaAtomicSwapRequest {
 message CreateBurnTransactionRequest{
   uint64 amount = 1;
   uint64 fee_per_gram = 2;
-  string message = 3;
   bytes claim_public_key = 4;
+  bytes payment_id = 5;
 }
 
 
@@ -114,7 +114,6 @@ message PaymentRecipient {
   string address = 1;
   uint64 amount = 2;
   uint64 fee_per_gram = 3;
-  string message = 4;
   enum PaymentType {
     STANDARD_MIMBLEWIMBLE = 0;
     ONE_SIDED = 1;
@@ -191,7 +190,6 @@ message TransactionInfo {
   bool is_cancelled = 8;
   bytes excess_sig = 9;
   uint64 timestamp = 10;
-  string message = 11;
   bytes payment_id = 12;
 }
 
@@ -257,8 +255,8 @@ message CoinSplitRequest {
   uint64 amount_per_split = 1;
   uint64 split_count = 2;
   uint64 fee_per_gram = 3;
-  string message = 4;
   uint64 lock_height = 5;
+  bytes payment_id = 6;
 }
 
 message CoinSplitResponse {
@@ -267,6 +265,7 @@ message CoinSplitResponse {
 
 message ImportUtxosRequest {
   repeated UnblindedOutput outputs = 1;
+  bytes payment_id = 2;
 }
 
 message ImportUtxosResponse {
@@ -330,7 +329,6 @@ message TransactionEvent {
   string status = 5;
   string direction = 6;
   uint64 amount = 7;
-  string message = 8;
   bytes payment_id = 9;
 }
 
@@ -342,7 +340,7 @@ message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
   uint64 fee_per_gram = 3;
-  string message = 4;
+  bytes payment_id = 5;
 }
 
 message RegisterValidatorNodeResponse {

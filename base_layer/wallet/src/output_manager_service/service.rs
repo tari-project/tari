@@ -258,6 +258,7 @@ where
                 recipient_address,
                 original_maturity,
                 use_output,
+                payment_id,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -269,7 +270,7 @@ where
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
                     recipient_address,
-                    PaymentId::Empty,
+                    payment_id,
                     original_maturity,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -290,7 +291,7 @@ where
                     output_hash,
                     expected_commitment,
                     recipient_address,
-                    PaymentId::Empty,
+                    PaymentId::Open(output_hash.to_vec()),
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -323,10 +324,11 @@ where
                 output_features,
                 fee_per_gram,
                 tx_meta,
-                message,
                 script,
                 covenant,
                 minimum_value_promise,
+                recipient_address,
+                payment_id,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -334,11 +336,12 @@ where
                     selection_criteria,
                     fee_per_gram,
                     tx_meta,
-                    message,
                     *output_features,
                     script,
                     covenant,
                     minimum_value_promise,
+                    recipient_address,
+                    payment_id,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -400,8 +403,12 @@ where
                         .await?,
                 ))
             },
-            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
-                .scrape_wallet(tx_id, fee_per_gram)
+            OutputManagerRequest::ScrapeWallet {
+                tx_id,
+                fee_per_gram,
+                recipient_address,
+            } => self
+                .scrape_wallet(tx_id, fee_per_gram, recipient_address)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
 
@@ -472,9 +479,10 @@ where
                 outputs,
                 fee_per_gram,
                 selection_criteria,
+                payment_id,
             } => {
                 let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram)
+                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram, payment_id)
                     .await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
                     transaction: Box::new(transaction),
@@ -960,11 +968,12 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
-        message: String,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
         recipient_minimum_value_promise: MicroMinotari,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1011,10 +1020,11 @@ where
                 recipient_covenant,
                 recipient_minimum_value_promise,
                 amount,
+                recipient_address,
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_message(message)
+            .with_payment_id(payment_id)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -1087,6 +1097,7 @@ where
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop]?;
@@ -1131,7 +1142,8 @@ where
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(false)
-            .with_kernel_features(KernelFeatures::empty());
+            .with_kernel_features(KernelFeatures::empty())
+            .with_payment_id(payment_id);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
@@ -1249,7 +1261,7 @@ where
         metadata_ephemeral_public_key_shares: Vec<PublicKey>,
         dh_shared_secret_shares: Vec<PublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        tx_payment_id: PaymentId,
         original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
@@ -1299,7 +1311,7 @@ where
         let mut aggregated_script_public_key_shares = PublicKey::default();
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created deterministic encryption key");
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
-        let input = if let Ok((amount, commitment_mask, payment_id)) =
+        let (input, payment_id) = if let Ok((amount, commitment_mask, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &commitment_mask, amount.as_u64())? {
@@ -1335,21 +1347,24 @@ where
                     )));
                 }
                 let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask).await?;
-                WalletOutput::new_with_rangeproof(
-                    output.version,
-                    amount,
-                    commitment_mask_key_id,
-                    output.features,
-                    output.script,
-                    ExecutionStack::new(script_signatures),
-                    script_key.key_id.clone(), // Only of the master wallet
-                    output.sender_offset_public_key,
-                    output.metadata_signature,
-                    0,
-                    output.covenant,
-                    output.encrypted_data,
-                    output.minimum_value_promise,
-                    output.proof,
+                (
+                    WalletOutput::new_with_rangeproof(
+                        output.version,
+                        amount,
+                        commitment_mask_key_id,
+                        output.features,
+                        output.script,
+                        ExecutionStack::new(script_signatures),
+                        script_key.key_id.clone(), // Only of the master wallet
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_data,
+                        output.minimum_value_promise,
+                        output.proof,
+                        payment_id.clone(),
+                    ),
                     payment_id,
                 )
             } else {
@@ -1408,6 +1423,7 @@ where
                 Covenant::default(),
                 minimum_value_promise,
                 amount,
+                recipient_address.clone(),
             )
             .await?
             .with_change_data(
@@ -1417,7 +1433,8 @@ where
                 TariKeyId::default(),
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
-            );
+            )
+            .with_payment_id(payment_id);
         let mut stp = builder
             .build()
             .await
@@ -1519,7 +1536,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
-                payment_id.clone(),
+                tx_payment_id.clone(),
             )
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
@@ -1740,6 +1757,7 @@ where
                 Covenant::default(),
                 minimum_value_promise,
                 amount,
+                recipient_address.clone(),
             )
             .await?
             .with_change_data(
@@ -1749,7 +1767,8 @@ where
                 TariKeyId::default(),
                 Covenant::default(),
                 self.resources.one_sided_tari_address.clone(),
-            );
+            )
+            .with_payment_id(payment_id.clone());
         let mut stp = builder
             .build()
             .await
@@ -1818,7 +1837,10 @@ where
             .await?;
         let script = push_pubkey_script(&script_spending_key);
         let payment_id = match payment_id {
-            PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
+            PaymentId::Open(v) => PaymentId::AddressAndData {
+                sender_address: self.resources.interactive_tari_address.clone(),
+                user_data: v,
+            },
             PaymentId::Empty => PaymentId::Address(self.resources.one_sided_tari_address.clone()),
             _ => payment_id,
         };
@@ -1944,14 +1966,16 @@ where
             .key_manager
             .get_next_commitment_mask_and_script_key()
             .await?;
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_public_key.key_id.clone(),
-            change_commitment_mask_key_id.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
+        builder
+            .with_change_data(
+                script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
+                ExecutionStack::default(),
+                change_script_public_key.key_id.clone(),
+                change_commitment_mask_key_id.key_id,
+                Covenant::default(),
+                self.resources.interactive_tari_address.clone(),
+            )
+            .with_payment_id(PaymentId::open_from_str("Pay to self transaction"));
 
         let mut stp = builder
             .build()
@@ -2381,6 +2405,10 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
+            .with_payment_id(PaymentId::open_from_str(&format!(
+                "Coin split transaction, {} into {} outputs",
+                accumulated_amount, number_of_splits
+            )))
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2540,6 +2568,10 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
+            .with_payment_id(PaymentId::open_from_str(&format!(
+                "Coin split transaction, {} into {} outputs",
+                accumulated_amount, number_of_splits
+            )))
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2772,6 +2804,11 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
+            .with_payment_id(PaymentId::open_from_str(&format!(
+                "Coin join transaction, {} outputs{} into",
+                src_outputs.len(),
+                accumulated_amount
+            )))
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2831,6 +2868,7 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
+        recipient_address: TariAddress,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
@@ -2862,10 +2900,11 @@ where
                 Default::default(),
                 MicroMinotari::zero(),
                 accumulated_amount,
+                recipient_address,
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_message("".to_string())
+            .with_payment_id(PaymentId::Empty)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -2969,8 +3008,6 @@ where
                     payment_id,
                 );
 
-                let message = "SHA-XTR atomic swap".to_string();
-
                 // Create builder with no recipients (other than ourselves)
                 let mut builder = SenderTransactionProtocol::builder(
                     self.resources.consensus_constants.clone(),
@@ -2979,7 +3016,7 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_message(message)
+                    .with_payment_id(PaymentId::open_from_str("SHA-XTR atomic swap"))
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3054,8 +3091,6 @@ where
 
         let amount = output.value;
 
-        let message = "SHA-XTR atomic refund".to_string();
-
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(
             self.resources.consensus_constants.clone(),
@@ -3064,7 +3099,7 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_message(message)
+            .with_payment_id(PaymentId::open_from_str("SHA-XTR atomic refund"))
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)

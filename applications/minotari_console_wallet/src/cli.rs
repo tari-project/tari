@@ -176,14 +176,14 @@ pub struct SendMinotariArgs {
     pub amount: MicroMinotari,
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct BurnMinotariArgs {
     pub amount: MicroMinotari,
     #[clap(short, long, default_value = "Burn funds")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -265,6 +265,8 @@ pub struct PreMineSpendEncumberAggregateUtxoArgs {
     pub input_file_names: Vec<String>,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine encumber aggregate UTXO")]
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -293,6 +295,8 @@ pub struct PreMineSpendBackupUtxoArgs {
     pub recipient_address: TariAddress,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine backup UTXO")]
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -313,7 +317,7 @@ pub struct MakeItRainArgs {
     #[clap(short, long)]
     pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 impl MakeItRainArgs {
@@ -361,7 +365,7 @@ pub struct CoinSplitArgs {
     #[clap(short, long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(short, long, default_value = "Coin split")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -430,7 +434,7 @@ pub struct FinaliseShaAtomicSwapArgs {
     #[clap(short, long)]
     pub pre_image: UniPublicKey,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
@@ -442,7 +446,7 @@ pub struct ClaimShaAtomicSwapRefundArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -452,7 +456,7 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_public_nonce: UniPublicKey,
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]

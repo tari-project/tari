@@ -39,6 +39,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::*,
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             OutputFeatures,
             Transaction,
@@ -100,8 +101,8 @@ pub(super) struct RawTransactionInfo {
 
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
-    /// A user message sent to the receiver
-    pub text_message: String,
+    /// A user payment ID for the sender/receiver
+    pub payment_id: PaymentId,
     /// The senders address
     pub sender_address: TariAddress,
 }
@@ -132,8 +133,8 @@ pub struct SingleRoundSenderData {
     pub public_nonce: PublicKey,
     /// Metadata used to construct the transaction kernel
     pub metadata: TransactionMetadata,
-    /// Plain text message to receiver
-    pub message: String,
+    /// A user payment ID for the sender/receiver
+    pub payment_id: PaymentId,
     /// The output's features
     pub features: OutputFeatures,
     /// Script
@@ -443,7 +444,7 @@ impl SenderTransactionProtocol {
                     public_nonce,
                     public_excess,
                     metadata: info.metadata.clone(),
-                    message: info.text_message.clone(),
+                    payment_id: info.payment_id.clone(),
                     features: recipient_output_features,
                     script: recipient_script,
                     sender_offset_public_key,
@@ -1130,6 +1131,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(1200) - fee - MicroMinotari(10),
+                TariAddress::default(),
             )
             .await
             .unwrap()
@@ -1255,6 +1257,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1367,6 +1370,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1467,6 +1471,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 amount,
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1507,6 +1512,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 amount,
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1552,6 +1558,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();

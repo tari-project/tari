@@ -294,7 +294,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -309,7 +309,7 @@ impl AppState {
             MicroMinotari::from(amount),
             selection_criteria,
             output_features,
-            message,
+            payment_id,
             fee_per_gram,
             tx_service_handle,
             result_tx,
@@ -324,18 +324,11 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
-        payment_id_str: String,
+        payment_id: PaymentId,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
-        let payment_id = if payment_id_str.is_empty() {
-            PaymentId::Empty
-        } else {
-            let bytes = payment_id_str.as_bytes().to_vec();
-            PaymentId::Open(bytes)
-        };
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -346,7 +339,6 @@ impl AppState {
             MicroMinotari::from(amount),
             selection_criteria,
             output_features,
-            message,
             fee_per_gram,
             payment_id,
             tx_service_handle,
@@ -363,7 +355,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -396,7 +388,7 @@ impl AppState {
             claim_public_key,
             MicroMinotari::from(amount),
             selection_criteria,
-            message,
+            payment_id,
             fee_per_gram,
             tx_service_handle,
             inner.wallet.db.clone(),
@@ -1182,7 +1174,6 @@ pub struct CompletedTransactionInfo {
     pub excess_signature: String,
     pub maturity: u64,
     pub status: TransactionStatus,
-    pub message: String,
     pub timestamp: NaiveDateTime,
     pub mined_timestamp: Option<NaiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,
@@ -1216,7 +1207,12 @@ impl CompletedTransactionInfo {
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
         let coinbase = tx.transaction.body.contains_coinbase();
-        let burn = tx.transaction.body.contains_burn();
+        // Faux transactions for scanned change outputs must correspond to the original transaction
+        let burn = if let PaymentId::TransactionInfo { burn, .. } = tx.payment_id {
+            burn
+        } else {
+            tx.transaction.body.contains_burn()
+        };
 
         Ok(Self {
             tx_id: tx.tx_id,
@@ -1233,7 +1229,6 @@ impl CompletedTransactionInfo {
                 .map(|o| o.features.maturity)
                 .unwrap_or(0),
             status: tx.status,
-            message: tx.message,
             timestamp: tx.timestamp.naive_utc(),
             mined_timestamp: tx.mined_timestamp.map(|t| t.naive_utc()),
             cancelled: tx.cancelled,
@@ -1242,7 +1237,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
-            payment_id: tx.payment_id,
+            payment_id: Some(tx.payment_id),
             coinbase,
             burn,
         })

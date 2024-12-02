@@ -31,7 +31,14 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
+        transaction_components::{
+            encrypted_data::PaymentId,
+            OutputFeatures,
+            Transaction,
+            TransactionOutput,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -73,6 +80,7 @@ pub enum OutputManagerRequest {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
+        payment_id: PaymentId,
     },
     SpendBackupPreMineUtxo {
         tx_id: TxId,
@@ -88,10 +96,11 @@ pub enum OutputManagerRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
-        message: String,
         script: TariScript,
         covenant: Covenant,
         minimum_value_promise: MicroMinotari,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -105,6 +114,7 @@ pub enum OutputManagerRequest {
         outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
+        payment_id: PaymentId,
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
@@ -119,6 +129,7 @@ pub enum OutputManagerRequest {
     ScrapeWallet {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
+        recipient_address: TariAddress,
     },
     CreateCoinJoin {
         commitments: Vec<Commitment>,
@@ -167,8 +178,16 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
-            ScrapeWallet { tx_id, fee_per_gram } => {
-                write!(f, "ScrapeWallet (tx_id: {}, fee_per_gram: {})", tx_id, fee_per_gram)
+            ScrapeWallet {
+                tx_id,
+                fee_per_gram,
+                recipient_address,
+            } => {
+                write!(
+                    f,
+                    "ScrapeWallet (tx_id: {}, fee_per_gram: {}, recipient_address {})",
+                    tx_id, fee_per_gram, recipient_address
+                )
             },
             EncumberAggregateUtxo {
                 tx_id,
@@ -204,7 +223,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction { message, .. } => write!(f, "PrepareToSendTransaction ({})", message),
+            PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({})", payment_id),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
@@ -505,10 +524,11 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
-        message: String,
         script: TariScript,
         covenant: Covenant,
         minimum_value_promise: MicroMinotari,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -519,10 +539,11 @@ impl OutputManagerHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 tx_meta,
-                message,
                 script,
                 covenant,
                 minimum_value_promise,
+                recipient_address,
+                payment_id,
             })
             .await??
         {
@@ -535,10 +556,15 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
+        recipient_address: TariAddress,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
+            .call(OutputManagerRequest::ScrapeWallet {
+                tx_id,
+                fee_per_gram,
+                recipient_address,
+            })
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
@@ -795,6 +821,7 @@ impl OutputManagerHandle {
         outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroMinotari,
         input_selection: UtxoSelectionCriteria,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
             .handle
@@ -802,6 +829,7 @@ impl OutputManagerHandle {
                 outputs,
                 fee_per_gram,
                 selection_criteria: input_selection,
+                payment_id,
             })
             .await??
         {
@@ -824,6 +852,7 @@ impl OutputManagerHandle {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
+        payment_id: PaymentId,
     ) -> Result<
         (
             Transaction,
@@ -850,6 +879,7 @@ impl OutputManagerHandle {
                 recipient_address,
                 original_maturity,
                 use_output,
+                payment_id,
             })
             .await??
         {

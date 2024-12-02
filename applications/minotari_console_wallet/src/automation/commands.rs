@@ -168,7 +168,7 @@ pub async fn send_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     destination: TariAddress,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_transaction(
@@ -177,7 +177,7 @@ pub async fn send_tari(
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram * uT,
-            message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -187,14 +187,14 @@ pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
             amount,
             UtxoSelectionCriteria::default(),
             fee_per_gram * uT,
-            message,
+            payment_id,
             None,
         )
         .await
@@ -216,6 +216,7 @@ async fn encumber_aggregate_utxo(
     recipient_address: TariAddress,
     original_maturity: u64,
     use_output: UseOutput,
+    payment_id: PaymentId,
 ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), CommandError> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
@@ -229,6 +230,7 @@ async fn encumber_aggregate_utxo(
             recipient_address,
             original_maturity,
             use_output,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -240,9 +242,16 @@ async fn spend_backup_pre_mine_utxo(
     output_hash: HashOutput,
     expected_commitment: PedersenCommitment,
     recipient_address: TariAddress,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .spend_backup_pre_mine_utxo(fee_per_gram, output_hash, expected_commitment, recipient_address)
+        .spend_backup_pre_mine_utxo(
+            fee_per_gram,
+            output_hash,
+            expected_commitment,
+            recipient_address,
+            payment_id,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -280,10 +289,10 @@ pub async fn init_sha_atomic_swap(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -296,13 +305,13 @@ pub async fn finalise_sha_atomic_swap(
     output_hash: FixedHash,
     pre_image: PublicKey,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_claim_sha_atomic_swap_transaction(output_hash, pre_image, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
     Ok(tx_id)
 }
@@ -313,13 +322,13 @@ pub async fn claim_htlc_refund(
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_htlc_refund_transaction(output_hash, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
     Ok(tx_id)
 }
@@ -331,7 +340,7 @@ pub async fn register_validator_node(
     validator_node_signature: Signature,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
@@ -340,7 +349,7 @@ pub async fn register_validator_node(
             validator_node_signature,
             selection_criteria,
             fee_per_gram,
-            message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -352,7 +361,6 @@ pub async fn send_one_sided_to_stealth_address(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    message: String,
     payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
@@ -362,7 +370,6 @@ pub async fn send_one_sided_to_stealth_address(
             selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
-            message,
             payment_id,
         )
         .await
@@ -373,7 +380,7 @@ pub async fn coin_split(
     amount_per_split: MicroMinotari,
     num_splits: usize,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
@@ -381,7 +388,7 @@ pub async fn coin_split(
         .create_coin_split(vec![], amount_per_split, num_splits, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
 
     Ok(tx_id)
@@ -460,7 +467,7 @@ pub async fn make_it_rain(
     start_time: DateTime<Utc>,
     destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<(), CommandError> {
     // Limit the transactions per second to a reasonable range
     // Notes:
@@ -475,8 +482,9 @@ pub async fn make_it_rain(
         let now = Utc::now();
         let delay_ms = if start_time > now {
             println!(
-                "`make-it-rain` scheduled to start at {}: msg \"{}\"",
-                start_time, message
+                "`make-it-rain` scheduled to start at {}: payment_id \"{}\"",
+                start_time,
+                payment_id.user_data_as_string()
             );
             (start_time - now).num_milliseconds() as u64
         } else {
@@ -500,8 +508,11 @@ pub async fn make_it_rain(
         }
         println!(
             "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
-            num_txs, transaction_type, message
+            num_txs,
+            transaction_type,
+            payment_id.user_data_as_string()
         );
+        let payment_id_clone = payment_id.clone();
         let (sender, mut receiver) = mpsc::channel(num_txs);
         {
             let sender = sender;
@@ -538,13 +549,13 @@ pub async fn make_it_rain(
                 let sender_clone = sender.clone();
                 let fee = fee_per_gram;
                 let address = destination.clone();
-                let msg = message.clone();
+                let payment_id_clone = payment_id.clone();
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = match transaction_type {
                         MakeItRainTransactionType::Interactive => {
-                            send_tari(tx_service, fee, amount, address.clone(), msg.clone()).await
+                            send_tari(tx_service, fee, amount, address.clone(), payment_id_clone).await
                         },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
@@ -553,12 +564,11 @@ pub async fn make_it_rain(
                                 amount,
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
-                                msg.clone(),
-                                PaymentId::Empty,
+                                payment_id_clone,
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone())
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
                             .await
                             .map(|(tx_id, _)| tx_id),
                     };
@@ -617,7 +627,7 @@ pub async fn make_it_rain(
             "\n`make-it-rain` concluded {} {} transactions (\"{}\") at {}",
             num_txs,
             transaction_type,
-            message,
+            payment_id_clone.user_data_as_string(),
             Utc::now(),
         );
     });
@@ -783,7 +793,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -969,6 +979,7 @@ pub async fn command_runner(
                     output_hash,
                     commitment.clone(),
                     args.recipient_address,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -1334,6 +1345,7 @@ pub async fn command_runner(
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
+                        PaymentId::open_from_str(&args.payment_id),
                     )
                     .await
                     {
@@ -1976,7 +1988,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     args.destination,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -1994,8 +2006,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    args.message,
-                    PaymentId::Empty,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -2021,7 +2032,7 @@ pub async fn command_runner(
                     args.start_time.unwrap_or_else(Utc::now),
                     args.destination,
                     transaction_type,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -2033,7 +2044,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2233,7 +2244,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await
                 {
@@ -2256,7 +2267,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        args.message,
+                        PaymentId::open_from_str(&args.payment_id),
                     )
                     .await
                     {
@@ -2276,7 +2287,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        args.message,
+                        PaymentId::open_from_str(&args.payment_id),
                     )
                     .await
                     {
@@ -2317,7 +2328,7 @@ pub async fn command_runner(
                     ),
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    args.message,
+                    PaymentId::open_from_str(&args.payment_id),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);

@@ -37,7 +37,6 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use tari_common_types::transaction::TxId;
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::broadcast::Sender};
 
@@ -289,7 +288,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
     let amount = format!("{}", tx.amount);
     let status = format!("{}", tx.status);
     let direction = format!("{}", tx.direction);
-    let payment_id = format!("{}", tx.payment_id.clone().unwrap_or(PaymentId::Empty));
+    let payment_id = format!("{}", tx.payment_id.clone());
 
     let kernel = tx.transaction.body.kernels().first();
     let (excess, public_nonce, signature) = match kernel {
@@ -313,7 +312,6 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
         String::from(event),
         amount,
         tx.tx_id.to_string(),
-        tx.message.clone(),
         payment_id,
         tx.source_address.to_base58(),
         tx.destination_address.to_base58(),
@@ -335,7 +333,7 @@ fn args_from_outbound(tx: &OutboundTransaction, event: &str) -> Vec<String> {
         String::from(event),
         amount,
         tx.tx_id.to_string(),
-        tx.message.clone(),
+        tx.payment_id.user_data_as_string(),
         tx.destination_address.to_base58(),
         status,
         "outbound".to_string(),
@@ -351,7 +349,7 @@ fn args_from_inbound(tx: &InboundTransaction, event: &str) -> Vec<String> {
         String::from(event),
         amount,
         tx.tx_id.to_string(),
-        tx.message.clone(),
+        tx.payment_id.user_data_as_string(),
         tx.source_address.to_base58(),
         status,
         "inbound".to_string(),

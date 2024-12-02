@@ -2125,7 +2125,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     wallet: *mut TariWallet,
     output: *mut TariUnblindedOutput,
     source_address: *mut TariWalletAddress,
-    message: *const c_char,
+    payment_id: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -2145,24 +2145,24 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     } else {
         (*source_address).clone()
     };
-    let message_string;
-    if message.is_null() {
+    let payment_id_string;
+    if payment_id.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        message_string = CString::new("Imported UTXO")
+        payment_id_string = CString::new("Imported UTXO")
             .expect("CString will not fail")
             .to_str()
             .expect("CString.toStr() will not fail")
             .to_owned();
     } else {
-        match CStr::from_ptr(message).to_str() {
+        match CStr::from_ptr(payment_id).to_str() {
             Ok(v) => {
-                message_string = v.to_owned();
+                payment_id_string = v.to_owned();
             },
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
-                message_string = CString::new("Imported UTXO")
+                payment_id_string = CString::new("Imported UTXO")
                     .expect("CString will not fail")
                     .to_str()
                     .expect("CString.to_str() will not fail")
@@ -2175,7 +2175,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
-            message_string,
+            PaymentId::open_from_str(&payment_id_string),
         )) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
@@ -4174,46 +4174,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariCompletedTransaction
-///
-/// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
-/// to an empty char array if transaction is null
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_message(
-    transaction: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> *const c_char {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let message = (*transaction).message.clone();
-    let mut result = CString::new("").expect("Blank CString will not fail.");
-    if transaction.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return result.into_raw();
-    }
-
-    match CString::new(message) {
-        Ok(v) => result = v,
-        _ => {
-            error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-        },
-    }
-
-    result.into_raw()
-}
-
-/// Gets the payment id of a TariCompletedTransaction
+/// Gets the payment ID of a TariCompletedTransaction
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariCompletedTransaction
@@ -4240,20 +4201,7 @@ pub unsafe extern "C" fn completed_transaction_get_payment_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return result.into_raw();
     }
-    let payment_id_str = match payment_id {
-        None => "".to_string(),
-        Some(v) => {
-            let bytes = v.get_data();
-            if bytes.is_empty() {
-                format!("#{}", v)
-            } else {
-                String::from_utf8(bytes)
-                    .unwrap_or_else(|_| "Invalid string".to_string())
-                    .to_string()
-            }
-        },
-    };
-    match CString::new(payment_id_str) {
+    match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("payment id".to_string())).code;
@@ -4619,7 +4567,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariPendingOutboundTransaction
+/// Gets the payment ID of a TariPendingOutboundTransaction
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingOutboundTransaction
@@ -4634,13 +4582,13 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 ///  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
 /// leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_get_message(
+pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let message = (*transaction).message.clone();
+    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
@@ -4648,7 +4596,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
         return result.into_raw();
     }
 
-    match CString::new(message) {
+    match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
@@ -4827,7 +4775,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariPendingInboundTransaction
+/// Gets the payment ID of a TariPendingInboundTransaction
 ///
 /// ## Arguments
 /// `transaction` - The pointer to a TariPendingInboundTransaction
@@ -4842,13 +4790,13 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 ///  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
 /// leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transaction_get_message(
+pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let message = (*transaction).message.clone();
+    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
@@ -4856,7 +4804,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
         return result.into_raw();
     }
 
-    match CString::new(message) {
+    match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
         _ => {
             error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
@@ -6584,7 +6532,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        String::new(),
+        PaymentId::Empty,
     )) {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
@@ -7341,7 +7289,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    message: *const c_char,
     one_sided: bool,
     payment_id_string: *const c_char,
     error_out: *mut c_int,
@@ -7371,20 +7318,13 @@ pub unsafe extern "C" fn wallet_send_transaction(
         },
     };
 
-    let message_string;
-    if message.is_null() {
-        message_string = CString::new("")
-            .expect("Blank CString will not fail")
-            .to_str()
-            .expect("CString.to_str() will not fail")
-            .to_owned();
+    let payment_id = if payment_id_string.is_null() {
+        PaymentId::Empty
     } else {
-        match CStr::from_ptr(message).to_str() {
-            Ok(v) => {
-                message_string = v.to_owned();
-            },
+        match CStr::from_ptr(payment_id_string).to_str() {
+            Ok(v) => PaymentId::open_from_str(v),
             _ => {
-                error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+                error = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return 0;
             },
@@ -7392,22 +7332,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     if one_sided {
-        let payment_id = if payment_id_string.is_null() {
-            PaymentId::Empty
-        } else {
-            match CStr::from_ptr(payment_id_string).to_str() {
-                Ok(v) => {
-                    let rust_str = v.to_owned();
-                    let bytes = rust_str.as_bytes().to_vec();
-                    PaymentId::Open(bytes)
-                },
-                _ => {
-                    error = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    return 0;
-                },
-            }
-        };
         match (*wallet).runtime.block_on(
             (*wallet)
                 .wallet
@@ -7418,7 +7342,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     selection_criteria,
                     OutputFeatures::default(),
                     MicroMinotari::from(fee_per_gram),
-                    message_string,
                     payment_id,
                 ),
         ) {
@@ -7438,7 +7361,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 selection_criteria,
                 OutputFeatures::default(),
                 MicroMinotari::from(fee_per_gram),
-                message_string,
+                payment_id,
             )) {
             Ok(tx_id) => tx_id.as_u64(),
             Err(e) => {

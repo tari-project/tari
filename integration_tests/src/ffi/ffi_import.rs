@@ -151,7 +151,7 @@ extern "C" {
         wallet: *mut TariWallet,
         output: *mut TariUnblindedOutput,
         source_address: *mut TariWalletAddress,
-        message: *const c_char,
+        payment_id: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn wallet_get_unspent_outputs(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariUnblindedOutputs;
@@ -276,7 +276,7 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn completed_transaction_get_message(
+    pub fn completed_transaction_get_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *const c_char;
@@ -310,7 +310,7 @@ extern "C" {
         transaction: *mut TariPendingOutboundTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn pending_outbound_transaction_get_message(
+    pub fn pending_outbound_transaction_get_payment_id(
         transaction: *mut TariPendingOutboundTransaction,
         error_out: *mut c_int,
     ) -> *const c_char;
@@ -335,7 +335,7 @@ extern "C" {
         transaction: *mut TariPendingInboundTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn pending_inbound_transaction_get_message(
+    pub fn pending_inbound_transaction_get_payment_id(
         transaction: *mut TariPendingInboundTransaction,
         error_out: *mut c_int,
     ) -> *const c_char;
@@ -499,7 +499,6 @@ extern "C" {
         amount: c_ulonglong,
         commitments: *mut TariVector,
         fee_per_gram: c_ulonglong,
-        message: *const c_char,
         one_sided: bool,
         payment_id_string: *const c_char,
         error_out: *mut c_int,

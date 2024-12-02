@@ -503,7 +503,7 @@ where
             total_scanned += outputs.len();
 
             let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs, current_height).await?;
+            let found_outputs = self.scan_for_outputs(outputs).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
             let (mut count, mut amount) = self
@@ -571,9 +571,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
-    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         let start = Instant::now();
         found_outputs.append(
             &mut self
@@ -583,18 +582,15 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let (message, status) = if ro.output.features.is_coinbase() {
-                        (
-                            format!("Coinbase for height: {}", height),
-                            ImportStatus::CoinbaseUnconfirmed,
-                        )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::CoinbaseUnconfirmed
                     } else {
-                        (self.resources.recovery_message.clone(), ImportStatus::Imported)
+                        ImportStatus::Imported
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -609,21 +605,15 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let (message, status) = if ro.output.features.is_coinbase() {
-                        (
-                            format!("Coinbase for height: {}", height),
-                            ImportStatus::CoinbaseUnconfirmed,
-                        )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::CoinbaseUnconfirmed
                     } else {
-                        (
-                            self.resources.recovery_message.clone(),
-                            ImportStatus::OneSidedUnconfirmed,
-                        )
+                        ImportStatus::OneSidedUnconfirmed
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -639,19 +629,24 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>,
+        utxos: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>,
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        for (wo, message, import_status, tx_id, to) in utxos {
+        for (wo, import_status, tx_id, to) in utxos {
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
             } else {
                 match &wo.payment_id {
-                    PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => address.clone(),
+                    PaymentId::AddressAndData {
+                        sender_address: address,
+                        ..
+                    } |
+                    PaymentId::Address(address) => address.clone(),
+                    PaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
                     _ => TariAddress::default(),
                 }
             };
@@ -659,7 +654,6 @@ where
                 .import_key_manager_utxo_to_transaction_service(
                     wo.clone(),
                     source_address,
-                    message,
                     import_status,
                     tx_id,
                     current_height,
@@ -718,7 +712,6 @@ where
         &mut self,
         wallet_output: WalletOutput,
         source_address: TariAddress,
-        message: String,
         import_status: ImportStatus,
         tx_id: TxId,
         current_height: u64,
@@ -731,7 +724,6 @@ where
             .import_utxo_with_status(
                 wallet_output.value,
                 source_address,
-                message,
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),

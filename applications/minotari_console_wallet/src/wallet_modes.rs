@@ -544,10 +544,10 @@ mod test {
 
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            send-minotari --message Our_secret! 125T \
+            send-minotari --payment-id Our_secret! 125T \
              f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
             
-            burn-minotari --message Ups_these_funds_will_be_burned! 100T
+            burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
 
             pre-mine-spend-get-output-status
 
@@ -571,10 +571,10 @@ mod test {
              --input-file-names=step_4_for_leader_from_alice.txt --input-file-names=step_4_for_leader_from_bob.txt \
              --input-file-names=step_4_for_leader_from_carol.txt
 
-            coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
+            coin-split --payment-id Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
-             --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
+             --start-time now --payment-id Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
              f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
 
             export-tx 123456789 --output-file pie.txt

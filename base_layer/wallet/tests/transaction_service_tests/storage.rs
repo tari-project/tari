@@ -92,7 +92,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_message("Yo!".to_string())
+        .with_payment_id(PaymentId::open_from_str("Yo!"))
         .with_input(input)
         .await
         .unwrap()
@@ -102,6 +102,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             Covenant::default(),
             MicroMinotari::zero(),
             amount,
+            TariAddress::default(),
         )
         .await
         .unwrap();
@@ -117,7 +118,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let stp = builder.build().await.unwrap();
 
-    let messages = ["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
+    let messages = ["Hey!", "Yo!", "Sup!"];
     let amounts = [
         MicroMinotari::from(10_000),
         MicroMinotari::from(23_000),
@@ -140,7 +141,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            message: messages[i].clone(),
+            payment_id: PaymentId::open_from_str(messages[i]),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -253,7 +254,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            message: messages[i].clone(),
+            payment_id: PaymentId::open_from_str(messages[i]),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -333,7 +334,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 1 => TransactionStatus::Broadcast,
                 _ => TransactionStatus::MinedUnconfirmed,
             },
-            message: messages[i].clone(),
             timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Outbound,
@@ -345,7 +345,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: Some(PaymentId::Empty),
+            payment_id: PaymentId::open_from_str(messages[i]),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -445,7 +445,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            "To be cancelled".to_string(),
+            PaymentId::open_from_str("To be cancelled"),
             Utc::now(),
         ),
     )
@@ -498,7 +498,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             stp.get_fee_amount().unwrap(),
             stp,
             TransactionStatus::Pending,
-            "To be cancelled".to_string(),
+            PaymentId::open_from_str("To be cancelled"),
             Utc::now(),
             false,
         ),
@@ -591,12 +591,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::Imported,
-        "message".to_string(),
         Utc::now(),
         TransactionDirection::Inbound,
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        None,
+        PaymentId::open_from_str("message"),
     )
     .unwrap();
 
@@ -621,12 +620,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::OneSidedUnconfirmed,
-        "message".to_string(),
         Utc::now(),
         TransactionDirection::Inbound,
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        None,
+        PaymentId::open_from_str("message"),
     )
     .unwrap();
 
@@ -651,12 +649,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::OneSidedConfirmed,
-        "message".to_string(),
         Utc::now(),
         TransactionDirection::Inbound,
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        None,
+        PaymentId::open_from_str("message"),
     )
     .unwrap();
 
