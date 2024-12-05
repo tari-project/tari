@@ -11,6 +11,7 @@ tari_crypto = { version = "0.21.0" }
 tari_utilities = { version = "0.8" }
 tari_common = { path = "../../common", version = "1.7.0-pre.3" }
 minotari_ledger_wallet_common = { path = "../../applications/minotari_ledger_wallet/common" }
+
 chacha20poly1305 = "0.10.1"
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = "1.5"
@@ -33,5 +34,4 @@ default = []
 [package.metadata.cargo-machete]
 ignored = [
     "strum",
-    "strum_macros",
 ] # this is so we can run cargo machete without getting false positive about macro dependancies

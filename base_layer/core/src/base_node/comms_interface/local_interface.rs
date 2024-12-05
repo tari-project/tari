@@ -24,6 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
@@ -302,17 +303,12 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_validator_node_changes(
         &mut self,
-        start_height: u64,
-        end_height: u64,
         sidechain_id: Option<PublicKey>,
+        epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeChange>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchValidatorNodeChanges {
-                start_height,
-                end_height,
-                sidechain_id,
-            })
+            .call(NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id })
             .await??
         {
             NodeCommsResponse::FetchValidatorNodeChangesResponse(validator_node_change) => Ok(validator_node_change),
@@ -320,17 +316,20 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    pub async fn get_shard_key(
+    pub async fn get_validator_node(
         &mut self,
-        height: u64,
+        sidechain_id: Option<PublicKey>,
         public_key: PublicKey,
-    ) -> Result<Option<[u8; 32]>, CommsInterfaceError> {
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::GetShardKey { height, public_key })
+            .call(NodeCommsRequest::GetValidatorNode {
+                sidechain_id,
+                public_key,
+            })
             .await??
         {
-            NodeCommsResponse::GetShardKeyResponse(shard_key) => Ok(shard_key),
+            NodeCommsResponse::GetValidatorNode(vn) => Ok(vn),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

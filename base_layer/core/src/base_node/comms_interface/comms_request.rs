@@ -26,7 +26,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature},
+};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -40,7 +43,7 @@ pub struct MmrStateRequest {
 }
 
 /// API Request enum
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
     FetchHeaders(RangeInclusive<u64>),
@@ -66,12 +69,11 @@ pub enum NodeCommsRequest {
         validator_network: Option<PublicKey>,
     },
     FetchValidatorNodeChanges {
-        start_height: u64,
-        end_height: u64,
+        epoch: VnEpoch,
         sidechain_id: Option<PublicKey>,
     },
-    GetShardKey {
-        height: u64,
+    GetValidatorNode {
+        sidechain_id: Option<PublicKey>,
         public_key: PublicKey,
     },
     FetchTemplateRegistrations {
@@ -83,7 +85,7 @@ pub enum NodeCommsRequest {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetNewBlockTemplateRequest {
     pub algo: PowAlgorithm,
     pub max_weight: u64,
@@ -133,8 +135,11 @@ impl Display for NodeCommsRequest {
                         .unwrap_or_else(|| "None".to_string())
                 )
             },
-            GetShardKey { height, public_key } => {
-                write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
+            GetValidatorNode {
+                sidechain_id,
+                public_key,
+            } => {
+                write!(f, "GetShardKey ({:?}), public key ({:?})", sidechain_id, public_key)
             },
             FetchTemplateRegistrations {
                 start_height: start,
@@ -145,15 +150,11 @@ impl Display for NodeCommsRequest {
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
             },
-            FetchValidatorNodeChanges {
-                start_height,
-                end_height,
-                sidechain_id,
-            } => {
+            FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 write!(
                     f,
-                    "FetchValidatorNodeChanges (Side chain ID:{:?}), Height range: {}-{}",
-                    sidechain_id, start_height, end_height
+                    "FetchValidatorNodeChanges (Side chain ID:{:?}), Epoch: {}",
+                    sidechain_id, epoch
                 )
             },
         }

@@ -15,6 +15,7 @@ members = [
     "base_layer/mmr",
     "base_layer/p2p",
     "base_layer/service_framework",
+    "base_layer/sidechain",
     "base_layer/wallet",
     "base_layer/wallet_ffi",
     "base_layer/tari_mining_helper_ffi",
@@ -39,7 +40,7 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "integration_tests",
-    "hashing"
+    "hashing",
 ]
 
 [workspace.dependencies]

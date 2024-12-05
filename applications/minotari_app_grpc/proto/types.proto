@@ -126,8 +126,8 @@ message ConsensusConstants {
   uint64 block_weight_kernels = 16;
   uint64 pre_mine_value = 17;
   uint64 max_script_byte_size = 18;
-  uint64 vn_registration_max_vns_initial_epoch = 19;
-  uint64 vn_registration_max_vns_per_epoch = 20;
+  uint32 vn_registration_max_vns_initial_epoch = 19;
+  uint32 vn_registration_max_vns_per_epoch = 20;
   uint64 effective_from_height = 21;
   Range valid_blockchain_version_range = 22;
   uint64 max_randomx_seed_height = 23;

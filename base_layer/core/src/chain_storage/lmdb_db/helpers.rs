@@ -36,7 +36,7 @@ pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 ///   `size_hint` is given as an option as checking what the serialized would be is expensive
 ///   for large data structures at ~30% overhead
 pub fn serialize<T>(data: &T, size_hint: Option<usize>) -> Result<Vec<u8>, ChainStorageError>
-where T: Serialize {
+where T: Serialize + ?Sized {
     let start = Instant::now();
     let mut buf = if let Some(size) = size_hint {
         Vec::with_capacity(size)

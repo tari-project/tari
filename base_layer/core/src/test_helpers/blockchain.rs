@@ -31,10 +31,12 @@ use std::{
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     tari_address::TariAddress,
     types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
+use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_utilities::ByteArray;
@@ -415,17 +417,94 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_active_validator_nodes(
         &self,
+        sidechain_pk: Option<&PublicKey>,
         height: u64,
-        validator_network: Option<PublicKey>,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .fetch_active_validator_nodes(height, validator_network)
+            .fetch_active_validator_nodes(sidechain_pk, height)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
-        self.db.as_ref().unwrap().get_shard_key(height, public_key)
+    fn fetch_validators_activating_in_epoch(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_validators_activating_in_epoch(sidechain_pk, epoch)
+    }
+
+    fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_validators_exiting_in_epoch(sidechain_pk, epoch)
+    }
+
+    fn validator_node_exists(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        height: u64,
+        validator_node_pk: &PublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_node_exists(sidechain_pk, height, validator_node_pk)
+    }
+
+    fn validator_node_is_active(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &PublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+    }
+
+    fn validator_node_is_active_for_shard_group(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &PublicKey,
+        shard_group: ShardGroup,
+    ) -> Result<bool, ChainStorageError> {
+        self.db.as_ref().unwrap().validator_node_is_active_for_shard_group(
+            sidechain_pk,
+            end_epoch,
+            validator_node_pk,
+            shard_group,
+        )
+    }
+
+    fn validator_nodes_count_for_shard_group(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        shard_group: ShardGroup,
+    ) -> Result<usize, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_nodes_count_for_shard_group(sidechain_pk, end_epoch, shard_group)
+    }
+
+    fn get_validator_node(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        public_key: PublicKey,
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().get_validator_node(sidechain_pk, public_key)
     }
 
     fn fetch_template_registrations(

@@ -20,21 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
     types::{Commitment, PublicKey},
 };
 
-use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
+use crate::transactions::tari_amount::MicroMinotari;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
-    pub start_epoch: VnEpoch,
+    /// The epoch in which this validator node was (or will be) activated
+    pub activation_epoch: VnEpoch,
+    /// The epoch in which the validator registartion UTXO was submitted
+    pub registration_epoch: VnEpoch,
     pub public_key: PublicKey,
     pub commitment: Commitment,
-    pub sidechain_id: Option<PublicKey>,
-    pub registration: ValidatorNodeRegistration,
+    pub sidechain_public_key: Option<PublicKey>,
     pub minimum_value_promise: MicroMinotari,
 }
+
+impl Ord for ValidatorNodeEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.sidechain_public_key
+            .cmp(&other.sidechain_public_key)
+            .then_with(|| self.shard_key.cmp(&other.shard_key))
+    }
+}
+
+impl PartialOrd for ValidatorNodeEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for ValidatorNodeEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.sidechain_public_key == other.sidechain_public_key && self.shard_key == other.shard_key
+    }
+}
+
+impl Eq for ValidatorNodeEntry {}

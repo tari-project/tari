@@ -46,7 +46,7 @@ service BaseNode {
   // Returns Block Fees
   rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
   // Get Version
-  rpc GetVersion(Empty) returns (StringValue);
+  rpc GetVersion(Empty) returns (BaseNodeGetVersionResponse);
   // Check for new updates
   rpc CheckForUpdates(Empty) returns (SoftwareUpdate);
   // Get coins in circulation
@@ -233,9 +233,9 @@ message IntegerValue {
   uint64 value = 1;
 }
 
-// A generic String value
-message StringValue {
-  string value = 1;
+message BaseNodeGetVersionResponse {
+  string version = 1;
+  uint32 network = 2;
 }
 
 /// GetBlockSize / GetBlockFees Request
@@ -488,22 +488,25 @@ message GetActiveValidatorNodesResponse {
 }
 
 message GetValidatorNodeChangesRequest {
-  uint64 start_height = 1;
-  uint64 end_height = 2;
-  bytes sidechain_id = 3;
-}
-
-enum ValidatorNodeChangeState {
-  ADD = 0;
-  REMOVE = 1;
+  uint64 epoch = 1;
+  bytes sidechain_id = 2;
 }
 
 message ValidatorNodeChange {
+  oneof change {
+    ValidatorNodeChangeAdd add = 1;
+    ValidatorNodeChangeRemove remove = 2;
+  }
+}
+
+message ValidatorNodeChangeAdd {
+  uint64 activation_epoch = 1;
+  ValidatorNodeRegistration registration = 2;
+  uint64 minimum_value_promise = 3;
+}
+
+message ValidatorNodeChangeRemove {
   bytes public_key = 1;
-  ValidatorNodeChangeState state = 2;
-  uint64 start_height = 3;
-  ValidatorNodeRegistration registration = 4;
-  uint64 minimum_value_promise = 5;
 }
 
 message GetValidatorNodeChangesResponse {
@@ -511,13 +514,12 @@ message GetValidatorNodeChangesResponse {
 }
 
 message GetShardKeyRequest {
-  uint64 height = 1;
+  uint64 epoch = 1;
   bytes public_key = 2;
 }
 
 message GetShardKeyResponse {
   bytes shard_key = 1;
-  bool found = 2;
 }
 
 message GetTemplateRegistrationsRequest {

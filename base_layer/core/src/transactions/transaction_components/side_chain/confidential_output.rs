@@ -22,11 +22,16 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::PublicKey;
+use tari_utilities::ByteArray;
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {
     pub claim_public_key: PublicKey,
-    pub sidechain_id: Option<PublicKey>,
-    pub sidechain_id_knowledge_proof: Option<Signature>,
+}
+
+impl ConfidentialOutputData {
+    pub fn sidechain_id_message(&self) -> &[u8] {
+        self.claim_public_key.as_bytes()
+    }
 }

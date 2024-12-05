@@ -52,6 +52,7 @@ pub struct FixedHashSizeError;
     BorshSerialize,
     BorshDeserialize,
 )]
+#[serde(transparent)]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {

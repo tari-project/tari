@@ -94,6 +94,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn it_contains_all_enum_variants() {
+        let mut variant_bits = 0u8;
+
+        fn check_duplicate(variant_bits: u8, mask: u8) {
+            if variant_bits & mask != 0 {
+                panic!("Duplicate variant");
+            }
+        }
+
+        for variant in RangeProofType::all() {
+            let mask = 1 << *variant as u8;
+            check_duplicate(variant_bits, mask);
+            match variant {
+                RangeProofType::BulletProofPlus => variant_bits |= mask,
+                RangeProofType::RevealedValue => variant_bits |= mask,
+            }
+        }
+        assert_eq!(variant_bits, 0b11);
+    }
+
+    #[test]
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(RangeProofType::default(), RangeProofType::BulletProofPlus);
         assert_eq!(RangeProofType::all(), [

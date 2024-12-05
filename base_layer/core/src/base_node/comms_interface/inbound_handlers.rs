@@ -22,16 +22,11 @@
 
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
-use std::{
-    cmp::max,
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Instant,
-};
+use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, FixedHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
@@ -40,7 +35,7 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        comms_response::{ValidatorNodeChange, ValidatorNodeChangeState},
+        comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
         FetchMempoolTransactionsResponse,
@@ -428,9 +423,12 @@ where B: BlockchainBackend + 'static
                     active_validator_nodes,
                 ))
             },
-            NodeCommsRequest::GetShardKey { height, public_key } => {
-                let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
-                Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
+            NodeCommsRequest::GetValidatorNode {
+                sidechain_id,
+                public_key,
+            } => {
+                let vn = self.blockchain_db.get_validator_node(sidechain_id, public_key).await?;
+                Ok(NodeCommsResponse::GetValidatorNode(vn))
             },
             NodeCommsRequest::FetchTemplateRegistrations {
                 start_height,
@@ -448,71 +446,30 @@ where B: BlockchainBackend + 'static
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
-            NodeCommsRequest::FetchValidatorNodeChanges {
-                start_height,
-                end_height,
-                sidechain_id,
-            } => {
-                let constants = self.consensus_manager.consensus_constants(start_height);
-                #[allow(clippy::mutable_key_type)]
-                let mut node_changes = HashMap::<PublicKey, ValidatorNodeChange>::new();
-                let mut nodes = self
+            NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id } => {
+                let added_validators = self
                     .blockchain_db
-                    .fetch_active_validator_nodes(start_height, sidechain_id.clone())
+                    .fetch_validators_activating_in_epoch(sidechain_id.clone(), epoch)
                     .await?;
-                for height in start_height + 1..=end_height {
-                    let current_nodes = self
-                        .blockchain_db
-                        .fetch_active_validator_nodes(height, sidechain_id.clone())
-                        .await?;
 
-                    // remove nodes
-                    nodes.iter().for_each(|prev_node| {
-                        let prev_exists_in_new_set = current_nodes
-                            .iter()
-                            .any(|current_node| prev_node.public_key == current_node.public_key);
-                        if !prev_exists_in_new_set {
-                            node_changes.insert(prev_node.public_key.clone(), ValidatorNodeChange {
-                                public_key: prev_node.public_key.clone(),
-                                state: ValidatorNodeChangeState::REMOVE,
-                                registration: prev_node.original_registration.clone(),
-                                minimum_value_promise: prev_node.minimum_value_promise,
-                                height: constants.epoch_to_block_height(prev_node.start_epoch),
-                            });
-                        }
-                    });
+                let exit_validators = self
+                    .blockchain_db
+                    .fetch_validators_exiting_in_epoch(sidechain_id.clone(), epoch)
+                    .await?;
 
-                    // add nodes
-                    current_nodes.iter().for_each(|current_node| {
-                        let new_exists_in_prev = nodes
-                            .iter()
-                            .any(|prev_node| current_node.public_key == prev_node.public_key);
-                        if !new_exists_in_prev {
-                            node_changes.insert(current_node.public_key.clone(), ValidatorNodeChange {
-                                public_key: current_node.public_key.clone(),
-                                state: ValidatorNodeChangeState::ADD,
-                                registration: current_node.original_registration.clone(),
-                                minimum_value_promise: current_node.minimum_value_promise,
-                                height: constants.epoch_to_block_height(current_node.start_epoch),
-                            });
-                        }
-                    });
+                let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
 
-                    nodes = current_nodes;
-                }
+                node_changes.extend(added_validators.into_iter().map(|vn| ValidatorNodeChange::Add {
+                    registration: vn.original_registration,
+                    activation_epoch: vn.activation_epoch,
+                    minimum_value_promise: vn.minimum_value_promise,
+                }));
 
-                Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(
-                    node_changes
-                        .iter()
-                        .map(|(pub_key, change)| ValidatorNodeChange {
-                            public_key: pub_key.clone(),
-                            state: change.state.clone(),
-                            registration: change.registration.clone(),
-                            minimum_value_promise: change.minimum_value_promise,
-                            height: change.height,
-                        })
-                        .collect(),
-                ))
+                node_changes.extend(exit_validators.into_iter().map(|vn| ValidatorNodeChange::Remove {
+                    public_key: vn.public_key,
+                }));
+
+                Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(node_changes))
             },
         }
     }
@@ -984,22 +941,7 @@ where B: BlockchainBackend + 'static
                         details: format!("Output {} to be spent does not exist in db", input.output_hash()),
                     })?;
 
-            let rp_hash = match output_mined_info.output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            input.add_output_data(
-                output_mined_info.output.version,
-                output_mined_info.output.features,
-                output_mined_info.output.commitment,
-                output_mined_info.output.script,
-                output_mined_info.output.sender_offset_public_key,
-                output_mined_info.output.covenant,
-                output_mined_info.output.encrypted_data,
-                output_mined_info.output.metadata_signature,
-                rp_hash,
-                output_mined_info.output.minimum_value_promise,
-            );
+            input.add_output_data(output_mined_info.output);
         }
         debug!(
             target: LOG_TARGET,

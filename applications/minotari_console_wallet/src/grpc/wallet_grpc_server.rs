@@ -71,6 +71,8 @@ use minotari_app_grpc::tari_rpc::{
     SendShaAtomicSwapResponse,
     SetBaseNodeRequest,
     SetBaseNodeResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
     TransactionDirection,
     TransactionEvent,
     TransactionEventRequest,
@@ -1131,6 +1133,52 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(GetTemplateRegistrationFeeResponse { fee: fee.as_u64() }))
+    }
+
+    async fn submit_validator_eviction_proof(
+        &self,
+        request: Request<SubmitValidatorEvictionProofRequest>,
+    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+
+        let sidechain_key = Some(request.sidechain_deployment_key)
+            .filter(|k| !k.is_empty())
+            .map(|k| PrivateKey::from_canonical_bytes(&k))
+            .transpose()
+            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
+
+        let proof = request
+            .proof
+            .map(TryInto::try_into)
+            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Failed to convert proof: {}", e);
+                Status::invalid_argument(format!("Invalid proof: {e}"))
+            })?;
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_eviction_proof(
+                constants.validator_node_registration_min_deposit_amount(),
+                proof,
+                request.fee_per_gram.into(),
+                sidechain_key,
+                request.message,
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                return Err(Status::unknown(e.to_string()));
+            },
+        };
+        Ok(Response::new(response))
     }
 }
 

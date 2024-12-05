@@ -29,6 +29,7 @@ tari_p2p = { path = "../p2p", features = [
 tari_script = { path = "../../infrastructure/tari_script", version = "1.7.0-pre.3" }
 tari_service_framework = { path = "../service_framework", version = "1.7.0-pre.3" }
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.7.0-pre.3" }
+tari_sidechain = { path = "../../base_layer/sidechain", version = "1.7.0-pre.3" }
 tari_utilities = { version = "0.8" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)

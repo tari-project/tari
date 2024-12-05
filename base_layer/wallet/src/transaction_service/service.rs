@@ -36,6 +36,7 @@ use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
@@ -62,6 +63,7 @@ use tari_core::{
             TemplateType,
             Transaction,
             TransactionOutput,
+            ValidatorNodeSignature,
             WalletOutputBuilder,
         },
         transaction_protocol::{
@@ -77,7 +79,6 @@ use tari_core::{
 use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
     ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey},
-    signatures::SchnorrSignature,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
@@ -86,6 +87,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_sidechain::EvictionProof;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -835,6 +837,28 @@ where
                     tx_id,
                     template_address,
                 })
+            },
+            TransactionServiceRequest::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                message,
+                sidechain_deployment_key,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.submit_validator_eviction_proof(
+                    amount,
+                    proof,
+                    sidechain_deployment_key,
+                    UtxoSelectionCriteria::default(),
+                    fee_per_gram,
+                    message,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    rp,
+                )
+                .await?;
+                return Ok(());
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
                 destination,
@@ -2192,20 +2216,11 @@ where
                 "A sidechain deployment key was provided without a claim public key".to_string(),
             ));
         }
-        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
-            Some(key) => {
-                let sidechain_id = PublicKey::from_secret_key(&key);
-                let sidechain_id_knowledge_proof =
-                    SchnorrSignature::sign(&key, claim_public_key.as_ref().unwrap().as_bytes(), &mut OsRng)
-                        .map_err(|e| TransactionServiceError::InvalidBurnTransaction(format!("Error: {:?}", e)))?;
-                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
-            },
-            None => (None, None),
-        };
+
         let output_features = claim_public_key
             .as_ref()
             .cloned()
-            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_id, sidechain_id_knowledge_proof))
+            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_deployment_key.as_ref()))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
         // Prepare sender part of the transaction
@@ -2416,7 +2431,7 @@ where
         }))
     }
 
-    pub async fn register_validator_node(
+    async fn register_validator_node(
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
@@ -2434,22 +2449,16 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
-            Some(k) => {
-                let sidechain_id = PublicKey::from_secret_key(&k);
-                let sidechain_id_knowledge_proof =
-                    SchnorrSignature::sign(&k, validator_node_public_key.to_vec(), &mut OsRng)
-                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
-                (Some(sidechain_id), Some(sidechain_id_knowledge_proof))
-            },
-            None => (None, None),
-        };
+        let signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
+        let sidechain_pk = sidechain_deployment_key.as_ref().map(PublicKey::from_secret_key);
+        if !signature.is_valid_signature_for(sidechain_pk.as_ref(), &validator_node_claim_public_key, VnEpoch(0)) {
+            return Err(TransactionServiceError::InvalidValidatorNodeSignature);
+        }
+
         let output_features = OutputFeatures::for_validator_node_registration(
-            validator_node_public_key,
-            validator_node_signature,
+            signature,
             validator_node_claim_public_key,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
+            sidechain_deployment_key.as_ref(),
         );
         self.send_transaction(
             self.resources.interactive_tari_address.clone(),
@@ -2479,10 +2488,15 @@ where
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
     ) -> Result<MicroMinotari, TransactionServiceError> {
+        let author_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_static_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .await?;
         let author_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .get_public_key_at_key_id(&author_key_id)
             .await?;
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let nonce_id = self
@@ -2490,18 +2504,8 @@ where
             .transaction_key_manager_service
             .import_key(nonce_secret)
             .await?;
-        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
-            Some(k) => (
-                Some(PublicKey::from_secret_key(&k)),
-                Some(
-                    SchnorrSignature::sign(&k, author_key.pub_key.as_bytes(), &mut OsRng)
-                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
-                ),
-            ),
-            None => (None, None),
-        };
         let mut template_registration = CodeTemplateRegistration {
-            author_public_key: author_key.pub_key.clone(),
+            author_public_key: author_key.clone(),
             author_signature: Signature::default(),
             template_name: template_name
                 .try_into()
@@ -2513,19 +2517,20 @@ where
             build_info,
             binary_sha,
             binary_url,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
         };
-        let challenge = template_registration.create_challenge(&nonce_pub);
+        let signature_message = template_registration.create_signature_message(&nonce_pub);
+
         let author_sig = self
             .resources
             .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key.key_id, &nonce_id, &challenge)
+            .sign_with_nonce_and_challenge(&author_key_id, &nonce_id, &signature_message)
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
         template_registration.author_signature = author_sig;
-        let output_features = OutputFeatures::for_template_registration(template_registration);
+
+        let output_features =
+            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
 
         let fee = self
             .resources
@@ -2536,7 +2541,41 @@ where
         Ok(fee)
     }
 
-    pub async fn register_code_template(
+    async fn submit_validator_eviction_proof(
+        &mut self,
+        amount: MicroMinotari,
+        eviction_proof: EvictionProof,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        message: String,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let output_features =
+            OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
+        self.send_transaction(
+            self.resources.interactive_tari_address.clone(),
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            message,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn register_code_template(
         &mut self,
         fee_per_gram: MicroMinotari,
         template_name: String,
@@ -2553,10 +2592,15 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        let author_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_static_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .await?;
         let author_key = self
             .resources
             .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .get_public_key_at_key_id(&author_key_id)
             .await?;
         let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let nonce_id = self
@@ -2564,19 +2608,8 @@ where
             .transaction_key_manager_service
             .import_key(nonce_secret)
             .await?;
-        let (sidechain_id, sidechain_id_knowledge_proof) = match sidechain_deployment_key {
-            Some(k) => (
-                Some(PublicKey::from_secret_key(&k)),
-                Some(
-                    SchnorrSignature::sign(&k, author_key.pub_key.as_bytes(), &mut OsRng)
-                        .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?,
-                ),
-            ),
-            None => (None, None),
-        };
-
         let mut template_registration = CodeTemplateRegistration {
-            author_public_key: author_key.pub_key.clone(),
+            author_public_key: author_key.clone(),
             author_signature: Signature::default(),
             template_name: template_name
                 .try_into()
@@ -2588,21 +2621,21 @@ where
             build_info,
             binary_sha,
             binary_url,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
         };
 
-        let challenge = template_registration.create_challenge(&nonce_pub);
+        let signature_message = template_registration.create_signature_message(&nonce_pub);
+
         let author_sig = self
             .resources
             .transaction_key_manager_service
-            .sign_with_nonce_and_challenge(&author_key.key_id, &nonce_id, &challenge)
+            .sign_with_nonce_and_challenge(&author_key_id, &nonce_id, &signature_message)
             .await
             .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
 
         template_registration.author_signature = author_sig;
 
-        let output_features = OutputFeatures::for_template_registration(template_registration);
+        let output_features =
+            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
         let tx_id = TxId::new_random();
         let (fee, transaction) = self
             .resources

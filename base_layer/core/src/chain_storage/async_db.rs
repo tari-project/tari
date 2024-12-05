@@ -31,6 +31,7 @@ use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
@@ -284,7 +285,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<PublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
 
-    make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> Option<[u8;32]>, "get_shard_key");
+    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<PublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
+
+    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<PublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
+
+    make_async_fn!(get_validator_node(sidechain_id: Option<PublicKey>, public_key: PublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 

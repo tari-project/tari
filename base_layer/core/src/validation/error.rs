@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{HashOutput, PublicKey},
+};
+use tari_sidechain::SidechainProofValidationError;
 use thiserror::Error;
 
 use crate::{
@@ -123,29 +127,14 @@ pub enum ValidationError {
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
-    #[error(
-        "Sidechain not set for template registration. If sidechain_id is set, then sidechain_id_knowledge_proof must \
-         also be set"
-    )]
-    TemplateRegistrationSidechainNotSet,
     #[error("Sidechain ID knowledge proof not valid for template registration")]
     TemplateInvalidSidechainIdKnowledgeProof,
     #[error("Author signature not valid for template registration")]
     TemplateAuthorSignatureNotValid,
-    #[error(
-        "Sidechain not set for confidential output. If sidechain_id is set, then sidechain_id_knowledge_proof must \
-         also be set"
-    )]
-    ConfidentialOutputSidechainNotSet,
     #[error("Sidechain ID knowledge proof not valid for confidential output")]
     ConfidentialOutputSidechainIdKnowledgeProofNotValid,
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
-    #[error(
-        "Sidechain not set for validator node registration. If sidechain_id is set, then sidechain_id_knowledge_proof \
-         must also be set"
-    )]
-    ValidatorNodeRegistrationSidechainNotSet,
     #[error("Sidechain ID knowledge proof not valid for validator node registration")]
     ValidatorNodeInvalidSidechainIdKnowledgeProof,
     #[error(
@@ -157,6 +146,16 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
+    #[error("Sidechain proof invalid: `{0}`")]
+    SidechainProofInvalid(#[from] SidechainProofValidationError),
+    #[error("Sidechain eviction proof submitted for unregistered validator {validator_pk}")]
+    SidechainEvictionProofValidatorNotFound { validator_pk: PublicKey },
+    #[error(
+        "Sidechain eviction proof invalid: given epoch {epoch} is greater than the epoch at tip height {tip_height}"
+    )]
+    SidechainEvictionProofInvalidEpoch { epoch: VnEpoch, tip_height: u64 },
+    #[error("Validator node already registered: {public_key}")]
+    ValidatorNodeAlreadyRegistered { public_key: PublicKey },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -205,15 +204,16 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
-            err @ ValidationError::ValidatorNodeRegistrationSidechainNotSet |
             err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof |
-            err @ ValidationError::TemplateRegistrationSidechainNotSet |
             err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof |
             err @ ValidationError::TemplateAuthorSignatureNotValid |
-            err @ ValidationError::ConfidentialOutputSidechainNotSet |
             err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
+            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
+            err @ ValidationError::SidechainProofInvalid(_) |
+            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
+            err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

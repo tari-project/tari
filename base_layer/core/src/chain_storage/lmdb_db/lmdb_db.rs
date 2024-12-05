@@ -43,6 +43,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
+use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
     hex::{to_hex, Hex},
@@ -111,6 +112,8 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{
             OutputType,
+            SideChainFeatureData,
+            SideChainId,
             SpentOutput,
             TransactionInput,
             TransactionKernel,
@@ -150,13 +153,14 @@ const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
 const LMDB_DB_REORGS: &str = "reorgs";
 const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
-const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
+const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_queue";
+const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
-type ValidatorNodeRegistrationKey = CompositeKey<40>;
+type CodeTemplateRegistrationKey = CompositeKey<40>;
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
@@ -199,7 +203,9 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
-        .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_ACTIVATION, flags | db::DUPSORT | db::DUPFIXED)
+        // .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
@@ -257,11 +263,13 @@ pub struct LMDBDatabase {
     bad_blocks: DatabaseRef,
     /// Stores reorgs by epochtime and Reorg
     reorgs: DatabaseRef,
-    /// Maps <Height, VN PK> -> ActiveValidatorNode
+    /// Maps <SID, VN PK> -> ValidatorNodeEntry
     validator_nodes: DatabaseRef,
-    /// Maps <Epoch, VN Public Key> -> VN Shard Key
-    validator_nodes_mapping: DatabaseRef,
-    /// Maps CodeTemplateRegistration <block_height, hash> -> TemplateRegistration
+    /// Maps <SID, Epoch> -> \[PK\]
+    validator_nodes_activation_queue: DatabaseRef,
+    /// Maps <VN Public Key, Height, Commitment> -> ValidatorNodeEntry
+    validator_nodes_exit_queue: DatabaseRef,
+    /// Maps CodeTemplateRegistration <block_height, output hash> -> TemplateRegistration
     template_registrations: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
@@ -300,7 +308,8 @@ impl LMDBDatabase {
             bad_blocks: get_database(store, LMDB_DB_BAD_BLOCK_LIST)?,
             reorgs: get_database(store, LMDB_DB_REORGS)?,
             validator_nodes: get_database(store, LMDB_DB_VALIDATOR_NODES)?,
-            validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
+            validator_nodes_activation_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_ACTIVATION)?,
+            validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             env,
             env_config: store.env_config(),
@@ -497,7 +506,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 26] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 27] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -529,7 +538,11 @@ impl LMDBDatabase {
             (LMDB_DB_BAD_BLOCK_LIST, &self.bad_blocks),
             (LMDB_DB_REORGS, &self.reorgs),
             (LMDB_DB_VALIDATOR_NODES, &self.validator_nodes),
-            (LMDB_DB_VALIDATOR_NODES_MAPPING, &self.validator_nodes_mapping),
+            (
+                LMDB_DB_VALIDATOR_NODES_ACTIVATION,
+                &self.validator_nodes_activation_queue,
+            ),
+            (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
             (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
         ]
     }
@@ -630,16 +643,14 @@ impl LMDBDatabase {
     fn input_with_output_data(
         &self,
         txn: &WriteTransaction<'_>,
-        input: TransactionInput,
+        mut input: TransactionInput,
     ) -> Result<TransactionInput, ChainStorageError> {
         let input_with_output_data = match input.spent_output {
             SpentOutput::OutputData { .. } => input,
             SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
-                Ok(Some(utxo_mined_info)) => TransactionInput {
-                    version: input.version,
-                    spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
-                    input_data: input.input_data,
-                    script_signature: input.script_signature,
+                Ok(Some(utxo_mined_info)) => {
+                    input.add_output_data(utxo_mined_info.output);
+                    input
                 },
                 Ok(None) => {
                     error!(
@@ -953,6 +964,8 @@ impl LMDBDatabase {
         let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
 
+        let constants = self.get_consensus_constants(height);
+
         for utxo in &output_rows {
             trace!(target: LOG_TARGET, "Deleting UTXO `{}`", to_hex(utxo.hash.as_slice()));
             lmdb_delete(
@@ -969,15 +982,31 @@ impl LMDBDatabase {
                 continue;
             }
 
-            if let Some(vn_reg) = utxo
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-            {
-                self.validator_node_store(txn)
-                    .delete(height, vn_reg.public_key(), &utxo.output.commitment)?;
+            if let Some(sidechain_features) = utxo.output.features.sidechain_feature.as_ref() {
+                match &sidechain_features.data {
+                    SideChainFeatureData::ValidatorNodeRegistration(vn_reg) => {
+                        self.validator_node_store(txn)
+                            .delete(sidechain_features.sidechain_public_key(), vn_reg.public_key())?;
+                    },
+                    SideChainFeatureData::CodeTemplateRegistration(_) => {
+                        let key = CodeTemplateRegistrationKey::try_from_parts(&[
+                            height.to_be_bytes().as_slice(),
+                            output_hash.as_slice(),
+                        ])?;
+                        lmdb_delete(txn, &self.template_registrations, &key, "template_registrations")?;
+                    },
+                    SideChainFeatureData::ConfidentialOutput(_) => {
+                        // Nothing to do
+                    },
+                    SideChainFeatureData::EvictionProof(evict) => {
+                        let next_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
+                        self.validator_node_store(txn).undo_exit(
+                            sidechain_features.sidechain_public_key(),
+                            next_epoch,
+                            evict.node_to_evict(),
+                        )?;
+                    },
+                }
             }
 
             // if an output was burned, it was never created as an unspent utxo
@@ -1029,22 +1058,7 @@ impl LMDBDatabase {
                 }
             })?;
 
-            let rp_hash = match utxo_mined_info.output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            input.add_output_data(
-                utxo_mined_info.output.version,
-                utxo_mined_info.output.features,
-                utxo_mined_info.output.commitment,
-                utxo_mined_info.output.script,
-                utxo_mined_info.output.sender_offset_public_key,
-                utxo_mined_info.output.covenant,
-                utxo_mined_info.output.encrypted_data,
-                utxo_mined_info.output.metadata_signature,
-                rp_hash,
-                utxo_mined_info.output.minimum_value_promise,
-            );
+            input.add_output_data(utxo_mined_info.output);
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
             let smt_node = ValueHash::try_from(input.smt_hash(utxo_mined_info.mined_height).as_slice())?;
             if let Err(e) = output_smt.insert(smt_key, smt_node) {
@@ -1282,30 +1296,8 @@ impl LMDBDatabase {
                 }
             }
 
-            let output_hash = output.hash();
-            if let Some(vn_reg) = output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-            {
-                self.insert_validator_node(txn, header, &output.commitment, output.minimum_value_promise, vn_reg)?;
-            }
-
-            if let Some(template_reg) = output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.code_template_registration())
-            {
-                let record = TemplateRegistrationEntry {
-                    registration_data: template_reg.clone(),
-                    output_hash,
-                    block_height: header.height,
-                    block_hash,
-                };
-
-                self.insert_template_registration(txn, &record)?;
+            if output.features.output_type.is_sidechain_type() || output.is_burned_to_sidechain() {
+                self.handle_sidechain_utxo(txn, header, &output)?;
             }
             self.insert_output(txn, &block_hash, header.height, header.timestamp().as_u64(), &output)?;
         }
@@ -1327,16 +1319,11 @@ impl LMDBDatabase {
             };
 
             let features = input_with_output_data.features()?;
-            if let Some(vn_reg) = features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-            {
-                self.validator_node_store(txn).delete(
-                    header.height,
-                    vn_reg.public_key(),
-                    input_with_output_data.commitment()?,
-                )?;
+            if let Some(sidechain_feature) = features.sidechain_feature.as_ref() {
+                if let Some(vn_reg) = sidechain_feature.validator_node_registration() {
+                    self.validator_node_store(txn)
+                        .delete(sidechain_feature.sidechain_public_key(), vn_reg.public_key())?;
+                }
             }
             trace!(
                 target: LOG_TARGET,
@@ -1366,7 +1353,68 @@ impl LMDBDatabase {
         &'a self,
         txn: &'a T,
     ) -> ValidatorNodeStore<'a, T> {
-        ValidatorNodeStore::new(txn, self.validator_nodes.clone(), self.validator_nodes_mapping.clone())
+        ValidatorNodeStore::new(
+            txn,
+            self.validator_nodes.clone(),
+            self.validator_nodes_activation_queue.clone(),
+            self.validator_nodes_exit_queue.clone(),
+        )
+    }
+
+    fn handle_sidechain_utxo(
+        &self,
+        txn: &WriteTransaction<'_>,
+        header: &BlockHeader,
+        output: &TransactionOutput,
+    ) -> Result<(), ChainStorageError> {
+        let sidechain_feature = output.features.sidechain_feature.as_ref().ok_or_else(|| {
+            ChainStorageError::InvalidOperation(
+                "Output does not have a sidechain feature but is a sidechain type".to_string(),
+            )
+        })?;
+        match &sidechain_feature.data {
+            SideChainFeatureData::ValidatorNodeRegistration(vn_reg) => {
+                self.insert_validator_node(
+                    txn,
+                    header,
+                    &output.commitment,
+                    output.minimum_value_promise,
+                    sidechain_feature.sidechain_id(),
+                    vn_reg,
+                )?;
+            },
+            SideChainFeatureData::CodeTemplateRegistration(template_reg) => {
+                let output_hash = output.hash();
+                let record = TemplateRegistrationEntry {
+                    registration_data: template_reg.clone(),
+                    output_hash,
+                    block_height: header.height,
+                    block_hash: header.hash(),
+                };
+
+                self.insert_template_registration(txn, &record)?;
+            },
+            SideChainFeatureData::ConfidentialOutput(_) => {
+                // Nothing to do
+            },
+            SideChainFeatureData::EvictionProof(proof) => {
+                let store = self.validator_node_store(txn);
+                let evict_node = proof.node_to_evict();
+                let constants = self.get_consensus_constants(header.height);
+                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+                let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
+                info!(
+                    target: LOG_TARGET,
+                    "Evicting ValidatorNode in {}: public_key: {}, sidechain_public_key: {:?}",
+                    next_epoch,
+                    evict_node,
+                    sidechain_pk.map(|pk| pk.to_hex()),
+                );
+                store.exit(sidechain_pk, evict_node, next_epoch)?;
+            },
+        }
+
+        Ok(())
     }
 
     fn insert_validator_node(
@@ -1375,56 +1423,53 @@ impl LMDBDatabase {
         header: &BlockHeader,
         commitment: &Commitment,
         minimum_value_promise: MicroMinotari,
+        sidechain_id: Option<&SideChainId>,
         vn_reg: &ValidatorNodeRegistration,
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
         let constants = self.get_consensus_constants(header.height);
         let current_epoch = constants.block_height_to_epoch(header.height);
 
-        // skip already added validator node
-        if store.is_vn_exists(current_epoch, vn_reg.public_key(), vn_reg.sidechain_id().cloned())? {
-            warn!(target: LOG_TARGET, "Validator node has been already registered: {:?}", vn_reg.public_key().to_string());
-            return Ok(());
-        }
+        let sidechain_pk = sidechain_id.map(|id| id.public_key());
 
-        let prev_shard_key = store.get_shard_key(
-            0,
-            current_epoch.as_u64() * constants.epoch_length(),
-            vn_reg.public_key(),
-        )?;
         let shard_key = vn_reg.derive_shard_key(
-            prev_shard_key,
+            None,
             current_epoch,
             constants.validator_node_registration_shuffle_interval(),
             &header.prev_hash,
         );
 
-        let mut next_epoch = current_epoch + VnEpoch(1);
+        let activation_epoch = store.get_next_activation_epoch(
+            sidechain_pk,
+            current_epoch,
+            constants.vn_registration_max_vns_initial_epoch() as usize,
+            constants.vn_registration_max_vns_per_epoch() as usize,
+        )?;
 
-        // looking for next available epoch
-        let current_vn_count = store.get_vn_count_until_epoch(current_epoch, vn_reg.sidechain_id().cloned())?;
-        let mut vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
-
-        if (current_vn_count == 0 && vn_count >= constants.vn_registration_max_vns_initial_epoch()) ||
-            (current_vn_count > 0 && vn_count >= constants.vn_registration_max_vns_per_epoch())
-        {
-            while vn_count >= constants.vn_registration_max_vns_per_epoch() {
-                next_epoch += VnEpoch(1);
-                vn_count = store.get_vn_count_in_epoch(next_epoch, vn_reg.sidechain_id().cloned())?;
-            }
-        }
+        info!(
+            target: LOG_TARGET,
+            "Inserting ValidatorNode: public_key: {}, activation_epoch: {}, registration_epoch: {}, shard_key: {}, \
+             commitment: {}, sidechain_public_key: {:?}, minimum_value_promise: {}",
+            vn_reg.public_key(),
+            activation_epoch,
+            current_epoch,
+            to_hex(&shard_key),
+            commitment.as_public_key(),
+            sidechain_pk.map(|pk| pk.to_hex()),
+            minimum_value_promise
+        );
 
         let validator_node = ValidatorNodeEntry {
             shard_key,
-            start_epoch: next_epoch,
+            activation_epoch,
+            registration_epoch: current_epoch,
             public_key: vn_reg.public_key().clone(),
             commitment: commitment.clone(),
-            sidechain_id: vn_reg.sidechain_id().cloned(),
-            registration: vn_reg.clone(),
+            sidechain_public_key: sidechain_pk.cloned(),
             minimum_value_promise,
         };
 
-        store.insert(header.height, &validator_node)?;
+        store.insert(&validator_node)?;
         Ok(())
     }
 
@@ -1666,7 +1711,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         template_registration: &TemplateRegistrationEntry,
     ) -> Result<(), ChainStorageError> {
-        let key = ValidatorNodeRegistrationKey::try_from_parts(&[
+        let key = CodeTemplateRegistrationKey::try_from_parts(&[
             template_registration.block_height.to_le_bytes().as_slice(),
             template_registration.output_hash.as_slice(),
         ])?;
@@ -1735,6 +1780,28 @@ impl LMDBDatabase {
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
+    }
+
+    fn fetch_utxo_by_commitment(
+        &self,
+        txn: &ConstTransaction<'_>,
+        commitment: &Commitment,
+    ) -> Result<OutputMinedInfo, ChainStorageError> {
+        let output_hash = lmdb_get::<_, HashOutput>(txn, &self.utxo_commitment_index, commitment.as_bytes())?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_utxo_by_commitment)",
+                field: "commitment",
+                value: commitment.to_hex(),
+            })?;
+        let output =
+            self.fetch_output_in_txn(txn, output_hash.as_slice())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "UTXO (in fetch_utxo_by_commitment)",
+                    field: "hash",
+                    value: output_hash.to_string(),
+                })?;
+
+        Ok(output)
     }
 }
 
@@ -2500,35 +2567,237 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Get the current epoch for the height
         let end_epoch = constants.block_height_to_epoch(height);
-        // Convert these back to height as validators regs are indexed by height
-        let end_height = end_epoch.as_u64() * constants.epoch_length();
-        let nodes = vn_store.get_vn_set(0, end_height)?;
+        let vns = vn_store.get_entire_vn_set(end_epoch)?;
+
+        let mut nodes = Vec::with_capacity(vns.len());
+        for node in vns {
+            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
+            let reg = output
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "fetch_all_active_validator_nodes",
+                    details: "Output does not have a sidechain feature".to_string(),
+                })?;
+            nodes.push(ValidatorNodeRegistrationInfo {
+                public_key: node.public_key,
+                sidechain_id: node.sidechain_public_key,
+                shard_key: node.shard_key,
+                activation_epoch: node.activation_epoch,
+                original_registration: reg.clone(),
+                minimum_value_promise: output.output.minimum_value_promise,
+            });
+        }
+
         Ok(nodes)
     }
 
     fn fetch_active_validator_nodes(
         &self,
+        sidechain_pk: Option<&PublicKey>,
         height: u64,
-        validator_network: Option<PublicKey>,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
-        let nodes = self
-            .fetch_all_active_validator_nodes(height)?
-            .into_iter()
-            .filter(|vn| vn.sidechain_id == validator_network)
-            .collect();
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        // Get the current epoch for the height
+        let end_epoch = constants.block_height_to_epoch(height);
+        // TODO: custom limit
+        let vns = vn_store.get_vn_set(sidechain_pk, VnEpoch::zero(), end_epoch, 1_000_000)?;
+
+        let mut nodes = Vec::with_capacity(vns.len());
+        for node in vns {
+            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
+            let reg = output
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "fetch_all_active_validator_nodes",
+                    details: "Output does not have a sidechain feature".to_string(),
+                })?;
+            nodes.push(ValidatorNodeRegistrationInfo {
+                public_key: node.public_key,
+                sidechain_id: node.sidechain_public_key,
+                shard_key: node.shard_key,
+                activation_epoch: node.activation_epoch,
+                original_registration: reg.clone(),
+                minimum_value_promise: output.output.minimum_value_promise,
+            });
+        }
+
         Ok(nodes)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    fn fetch_validators_activating_in_epoch(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+        let vns = vn_store.get_activating_in_epoch(sidechain_pk, epoch)?;
+        let mut nodes = Vec::with_capacity(vns.len());
+        for node in vns {
+            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
+            let reg = output
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "fetch_validators_activating_in_epoch",
+                    details: "Output does not have a sidechain feature".to_string(),
+                })?;
+            nodes.push(ValidatorNodeRegistrationInfo {
+                public_key: node.public_key,
+                sidechain_id: node.sidechain_public_key,
+                shard_key: node.shard_key,
+                activation_epoch: node.activation_epoch,
+                original_registration: reg.clone(),
+                minimum_value_promise: output.output.minimum_value_promise,
+            });
+        }
+        Ok(nodes)
+    }
+
+    fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+        let vns = vn_store.get_exiting_in_epoch(sidechain_pk, epoch)?;
+        let mut nodes = Vec::with_capacity(vns.len());
+        for node in vns {
+            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
+            let reg = output
+                .output
+                .features
+                .sidechain_feature
+                .as_ref()
+                .and_then(|f| f.validator_node_registration())
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "fetch_validators_exiting_in_epoch",
+                    details: "Output does not have a sidechain feature".to_string(),
+                })?;
+            nodes.push(ValidatorNodeRegistrationInfo {
+                public_key: node.public_key,
+                sidechain_id: node.sidechain_public_key,
+                shard_key: node.shard_key,
+                activation_epoch: node.activation_epoch,
+                original_registration: reg.clone(),
+                minimum_value_promise: output.output.minimum_value_promise,
+            });
+        }
+        Ok(nodes)
+    }
+
+    fn validator_node_exists(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        height: u64,
+        validator_node_pk: &PublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+        let constants = self.consensus_manager.consensus_constants(height);
+
+        // Get the current epoch for the height
+        let end_epoch = constants.block_height_to_epoch(height);
+        let is_active = vn_store.vn_exists(sidechain_pk, validator_node_pk, end_epoch)?;
+        Ok(is_active)
+    }
+
+    fn validator_node_is_active(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &PublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+
+        // Get the current epoch for the height
+        let is_active = vn_store.is_vn_active(sidechain_pk, validator_node_pk, end_epoch)?;
+        Ok(is_active)
+    }
+
+    fn validator_node_is_active_for_shard_group(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &PublicKey,
+        _shard_group: ShardGroup,
+    ) -> Result<bool, ChainStorageError> {
+        // TODO: account for shard group
+        self.validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+    }
+
+    fn validator_nodes_count_for_shard_group(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        end_epoch: VnEpoch,
+        _shard_group: ShardGroup,
+    ) -> Result<usize, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let vn_store = self.validator_node_store(&txn);
+        vn_store.count_active_validators(sidechain_pk, end_epoch)
+    }
+
+    fn get_validator_node(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        public_key: PublicKey,
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let store = self.validator_node_store(&txn);
-        let constants = self.get_consensus_constants(height);
+        let Some(vn) = store.get(sidechain_pk, &public_key)? else {
+            return Ok(None);
+        };
 
-        // Get the epoch height boundaries for our query
-        let current_epoch = constants.block_height_to_epoch(height);
-        let end_height = current_epoch.as_u64() * constants.epoch_length();
-        let maybe_shard_id = store.get_shard_key(0, end_height, &public_key)?;
-        Ok(maybe_shard_id)
+        let hash = self
+            .fetch_unspent_output_hash_by_commitment(&vn.commitment)?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_unspent_output_hash_by_commitment)",
+                field: "commitment",
+                value: vn.commitment.to_hex(),
+            })?;
+        let output = self
+            .fetch_output(&hash)?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_unspent_output_hash_by_commitment)",
+                field: "hash",
+                value: hash.to_hex(),
+            })?;
+
+        let reg = output
+            .output
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.validator_node_registration())
+            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                function: "get_validator_node",
+                details: "Output does not have a sidechain feature".to_string(),
+            })?;
+
+        Ok(Some(ValidatorNodeRegistrationInfo {
+            public_key,
+            sidechain_id: sidechain_pk.cloned(),
+            shard_key: vn.shard_key,
+            activation_epoch: vn.activation_epoch,
+            original_registration: reg.clone(),
+            minimum_value_promise: vn.minimum_value_promise,
+        }))
     }
 
     fn fetch_template_registrations(
