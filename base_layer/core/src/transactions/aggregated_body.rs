@@ -19,16 +19,20 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#[cfg(feature = "base_node")]
+use std::convert::TryFrom;
 use std::{
     cmp::max,
-    convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey};
+#[cfg(feature = "base_node")]
+use tari_common_types::types::FixedHash;
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 #[cfg(feature = "base_node")]
 use tari_mmr::pruned_hashset::PrunedHashSet;

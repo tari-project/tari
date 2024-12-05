@@ -51,6 +51,7 @@ mod rewind_blockchain;
 mod search_kernel;
 mod search_utxo;
 mod status;
+mod test_peer_liveness;
 mod unban_all_peers;
 mod version;
 mod watch_command;
@@ -118,6 +119,7 @@ pub enum Command {
     ResetOfflinePeers(reset_offline_peers::Args),
     RewindBlockchain(rewind_blockchain::Args),
     AddPeer(add_peer::ArgsAddPeer),
+    TestPeerLiveness(test_peer_liveness::ArgsTestPeerLiveness),
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
@@ -239,6 +241,8 @@ impl CommandContext {
                 Command::CreateTlsCerts(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
+                // This test can potentially take a longer time and should be allowed to run longer
+                Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
                 Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
             };
@@ -272,6 +276,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetDbStats(args) => self.handle_command(args).await,
             Command::GetPeer(args) => self.handle_command(args).await,
+            Command::TestPeerLiveness(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
             Command::GetNetworkStats(args) => self.handle_command(args).await,
             Command::ListPeers(args) => self.handle_command(args).await,
