@@ -20,13 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::OpenOptions, io::Write, path::PathBuf, process, time::Instant};
+use std::{
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::PathBuf,
+    process,
+    time::{Duration, Instant},
+};
 
 use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Local;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
+use tari_common_types::types::PublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
@@ -62,7 +70,6 @@ enum PingResult {
     Fail,
 }
 
-#[allow(clippy::too_many_lines)]
 #[async_trait]
 impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
     async fn handle_command(&mut self, args: ArgsTestPeerLiveness) -> Result<(), Error> {
@@ -76,6 +83,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         let node_id = NodeId::from_public_key(&public_key);
         let node_id_clone = node_id.clone();
         let public_key_clone = public_key.clone();
+        let address_clone = args.address.clone();
 
         // Remove the peer from the peer manager (not the peer db)
         let _res = peer_manager.delete_peer(&node_id).await;
@@ -141,7 +149,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         loop {
             tokio::select! {
                 _ = rx.changed() => {
-                    let test_time = start.elapsed();
+                    let test_duration = start.elapsed();
                     let responsive = *rx.borrow();
                     println!("\nWhen rx.changed(): {:?}\n", responsive);
                     if responsive == PingResult::Success {
@@ -151,46 +159,14 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                     }
 
                     if let Some(true) = args.output_to_file {
-                        let test_result = if responsive == PingResult::Success { "PASS" } else { "FAIL" };
-                        let now = Local::now();
-                        let date_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
-
-                        let file_name = "peer_liveness_test.csv";
-                        let file_path = if let Some(path) = args.output_directory.clone() {
-                            if let Ok(true) = fs::exists(&path) {
-                                path.join(file_name)
-                            } else if fs::create_dir_all(&path).is_ok() {
-                                path.join(file_name)
-                            } else {
-                                PathBuf::from(file_name)
-                            }
-                        } else {
-                            PathBuf::from(file_name)
-                        };
-
-                        if let Some(true) = args.refresh_file {
-                            let _unused = fs::remove_file(&file_path);
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                        }
-                        let write_header = !file_path.exists();
-                        if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(file_path.clone()) {
-                            let mut file_content = String::new();
-                            if write_header {
-                                file_content.push_str("Public Key,Date Time,Result\n");
-                            }
-                            file_content.push_str(
-                                &format!("{},{},{},{:.2?}",date_time, public_key_clone, test_result, test_time)
-                            );
-                            match writeln!(file, "{}", file_content) {
-                                Ok(_) => {
-                                    println!("📝 Test result written to file: {}", file_path.display());
-                                },
-                                Err(e) => {
-                                    println!("❌ Error writing test result to file: {}", e);
-                                },
-                            }
-                        }
-
+                        print_to_file(
+                            responsive,
+                            args.output_directory,
+                            args.refresh_file,
+                            public_key_clone,
+                            address_clone,
+                            test_duration
+                        ).await;
                     }
                     println!();
 
@@ -212,5 +188,59 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         }
 
         Ok(())
+    }
+}
+
+async fn print_to_file(
+    responsive: PingResult,
+    output_directory: Option<PathBuf>,
+    refresh_file: Option<bool>,
+    public_key: PublicKey,
+    address: Multiaddr,
+    test_duration: Duration,
+) {
+    let test_result = if responsive == PingResult::Success {
+        "PASS"
+    } else {
+        "FAIL"
+    };
+    let now = Local::now();
+    let date_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    let file_name = "peer_liveness_test.csv";
+    let file_path = if let Some(path) = output_directory.clone() {
+        if let Ok(true) = fs::exists(&path) {
+            path.join(file_name)
+        } else if fs::create_dir_all(&path).is_ok() {
+            path.join(file_name)
+        } else {
+            PathBuf::from(file_name)
+        }
+    } else {
+        PathBuf::from(file_name)
+    };
+
+    if let Some(true) = refresh_file {
+        let _unused = fs::remove_file(&file_path);
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+    let write_header = !file_path.exists();
+    if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(file_path.clone()) {
+        let mut file_content = String::new();
+        if write_header {
+            file_content.push_str("Date Time,Public Key,Address,Result,Test Duration\n");
+        }
+        file_content.push_str(&format!(
+            "{},{},{},{},{:.2?}",
+            date_time, public_key, address, test_result, test_duration
+        ));
+        match writeln!(file, "{}", file_content) {
+            Ok(_) => {
+                println!("📝 Test result written to file: {}", file_path.display());
+            },
+            Err(e) => {
+                println!("❌ Error writing test result to file: {}", e);
+            },
+        }
     }
 }
