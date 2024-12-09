@@ -62,6 +62,7 @@ enum PingResult {
     Fail,
 }
 
+#[allow(clippy::too_many_lines)]
 #[async_trait]
 impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
     async fn handle_command(&mut self, args: ArgsTestPeerLiveness) -> Result<(), Error> {
@@ -168,7 +169,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                         };
 
                         if let Some(true) = args.refresh_file {
-                            let _ = fs::remove_file(&file_path);
+                            let _unused = fs::remove_file(&file_path);
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                         }
                         let write_header = !file_path.exists();
@@ -178,7 +179,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                                 file_content.push_str("Public Key,Date Time,Result\n");
                             }
                             file_content.push_str(
-                                &format!("{},{},{},{:.2?}\n",date_time, public_key_clone, test_result, test_time)
+                                &format!("{},{},{},{:.2?}",date_time, public_key_clone, test_result, test_time)
                             );
                             match writeln!(file, "{}", file_content) {
                                 Ok(_) => {
