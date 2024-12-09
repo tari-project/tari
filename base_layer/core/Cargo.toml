@@ -133,4 +133,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 
 [package.metadata.cargo-machete]
-ignored = ["hickory-proto"]
+ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
