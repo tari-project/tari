@@ -1,0 +1,20 @@
+[package]
+name = "tari_sidechain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+tari_hashing = { workspace = true }
+tari_crypto = { version = "0.21.0", features = ["borsh"] }
+tari_utilities = "0.8"
+tari_common_types = { workspace = true }
+
+log = "0.4.22"
+thiserror = "2.0"
+borsh = "1.5"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0.108"
+env_logger = "0.11.5"

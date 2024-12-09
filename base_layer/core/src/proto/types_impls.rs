@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    borrow::Borrow,
-    convert::{TryFrom, TryInto},
-};
+use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{ComAndPubSignature, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{ComAndPubSignature, Commitment, HashOutput, PrivateKey, PublicKey};
+use tari_crypto::{hashing::DomainSeparation, signatures::SchnorrSignature};
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
@@ -49,7 +47,8 @@ impl From<Commitment> for proto::Commitment {
 }
 
 //---------------------------------- Signature --------------------------------------------//
-impl TryFrom<proto::Signature> for Signature {
+
+impl<H: DomainSeparation> TryFrom<proto::Signature> for SchnorrSignature<PublicKey, PrivateKey, H> {
     type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
@@ -59,12 +58,19 @@ impl TryFrom<proto::Signature> for Signature {
         Ok(Self::new(public_nonce, signature))
     }
 }
-
-impl<T: Borrow<Signature>> From<T> for proto::Signature {
-    fn from(sig: T) -> Self {
+impl<H: DomainSeparation> From<&SchnorrSignature<PublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: &SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.borrow().get_public_nonce().to_vec(),
-            signature: sig.borrow().get_signature().to_vec(),
+            public_nonce: sig.get_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
+        }
+    }
+}
+impl<H: DomainSeparation> From<SchnorrSignature<PublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
+        Self {
+            public_nonce: sig.get_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
         }
     }
 }

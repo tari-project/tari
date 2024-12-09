@@ -55,6 +55,7 @@ use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_max_size::MaxSizeString;
 use tari_script::CheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
+use tari_sidechain::EvictionProof;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -148,6 +149,13 @@ pub enum TransactionServiceRequest {
         binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+    },
+    SubmitValidatorEvictionProof {
+        amount: MicroMinotari,
+        proof: EvictionProof,
+        fee_per_gram: MicroMinotari,
+        message: String,
         sidechain_deployment_key: Option<PrivateKey>,
     },
     GetCodeTemplateFee {
@@ -389,11 +397,27 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
-            TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
+            Self::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
             TransactionServiceRequest::GetCodeTemplateFee { template_name, .. } => {
                 write!(f, "GetCodeTemplateFee: {}", template_name)
+            },
+            Self::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                message,
+                ..
+            } => {
+                write!(
+                    f,
+                    "SubmitValidatorEvictionProof (amount: {}, evicts: {}, fee_per_gram: {}, message: {})",
+                    amount,
+                    proof.node_to_evict(),
+                    fee_per_gram,
+                    message,
+                )
             },
         }
     }
@@ -446,6 +470,9 @@ pub enum TransactionServiceResponse {
     },
     CodeTemplateRegistrationFeeResponse {
         fee: MicroMinotari,
+    },
+    ValidatorEvictionProofSent {
+        tx_id: TxId,
     },
 }
 
@@ -756,6 +783,30 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CodeTemplateRegistrationFeeResponse { fee } => Ok(fee),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_validator_eviction_proof(
+        &mut self,
+        amount: MicroMinotari,
+        proof: EvictionProof,
+        fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                message,
+                sidechain_deployment_key,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

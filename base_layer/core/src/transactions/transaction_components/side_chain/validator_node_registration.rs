@@ -34,31 +34,23 @@ use tari_utilities::ByteArray;
 
 use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction_components::ValidatorNodeSignature};
 
-#[derive(Default, Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
     claim_public_key: PublicKey,
-    sidechain_id: Option<PublicKey>,
-    sidechain_id_knowledge_proof: Option<Signature>,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(
-        signature: ValidatorNodeSignature,
-        claim_public_key: PublicKey,
-        sidechain_id: Option<PublicKey>,
-        sidechain_id_knowledge_proof: Option<Signature>,
-    ) -> Self {
+    pub fn new(signature: ValidatorNodeSignature, claim_public_key: PublicKey) -> Self {
         Self {
             signature,
             claim_public_key,
-            sidechain_id,
-            sidechain_id_knowledge_proof,
         }
     }
 
-    pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
-        self.signature.is_valid_signature_for(&self.claim_public_key, msg)
+    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&PublicKey>, epoch: VnEpoch) -> bool {
+        self.signature
+            .is_valid_signature_for(sidechain_pk, &self.claim_public_key, epoch)
     }
 
     pub fn derive_shard_key(
@@ -92,12 +84,8 @@ impl ValidatorNodeRegistration {
         self.signature.signature()
     }
 
-    pub fn sidechain_id(&self) -> Option<&PublicKey> {
-        self.sidechain_id.as_ref()
-    }
-
-    pub fn sidechain_id_knowledge_proof(&self) -> Option<&Signature> {
-        self.sidechain_id_knowledge_proof.as_ref()
+    pub fn sidechain_id_message(&self) -> &[u8] {
+        self.public_key().as_bytes()
     }
 }
 
@@ -130,10 +118,8 @@ mod test {
         let claim_public_key = PublicKey::from_secret_key(&sk);
 
         ValidatorNodeRegistration::new(
-            ValidatorNodeSignature::sign(&sk, &claim_public_key, b"valid"),
+            ValidatorNodeSignature::sign(&sk, None, &claim_public_key, VnEpoch(1)),
             claim_public_key,
-            None,
-            None,
         )
     }
 
@@ -143,13 +129,13 @@ mod test {
         #[test]
         fn it_returns_true_for_valid_signature() {
             let reg = create_instance();
-            assert!(reg.is_valid_signature_for(b"valid"));
+            assert!(reg.is_valid_signature_for(None, VnEpoch(1)));
         }
 
         #[test]
         fn it_returns_false_for_invalid_challenge() {
             let reg = create_instance();
-            assert!(!reg.is_valid_signature_for(b"there's wally"));
+            assert!(!reg.is_valid_signature_for(None, VnEpoch(2)));
         }
 
         #[test]
@@ -158,10 +144,8 @@ mod test {
             reg = ValidatorNodeRegistration::new(
                 ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
                 Default::default(),
-                None,
-                None,
             );
-            assert!(!reg.is_valid_signature_for(b"valid"));
+            assert!(!reg.is_valid_signature_for(None, VnEpoch(1)));
         }
     }
 

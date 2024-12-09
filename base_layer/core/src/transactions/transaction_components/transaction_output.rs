@@ -33,15 +33,18 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    ComAndPubSignature,
-    Commitment,
-    CommitmentFactory,
-    FixedHash,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{
+        ComAndPubSignature,
+        Commitment,
+        CommitmentFactory,
+        FixedHash,
+        PrivateKey,
+        PublicKey,
+        RangeProof,
+        RangeProofService,
+    },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -340,17 +343,22 @@ impl TransactionOutput {
     }
 
     pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
-        if let Some(validator_node_reg) = self
-            .features
-            .sidechain_feature
-            .as_ref()
-            .and_then(|f| f.validator_node_registration())
-        {
-            if !validator_node_reg.is_valid_signature_for(&[]) {
-                return Err(TransactionError::InvalidSignatureError(
-                    "Validator node signature is not valid!".to_string(),
-                ));
-            }
+        let Some(sidechain_features) = self.features.sidechain_feature.as_ref() else {
+            return Ok(());
+        };
+
+        let Some(validator_node_reg) = sidechain_features.validator_node_registration() else {
+            return Ok(());
+        };
+
+        if !validator_node_reg.is_valid_signature_for(
+            sidechain_features.sidechain_id.as_ref().map(|id| id.public_key()),
+            // TODO: use actual epoch
+            VnEpoch::zero(),
+        ) {
+            return Err(TransactionError::InvalidSignatureError(
+                "Validator node signature is not valid!".to_string(),
+            ));
         }
         Ok(())
     }
@@ -380,6 +388,10 @@ impl TransactionOutput {
     /// Returns true if the output is burned, otherwise false
     pub fn is_burned(&self) -> bool {
         matches!(self.features.output_type, OutputType::Burn)
+    }
+
+    pub fn is_burned_to_sidechain(&self) -> bool {
+        self.is_burned() && self.features.sidechain_feature.is_some()
     }
 
     /// Convenience function that calculates the challenge for the metadata commitment signature

@@ -83,6 +83,7 @@ service Wallet {
 
   // Get calculated fees for a `CreateTemplateRegistrationRequest`
   rpc GetTemplateRegistrationFee(CreateTemplateRegistrationRequest) returns (GetTemplateRegistrationFeeResponse);
+  rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
 }
 
 message GetVersionRequest {}
@@ -365,4 +366,15 @@ message RegisterValidatorNodeResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
+}
+
+message SubmitValidatorEvictionProofRequest {
+  EvictionProof proof = 1;
+  uint64 fee_per_gram = 2;
+  string message = 3;
+  bytes sidechain_deployment_key = 4;
+}
+
+message SubmitValidatorEvictionProofResponse {
+  uint64 tx_id = 1;
 }

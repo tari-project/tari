@@ -204,6 +204,8 @@ pub enum TransactionServiceError {
     NotSupported(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Invalid validator node signature")]
+    InvalidValidatorNodeSignature,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

@@ -506,12 +506,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
-        challenge: &[u8; 64],
+        message: &[u8; 64],
     ) -> Result<Signature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .sign_with_nonce_and_challenge(private_key_id, nonce, challenge)
+            .sign_with_nonce_and_challenge(private_key_id, nonce, message)
             .await
     }
 

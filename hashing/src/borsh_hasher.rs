@@ -53,6 +53,11 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
         self.writer.0.finalize()
     }
 
+    pub fn finalize_into_array<const I: usize>(self) -> [u8; I]
+    where [u8; I]: From<digest::Output<D>> {
+        self.writer.0.finalize().into()
+    }
+
     /// Update the hasher using the Borsh encoding of the input, which is assumed to be canonical.
     pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
         BorshSerialize::serialize(data, &mut self.writer)

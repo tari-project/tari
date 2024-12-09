@@ -23,14 +23,17 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
 };
 use tari_script::ScriptContext;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
@@ -40,6 +43,7 @@ use crate::{
         transaction_components::{
             transaction_output::batch_verify_range_proofs,
             KernelSum,
+            SideChainFeature,
             TransactionError,
             TransactionInput,
             TransactionKernel,
@@ -117,15 +121,13 @@ impl AggregateBodyInternalConsistencyValidator {
             check_encrypted_data_byte_size(output, constants.max_extra_encrypted_data_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
-            check_validator_node_registration_utxo(constants, output)?;
-            check_template_registration_utxo(output)?;
-            check_confidential_output_utxo(output)?;
+            check_sidechain_features(constants, output)?;
         }
 
         check_weight(body, height, constants)?;
         check_sorting_and_duplicates(body)?;
 
-        // Check that the inputs are are allowed to be spent
+        // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
         check_kernel_lock_height(height, body.kernels())?;
 
@@ -147,57 +149,15 @@ impl AggregateBodyInternalConsistencyValidator {
     }
 }
 
-fn check_confidential_output_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
-    if let Some(conf_output) = output.features.confidential_output_data() {
-        if conf_output.sidechain_id.is_some() || conf_output.sidechain_id_knowledge_proof.is_some() {
-            // If one of these is set, both must be set
-            if conf_output.sidechain_id.is_none() || conf_output.sidechain_id_knowledge_proof.is_none() {
-                return Err(ValidationError::ConfidentialOutputSidechainNotSet);
-            }
-            // If set, the signature must be valid
-            let sig_pub_key = conf_output.sidechain_id.as_ref().unwrap();
-            if !conf_output
-                .sidechain_id_knowledge_proof
-                .as_ref()
-                .unwrap()
-                .verify(sig_pub_key, conf_output.claim_public_key.to_vec())
-            {
-                return Err(ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid);
-            }
-        }
-    }
-    Ok(())
-}
+fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    if let Some(template_reg) = sidechain_feature.code_template_registration() {
+        let message = template_reg.create_signature_message(template_reg.author_signature.get_public_nonce());
 
-fn check_template_registration_utxo(output: &TransactionOutput) -> Result<(), ValidationError> {
-    if let Some(temp) = output.features.code_template_registration() {
-        let challenge = temp.create_challenge(temp.author_signature.get_public_nonce());
-
-        if !temp
+        if !template_reg
             .author_signature
-            .verify_raw_uniform(&temp.author_public_key, &challenge)
+            .verify_raw_uniform(&template_reg.author_public_key, &message)
         {
             return Err(ValidationError::TemplateAuthorSignatureNotValid);
-        }
-
-        if temp.sidechain_id.is_some() || temp.sidechain_id_knowledge_proof.is_some() {
-            // If one of these is set, both must be set
-            if temp.sidechain_id.is_none() || temp.sidechain_id_knowledge_proof.is_none() {
-                return Err(ValidationError::TemplateRegistrationSidechainNotSet);
-            }
-
-            // If set, the signature must be valid
-            let sig_pub_key = temp.sidechain_id.as_ref().unwrap();
-            // TODO: I've used the author pub key here. The author signature includes the network
-            // as part of it's challenge. Should there be other fields in here as well?
-            if !temp
-                .sidechain_id_knowledge_proof
-                .as_ref()
-                .unwrap()
-                .verify(sig_pub_key, temp.author_public_key.to_vec())
-            {
-                return Err(ValidationError::TemplateInvalidSidechainIdKnowledgeProof);
-            }
         }
     }
     Ok(())
@@ -449,45 +409,54 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn check_sidechain_features(constants: &ConsensusConstants, output: &TransactionOutput) -> Result<(), ValidationError> {
+    let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
+    check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
+    check_template_registration_utxo(sidechain_feature)?;
+
+    Ok(())
+}
+fn check_sidechain_id_proof_of_knowledge(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    if !sidechain_feature.is_sidechain_id_valid() {
+        return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
+    }
+
+    Ok(())
+}
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
+    sidechain_feature: &SideChainFeature,
 ) -> Result<(), ValidationError> {
-    if let Some(reg) = utxo.features.validator_node_registration() {
-        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-                min: consensus_constants.validator_node_registration_min_deposit_amount(),
-                actual: utxo.minimum_value_promise,
-            });
-        }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
-                actual: utxo.features.maturity,
-            });
-        }
+    let Some(reg) = sidechain_feature.validator_node_registration() else {
+        return Ok(());
+    };
 
-        // TODO: This should be the claim public key that is being signed
-        if !reg.is_valid_signature_for(&[]) {
-            return Err(ValidationError::InvalidValidatorNodeSignature);
-        }
-
-        if reg.sidechain_id().is_some() || reg.sidechain_id_knowledge_proof().is_some() {
-            // If one of these is set, both must be set
-            if reg.sidechain_id().is_none() || reg.sidechain_id_knowledge_proof().is_none() {
-                return Err(ValidationError::ValidatorNodeRegistrationSidechainNotSet);
-            }
-            // If set, the signature must be valid
-            let sig_pub_key = reg.sidechain_id().unwrap();
-            if !reg
-                .sidechain_id_knowledge_proof()
-                .unwrap()
-                .verify(sig_pub_key, reg.public_key().to_vec())
-            {
-                return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
-            }
-        }
+    if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+        return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+            min: consensus_constants.validator_node_registration_min_deposit_amount(),
+            actual: utxo.minimum_value_promise,
+        });
     }
+    if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+        return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+            min: consensus_constants.validator_node_registration_min_lock_height(),
+            actual: utxo.features.maturity,
+        });
+    }
+
+    // TODO: some additional "single use data" e.g. epoch should be used to prevent replay
+    //       (assuming that we disallow the same validator node to register multiple times).
+    if !reg.is_valid_signature_for(
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+        VnEpoch::zero(),
+    ) {
+        return Err(ValidationError::InvalidValidatorNodeSignature);
+    }
+
     Ok(())
 }
 

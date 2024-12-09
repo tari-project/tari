@@ -20,22 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::consts::U64;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
-use tari_utilities::ByteArray;
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{PrivateKey, PublicKey, Signature},
+};
+use tari_crypto::keys::PublicKey as PublicKeyT;
+use tari_hashing::layer2::validator_registration_hasher;
 
-hash_domain!(
-    ValidatorNodeHashDomain,
-    "com.tari.base_layer.core.transactions.side_chain.validator_node",
-    0
-);
-
-#[derive(Default, Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
     public_key: PublicKey,
     signature: Signature,
@@ -46,35 +41,49 @@ impl ValidatorNodeSignature {
         Self { public_key, signature }
     }
 
-    pub fn sign(private_key: &PrivateKey, claim_public_key: &PublicKey, msg: &[u8]) -> Self {
+    pub fn sign(
+        private_key: &PrivateKey,
+        sidechain_pk: Option<&PublicKey>,
+        claim_public_key: &PublicKey,
+        epoch: VnEpoch,
+    ) -> Self {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
-        let challenge = Self::construct_challenge(&public_key, &public_nonce, claim_public_key, msg);
+        let challenge =
+            Self::construct_signature_message(&public_key, &public_nonce, sidechain_pk, claim_public_key, epoch);
         let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }
 
-    fn construct_challenge(
+    fn construct_signature_message(
         public_key: &PublicKey,
         public_nonce: &PublicKey,
+        sidechain_pk: Option<&PublicKey>,
         claim_public_key: &PublicKey,
-        msg: &[u8],
+        epoch: VnEpoch,
     ) -> [u8; 64] {
-        let hasher = DomainSeparatedHasher::<Blake2b<U64>, ValidatorNodeHashDomain>::new_with_label("registration")
-            .chain(public_key.as_bytes())
-            .chain(public_nonce.as_bytes())
-            .chain(claim_public_key.as_bytes())
-            .chain(msg);
-        digest::Digest::finalize(hasher).into()
+        validator_registration_hasher()
+            .chain(public_key)
+            .chain(public_nonce)
+            .chain(&sidechain_pk)
+            .chain(claim_public_key)
+            .chain(&epoch)
+            .finalize_into_array()
     }
 
-    pub fn is_valid_signature_for(&self, claim_public_key: &PublicKey, msg: &[u8]) -> bool {
-        let challenge = Self::construct_challenge(
+    pub fn is_valid_signature_for(
+        &self,
+        sidechain_pk: Option<&PublicKey>,
+        claim_public_key: &PublicKey,
+        epoch: VnEpoch,
+    ) -> bool {
+        let challenge = Self::construct_signature_message(
             &self.public_key,
             self.signature.get_public_nonce(),
+            sidechain_pk,
             claim_public_key,
-            msg,
+            epoch,
         );
         self.signature.verify_raw_uniform(&self.public_key, &challenge)
     }

@@ -37,7 +37,7 @@ impl TempLmdbDatabase {
         Self::with_dbs(&[])
     }
 
-    pub fn with_dbs(dbs: &[&'static str]) -> Self {
+    pub fn with_dbs(dbs: &[(&'static str, db::Flags)]) -> Self {
         let temp_path = create_temporary_data_path();
 
         let mut builder = LMDBBuilder::new()
@@ -46,8 +46,8 @@ impl TempLmdbDatabase {
             .set_max_number_of_databases(1)
             .add_database("__default", db::CREATE);
 
-        for db in dbs {
-            builder = builder.add_database(db, db::CREATE)
+        for (db, flags) in dbs {
+            builder = builder.add_database(db, db::CREATE | *flags)
         }
         let lmdb_store = builder.build().unwrap();
 
@@ -58,7 +58,7 @@ impl TempLmdbDatabase {
             default_db: Some(default_db.db()),
             dbs: dbs
                 .iter()
-                .map(|db| (*db, lmdb_store.get_handle(db).unwrap().db()))
+                .map(|(db, _)| (*db, lmdb_store.get_handle(db).unwrap().db()))
                 .collect(),
         }
     }

@@ -23,9 +23,10 @@
 use std::convert::TryFrom;
 
 use log::*;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{FixedHash, PublicKey};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
+use tari_sidechain::SidechainProofValidationError;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -259,6 +260,86 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }
+
+    Ok(())
+}
+/// This function checks the validity of the validator node registration if appliable
+pub fn check_validator_node_registration<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    height: u64,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(vn_reg) = sidechain_features.validator_node_registration() else {
+        return Ok(());
+    };
+
+    if db.validator_node_exists(sidechain_features.sidechain_public_key(), height, vn_reg.public_key())? {
+        return Err(ValidationError::ValidatorNodeAlreadyRegistered {
+            public_key: vn_reg.public_key().clone(),
+        });
+    }
+
+    Ok(())
+}
+
+/// This function checks the validity of the eviction proof if appliable
+pub fn check_eviction_proof<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(eviction_proof) = sidechain_features.eviction_proof() else {
+        return Ok(());
+    };
+
+    let epoch = eviction_proof.epoch();
+    let shard_group = eviction_proof.shard_group();
+
+    let chain_metadata = db.fetch_chain_metadata()?;
+    let tip_height = chain_metadata.best_block_height();
+    let tip_epoch = constants.block_height_to_epoch(tip_height);
+    if epoch > tip_epoch {
+        return Err(ValidationError::SidechainEvictionProofInvalidEpoch {
+            epoch,
+            tip_height: chain_metadata.best_block_height(),
+        });
+    }
+
+    let validator_pk = eviction_proof.node_to_evict();
+
+    // Only allow a single exit or evict on an active validator
+    if !db.validator_node_is_active_for_shard_group(
+        sidechain_features.sidechain_public_key(),
+        tip_epoch,
+        validator_pk,
+        shard_group,
+    )? {
+        return Err(ValidationError::SidechainEvictionProofValidatorNotFound {
+            validator_pk: validator_pk.clone(),
+        });
+    }
+
+    let committee_size =
+        db.validator_nodes_count_for_shard_group(sidechain_features.sidechain_public_key(), tip_epoch, shard_group)?;
+    let quorum_threshold = committee_size - (committee_size - 1) / 3;
+
+    let sidechain_pk = sidechain_features.sidechain_public_key();
+
+    let check_vn = |public_key: &PublicKey| {
+        let is_active = db
+            .validator_node_is_active_for_shard_group(sidechain_pk, tip_epoch, public_key, shard_group)
+            .map_err(SidechainProofValidationError::internal_error)?;
+
+        Ok(is_active)
+    };
+
+    eviction_proof.validate(quorum_threshold, &check_vn)?;
 
     Ok(())
 }

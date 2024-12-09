@@ -38,11 +38,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_feature = features
-            .sidechain_feature
-            .and_then(|f| f.side_chain_feature)
-            .map(SideChainFeature::try_from)
-            .transpose()?;
+        let sidechain_feature = features.sidechain_feature.map(SideChainFeature::try_from).transpose()?;
 
         let output_type = features
             .output_type

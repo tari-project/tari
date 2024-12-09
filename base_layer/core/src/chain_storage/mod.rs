@@ -99,12 +99,12 @@ pub struct ChainTipData {
     pub total_accumulated_difficulty: U256,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ValidatorNodeRegistrationInfo {
     pub public_key: PublicKey,
     pub sidechain_id: Option<PublicKey>,
     pub shard_key: [u8; 32],
-    pub start_epoch: VnEpoch,
+    pub activation_epoch: VnEpoch,
     pub original_registration: ValidatorNodeRegistration,
     pub minimum_value_promise: MicroMinotari,
 }

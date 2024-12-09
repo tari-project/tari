@@ -27,6 +27,7 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{HashOutput, PrivateKey, PublicKey},
 };
 
@@ -63,7 +64,7 @@ pub enum NodeCommsResponse {
     FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
     FetchValidatorNodesKeysResponse(Vec<ValidatorNodeRegistrationInfo>),
     FetchValidatorNodeChangesResponse(Vec<ValidatorNodeChange>),
-    GetShardKeyResponse(Option<[u8; 32]>),
+    GetValidatorNode(Option<ValidatorNodeRegistrationInfo>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
 }
 
@@ -100,7 +101,7 @@ impl Display for NodeCommsResponse {
                 resp.not_found.len()
             ),
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
-            GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
+            GetValidatorNode(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
             FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
         }
@@ -114,19 +115,15 @@ pub struct FetchMempoolTransactionsResponse {
     pub not_found: Vec<PrivateKey>,
 }
 
-/// Represents a validator node state
-#[derive(Debug, Clone)]
-pub enum ValidatorNodeChangeState {
-    ADD,
-    REMOVE,
-}
-
 /// Represents a validator node state change
 #[derive(Debug, Clone)]
-pub struct ValidatorNodeChange {
-    pub public_key: PublicKey,
-    pub state: ValidatorNodeChangeState,
-    pub registration: ValidatorNodeRegistration,
-    pub minimum_value_promise: MicroMinotari,
-    pub height: u64,
+pub enum ValidatorNodeChange {
+    Add {
+        registration: ValidatorNodeRegistration,
+        activation_epoch: VnEpoch,
+        minimum_value_promise: MicroMinotari,
+    },
+    Remove {
+        public_key: PublicKey,
+    },
 }

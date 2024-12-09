@@ -75,11 +75,12 @@ impl BlockBodyFullValidator {
         }
 
         // validate the block body against the current db
-        let body = &block.body;
-        let height = block.header.height;
         // the inputs may be only references to outputs, that's why the validator returns a new body and we need a new
-        // block
-        let body = self.aggregate_body_chain_validator.validate(body, height, backend)?;
+        // block (TODO: refactor to avoid cloning the block so many times (here and elsewhere) by hydrating the inputs
+        // before calling the validator)
+        let body = self
+            .aggregate_body_chain_validator
+            .validate(&block.body, &block.header, backend)?;
         let block = Block::new(block.header.clone(), body);
 
         // validate the internal consistency of the block body

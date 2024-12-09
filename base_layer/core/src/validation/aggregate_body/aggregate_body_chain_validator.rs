@@ -23,10 +23,10 @@
 use std::collections::HashSet;
 
 use log::warn;
-use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
+    blocks::BlockHeader,
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
@@ -35,10 +35,12 @@ use crate::{
     },
     validation::{
         helpers::{
+            check_eviction_proof,
             check_input_is_utxo,
             check_not_duplicate_txo,
             check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
+            check_validator_node_registration,
         },
         ValidationError,
     },
@@ -60,13 +62,13 @@ impl AggregateBodyChainLinkedValidator {
     pub fn validate<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
-        height: u64,
+        header: &BlockHeader,
         db: &B,
     ) -> Result<AggregateBody, ValidationError> {
-        let constants = self.consensus_manager.consensus_constants(height);
+        let constants = self.consensus_manager.consensus_constants(header.height);
 
         self.validate_consensus(body, db)?;
-        let body = self.validate_input_and_maturity(body, db, constants, height)?;
+        let body = self.validate_body(body, db, constants, header)?;
 
         Ok(body)
     }
@@ -76,12 +78,12 @@ impl AggregateBodyChainLinkedValidator {
         Ok(())
     }
 
-    fn validate_input_and_maturity<B: BlockchainBackend>(
+    fn validate_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
-        height: u64,
+        header: &BlockHeader,
     ) -> Result<AggregateBody, ValidationError> {
         // inputs may be "slim", only containing references to outputs
         // so we need to resolve those references, creating a new body in the process
@@ -89,12 +91,12 @@ impl AggregateBodyChainLinkedValidator {
         // UNCHECKED: sorting has been checked by the AggregateBodyInternalConsistencyValidator
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
-        validate_input_maturity(&body, height)?;
+        validate_input_maturity(&body, header.height)?;
         check_inputs_are_utxos(db, &body)?;
-        check_outputs(db, constants, &body)?;
+        check_outputs(db, constants, &body, header.height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
         check_total_burned(&body)?;
-        verify_timelocks(&body, height)?;
+        verify_timelocks(&body, header.height)?;
 
         Ok(body)
     }
@@ -107,18 +109,23 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
     let mut inputs: Vec<TransactionInput> = body.inputs().clone();
     for input in &mut inputs {
         if input.is_compact() {
-            let output = match db.fetch_output(&input.output_hash()) {
+            let input_output_hash = input.output_hash();
+            // TODO: we clone the block body 3 times in validation and the inputs 1 more time here. We also discard
+            //      the hydrated block in all cases expect block sync. This is unnecessarily slow and wasteful.
+            //      SIMPLE REFACTOR: populate/hydrate the block inputs (which is owned, no cloning necessary) before
+            //      performing validation. If hydration fails with UnknownInput, the block is invalid.
+            let output = match db.fetch_output(&input_output_hash) {
                 Ok(val) => match val {
                     Some(output_mined_info) => output_mined_info.output,
                     None => {
-                        let input_output_hash = input.output_hash();
+                        // Input is found in this block
                         if let Some(found) = body.outputs().iter().find(|o| o.hash() == input_output_hash) {
                             found.clone()
                         } else {
                             warn!(
                                 target: LOG_TARGET,
                                 "Input not found in database or block, commitment: {}, hash: {}",
-                                input.commitment()?.to_hex(), input_output_hash.to_hex()
+                                input.commitment()?.as_public_key(), input_output_hash,
                             );
                             return Err(ValidationError::UnknownInput);
                         }
@@ -127,22 +134,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                 Err(e) => return Err(ValidationError::from(e)),
             };
 
-            let rp_hash = match output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            input.add_output_data(
-                output.version,
-                output.features,
-                output.commitment,
-                output.script,
-                output.sender_offset_public_key,
-                output.covenant,
-                output.encrypted_data,
-                output.metadata_signature,
-                rp_hash,
-                output.minimum_value_promise,
-            );
+            input.add_output_data(output);
         }
     }
 
@@ -225,6 +217,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
+    height: u64,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
@@ -232,6 +225,8 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
+        check_validator_node_registration(db, output, height)?;
+        check_eviction_proof(db, output, constants)?;
     }
     Ok(())
 }

@@ -8,60 +8,143 @@ import "types.proto";
 package tari.types;
 
 message SideChainFeature {
-    oneof side_chain_feature {
-        ValidatorNodeRegistration validator_node_registration = 1;
-        TemplateRegistration template_registration = 2;
-        ConfidentialOutputData confidential_output = 3;
-    }
+  oneof side_chain_feature {
+    ValidatorNodeRegistration validator_node_registration = 1;
+    TemplateRegistration template_registration = 2;
+    ConfidentialOutputData confidential_output = 3;
+    EvictionProof eviction_proof = 4;
+  }
+  SidechainId sidechain_id = 5;
+}
+
+message SidechainId {
+  bytes public_key = 1;
+  Signature knowledge_proof = 2;
 }
 
 message ValidatorNodeRegistration {
-    bytes public_key = 1;
-    Signature signature = 2;
-    bytes claim_public_key = 3;
-    bytes sidechain_id = 4;
-    Signature sidechain_id_knowledge_proof = 5;
+  bytes public_key = 1;
+  Signature signature = 2;
+  bytes claim_public_key = 3;
 }
 
 message TemplateRegistration {
-    bytes author_public_key = 1;
-    Signature author_signature = 2;
-    string template_name = 3;
-    uint32 template_version = 4;
-    TemplateType template_type = 5;
-    BuildInfo build_info = 6;
-    bytes binary_sha = 7;
-    string binary_url = 8;
-    bytes sidechain_id = 9;
-    Signature sidechain_id_knowledge_proof = 10;
+  bytes author_public_key = 1;
+  Signature author_signature = 2;
+  string template_name = 3;
+  uint32 template_version = 4;
+  TemplateType template_type = 5;
+  BuildInfo build_info = 6;
+  bytes binary_sha = 7;
+  string binary_url = 8;
 }
 
 message ConfidentialOutputData {
-    bytes claim_public_key = 1;
-    bytes sidechain_id = 2;
-    Signature sidechain_id_knowledge_proof = 3;
+  bytes claim_public_key = 1;
 }
 
 message TemplateType {
-    oneof template_type {
-        WasmInfo wasm = 1;
-        FlowInfo flow = 2;
-        ManifestInfo manifest =3;
-    }
+  oneof template_type {
+    WasmInfo wasm = 1;
+    FlowInfo flow = 2;
+    ManifestInfo manifest = 3;
+  }
 }
- message WasmInfo {
-     uint32 abi_version = 1;
- }
+message WasmInfo {
+  uint32 abi_version = 1;
+}
 
- message FlowInfo {
+message FlowInfo {
 
- }
+}
 
- message ManifestInfo {
+message ManifestInfo {
 
- }
+}
 
- message BuildInfo {
-     string repo_url = 1;
-     bytes commit_hash = 2;
+message BuildInfo {
+  string repo_url = 1;
+  bytes commit_hash = 2;
+}
+
+message EvictionProof {
+  CommitProof proof = 1;
+}
+
+message CommitProof {
+  oneof version {
+    CommitProofV1 v1 = 1;
+  }
+}
+
+message CommitProofV1 {
+  bytes command = 1;
+  SidechainBlockCommitProof commit_proof = 2;
+}
+
+message SidechainBlockCommitProof {
+  SidechainBlockHeader header = 1;
+  repeated CommitProofElement proof_elements = 2;
+}
+
+message CommitProofElement {
+  oneof proof_element {
+    QuorumCertificate quorum_certificate = 1;
+    DummyChain dummy_chain = 2;
+  }
+}
+
+message DummyChain {
+  repeated ChainLink chain_links = 1;
+}
+
+message ChainLink {
+  bytes header_hash = 1;
+  bytes parent_id = 2;
+}
+
+message SidechainBlockHeader {
+  uint32 network = 1;
+  bytes parent_id = 2;
+  bytes justify_id = 3;
+  uint64 height = 4;
+  uint64 epoch = 5;
+  ShardGroup shard_group = 6;
+  bytes proposed_by = 7;
+  uint64 total_leader_fee = 8;
+  bytes state_merkle_root = 9;
+  bytes command_merkle_root = 10;
+  bool is_dummy = 11;
+  bytes foreign_indexes_hash = 12;
+  Signature signature = 13;
+  uint64 timestamp = 14;
+  uint64 base_layer_block_height = 15;
+  bytes base_layer_block_hash = 16;
+  bytes extra_data_hash = 17;
+}
+
+message EvictAtom {
+  bytes public_key = 1;
+}
+
+message QuorumCertificate {
+  bytes header_hash = 1;
+  bytes parent_id = 2;
+  repeated ValidatorSignature signatures = 3;
+  QuorumDecision decision = 4;
+}
+
+enum QuorumDecision {
+  Accept = 0;
+  Reject = 1;
+}
+
+message ValidatorSignature {
+  bytes public_key = 1;
+  Signature signature = 2;
+}
+
+message ShardGroup {
+  uint32 start = 1;
+  uint32 end_inclusive = 2;
 }

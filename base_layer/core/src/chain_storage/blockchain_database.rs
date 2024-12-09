@@ -38,6 +38,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_hashing::TransactionHashDomain;
@@ -945,9 +946,13 @@ where B: BlockchainBackend
         db.fetch_mmr_size(tree)
     }
 
-    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    pub fn get_validator_node(
+        &self,
+        sidechain_pk: Option<PublicKey>,
+        public_key: PublicKey,
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.get_shard_key(height, public_key)
+        db.get_validator_node(sidechain_pk.as_ref(), public_key)
     }
 
     /// Tries to add a block to the longest chain.
@@ -1297,10 +1302,28 @@ where B: BlockchainBackend
     pub fn fetch_active_validator_nodes(
         &self,
         height: u64,
-        validator_network: Option<PublicKey>,
+        sidechain_pk: Option<PublicKey>,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_active_validator_nodes(height, validator_network)
+        db.fetch_active_validator_nodes(sidechain_pk.as_ref(), height)
+    }
+
+    pub fn fetch_validators_activating_in_epoch(
+        &self,
+        sidechain_pk: Option<PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_validators_activating_in_epoch(sidechain_pk.as_ref(), epoch)
+    }
+
+    pub fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<PublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_validators_exiting_in_epoch(sidechain_pk.as_ref(), epoch)
     }
 
     pub fn fetch_template_registrations<T: RangeBounds<u64>>(
@@ -1431,7 +1454,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
         (calculate_validator_node_mr(&validator_nodes)?, validator_nodes.len())
     } else {
-        // MR is unchanged except for epoch boundary
+        // Active validator set never changes within epochs, so we can reuse the previous block VN MR
         let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
         (tip_header.validator_node_mr, 0)
     };
@@ -1499,24 +1522,24 @@ pub fn calculate_validator_node_mr(
     } in validator_nodes
     {
         hash_map
-            .entry(sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]))
+            .entry(sidechain_id.as_ref().map_or([0u8; 32].as_slice(), |n| n.as_bytes()))
             .or_insert_with(Vec::new)
             .push((pk, shard_key));
     }
     let mut roots = HashMap::new();
-    for (validator_network, set) in hash_map {
+    for (sidechain_pk, set) in hash_map {
         let mut sorted_set = set;
         sorted_set.sort_unstable_by(|(pk1, _), (pk2, _)| pk1.as_bytes().cmp(pk2.as_bytes()));
 
         let vn_bmt = ValidatorNodeBMT::create(sorted_set.iter().map(hash_node).collect());
-        roots.insert(validator_network, vn_bmt.get_merkle_root());
+        roots.insert(sidechain_pk, vn_bmt.get_merkle_root());
     }
 
-    let mut keys = roots.keys().cloned().collect::<Vec<_>>();
+    let mut keys = roots.keys().copied().collect::<Vec<_>>();
     keys.sort();
     let mut root_mt = SparseMerkleTree::<ValidatorNodeMerkleHasherBlake256>::new();
     for key in keys {
-        let node_key = NodeKey::try_from(key.as_slice())?;
+        let node_key = NodeKey::try_from(key)?;
         let value_hash = ValueHash::try_from(roots[&key].as_slice())?;
         root_mt.insert(node_key, value_hash)?;
     }
@@ -1726,22 +1749,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
                 Err(e) => return Err(e),
             };
 
-            let rp_hash = match utxo_mined_info.output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            compact_input.add_output_data(
-                utxo_mined_info.output.version,
-                utxo_mined_info.output.features,
-                utxo_mined_info.output.commitment,
-                utxo_mined_info.output.script,
-                utxo_mined_info.output.sender_offset_public_key,
-                utxo_mined_info.output.covenant,
-                utxo_mined_info.output.encrypted_data,
-                utxo_mined_info.output.metadata_signature,
-                rp_hash,
-                utxo_mined_info.output.minimum_value_promise,
-            );
+            compact_input.add_output_data(utxo_mined_info.output);
             Ok(compact_input)
         })
         .collect::<Result<Vec<TransactionInput>, _>>()?;
@@ -1791,14 +1799,21 @@ fn fetch_block_by_utxo_commitment<T: BlockchainBackend>(
     db: &T,
     commitment: &Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
-    match output {
-        Some(hash) => match db.fetch_output(&hash)? {
-            Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
-            None => Ok(None),
-        },
+    match fetch_utxo_by_commitment(db, commitment)? {
+        Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
         None => Ok(None),
     }
+}
+
+fn fetch_utxo_by_commitment<T: BlockchainBackend>(
+    db: &T,
+    commitment: &Commitment,
+) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
+    output
+        .map(|hash| db.fetch_output(&hash))
+        .transpose()
+        .map(|output| output.flatten())
 }
 
 fn fetch_block_by_hash<T: BlockchainBackend>(
