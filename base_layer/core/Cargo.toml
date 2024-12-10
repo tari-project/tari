@@ -94,7 +94,11 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
 dirs-next = "1.0.2"
-hickory-client = { version = "0.25.0-alpha.2", features = ["dns-over-rustls", "dnssec-openssl"], optional = true }
+hickory-client = { version = "=0.25.0-alpha.2", features = [
+    "dns-over-rustls",
+    "dnssec-openssl",
+], optional = true }
+hickory-proto = { version = "=0.25.0-alpha.2" }
 anyhow = "1.0.53"
 
 [dev-dependencies]
@@ -126,3 +130,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
 ] }
+
+
+[package.metadata.cargo-machete]
+ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
