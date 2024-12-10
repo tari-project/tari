@@ -290,7 +290,7 @@ where
             sender_protocol.clone(),
             TransactionStatus::Pending, // This does not matter for the check
             self.message.clone(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             true, // This does not matter for the check
         );
 
@@ -344,7 +344,7 @@ where
                 sender_protocol.clone(),
                 initial_send.transaction_status.clone(),
                 self.message.clone(),
-                Utc::now().naive_utc(),
+                Utc::now(),
                 initial_send.direct_send_result,
             );
             self.resources
@@ -600,7 +600,7 @@ where
             tx.clone(),
             TransactionStatus::Completed,
             outbound_tx.message.clone(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             TransactionDirection::Outbound,
             None,
             None,

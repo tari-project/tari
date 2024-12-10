@@ -34,7 +34,7 @@ openssl = { version = "0.10.66", features = ["vendored"] }
 crate-type = ["staticlib", "cdylib"]
 
 [dev-dependencies]
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 rand = "0.8"
 tari_crypto = { version = "0.21.0" }
 

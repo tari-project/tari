@@ -232,7 +232,7 @@ pub async fn add_transaction_to_database(
         tx1,
         status.unwrap_or(TransactionStatus::Completed),
         "Test".to_string(),
-        Utc::now().naive_local(),
+        Utc::now(),
         TransactionDirection::Outbound,
         None,
         None,

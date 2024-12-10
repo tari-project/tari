@@ -25,7 +25,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
@@ -49,11 +49,11 @@ pub struct InboundTransaction {
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
     pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
 }
 
 impl InboundTransaction {
@@ -64,7 +64,7 @@ impl InboundTransaction {
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
         message: String,
-        timestamp: NaiveDateTime,
+        timestamp: DateTime<Utc>,
     ) -> Self {
         Self {
             tx_id,
@@ -91,11 +91,11 @@ pub struct OutboundTransaction {
     pub sender_protocol: SenderTransactionProtocol,
     pub status: TransactionStatus,
     pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
 }
 
 impl OutboundTransaction {
@@ -107,7 +107,7 @@ impl OutboundTransaction {
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
         message: String,
-        timestamp: NaiveDateTime,
+        timestamp: DateTime<Utc>,
         direct_send_success: bool,
     ) -> Self {
         Self {
@@ -137,16 +137,16 @@ pub struct CompletedTransaction {
     pub transaction: Transaction,
     pub status: TransactionStatus,
     pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
     pub transaction_signature: Signature,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
-    pub mined_timestamp: Option<NaiveDateTime>,
+    pub mined_timestamp: Option<DateTime<Utc>>,
     pub payment_id: Option<PaymentId>,
 }
 
@@ -160,10 +160,10 @@ impl CompletedTransaction {
         transaction: Transaction,
         status: TransactionStatus,
         message: String,
-        timestamp: NaiveDateTime,
+        timestamp: DateTime<Utc>,
         direction: TransactionDirection,
         mined_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         payment_id: Option<PaymentId>,
     ) -> Result<Self, TransactionStorageError> {
         if status == TransactionStatus::Coinbase {

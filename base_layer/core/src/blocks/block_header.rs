@@ -45,7 +45,7 @@ use std::{
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
@@ -259,9 +259,8 @@ impl BlockHeader {
     }
 
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
-        let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
-            .unwrap_or(NaiveDateTime::MAX);
-        DateTime::from_naive_utc_and_offset(dt, Utc)
+        DateTime::<Utc>::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
+            .unwrap_or(DateTime::<Utc>::MAX_UTC)
     }
 
     #[inline]

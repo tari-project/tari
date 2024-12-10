@@ -529,7 +529,7 @@ fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &
 mod test {
     use std::{borrow::BorrowMut, iter::repeat_with};
 
-    use chrono::NaiveDateTime;
+    use chrono::DateTime;
     use multiaddr::Multiaddr;
     use rand::Rng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -862,7 +862,7 @@ mod test {
         let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
         let address = not_active_peer.addresses.best().unwrap();
         let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
-        address.mark_last_attempted(NaiveDateTime::from_timestamp_opt(a_week_ago, 0).unwrap());
+        address.mark_last_attempted(DateTime::from_timestamp(a_week_ago, 0).unwrap().naive_utc());
         not_active_peer
             .addresses
             .merge(&MultiaddressesWithStats::from(vec![address]));

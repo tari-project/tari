@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::*;
 use tari_common_types::{
@@ -494,7 +494,7 @@ where
             let current_height = response.height;
             let current_header_hash = response.header_hash;
             let mined_timestamp =
-                NaiveDateTime::from_timestamp_opt(response.mined_timestamp as i64, 0).unwrap_or(NaiveDateTime::MIN);
+                DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0).unwrap_or(DateTime::<Utc>::MIN_UTC);
             let outputs = response
                 .outputs
                 .into_iter()
@@ -641,7 +641,7 @@ where
         &mut self,
         utxos: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>,
         current_height: u64,
-        mined_timestamp: NaiveDateTime,
+        mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
@@ -722,7 +722,7 @@ where
         import_status: ImportStatus,
         tx_id: TxId,
         current_height: u64,
-        mined_timestamp: NaiveDateTime,
+        mined_timestamp: DateTime<Utc>,
         scanned_output: TransactionOutput,
     ) -> Result<TxId, WalletError> {
         let tx_id = self

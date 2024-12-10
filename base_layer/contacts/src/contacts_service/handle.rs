@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{DateTime, Local, NaiveDateTime};
+use chrono::{DateTime, Local, Utc};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
@@ -49,7 +49,7 @@ pub struct ContactsLivenessData {
     address: TariAddress,
     node_id: NodeId,
     latency: Option<u32>,
-    last_seen: Option<NaiveDateTime>,
+    last_seen: Option<DateTime<Utc>>,
     message_type: ContactMessageType,
     online_status: ContactOnlineStatus,
 }
@@ -59,7 +59,7 @@ impl ContactsLivenessData {
         address: TariAddress,
         node_id: NodeId,
         latency: Option<u32>,
-        last_seen: Option<NaiveDateTime>,
+        last_seen: Option<DateTime<Utc>>,
         message_type: ContactMessageType,
         online_status: ContactOnlineStatus,
     ) -> Self {
@@ -85,7 +85,7 @@ impl ContactsLivenessData {
         self.latency
     }
 
-    pub fn last_ping_pong_received(&self) -> Option<NaiveDateTime> {
+    pub fn last_ping_pong_received(&self) -> Option<DateTime<Utc>> {
         self.last_seen
     }
 
@@ -111,9 +111,7 @@ impl Display for ContactsLivenessData {
             self.address,
             self.node_id,
             if let Some(time) = self.last_seen {
-                let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())
-                    .format("%FT%T")
-                    .to_string();
+                let local_time = DateTime::<Local>::from(time).format("%FT%T").to_string();
                 format!("last seen {} is '{}'", local_time, self.online_status)
             } else {
                 " - contact was never seen".to_string()

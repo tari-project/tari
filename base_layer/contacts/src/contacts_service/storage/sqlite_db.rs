@@ -147,8 +147,8 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
             WriteOperation::Upsert(kvp) => match *kvp {
                 DbKeyValuePair::MessageConfirmations(k, d, r) => {
                     if MessagesSql::find_by_message_id_and_update(&mut conn, &k, MessageUpdate {
-                        delivery_confirmation_at: d,
-                        read_confirmation_at: r,
+                        delivery_confirmation_at: d.map(|d| d.naive_utc()),
+                        read_confirmation_at: r.map(|r| r.naive_utc()),
                     })
                     .is_err()
                     {
@@ -181,7 +181,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     let contact =
                         ContactSql::find_by_node_id_and_update(&mut conn, &node_id.to_vec(), UpdateContact {
                             alias: None,
-                            last_seen: Some(Some(date_time)),
+                            last_seen: Some(Some(date_time.naive_utc())),
                             latency: Some(latency),
                             favourite: None,
                         })?;

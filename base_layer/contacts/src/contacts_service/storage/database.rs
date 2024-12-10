@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
@@ -69,8 +69,8 @@ pub enum DbValue {
 #[allow(clippy::large_enum_variant)]
 pub enum DbKeyValuePair {
     Contact(TariAddress, Contact),
-    MessageConfirmations(Vec<u8>, Option<NaiveDateTime>, Option<NaiveDateTime>),
-    LastSeen(NodeId, NaiveDateTime, Option<i32>),
+    MessageConfirmations(Vec<u8>, Option<DateTime<Utc>>, Option<DateTime<Utc>>),
+    LastSeen(NodeId, DateTime<Utc>, Option<i32>),
 }
 
 pub enum WriteOperation {
@@ -137,7 +137,7 @@ where T: ContactsBackend + 'static
     pub fn update_contact_last_seen(
         &self,
         node_id: &NodeId,
-        last_seen: NaiveDateTime,
+        last_seen: DateTime<Utc>,
         latency: Option<u32>,
     ) -> Result<TariAddress, ContactsServiceStorageError> {
         let result = self
@@ -210,8 +210,7 @@ where T: ContactsBackend + 'static
         if let Some(timestamp) = delivery_confirmation {
             let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
             delivery = Some(
-                NaiveDateTime::from_timestamp_opt(secs, 0)
-                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+                DateTime::<Utc>::from_timestamp(secs, 0).ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
             )
         };
 
@@ -219,8 +218,7 @@ where T: ContactsBackend + 'static
         if let Some(timestamp) = read_confirmation {
             let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
             read = Some(
-                NaiveDateTime::from_timestamp_opt(secs, 0)
-                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+                DateTime::<Utc>::from_timestamp(secs, 0).ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
             )
         };
 

@@ -27,7 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
@@ -1131,7 +1131,7 @@ where
                     transaction,
                     TransactionStatus::Completed,
                     message,
-                    Utc::now().naive_utc(),
+                    Utc::now(),
                     TransactionDirection::Inbound,
                     None,
                     None,
@@ -1256,7 +1256,7 @@ where
                     transaction.clone(),
                     TransactionStatus::Pending,
                     "claimed n-of-m utxo".to_string(),
-                    Utc::now().naive_utc(),
+                    Utc::now(),
                     TransactionDirection::Outbound,
                     None,
                     None,
@@ -1308,7 +1308,7 @@ where
                     transaction.clone(),
                     TransactionStatus::Pending,
                     "claimed n-of-m utxo".to_string(),
-                    Utc::now().naive_utc(),
+                    Utc::now(),
                     TransactionDirection::Outbound,
                     None,
                     None,
@@ -1639,7 +1639,7 @@ where
                 tx.clone(),
                 TransactionStatus::Completed,
                 message.clone(),
-                Utc::now().naive_utc(),
+                Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
@@ -1876,7 +1876,7 @@ where
                 tx.clone(),
                 TransactionStatus::Completed,
                 message.clone(),
-                Utc::now().naive_utc(),
+                Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
@@ -2089,7 +2089,7 @@ where
                 tx.clone(),
                 TransactionStatus::Completed,
                 "".to_string(),
-                Utc::now().naive_utc(),
+                Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
@@ -2349,7 +2349,7 @@ where
                 tx.clone(),
                 TransactionStatus::Completed,
                 message.clone(),
-                Utc::now().naive_utc(),
+                Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
@@ -2493,10 +2493,10 @@ where
         let cancelled_outbound_tx = self.db.get_cancelled_pending_outbound_transaction(tx_id);
         let completed_tx = self.db.get_completed_transaction_cancelled_or_not(tx_id);
         // This closure will check if the timestamps are beyond the cooldown period
-        let check_cooldown = |timestamp: Option<NaiveDateTime>| {
+        let check_cooldown = |timestamp: Option<DateTime<Utc>>| {
             if let Some(t) = timestamp {
                 // Check if the last reply is beyond the resend cooldown
-                if let Ok(elapsed_time) = Utc::now().naive_utc().signed_duration_since(t).to_std() {
+                if let Ok(elapsed_time) = Utc::now().signed_duration_since(t).to_std() {
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,
@@ -3064,7 +3064,7 @@ where
                             transaction.clone(),
                             TransactionStatus::Completed,
                             "".to_string(),
-                            Utc::now().naive_utc(),
+                            Utc::now(),
                             TransactionDirection::Inbound,
                             None,
                             None,
@@ -3509,7 +3509,7 @@ where
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
@@ -3625,7 +3625,7 @@ where
                 tx,
                 TransactionStatus::Completed,
                 message,
-                Utc::now().naive_utc(),
+                Utc::now(),
                 TransactionDirection::Inbound,
                 None,
                 None,

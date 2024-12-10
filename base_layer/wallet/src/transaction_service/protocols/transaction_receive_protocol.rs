@@ -156,7 +156,7 @@ where
                 rtp,
                 TransactionStatus::Pending,
                 data.message.clone(),
-                Utc::now().naive_utc(),
+                Utc::now(),
             );
 
             // Verify that the negotiated transaction is not too large to be broadcast

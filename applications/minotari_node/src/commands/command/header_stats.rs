@@ -24,7 +24,7 @@ use std::{cmp, convert::TryFrom, io::Write};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{NaiveDateTime, Utc};
+use chrono::Utc;
 use clap::Parser;
 use tari_core::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm};
 use tari_utilities::hex::Hex;
@@ -140,10 +140,8 @@ impl CommandContext {
                 solve_time,
                 normalized_solve_time,
                 pow_algo,
-                chrono::DateTime::<Utc>::from_naive_utc_and_offset(
-                    NaiveDateTime::from_timestamp_opt(header.header().timestamp.as_u64() as i64, 0).unwrap_or_default(),
-                    Utc
-                ),
+                chrono::DateTime::<Utc>::from_timestamp(header.header().timestamp.as_u64() as i64, 0)
+                    .unwrap_or_default(),
                 target_diff.get(pow_algo).len(),
                 acc_monero,
                 acc_sha3,

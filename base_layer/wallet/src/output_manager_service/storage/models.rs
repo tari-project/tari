@@ -22,7 +22,7 @@
 
 use std::{cmp::Ordering, convert::TryFrom};
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use derivative::Derivative;
 use tari_common_types::{
     transaction::TxId,
@@ -49,7 +49,7 @@ pub struct DbWalletOutput {
     pub status: OutputStatus,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
-    pub mined_timestamp: Option<NaiveDateTime>,
+    pub mined_timestamp: Option<DateTime<Utc>>,
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
     pub spending_priority: SpendingPriority,

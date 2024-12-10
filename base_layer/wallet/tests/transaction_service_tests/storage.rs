@@ -23,7 +23,7 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use minotari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
@@ -141,7 +141,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
             message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -254,7 +254,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
             message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -334,7 +334,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 _ => TransactionStatus::MinedUnconfirmed,
             },
             message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Outbound,
             send_count: 0,
@@ -446,7 +446,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             rtp,
             TransactionStatus::Pending,
             "To be cancelled".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
         ),
     )
     .unwrap();
@@ -499,7 +499,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             stp,
             TransactionStatus::Pending,
             "To be cancelled".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             false,
         ),
     )
@@ -592,10 +592,10 @@ async fn import_tx_and_read_it_from_db() {
         ),
         TransactionStatus::Imported,
         "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(5),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
         None,
     )
     .unwrap();
@@ -622,10 +622,10 @@ async fn import_tx_and_read_it_from_db() {
         ),
         TransactionStatus::OneSidedUnconfirmed,
         "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(6),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
         None,
     )
     .unwrap();
@@ -652,10 +652,10 @@ async fn import_tx_and_read_it_from_db() {
         ),
         TransactionStatus::OneSidedConfirmed,
         "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(7),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
         None,
     )
     .unwrap();

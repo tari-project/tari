@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 
@@ -29,7 +29,7 @@ pub struct Contact {
     pub alias: String,
     pub address: TariAddress,
     pub node_id: NodeId,
-    pub last_seen: Option<NaiveDateTime>,
+    pub last_seen: Option<DateTime<Utc>>,
     pub latency: Option<u32>,
     pub favourite: bool,
 }
@@ -38,7 +38,7 @@ impl Contact {
     pub fn new(
         alias: String,
         address: TariAddress,
-        last_seen: Option<NaiveDateTime>,
+        last_seen: Option<DateTime<Utc>>,
         latency: Option<u32>,
         favourite: bool,
     ) -> Self {

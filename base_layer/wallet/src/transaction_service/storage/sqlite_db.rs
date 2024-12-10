@@ -27,7 +27,7 @@ use std::{
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
@@ -1351,11 +1351,11 @@ impl InboundTransactionSql {
             amount: u64::from(i.amount) as i64,
             receiver_protocol: receiver_protocol_bytes.to_vec(),
             message: i.message,
-            timestamp: i.timestamp,
+            timestamp: i.timestamp.naive_utc(),
             cancelled: i32::from(i.cancelled),
             direct_send_success: i32::from(i.direct_send_success),
             send_count: i.send_count as i32,
-            last_send_timestamp: i.last_send_timestamp,
+            last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1401,11 +1401,11 @@ impl InboundTransaction {
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
             message: i.message,
-            timestamp: i.timestamp,
+            timestamp: i.timestamp.and_utc(),
             cancelled: i.cancelled != 0,
             direct_send_success: i.direct_send_success != 0,
             send_count: i.send_count as u32,
-            last_send_timestamp: i.last_send_timestamp,
+            last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
         })
     }
 }
@@ -1600,11 +1600,11 @@ impl OutboundTransactionSql {
             fee: u64::from(o.fee) as i64,
             sender_protocol: sender_protocol_bytes.to_vec(),
             message: o.message,
-            timestamp: o.timestamp,
+            timestamp: o.timestamp.naive_utc(),
             cancelled: i32::from(o.cancelled),
             direct_send_success: i32::from(o.direct_send_success),
             send_count: o.send_count as i32,
-            last_send_timestamp: o.last_send_timestamp,
+            last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1652,11 +1652,11 @@ impl OutboundTransaction {
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
             message: o.message,
-            timestamp: o.timestamp,
+            timestamp: o.timestamp.and_utc(),
             cancelled: o.cancelled != 0,
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
-            last_send_timestamp: o.last_send_timestamp,
+            last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
         };
 
         // zeroize decrypted data
@@ -1868,7 +1868,7 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
-        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or_else(|| {
+        let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
                 "Could not create timestamp mined_timestamp: {}",
                 mined_timestamp
@@ -1891,7 +1891,7 @@ impl CompletedTransactionSql {
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
-                mined_timestamp: Some(timestamp),
+                mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
                 ..Default::default()
@@ -1977,15 +1977,15 @@ impl CompletedTransactionSql {
             transaction_protocol: transaction_bytes.to_vec(),
             status: c.status as i32,
             message: c.message,
-            timestamp: c.timestamp,
+            timestamp: c.timestamp.naive_utc(),
             cancelled: c.cancelled.map(|v| v as i32),
             direction: Some(c.direction as i32),
             send_count: c.send_count as i32,
-            last_send_timestamp: c.last_send_timestamp,
+            last_send_timestamp: c.last_send_timestamp.map(|t| t.naive_utc()),
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
-            mined_timestamp: c.mined_timestamp,
+            mined_timestamp: c.mined_timestamp.map(|t| t.naive_utc()),
             transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id,
@@ -2086,18 +2086,18 @@ impl CompletedTransaction {
                 .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
-            timestamp: c.timestamp,
+            timestamp: c.timestamp.and_utc(),
             cancelled: c
                 .cancelled
                 .map(|v| TxCancellationReason::try_from(v as u32).unwrap_or(TxCancellationReason::Unknown)),
             direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
             send_count: c.send_count as u32,
-            last_send_timestamp: c.last_send_timestamp,
+            last_send_timestamp: c.last_send_timestamp.map(|t| t.and_utc()),
             transaction_signature,
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
-            mined_timestamp: c.mined_timestamp,
+            mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: Some(payment_id),
         };
 
@@ -2334,7 +2334,7 @@ mod test {
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2353,7 +2353,7 @@ mod test {
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
                 message: "Hey!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2419,7 +2419,7 @@ mod test {
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2437,7 +2437,7 @@ mod test {
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
             message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2498,7 +2498,7 @@ mod test {
             transaction: tx.clone(),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2529,7 +2529,7 @@ mod test {
             transaction: tx.clone(),
             status: TransactionStatus::Broadcast,
             message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2700,7 +2700,7 @@ mod test {
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2728,7 +2728,7 @@ mod test {
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2769,7 +2769,7 @@ mod test {
             ),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2844,7 +2844,7 @@ mod test {
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2867,7 +2867,7 @@ mod test {
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2902,7 +2902,7 @@ mod test {
                 ),
                 status: TransactionStatus::MinedUnconfirmed,
                 message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled: None,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
@@ -3045,7 +3045,7 @@ mod test {
                 ),
                 status,
                 message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,

@@ -12,7 +12,7 @@ mod test {
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-    use chrono::{NaiveDateTime, Utc};
+    use chrono::{DateTime, Utc};
     use minotari_wallet::{
         base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
         connectivity_service::OnlineStatus,
@@ -320,7 +320,7 @@ mod test {
             rtp,
             TransactionStatus::Pending,
             "1".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
@@ -350,7 +350,7 @@ mod test {
             ),
             TransactionStatus::Completed,
             "2".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             TransactionDirection::Inbound,
             None,
             None,
@@ -374,7 +374,7 @@ mod test {
             stp,
             TransactionStatus::Pending,
             "3".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             false,
         );
         db.add_pending_outbound_transaction(3u64.into(), outbound_tx.clone())
@@ -422,10 +422,10 @@ mod test {
             ),
             TransactionStatus::OneSidedUnconfirmed,
             "6".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             TransactionDirection::Inbound,
             Some(2),
-            Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap_or(NaiveDateTime::MIN)),
+            Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
             None,
         )
         .unwrap();
@@ -457,10 +457,10 @@ mod test {
             ),
             TransactionStatus::OneSidedConfirmed,
             "7".to_string(),
-            Utc::now().naive_utc(),
+            Utc::now(),
             TransactionDirection::Inbound,
             Some(5),
-            Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            Some(DateTime::from_timestamp(0, 0).unwrap()),
             None,
         )
         .unwrap();
@@ -538,7 +538,7 @@ mod test {
 
         runtime.spawn(callback_handler.start());
 
-        let ts_now = NaiveDateTime::from_timestamp_millis(
+        let ts_now = DateTime::from_timestamp_millis(
             SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -561,7 +561,7 @@ mod test {
                 node_id: Some(NodeId::new()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(true),
-                updated: NaiveDateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
+                updated: DateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
                 latency: Some(Duration::from_micros(500)),
             })))
             .unwrap();
@@ -855,7 +855,7 @@ mod test {
             contact.address.clone(),
             contact.node_id,
             Some(1234),
-            Some(Utc::now().naive_utc()),
+            Some(Utc::now()),
             ContactMessageType::Ping,
             ContactOnlineStatus::Online,
         );

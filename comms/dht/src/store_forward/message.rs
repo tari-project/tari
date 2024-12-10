@@ -76,7 +76,7 @@ impl TryFrom<database::StoredMessage> for StoredMessage {
     fn try_from(message: database::StoredMessage) -> Result<Self, Self::Error> {
         let dht_header = DhtHeader::decode(message.header.as_slice())?;
         Ok(Self {
-            stored_at: message.stored_at.timestamp() as u64,
+            stored_at: message.stored_at.and_utc().timestamp() as u64,
             version: message.version as u32,
             body: message.body,
             dht_header: Some(dht_header),

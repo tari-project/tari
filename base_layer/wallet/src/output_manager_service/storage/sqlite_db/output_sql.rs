@@ -72,7 +72,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
-#[derive(Clone, Derivative, Queryable, Identifiable, PartialEq, QueryableByName)]
+#[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[diesel(table_name = outputs)]
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
@@ -815,7 +815,7 @@ impl OutputSql {
             status: self.status.try_into()?,
             mined_height: self.mined_height.map(|mh| mh as u64),
             mined_in_block,
-            mined_timestamp: self.mined_timestamp,
+            mined_timestamp: self.mined_timestamp.map(|mt| mt.and_utc()),
             marked_deleted_at_height: self.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block,
             spending_priority,

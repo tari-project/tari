@@ -3523,10 +3523,7 @@ pub unsafe extern "C" fn liveness_data_get_last_seen(
         return ptr::null_mut();
     }
     if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
-        let last_seen_local_time =
-            DateTime::<Local>::from_naive_utc_and_offset(last_seen, Local::now().offset().to_owned())
-                .format("%FT%T")
-                .to_string();
+        let last_seen_local_time = DateTime::<Local>::from(last_seen).format("%FT%T").to_string();
         let mut return_value = CString::new("").expect("Blank CString will not fail.");
         match CString::new(last_seen_local_time) {
             Ok(val) => {

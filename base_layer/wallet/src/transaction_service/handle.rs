@@ -27,7 +27,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
@@ -179,7 +179,7 @@ pub enum TransactionServiceRequest {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
     },
@@ -1027,7 +1027,7 @@ impl TransactionServiceHandle {
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {

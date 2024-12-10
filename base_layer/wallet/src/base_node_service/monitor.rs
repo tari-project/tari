@@ -173,7 +173,7 @@ where
                     node_id: Some(base_node_id.clone()),
                     chain_metadata: Some(chain_metadata),
                     is_synced: Some(is_synced),
-                    updated: Some(Utc::now().naive_utc()),
+                    updated: Some(Utc::now()),
                     latency: Some(latency),
                 })
                 .await;

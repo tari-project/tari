@@ -19,7 +19,7 @@ tari_utilities = { version = "0.8" }
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
 borsh = "1.5"
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 log = "0.4"
 prost = "0.13.3"
 prost-types = "0.13.3"

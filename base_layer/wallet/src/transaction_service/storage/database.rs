@@ -28,7 +28,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -693,7 +693,7 @@ where T: TransactionBackend + 'static
         message: String,
         import_status: ImportStatus,
         current_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
     ) -> Result<(), TransactionStorageError> {
@@ -716,7 +716,7 @@ where T: TransactionBackend + 'static
             ),
             TransactionStatus::try_from(import_status)?,
             message,
-            mined_timestamp.unwrap_or_else(|| Utc::now().naive_utc()),
+            mined_timestamp.unwrap_or(Utc::now()),
             TransactionDirection::Inbound,
             current_height,
             mined_timestamp,

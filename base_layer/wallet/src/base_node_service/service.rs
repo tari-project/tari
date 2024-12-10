@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use futures::{future, StreamExt};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -50,7 +50,7 @@ pub struct BaseNodeState {
     pub node_id: Option<NodeId>,
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
-    pub updated: Option<NaiveDateTime>,
+    pub updated: Option<DateTime<Utc>>,
     pub latency: Option<Duration>,
 }
 

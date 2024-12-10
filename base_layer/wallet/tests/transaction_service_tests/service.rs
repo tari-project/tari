@@ -3013,7 +3013,7 @@ async fn test_power_mode_updates() {
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
         send_count: 0,
@@ -3045,7 +3045,7 @@ async fn test_power_mode_updates() {
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
         send_count: 0,
@@ -4251,7 +4251,7 @@ async fn test_restarting_transaction_protocols() {
         receiver_protocol,
         status: TransactionStatus::Pending,
         message: msg.message.clone(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
         send_count: 0,
@@ -4278,7 +4278,7 @@ async fn test_restarting_transaction_protocols() {
         sender_protocol: bob_pre_finalize,
         status: TransactionStatus::Pending,
         message: msg.message,
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
         send_count: 0,
@@ -4664,11 +4664,11 @@ async fn test_resend_on_startup() {
         sender_protocol: stp,
         status: TransactionStatus::Pending,
         message: "Yo!".to_string(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
         send_count: 1,
-        last_send_timestamp: Some(Utc::now().naive_utc()),
+        last_send_timestamp: Some(Utc::now()),
     };
     let connection = make_wallet_database_memory_connection();
 
@@ -4717,7 +4717,7 @@ async fn test_resend_on_startup() {
 
     // Now we do it again with the timestamp prior to the cooldown and see that a message is sent
     outbound_tx.send_count = 1;
-    outbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
+    outbound_tx.last_send_timestamp = Utc::now().checked_sub_signed(ChronoDuration::seconds(20));
 
     let connection2 = make_wallet_database_memory_connection();
 
@@ -4797,11 +4797,11 @@ async fn test_resend_on_startup() {
         receiver_protocol: rtp,
         status: TransactionStatus::Pending,
         message: "Yo2".to_string(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
         send_count: 0,
-        last_send_timestamp: Some(Utc::now().naive_utc()),
+        last_send_timestamp: Some(Utc::now()),
     };
     let bob_connection = make_wallet_database_memory_connection();
 
@@ -4850,7 +4850,7 @@ async fn test_resend_on_startup() {
 
     // Now we do it again with the timestamp prior to the cooldown and see that a message is sent
     inbound_tx.send_count = 1;
-    inbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
+    inbound_tx.last_send_timestamp = Utc::now().checked_sub_signed(ChronoDuration::seconds(20));
     let bob_connection2 = make_wallet_database_memory_connection();
 
     let mut bob2_ts_interface = setup_transaction_service_no_comms(
@@ -5193,14 +5193,11 @@ async fn test_transaction_timeout_cancellation() {
         sender_protocol: stp,
         status: TransactionStatus::Pending,
         message: "Yo!".to_string(),
-        timestamp: Utc::now()
-            .naive_utc()
-            .checked_sub_signed(ChronoDuration::seconds(20))
-            .unwrap(),
+        timestamp: Utc::now().checked_sub_signed(ChronoDuration::seconds(20)).unwrap(),
         cancelled: false,
         direct_send_success: false,
         send_count: 1,
-        last_send_timestamp: Some(Utc::now().naive_utc()),
+        last_send_timestamp: Some(Utc::now()),
     };
     let bob_connection = make_wallet_database_memory_connection();
 
@@ -5738,7 +5735,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
-        timestamp: Utc::now().naive_utc(),
+        timestamp: Utc::now(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
         send_count: 0,

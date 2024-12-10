@@ -23,7 +23,7 @@ tari_utilities = { version = "0.8" }
 base64 = "0.13.0"
 borsh = "1.5"
 bufstream = "0.1"
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
 crossterm = { version = "0.25.0" }
@@ -54,7 +54,7 @@ tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }
 
 [dev-dependencies]
 prost-types = "0.13.3"
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 config = "0.14.0"
 
 [package.metadata.cargo-machete]

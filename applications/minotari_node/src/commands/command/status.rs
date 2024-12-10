@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use minotari_app_utilities::consts;
 use tari_comms::connection_manager::SelfLivenessStatus;
@@ -70,10 +70,8 @@ impl CommandContext {
             .get_header(height)
             .await?
             .ok_or_else(|| anyhow!("No last header"))?;
-        let last_block_time = DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDateTime::from_timestamp_opt(last_header.header().timestamp.as_u64() as i64, 0).unwrap_or_default(),
-            Utc,
-        );
+        let last_block_time =
+            DateTime::<Utc>::from_timestamp(last_header.header().timestamp.as_u64() as i64, 0).unwrap_or_default();
         status_line.add_field(
             "Tip",
             format!("{} ({})", metadata.best_block_height(), last_block_time.to_rfc2822()),

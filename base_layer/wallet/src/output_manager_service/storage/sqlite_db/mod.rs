@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, str::FromStr};
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use derivative::Derivative;
 use diesel::{
     connection::SimpleConnection,
@@ -293,7 +293,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let outputs = OutputSql::index_invalid(&NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap(), &mut conn)?;
+        let outputs = OutputSql::index_invalid(
+            &DateTime::<Utc>::from_timestamp(timestamp, 0).unwrap().naive_utc(),
+            &mut conn,
+        )?;
 
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -469,8 +472,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         } else {
                             OutputStatus::UnspentMinedUnconfirmed as i32
                         },
-                        if let Some(val) = NaiveDateTime::from_timestamp_opt(update.mined_timestamp as i64, 0) {
-                            val.to_string()
+                        if let Some(val) = DateTime::from_timestamp(update.mined_timestamp as i64, 0) {
+                            val.naive_utc().to_string()
                         } else {
                             "NULL".to_string()
                         },
@@ -876,7 +879,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::status.eq(OutputStatus::CancelledInbound as i32),
                 outputs::last_validation_timestamp
-                    .eq(NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0).unwrap()),
+                    .eq(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc()),
             ))
             .execute(conn)?;
 
@@ -902,7 +905,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-
         let output = OutputSql::first_by_mined_height_desc(&mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -985,7 +987,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         UpdateOutput {
                             status: Some(OutputStatus::CancelledInbound),
                             last_validation_timestamp: Some(Some(
-                                NaiveDateTime::from_timestamp_opt(Utc::now().timestamp(), 0).unwrap(),
+                                DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().naive_utc(),
                             )),
                             ..Default::default()
                         },
