@@ -43,14 +43,21 @@ pub struct Cli {
     /// Watch a command in the non-interactive mode.
     #[clap(long)]
     pub watch: Option<String>,
+    /// Run in test profile mode
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    /// Enable gRPC
     #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
     pub grpc_enabled: bool,
+    /// Enable mining
     #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
     pub mining_enabled: bool,
+    /// Enable the second layer gRPC server
     #[clap(long, env = "MINOTARI_NODE_SECOND_LAYER_GRPC_ENABLED", alias = "enable-second-layer")]
     pub second_layer_grpc_enabled: bool,
+    /// Disable the splash screen
+    #[clap(long)]
+    pub disable_splash_screen: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

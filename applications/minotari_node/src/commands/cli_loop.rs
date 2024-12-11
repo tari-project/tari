@@ -79,8 +79,10 @@ impl CliLoop {
     ///
     /// ## Returns
     /// Doesn't return anything
-    pub async fn cli_loop(mut self) {
-        cli::print_banner(self.commands.clone(), 3);
+    pub async fn cli_loop(mut self, disable_splash_screen: bool) {
+        if !disable_splash_screen {
+            cli::print_banner(self.commands.clone(), 3);
+        }
 
         if self.non_interactive {
             self.watch_loop_non_interactive().await;

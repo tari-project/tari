@@ -40,7 +40,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-use tari_p2p::services::liveness::LivenessEvent;
+use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle};
 use tokio::{sync::watch, task};
 
 use super::{CommandContext, HandleCommand};
@@ -107,41 +107,14 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         for _ in 0..5 {
             if self.dial_peer(node_id.clone()).await.is_ok() {
                 println!("🏓 Peer ({}, {}) dialed successfully", node_id, public_key);
-                let mut liveness_events = self.liveness.get_event_stream();
-                let mut liveness = self.liveness.clone();
+                let liveness = self.liveness.clone();
                 task::spawn(async move {
-                    if let Ok(nonce) = liveness.send_ping(node_id.clone()).await {
-                        println!("🏓 Pinging peer ({}, {}) with nonce {} ...", node_id, public_key, nonce);
-                        for _ in 0..5 {
-                            match liveness_events.recv().await {
-                                Ok(event) => {
-                                    if let LivenessEvent::ReceivedPong(pong) = &*event {
-                                        if pong.node_id == node_id && pong.nonce == nonce {
-                                            println!(
-                                                "🏓️ Pong: peer ({}, {}) responded with nonce {}, round-trip-time is \
-                                                 {:.2?}!",
-                                                pong.node_id,
-                                                public_key,
-                                                pong.nonce,
-                                                pong.latency.unwrap_or_default()
-                                            );
-                                            let _ = tx.send(PingResult::Success);
-                                            return;
-                                        }
-                                    }
-                                },
-                                Err(e) => {
-                                    println!("🏓 Ping peer ({}, {}) gave error: {}", node_id, public_key, e);
-                                },
-                            }
-                        }
-                        let _ = tx.send(PingResult::Fail);
-                    }
+                    ping_peer_liveness(liveness, node_id, public_key, tx).await;
                 });
                 // Break if the dial was successful
                 break;
             } else {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
 
@@ -151,15 +124,13 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                 _ = rx.changed() => {
                     let test_duration = start.elapsed();
                     let responsive = *rx.borrow();
-                    println!("\nWhen rx.changed(): {:?}\n", responsive);
-                    if responsive == PingResult::Success {
-                        println!("✅ Peer ({}, {}) is responsive", node_id_clone, public_key_clone);
-                    } else {
-                        println!("❌ Peer ({}, {}) is unresponsive", node_id_clone, public_key_clone);
-                    }
+                    let date_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    print_results_to_console(&date_time, responsive, &public_key_clone, &node_id_clone, &address_clone, test_duration);
 
                     if let Some(true) = args.output_to_file {
                         print_to_file(
+                            &date_time,
                             responsive,
                             args.output_directory,
                             args.refresh_file,
@@ -168,12 +139,11 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                             test_duration
                         ).await;
                     }
-                    println!();
 
                     if let Some(true) = args.exit {
                         println!("The liveness test is complete and base node will now exit\n");
                         self.shutdown.trigger();
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        tokio::time::sleep(Duration::from_secs(1)).await;
                         match responsive {
                             PingResult::Success => process::exit(0),
                             _ => process::exit(1),
@@ -183,7 +153,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                     break;
                 },
 
-                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {},
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {},
             }
         }
 
@@ -191,7 +161,66 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
     }
 }
 
+fn print_results_to_console(
+    date_time: &str,
+    responsive: PingResult,
+    public_key: &PublicKey,
+    node_id: &NodeId,
+    address: &Multiaddr,
+    test_duration: Duration,
+) {
+    println!();
+    if responsive == PingResult::Success {
+        println!("✅ Peer is responsive");
+    } else {
+        println!("❌ Peer is unresponsive");
+    }
+    println!("  Date Time:     {}", date_time);
+    println!("  Public Key:    {}", public_key);
+    println!("  Node ID:       {}", node_id);
+    println!("  Address:       {}", address);
+    println!("  Result:        {:?}", responsive);
+    println!("  Test Duration: {:.2?}", test_duration);
+    println!();
+}
+
+async fn ping_peer_liveness(
+    mut liveness: LivenessHandle,
+    node_id: NodeId,
+    public_key: PublicKey,
+    tx: watch::Sender<PingResult>,
+) {
+    let mut liveness_events = liveness.get_event_stream();
+    if let Ok(nonce) = liveness.send_ping(node_id.clone()).await {
+        println!("🏓 Pinging peer ({}, {}) with nonce {} ...", node_id, public_key, nonce);
+        for _ in 0..5 {
+            match liveness_events.recv().await {
+                Ok(event) => {
+                    if let LivenessEvent::ReceivedPong(pong) = &*event {
+                        if pong.node_id == node_id && pong.nonce == nonce {
+                            println!(
+                                "🏓️ Pong: peer ({}, {}) responded with nonce {}, round-trip-time is {:.2?}!",
+                                pong.node_id,
+                                public_key,
+                                pong.nonce,
+                                pong.latency.unwrap_or_default()
+                            );
+                            let _ = tx.send(PingResult::Success);
+                            return;
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("🏓 Ping peer ({}, {}) gave error: {}", node_id, public_key, e);
+                },
+            }
+        }
+        let _ = tx.send(PingResult::Fail);
+    }
+}
+
 async fn print_to_file(
+    date_time: &str,
     responsive: PingResult,
     output_directory: Option<PathBuf>,
     refresh_file: Option<bool>,
@@ -204,8 +233,6 @@ async fn print_to_file(
     } else {
         "FAIL"
     };
-    let now = Local::now();
-    let date_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
     let file_name = "peer_liveness_test.csv";
     let file_path = if let Some(path) = output_directory.clone() {
@@ -222,7 +249,7 @@ async fn print_to_file(
 
     if let Some(true) = refresh_file {
         let _unused = fs::remove_file(&file_path);
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
     let write_header = !file_path.exists();
     if let Ok(mut file) = OpenOptions::new().append(true).create(true).open(file_path.clone()) {
