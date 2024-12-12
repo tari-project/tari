@@ -277,7 +277,7 @@ where B: BlockchainBackend + 'static
                 header.pow.pow_algo = request.algo;
 
                 let constants_weight = constants
-                    .max_block_weight_excluding_coinbase()
+                    .max_block_weight_excluding_coinbase(1)
                     .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?;
                 let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
                     constants_weight

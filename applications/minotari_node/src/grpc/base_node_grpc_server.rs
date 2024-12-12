@@ -800,10 +800,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let mut handler = self.node_service.clone();
-
-        let mut new_template = handler
-            .get_new_block_template(algo, request.max_weight)
+        let meta = handler
+            .get_metadata()
             .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        let constants_weight = self
+            .consensus_rules
+            .consensus_constants(meta.best_block_height().saturating_add(1))
+            .max_block_weight_excluding_coinbase(request.coinbases.len())
             .map_err(|e| {
                 warn!(
                     target: LOG_TARGET,
@@ -812,6 +816,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 );
                 obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
             })?;
+        let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
+            constants_weight
+        } else {
+            request.max_weight
+        };
+
+        let mut new_template = handler.get_new_block_template(algo, asking_weight).await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get new block template: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
 
         let pow = algo as i32;
 
@@ -1202,6 +1220,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .try_into()
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
         );
+
 
         let new_template = handler.get_new_block_template(algo, 0).await.map_err(|e| {
             warn!(
