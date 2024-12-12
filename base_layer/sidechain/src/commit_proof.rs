@@ -12,6 +12,7 @@ use tari_hashing::{
     layer2::{block_hasher, vote_signature_hasher},
     ValidatorNodeHashDomain,
 };
+use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
 
 use super::error::SidechainProofValidationError;
 use crate::{
@@ -29,8 +30,12 @@ pub enum CommandCommitProof<C> {
 }
 
 impl<C: ToCommand> CommandCommitProof<C> {
-    pub fn new(command: C, commit_proof: SidechainBlockCommitProof) -> Self {
-        Self::V1(CommandCommitProofV1 { command, commit_proof })
+    pub fn new(command: C, commit_proof: SidechainBlockCommitProof, inclusion_proof: SparseMerkleProofExt) -> Self {
+        Self::V1(CommandCommitProofV1 {
+            command,
+            commit_proof,
+            inclusion_proof,
+        })
     }
 
     pub fn command(&self) -> &C {
@@ -71,10 +76,9 @@ impl<C: ToCommand> CommandCommitProof<C> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CommandCommitProofV1<C> {
-    // TODO: Implement MerkleProof
-    // command_merkle_proof: MerkleProof,
     pub command: C,
     pub commit_proof: SidechainBlockCommitProof,
+    pub inclusion_proof: SparseMerkleProofExt,
 }
 
 impl<C: ToCommand> CommandCommitProofV1<C> {
@@ -86,12 +90,26 @@ impl<C: ToCommand> CommandCommitProofV1<C> {
         &self.commit_proof
     }
 
+    pub fn inclusion_proof(&self) -> &SparseMerkleProofExt {
+        &self.inclusion_proof
+    }
+
+    fn validate_inclusion_proof(&self, command: &Command) -> Result<(), SidechainProofValidationError> {
+        let command_hash = TreeHash::new(command.hash().into_array());
+        // Command JMT uses an identity mapping between hashes and keys.
+        let key = LeafKey::new(command_hash);
+        let root_hash = TreeHash::new(self.commit_proof.header.command_merkle_root.into_array());
+        self.inclusion_proof.verify_inclusion(&root_hash, &key, &command_hash)?;
+        Ok(())
+    }
+
     pub fn validate_committed(
         &self,
         quorum_threshold: usize,
         check_vn: &CheckVnFunc<'_>,
     ) -> Result<(), SidechainProofValidationError> {
         let command = self.command.to_command();
+        self.validate_inclusion_proof(&command)?;
         self.commit_proof
             .validate_committed(&command, quorum_threshold, check_vn)
     }

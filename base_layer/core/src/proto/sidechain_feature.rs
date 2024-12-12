@@ -355,6 +355,8 @@ impl TryFrom<proto::types::CommitProofV1> for CommandCommitProofV1<EvictNodeAtom
         Ok(CommandCommitProofV1 {
             command: command.try_into()?,
             commit_proof: value.commit_proof.ok_or("commit_proof not provided")?.try_into()?,
+            inclusion_proof: borsh::from_slice(&value.encoded_inclusion_proof)
+                .map_err(|e| format!("Failed to decode SparseMerkleProofExt: {e}"))?,
         })
     }
 }
@@ -362,8 +364,13 @@ impl TryFrom<proto::types::CommitProofV1> for CommandCommitProofV1<EvictNodeAtom
 impl From<&CommandCommitProofV1<EvictNodeAtom>> for proto::types::CommitProofV1 {
     fn from(value: &CommandCommitProofV1<EvictNodeAtom>) -> Self {
         Self {
+            // Encode since command is generic
             command: proto::types::EvictAtom::from(value.command()).encode_to_vec(),
             commit_proof: Some(value.commit_proof().into()),
+            // Encode since the type is complex
+            // TODO: making this fallible is a pain - we may need to implement the proto for this
+            encoded_inclusion_proof: borsh::to_vec(value.inclusion_proof())
+                .expect("Failed to encode SparseMerkleProofExt"),
         }
     }
 }

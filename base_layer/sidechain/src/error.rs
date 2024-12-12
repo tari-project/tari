@@ -9,6 +9,8 @@ pub enum SidechainProofValidationError {
     InvalidProof { details: String },
     #[error("Internal error: {details}")]
     InternalError { details: String },
+    #[error("Jellyfish proof verification error: {0}")]
+    JmtProofVerifyError(#[from] tari_jellyfish::JmtProofVerifyError),
 }
 
 impl SidechainProofValidationError {

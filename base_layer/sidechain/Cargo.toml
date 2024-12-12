@@ -9,6 +9,7 @@ tari_hashing = { workspace = true }
 tari_crypto = { version = "0.21.0", features = ["borsh"] }
 tari_utilities = "0.8"
 tari_common_types = { workspace = true }
+tari_jellyfish = { workspace = true }
 
 log = "0.4.22"
 thiserror = "2.0"
