@@ -27,6 +27,7 @@ members = [
     "common_sqlite",
     "infrastructure/libtor",
     "infrastructure/metrics",
+    "infrastructure/jellyfish",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/tari_script",
@@ -44,6 +45,7 @@ members = [
 ]
 
 [workspace.dependencies]
+tari_jellyfish = { path = "infrastructure/jellyfish" }
 tari_comms = { path = "comms/core" }
 tari_comms_dht = { path = "comms/dht", default-features = false }
 tari_common = { path = "common" }

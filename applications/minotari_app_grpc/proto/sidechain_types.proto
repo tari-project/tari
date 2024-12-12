@@ -97,6 +97,7 @@ message CommitProof {
 message CommitProofV1 {
   bytes command = 1;
   SidechainBlockCommitProof commit_proof = 2;
+  bytes encoded_inclusion_proof = 3;
 }
 
 message SidechainBlockCommitProof {

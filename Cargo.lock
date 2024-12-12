@@ -3023,6 +3023,7 @@ checksum = "707907fe3c25f5424cce2cb7e1cbcafee6bdbe735ca90ef77c29e84591e5b9da"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.0",
+ "serde",
 ]
 
 [[package]]
@@ -6812,6 +6813,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_jellyfish"
+version = "1.7.0-pre.3"
+dependencies = [
+ "borsh",
+ "digest 0.10.7",
+ "indexmap 2.6.0",
+ "serde",
+ "tari_crypto",
+ "tari_hashing",
+ "thiserror 2.0.3",
+]
+
+[[package]]
 name = "tari_key_manager"
 version = "1.7.0-pre.3"
 dependencies = [
@@ -6996,6 +7010,7 @@ dependencies = [
  "tari_common_types",
  "tari_crypto",
  "tari_hashing",
+ "tari_jellyfish",
  "tari_utilities",
  "thiserror 2.0.3",
 ]

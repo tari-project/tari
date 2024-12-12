@@ -10,12 +10,12 @@ mod validate {
     #[test]
     fn it_validates_a_valid_proof() {
         let proof = support::load_fixture::<EvictionProof>("eviction_proof1.json");
-        proof.validate(5, &|_| Ok(true)).unwrap();
+        proof.validate(4, &|_| Ok(true)).unwrap();
     }
 
     #[test]
     fn it_rejects_if_qc_signs_for_unknown_validator() {
         let proof = support::load_fixture::<EvictionProof>("eviction_proof1.json");
-        proof.validate(5, &|_| Ok(false)).unwrap_err();
+        proof.validate(4, &|_| Ok(false)).unwrap_err();
     }
 }

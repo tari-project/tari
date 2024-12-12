@@ -19,6 +19,10 @@ pub fn tari_hasher64<M: DomainSeparation>(label: &'static str) -> TariDomainHash
     TariDomainHasher::<M, U64>::new_with_label(label)
 }
 
+pub fn tari_hasher32<M: DomainSeparation>(label: &'static str) -> TariDomainHasher<M, U32> {
+    TariDomainHasher::<M, U32>::new_with_label(label)
+}
+
 fn tari_consensus_hasher(label: &'static str) -> TariConsensusHasher {
     TariConsensusHasher::new_with_label(label)
 }
