@@ -237,7 +237,7 @@ impl ConsensusConstants {
         Ok(self.max_block_transaction_weight - self.calculate_1_output_kernel_weight(coinbase_number)?)
     }
 
-    fn calculate_1_output_kernel_weight(&self, num_outputs: usize) -> std::io::Result<u64> {
+    fn calculate_n_output_kernel_weight(&self, num_outputs: usize) -> std::io::Result<u64> {
         let output_features = OutputFeatures { ..Default::default() };
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
