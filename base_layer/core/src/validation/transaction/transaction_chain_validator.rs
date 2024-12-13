@@ -51,7 +51,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
                 ValidationError::SerializationError(format!("Unable to calculate the transaction weight: {}", e))
             })? >
             consensus_constants
-                .max_block_weight_excluding_coinbase(1)
+                .max_block_weight_excluding_coinbases(1)
                 .map_err(|e| {
                     ValidationError::ConsensusError(format!(
                         "Unable to get max block weight from consensus constants: {}",

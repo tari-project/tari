@@ -807,7 +807,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let constants_weight = self
             .consensus_rules
             .consensus_constants(meta.best_block_height().saturating_add(1))
-            .max_block_weight_excluding_coinbase(request.coinbases.len())
+            .max_block_weight_excluding_coinbases(request.coinbases.len())
             .map_err(|e| {
                 warn!(
                     target: LOG_TARGET,
@@ -1220,7 +1220,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .try_into()
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e)))?,
         );
-
 
         let new_template = handler.get_new_block_template(algo, 0).await.map_err(|e| {
             warn!(
