@@ -790,6 +790,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         payment_id: txn.payment_id.to_bytes(),
+                        mined_in_block_height: txn.mined_height.unwrap_or(0),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1132,6 +1133,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: 0,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1145,6 +1147,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
             payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: 0,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1162,6 +1165,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
             payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: tx.mined_height.unwrap_or(0),
         },
     }
 }
