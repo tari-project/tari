@@ -59,6 +59,7 @@ pub async fn create_orphan_block(
             .build(),
         Difficulty::min(),
         coinbase_value,
+        true,
     )
     .unwrap();
     Block::new(template.header.into(), template.body)

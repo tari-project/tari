@@ -149,6 +149,7 @@ async fn genesis_template(
         header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
         Difficulty::min(),
         coinbase_value,
+        true,
     )
     .unwrap();
     (block, output)
@@ -315,6 +316,7 @@ pub async fn chain_block(
             .build(),
         Difficulty::min(),
         reward,
+        true,
     )
     .unwrap()
 }
@@ -339,6 +341,7 @@ pub fn chain_block_with_coinbase(
             .build(),
         achieved_difficulty.unwrap_or(Difficulty::min()),
         consensus.get_block_reward_at(height),
+        true,
     )
     .unwrap()
 }
@@ -377,6 +380,7 @@ pub async fn chain_block_with_new_coinbase(
             .build(),
         Difficulty::min(),
         reward,
+        true,
     )
     .unwrap();
     (template, coinbase_output)

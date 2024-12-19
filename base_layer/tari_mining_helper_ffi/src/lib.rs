@@ -804,7 +804,7 @@ mod tests {
             let error_ptr = &mut error as *mut c_int;
             let header = BlockHeader::new(0);
             let block =
-                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into()).unwrap();
+                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into(), true).unwrap();
 
             let block_bytes = borsh::to_vec(&block).unwrap();
             #[allow(clippy::cast_possible_truncation)]

@@ -1351,6 +1351,7 @@ async fn test_fee_overflow() {
             .build(),
         Difficulty::min(),
         consensus_manager.get_block_reward_at(height),
+        true,
     );
     assert!(template_result.is_err());
     assert_eq!(
