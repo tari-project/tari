@@ -51,6 +51,9 @@ pub struct NewBlockTemplate {
     pub reward: MicroMinotari,
     /// The total fees is the sum of all the fees in the block.
     pub total_fees: MicroMinotari,
+    /// Sometimes the mempool has not synced to the latest tip, this flag indicates if the mempool is out of sync.
+    /// In most cases the next call to get_new_block_template will return a block with the mempool in sync.
+    pub is_mempool_in_sync: bool,
 }
 
 impl NewBlockTemplate {
@@ -58,6 +61,7 @@ impl NewBlockTemplate {
         block: Block,
         target_difficulty: Difficulty,
         reward: MicroMinotari,
+        is_mempool_in_sync: bool,
     ) -> Result<Self, TransactionError> {
         let Block { header, body } = block;
         let total_fees = body.get_total_fee()?;
@@ -67,6 +71,7 @@ impl NewBlockTemplate {
             target_difficulty,
             reward,
             total_fees,
+            is_mempool_in_sync,
         })
     }
 }

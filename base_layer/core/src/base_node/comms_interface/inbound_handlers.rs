@@ -258,6 +258,7 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let last_seen_hash = self.mempool.get_last_seen_hash().await?;
+                let mut is_mempool_synced = true;
                 if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
                     warn!(
                         target: LOG_TARGET,
@@ -265,11 +266,7 @@ where B: BlockchainBackend + 'static
                          should auto correct with the next block template request",
                         last_seen_hash, best_block_header.hash()
                     );
-                    return Err(CommsInterfaceError::InternalError(
-                        "Mempool out of sync, blockchain db advanced passed current tip in mempool storage; this \
-                         should auto correct with the next block template request"
-                            .to_string(),
-                    ));
+                    is_mempool_synced = false;
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
@@ -313,6 +310,7 @@ where B: BlockchainBackend + 'static
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
+                    is_mempool_synced,
                 )?;
 
                 debug!(target: LOG_TARGET,
