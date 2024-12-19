@@ -250,7 +250,15 @@ impl BlockTemplateProtocol<'_> {
         let (block_template_with_coinbase, height) = match block_templates.get_new_template(best_block_hash).await {
             None => {
                 let new_template = match self.get_new_block_template().await {
-                    Ok(val) => val,
+                    Ok(val) => {
+                        if !val.template.is_mempool_in_sync {
+                            error!(target: LOG_TARGET, "Mempool is not in sync. Retrying to get new block template (try {})", loop_count);
+                            return Err(MmProxyError::FailedToGetBlockTemplate(
+                                "mempool not in sync".to_string(),
+                            ));
+                        }
+                        val
+                    },
                     Err(err) => {
                         error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
                         return Err(err);
