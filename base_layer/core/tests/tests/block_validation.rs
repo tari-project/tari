@@ -364,7 +364,7 @@ async fn test_orphan_validator() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         orphan_validator.clone(),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -510,7 +510,7 @@ async fn test_orphan_body_validation() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -731,7 +731,7 @@ async fn test_header_validation() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -847,7 +847,7 @@ async fn test_block_sync_body_validator() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -1138,7 +1138,7 @@ async fn add_block_with_large_block() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -1199,7 +1199,7 @@ async fn add_block_with_large_many_output_block() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,

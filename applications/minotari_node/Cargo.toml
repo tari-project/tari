@@ -43,6 +43,7 @@ futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
 ] }
 qrcode = { version = "0.12" }
+libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
 log4rs = { version = "1.3.0", default-features = false, features = [
@@ -75,6 +76,7 @@ default = ["libtor"]
 metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
+bundled_sqlite = ["libsqlite3-sys"]
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features", version = "1.9.1-pre.1" }

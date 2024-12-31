@@ -22,6 +22,7 @@
 
 use std::sync::{Arc, RwLock};
 
+use anyhow::Chain;
 use log::*;
 use tari_common::{
     configuration::Network,
@@ -71,6 +72,10 @@ pub struct BaseNodeContext {
 }
 
 impl BaseNodeContext {
+    pub fn start(&self) -> Result<(), ChainStorageError> {
+        self.blockchain_db.start()
+    }
+
     /// Waits for shutdown of the base node state machine and comms.
     /// This call consumes the NodeContainer instance.
     pub async fn wait_for_shutdown(self) {

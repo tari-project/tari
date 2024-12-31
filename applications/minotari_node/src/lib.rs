@@ -152,6 +152,8 @@ pub async fn run_base_node_with_cli(
         task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
     }
 
+    ctx.start();
+
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);

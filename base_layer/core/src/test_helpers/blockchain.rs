@@ -126,7 +126,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
     smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
-    BlockchainDatabase::new(
+    BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
