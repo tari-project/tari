@@ -178,10 +178,11 @@ First you'll need to make sure you have a full development environment set up:
 
     - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
-- Perl for OpenSSL:
+- OpenSSL:
 
-  - OpenSSL is compiled and statically linked by the included [rust-openssl](https://github.com/sfackler/rust-openssl) crate
-  - Perl is required to compile this source on Windows, please download and install [StrawberryPerl](https://strawberryperl.com/)
+  - install `vcpkg`
+  - install static openssl `vcpkg install openssl:x64-windows-static`
+  - set env var: `OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static`, replace `C:\vcpkg` with the root where you installed vcpkg
 
 - [Protocol Buffers](https://protobuf.dev/)
   - Install from https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation or if you using [The Package Manager for Windows](https://chocolatey.org/), run ```choco upgrade protoc -y```

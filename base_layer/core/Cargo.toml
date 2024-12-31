@@ -100,7 +100,6 @@ hickory-client = { version = "=0.25.0-alpha.2", features = [
 ], optional = true }
 hickory-proto = { version = "=0.25.0-alpha.2" }
 anyhow = "1.0.53"
-libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
