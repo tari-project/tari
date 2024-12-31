@@ -1,6 +1,6 @@
 [package]
 name = "tari_script"
-version = "1.9.1-rc.2"
+version = "1.9.1-rc.3"
 edition = "2021"
 description = "Tari script library"
 authors = ["The Tari Development Community"]
