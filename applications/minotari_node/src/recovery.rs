@@ -118,6 +118,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         difficulty_calculator,
         smt,
     )?;
+    db.start()?;
     do_recovery(db.into(), temp_db).await?;
 
     info!(
@@ -154,6 +155,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         DifficultyCalculator::new(rules, Default::default()),
         smt,
     )?;
+    source_database.start()?;
     let max_height = source_database
         .get_chain_metadata()
         .map_err(|e| anyhow!("Could not get max chain height: {}", e))?

@@ -230,7 +230,6 @@ where B: BlockchainBackend
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
         debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
-        let is_empty = db.is_empty()?;
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
@@ -240,7 +239,36 @@ where B: BlockchainBackend
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
             smt,
         };
-        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
+        Ok(blockchain_db)
+    }
+
+    pub fn start_new(
+        db: B,
+        consensus_manager: ConsensusManager,
+        validators: Validators<B>,
+        config: BlockchainDatabaseConfig,
+        difficulty_calculator: DifficultyCalculator,
+        smt: Arc<RwLock<OutputSmt>>,
+    ) -> Result<Self, ChainStorageError> {
+        let blockchain_db = BlockchainDatabase {
+            db: Arc::new(RwLock::new(db)),
+            validators,
+            config,
+            consensus_manager,
+            difficulty_calculator: Arc::new(difficulty_calculator),
+            disable_add_block_flag: Arc::new(AtomicBool::new(false)),
+            smt,
+        };
+        blockchain_db.start()?;
+        Ok(blockchain_db)
+    }
+
+    pub fn start(&self) -> Result<(), ChainStorageError> {
+        let (is_empty, config) = {
+            let db = self.db_read_access()?;
+            (db.is_empty()?, &self.config)
+        };
+        let genesis_block = Arc::new(self.consensus_manager.get_genesis_block());
         if is_empty {
             info!(
                 target: LOG_TARGET,
@@ -248,9 +276,9 @@ where B: BlockchainBackend
                 genesis_block.block().body.to_counts_string()
             );
             let mut txn = DbTransaction::new();
-            blockchain_db.write(txn)?;
+            self.write(txn)?;
             txn = DbTransaction::new();
-            blockchain_db.insert_block(genesis_block.clone())?;
+            self.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
             let input_sum = body
                 .inputs()
@@ -268,15 +296,15 @@ where B: BlockchainBackend
             });
             txn.set_pruned_height(0);
             txn.set_horizon_data(kernel_sum, total_utxo_sum);
-            blockchain_db.write(txn)?;
-            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
-        } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
+            self.write(txn)?;
+            self.store_pruning_horizon(config.pruning_horizon)?;
+        } else if !self.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
             // Check the genesis block in the DB.
             error!(
                 target: LOG_TARGET,
                 "Genesis block in database does not match the supplied genesis block in the code! Hash in the code \
                  {:?}, hash in the database {:?}",
-                blockchain_db.fetch_chain_header(0)?.hash(),
+                self.fetch_chain_header(0)?.hash(),
                 genesis_block.accumulated_data().hash
             );
             return Err(ChainStorageError::CorruptedDatabase(
@@ -286,13 +314,13 @@ where B: BlockchainBackend
             ));
         } else {
             // lets load the smt into memory
-            let mut smt = blockchain_db.smt_write_access()?;
+            let mut smt = self.smt_write_access()?;
             warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
-            *smt = blockchain_db.db_write_access()?.calculate_tip_smt()?;
+            *smt = self.db_write_access()?.calculate_tip_smt()?;
             warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
         if config.cleanup_orphans_at_startup {
-            match blockchain_db.cleanup_all_orphans() {
+            match self.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
@@ -301,20 +329,20 @@ where B: BlockchainBackend
             }
         }
 
-        let pruning_horizon = blockchain_db.get_chain_metadata()?.pruning_horizon();
+        let pruning_horizon = self.get_chain_metadata()?.pruning_horizon();
         if config.pruning_horizon != pruning_horizon {
             debug!(
                 target: LOG_TARGET,
                 "Updating pruning horizon from {} to {}.", pruning_horizon, config.pruning_horizon,
             );
-            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+            self.store_pruning_horizon(config.pruning_horizon)?;
         }
 
         if !config.track_reorgs {
-            blockchain_db.clear_all_reorgs()?;
+            self.clear_all_reorgs()?;
         }
 
-        Ok(blockchain_db)
+        Ok(())
     }
 
     /// Get the genesis block form the consensus manager

@@ -52,6 +52,11 @@ impl Network {
     /// The reserved wire byte for liveness ('LIVENESS_WIRE_MODE')
     pub const RESERVED_WIRE_BYTE: u8 = 0xa7;
 
+    /// Alias for `get_current_or_user_setting_or_default`
+    pub fn get_current() -> Self {
+        Self::get_current_or_user_setting_or_default()
+    }
+
     pub fn get_current_or_user_setting_or_default() -> Self {
         match CURRENT_NETWORK.get() {
             Some(&network) => network,
