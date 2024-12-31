@@ -22,7 +22,6 @@
 
 use std::sync::{Arc, RwLock};
 
-use anyhow::Chain;
 use log::*;
 use tari_common::{
     configuration::Network,
