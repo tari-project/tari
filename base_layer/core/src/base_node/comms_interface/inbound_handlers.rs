@@ -62,6 +62,7 @@ const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
+const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
@@ -259,17 +260,16 @@ where B: BlockchainBackend + 'static
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let mut last_seen_hash = self.mempool.get_last_seen_hash().await?;
                 let mut is_mempool_synced = false;
-                let mut counter = 0;
-                // this will wait a max of 100ms before returning anyway with a potential broken template
+                let start = Instant::now();
+                // this will wait a max of 150ms by default before returning anyway with a potential broken template
                 // We need to ensure the mempool has seen the latest base node height before we can be confident the
                 // template is correct
-                while !is_mempool_synced && counter < 10 {
+                while !is_mempool_synced && start.elapsed().as_millis() < MAX_MEMPOOL_TIMEOUT.into() {
                     if best_block_header.hash() == &last_seen_hash {
                         is_mempool_synced = true;
                     } else {
                         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                         last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                        counter += 1;
                     }
                 }
 
