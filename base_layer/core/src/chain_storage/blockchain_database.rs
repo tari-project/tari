@@ -934,6 +934,7 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets rewind the smt
+                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via new block prepare");
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -962,6 +963,7 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets reset the smt to its starting state
+                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db, via calculate root");
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -1660,8 +1662,9 @@ fn insert_best_block(
     let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
+    let allow_smt_change = Arc::new(AtomicBool::new(true));
     txn.insert_chain_header(block.to_chain_header())
-        .insert_tip_block_body(block, smt)
+        .insert_tip_block_body(block, smt, allow_smt_change)
         .set_best_block(
             height,
             block_hash,
@@ -2080,6 +2083,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 );
                 ChainStorageError::AccessError("write lock on smt".into())
             })?;
+            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db, via reorg");
             *write_smt = backend.calculate_tip_smt()?;
             return Err(e);
         }

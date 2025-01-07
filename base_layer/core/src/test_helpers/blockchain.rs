@@ -168,7 +168,7 @@ impl TempDatabase {
         let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, rules).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
@@ -177,7 +177,7 @@ impl TempDatabase {
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
         let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }

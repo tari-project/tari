@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
 
@@ -365,10 +365,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
 
             let timer = Instant::now();
+            let allow_smt_change = Arc::new(AtomicBool::new(true));
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_tip_block_body(block.clone(), self.db.inner().smt())
+                .insert_tip_block_body(block.clone(), self.db.inner().smt(), allow_smt_change.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,

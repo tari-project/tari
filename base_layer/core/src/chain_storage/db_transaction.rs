@@ -23,7 +23,7 @@
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    sync::{Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc, RwLock},
 };
 
 use primitive_types::U256;
@@ -171,8 +171,17 @@ impl DbTransaction {
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertTipBlockBody { block, smt });
+    pub fn insert_tip_block_body(
+        &mut self,
+        block: Arc<ChainBlock>,
+        smt: Arc<RwLock<OutputSmt>>,
+        allow_smt_change: Arc<AtomicBool>,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipBlockBody {
+            block,
+            smt,
+            allow_smt_change,
+        });
         self
     }
 
@@ -292,6 +301,7 @@ pub enum WriteOperation {
     InsertTipBlockBody {
         block: Arc<ChainBlock>,
         smt: Arc<RwLock<OutputSmt>>,
+        allow_smt_change: Arc<AtomicBool>,
     },
     InsertKernel {
         header_hash: HashOutput,
@@ -368,7 +378,11 @@ impl fmt::Display for WriteOperation {
             InsertChainHeader { header } => {
                 write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash())
             },
-            InsertTipBlockBody { block, smt: _ } => write!(
+            InsertTipBlockBody {
+                block,
+                smt: _,
+                allow_smt_change: _,
+            } => write!(
                 f,
                 "InsertTipBlockBody({}, {})",
                 block.accumulated_data().hash,
