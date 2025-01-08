@@ -963,7 +963,7 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets reset the smt to its starting state
-                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db, via calculate root");
+                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root");
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -2083,7 +2083,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 );
                 ChainStorageError::AccessError("write lock on smt".into())
             })?;
-            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db, via reorg");
+            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg");
             *write_smt = backend.calculate_tip_smt()?;
             return Err(e);
         }
