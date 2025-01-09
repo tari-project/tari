@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.9.2-pre.0](https://github.com/tari-project/tari/compare/v1.9.1-pre.2...v1.9.2-pre.0) (2025-01-09)
+
+
+### Features
+
+* cache smt every 1000 blocks ([#6732](https://github.com/tari-project/tari/issues/6732)) ([d3f3502](https://github.com/tari-project/tari/commit/d3f3502e60e3a8bf56e91a25c3ebeef7a65d61e2))
+
+
+### Bug Fixes
+
+* templates ([#6731](https://github.com/tari-project/tari/issues/6731)) ([f508689](https://github.com/tari-project/tari/commit/f5086899b77c8b29b37b7aaaef4f5b9f41c78f91))
+
 ## [1.9.1-pre.0](https://github.com/tari-project/tari/compare/v1.9.0-pre.0...v1.9.1-pre.0) (2024-12-02)
 
 
