@@ -15,6 +15,7 @@ name: Build minotari_ledger_wallet
 env:
   TS_FILENAME: "minotari_ledger_wallet"
   SHARUN: "shasum --algorithm 256"
+  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:3.43.0 "
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -59,7 +60,7 @@ jobs:
           docker run --rm \
             -v ".:/app" \
             -w "/app/applications/minotari_ledger_wallet/wallet" \
-            ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder \
+            ${{env.DOCKER_IMAGE}} \
             cargo ledger build ${{ matrix.ledger_target }}
 
       - name: env Setup

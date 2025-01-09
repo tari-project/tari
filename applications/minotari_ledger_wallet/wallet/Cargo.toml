@@ -20,6 +20,9 @@ include_gif = "1.0.1"
 ledger_device_sdk = "1.15"
 rand_core = { version = "0.6", default_features = false }
 zeroize = { version = "1", default-features = false }
+# We dont directly use or call ledger_secure_sdk_sys, but it is a dependency of ledger_device_sdk,
+# we want to force it to a lower version so that it can run on an older rust version
+ledger_secure_sdk_sys = {version= "=1.5.3"}
 
 # once_cell defined here just to lock the version. Other dependencies may try to go to 1.19 which is incompatabile with
 # ledger at this time. 1.19 removes "atomic-polyfill" and replaces it with "portable-atomic" which can not build due to
@@ -27,7 +30,7 @@ zeroize = { version = "1", default-features = false }
 once_cell = { version = "=1.18.0", default-features = false }
 
 [package.metadata.cargo-machete]
-ignored = ["once_cell"]
+ignored = ["once_cell", "ledger_secure_sdk_sys"]
 
 [profile.release]
 opt-level = 'z'
