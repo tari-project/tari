@@ -293,7 +293,11 @@ impl LMDBDatabase {
         prune_interval: u64,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
-        let smt_cache_period = prune_interval.checked_div(2).unwrap_or(SMT_CACHE_PERIOD);
+        let smt_cache_period = if prune_interval == 0 {
+            SMT_CACHE_PERIOD
+        } else {
+            prune_interval / 2
+        };
 
         let db = Self {
             metadata_db: get_database(store, LMDB_DB_METADATA)?,
