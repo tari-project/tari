@@ -954,15 +954,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let constants_weight = self
             .consensus_rules
             .consensus_constants(meta.best_block_height().saturating_add(1))
-            .max_block_weight_excluding_coinbases(request.coinbases.len())
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not get new block template: {}",
-                    e.to_string()
-                );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
+            .max_block_transaction_weight();
         let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
             constants_weight
         } else {

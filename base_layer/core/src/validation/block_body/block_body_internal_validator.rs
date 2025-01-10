@@ -85,7 +85,7 @@ fn validate_block_specific_checks(
         warn!(target: LOG_TARGET, "Attempt to validate genesis block");
         return Err(ValidationError::ValidatingGenesis);
     }
-    check_coinbase_output(block, consensus_manager, factories)?;
+    check_coinbase_outputs(block, consensus_manager, factories)?;
     check_coinbase_output_features(&block.body, constants)?;
 
     Ok(())
@@ -140,7 +140,7 @@ fn validate_block_aggregate_body(
     Ok(())
 }
 
-fn check_coinbase_output(
+fn check_coinbase_outputs(
     block: &Block,
     rules: &ConsensusManager,
     factories: &CryptoFactories,

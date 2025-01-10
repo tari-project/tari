@@ -619,6 +619,7 @@ mod test {
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42,
+                1,
             )
             .unwrap();
 
@@ -666,7 +667,8 @@ mod test {
                 block_reward,
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
-                42
+                42,
+                1
             ),
             Err(TransactionError::InvalidCoinbaseMaturity)
         ));
@@ -729,7 +731,8 @@ mod test {
                 block_reward,
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
-                42
+                42,
+                1
             ),
             Err(TransactionError::InvalidCoinbase)
         ));
@@ -758,7 +761,8 @@ mod test {
                 block_reward,
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
-                42
+                42,
+                1
             )
             .is_ok());
     }
@@ -899,7 +903,8 @@ mod test {
                 block_reward,
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
-                42
+                42,
+                2
             ),
             Err(TransactionError::MoreThanOneCoinbaseKernel)
         ));
@@ -983,6 +988,7 @@ mod test {
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42,
+                2,
             )
             .unwrap();
         body1.verify_kernel_signatures().unwrap_err();
@@ -1050,8 +1056,131 @@ mod test {
                 rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42,
+                2,
             )
             .unwrap();
         body2.verify_kernel_signatures().unwrap();
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::identity_op)]
+    async fn too_may_coinbases() {
+        let (builder, rules, factories, key_manager) = get_builder();
+        let p = TestParams::new(&key_manager).await;
+        // We just want some small amount here.
+        let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let wallet_payment_address = TariAddress::default();
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(1 * uT)
+            .with_commitment_mask_id(p.commitment_mask_key_id.clone())
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id.clone())
+            .with_script_key_id(p.script_key_id.clone())
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
+            .with_range_proof_type(RangeProofType::RevealedValue);
+        let (tx1, wo1) = builder
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
+            .await
+            .unwrap();
+
+        // we calculate a duplicate tx here so that we can have a coinbase with the correct fee amount
+        let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
+        let builder = CoinbaseBuilder::new(key_manager.clone());
+        let builder = builder
+            .with_block_height(4200000)
+            .with_fees(1 * uT)
+            .with_commitment_mask_id(p.commitment_mask_key_id.clone())
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id)
+            .with_script_key_id(p.script_key_id)
+            .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))
+            .with_range_proof_type(RangeProofType::RevealedValue);
+        let (tx2, wo2) = builder
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                PaymentId::Empty,
+            )
+            .await
+            .unwrap();
+
+        let coinbase1 = tx1.body.outputs()[0].clone();
+        let coinbase2 = tx2.body.outputs()[0].clone();
+
+        let kernel_1 = tx1.body.kernels()[0].clone();
+        let kernel_2 = tx2.body.kernels()[0].clone();
+        let excess = &kernel_1.excess + &kernel_2.excess;
+
+        // lets create a new kernel with a correct signature
+        let new_nonce1 = key_manager
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+            .await
+            .unwrap();
+        let new_nonce2 = key_manager
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+            .await
+            .unwrap();
+        let nonce = &new_nonce1.pub_key + &new_nonce2.pub_key;
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
+            &TransactionKernelVersion::get_current_version(),
+            kernel_1.fee,
+            kernel_1.lock_height,
+            &kernel_1.features,
+            &None,
+        );
+
+        let mut kernel_signature = key_manager
+            .get_partial_txo_kernel_signature(
+                &wo1.spending_key_id,
+                &new_nonce1.key_id,
+                &nonce,
+                excess.as_public_key(),
+                &TransactionKernelVersion::get_current_version(),
+                &kernel_message,
+                &kernel_1.features,
+                TxoStage::Output,
+            )
+            .await
+            .unwrap();
+        kernel_signature = &kernel_signature +
+            &key_manager
+                .get_partial_txo_kernel_signature(
+                    &wo2.spending_key_id,
+                    &new_nonce2.key_id,
+                    &nonce,
+                    excess.as_public_key(),
+                    &TransactionKernelVersion::get_current_version(),
+                    &kernel_message,
+                    &kernel_1.features,
+                    TxoStage::Output,
+                )
+                .await
+                .unwrap();
+        let kernel = KernelBuilder::new()
+            .with_fee(0.into())
+            .with_features(kernel_1.features)
+            .with_lock_height(kernel_1.lock_height)
+            .with_excess(&excess)
+            .with_signature(kernel_signature)
+            .build()
+            .unwrap();
+
+        let mut body = AggregateBody::new(Vec::new(), vec![coinbase1, coinbase2], vec![kernel]);
+        body.sort();
+
+        body.check_coinbase_output(
+            block_reward,
+            rules.consensus_constants(0).coinbase_min_maturity(),
+            &factories,
+            42,
+            1,
+        )
+        .unwrap_err();
     }
 }

@@ -941,7 +941,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 470 && max_weight == 400
+            actual_weight == 405 && max_weight == 400
         ),
         "{}",
         err

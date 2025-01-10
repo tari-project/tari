@@ -294,9 +294,7 @@ where B: BlockchainBackend + 'static
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
 
-                let constants_weight = constants
-                    .max_block_weight_excluding_coinbases(1)
-                    .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?;
+                let constants_weight = constants.max_block_transaction_weight();
                 let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
                     constants_weight
                 } else {

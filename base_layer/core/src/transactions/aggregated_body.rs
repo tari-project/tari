@@ -294,6 +294,7 @@ impl AggregateBody {
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,
+        maximum_coinbase_amount: u64,
     ) -> Result<(), TransactionError> {
         let mut coinbase_utxo_sum = Commitment::default();
         let mut coinbase_kernel = None;
@@ -317,6 +318,16 @@ impl AggregateBody {
             target: LOG_TARGET,
             "{} coinbases found in body.", coinbase_counter,
         );
+        if coinbase_counter > maximum_coinbase_amount {
+            warn!(
+                target: LOG_TARGET,
+                "{} coinbases found in body. Only {} is permitted.", coinbase_counter,maximum_coinbase_amount
+            );
+            return Err(TransactionError::TooManyCoinbaseKernels {
+                max: maximum_coinbase_amount,
+                found: coinbase_counter,
+            });
+        }
 
         let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
@@ -328,7 +339,7 @@ impl AggregateBody {
         if coinbase_kernel.is_none() || coinbase_kernel_counter != 1 {
             warn!(
                 target: LOG_TARGET,
-                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
+                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_kernel_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbaseKernel);
         }

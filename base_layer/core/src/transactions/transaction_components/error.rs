@@ -55,6 +55,8 @@ pub enum TransactionError {
     InvalidCoinbaseMaturity,
     #[error("More than one coinbase kernel in body")]
     MoreThanOneCoinbaseKernel,
+    #[error("Only {max} number of coinbases are allowed in block, found {found}")]
+    TooManyCoinbaseKernels { max: u64, found: u64 },
     #[error("No coinbase in body")]
     NoCoinbase,
     #[error("Input maturity not reached")]

@@ -28,17 +28,15 @@ use std::{
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
 use tari_common_types::epoch::VnEpoch;
-use tari_script::{script, OpcodeVersion};
+use tari_script::OpcodeVersion;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    borsh::SerializedSize,
     consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
             RangeProofType,
@@ -71,6 +69,8 @@ pub struct ConsensusConstants {
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
+    /// Maximum coinbases allowed in a block
+    max_block_coinbase_count: u64,
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain timestamp moves
     /// forward
     median_timestamp_count: usize,
@@ -231,26 +231,9 @@ impl ConsensusConstants {
         self.max_block_transaction_weight
     }
 
-    /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
-    /// with default features, as well as the maximum possible value of the `coinbase_extra` field
-    pub fn max_block_weight_excluding_coinbases(&self, number_of_coinbases: usize) -> std::io::Result<u64> {
-        Ok(self.max_block_transaction_weight - self.calculate_n_output_kernel_weight(number_of_coinbases)?)
-    }
-
-    fn calculate_n_output_kernel_weight(&self, num_outputs: usize) -> std::io::Result<u64> {
-        let output_features = OutputFeatures { ..Default::default() };
-        let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
-
-        let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size()? +
-                max_extra_size +
-                script!(PushPubKey(Box::default()))
-                    .map_err(|e| e.to_std_io_error())?
-                    .get_serialized_size()?,
-        );
-        Ok(self
-            .transaction_weight
-            .calculate(1, 0, num_outputs, features_and_scripts_size * num_outputs))
+    /// Maximum block coinbases used for construction of new blocks.
+    pub fn max_block_coinbase_count(&self) -> u64 {
+        self.max_block_coinbase_count
     }
 
     pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
@@ -398,6 +381,7 @@ impl ConsensusConstants {
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
@@ -463,6 +447,7 @@ impl ConsensusConstants {
             // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
             // weightings
             max_block_transaction_weight: 127_795,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
@@ -521,6 +506,7 @@ impl ConsensusConstants {
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: ESMERALDA_INITIAL_EMISSION,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
@@ -583,6 +569,7 @@ impl ConsensusConstants {
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
@@ -634,6 +621,7 @@ impl ConsensusConstants {
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
@@ -696,6 +684,7 @@ impl ConsensusConstants {
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 127_795,
+            max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,

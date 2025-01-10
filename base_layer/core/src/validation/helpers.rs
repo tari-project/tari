@@ -604,7 +604,7 @@ mod test {
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
-            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap();
         }
 
@@ -627,7 +627,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
@@ -654,7 +654,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }
