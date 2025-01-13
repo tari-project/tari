@@ -294,7 +294,7 @@ impl AggregateBody {
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,
-        maximum_coinbase_amount: u64,
+        maximum_coinbase_count: u64,
     ) -> Result<(), TransactionError> {
         let mut coinbase_utxo_sum = Commitment::default();
         let mut coinbase_kernel = None;
@@ -318,13 +318,13 @@ impl AggregateBody {
             target: LOG_TARGET,
             "{} coinbases found in body.", coinbase_counter,
         );
-        if coinbase_counter > maximum_coinbase_amount {
+        if coinbase_counter > maximum_coinbase_count {
             warn!(
                 target: LOG_TARGET,
-                "{} coinbases found in body. Only {} is permitted.", coinbase_counter,maximum_coinbase_amount
+                "{} coinbases found in body. Only {} is permitted.", coinbase_counter, maximum_coinbase_count
             );
             return Err(TransactionError::TooManyCoinbaseKernels {
-                max: maximum_coinbase_amount,
+                max: maximum_coinbase_count,
                 found: coinbase_counter,
             });
         }
