@@ -65,6 +65,7 @@ pub struct NewOutputSql {
     pub minimum_value_promise: i64,
     pub source: i32,
     pub spending_priority: i32,
+    pub payment_id: Option<Vec<u8>>,
 }
 
 impl NewOutputSql {
@@ -111,6 +112,7 @@ impl NewOutputSql {
             minimum_value_promise: output.wallet_output.minimum_value_promise.as_u64() as i64,
             source: output.source as i32,
             spending_priority: output.spending_priority.into(),
+            payment_id: Some(output.payment_id.to_bytes()),
         };
 
         Ok(output)

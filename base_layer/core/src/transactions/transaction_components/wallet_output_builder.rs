@@ -126,6 +126,7 @@ impl WalletOutputBuilder {
         custom_recovery_key_id: Option<&TariKeyId>,
         payment_id: PaymentId,
     ) -> Result<Self, TransactionError> {
+        self.payment_id = payment_id.clone();
         self.encrypted_data = key_manager
             .encrypt_data_for_recovery(
                 &self.commitment_mask_key_id,

@@ -81,7 +81,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             EncryptedData,
             OutputFeatures,
             Transaction,
@@ -793,7 +793,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    PaymentId::open_from_str(&args.payment_id),
+                    PaymentId::open(&args.payment_id, TxType::Burn),
                 )
                 .await
                 {
@@ -978,8 +978,11 @@ pub async fn command_runner(
                     args.fee_per_gram,
                     output_hash,
                     commitment.clone(),
-                    args.recipient_address,
-                    PaymentId::open_from_str(&args.payment_id),
+                    args.recipient_address.clone(),
+                    PaymentId::open(
+                        &args.payment_id,
+                        detect_tx_metadata(&wallet, args.recipient_address).await,
+                    ),
                 )
                 .await
                 {
@@ -1338,14 +1341,17 @@ pub async fn command_runner(
                         sender_offset_public_key_shares,
                         metadata_ephemeral_public_key_shares,
                         dh_shared_secret_shares,
-                        current_recipient_address,
+                        current_recipient_address.clone(),
                         original_maturity,
                         if pre_mine_from_file.is_some() {
                             UseOutput::AsProvided(embedded_output)
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
-                        PaymentId::open_from_str(&args.payment_id),
+                        PaymentId::open(
+                            &args.payment_id,
+                            detect_tx_metadata(&wallet, current_recipient_address).await,
+                        ),
                     )
                     .await
                     {
@@ -1987,8 +1993,8 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    args.destination,
-                    PaymentId::open_from_str(&args.payment_id),
+                    args.destination.clone(),
+                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2005,8 +2011,8 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination,
-                    PaymentId::open_from_str(&args.payment_id),
+                    args.destination.clone(),
+                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2030,9 +2036,9 @@ pub async fn command_runner(
                     args.start_amount,
                     args.increase_amount,
                     args.start_time.unwrap_or_else(Utc::now),
-                    args.destination,
+                    args.destination.clone(),
                     transaction_type,
-                    PaymentId::open_from_str(&args.payment_id),
+                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2044,7 +2050,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    PaymentId::open_from_str(&args.payment_id),
+                    PaymentId::open(&args.payment_id, TxType::CoinSplit),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2244,7 +2250,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    PaymentId::open_from_str(&args.payment_id),
+                    PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
                 .await
                 {
@@ -2267,7 +2273,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        PaymentId::open_from_str(&args.payment_id),
+                        PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
                     .await
                     {
@@ -2287,7 +2293,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        PaymentId::open_from_str(&args.payment_id),
+                        PaymentId::open(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                     {
@@ -2328,7 +2334,7 @@ pub async fn command_runner(
                     ),
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    PaymentId::open_from_str(&args.payment_id),
+                    PaymentId::open(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
@@ -2701,6 +2707,24 @@ pub async fn command_runner(
     }
 
     Ok(unban_peer_manager_peers)
+}
+
+async fn detect_tx_metadata(wallet: &WalletSqlite, destination: TariAddress) -> TxType {
+    if let Ok(interactive_address) = wallet.get_wallet_interactive_address().await {
+        if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address().await {
+            if destination == interactive_address || destination == one_sided_address {
+                TxType::PaymentToSelf
+            } else {
+                TxType::PaymentToOther
+            }
+        } else if destination == interactive_address {
+            TxType::PaymentToSelf
+        } else {
+            TxType::PaymentToOther
+        }
+    } else {
+        TxType::PaymentToOther
+    }
 }
 
 async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {

@@ -81,7 +81,10 @@ use tari_core::{
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+        },
         CryptoFactories,
     },
     txn_schema,
@@ -235,7 +238,7 @@ pub async fn add_transaction_to_database(
         TransactionDirection::Outbound,
         None,
         None,
-        PaymentId::open_from_str("Test"),
+        PaymentId::open("Test", TxType::PaymentToOther),
     )
     .unwrap();
     db.insert_completed_transaction(tx_id, completed_tx1).unwrap();

@@ -143,9 +143,10 @@ use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -346,11 +347,9 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            payment_id: CString::new(
-                String::from_utf8(x.payment_id.to_bytes()).unwrap_or_else(|_| "Invalid".to_string()),
-            )
-            .expect("failed to obtain string from a payment id")
-            .into_raw(),
+            payment_id: CString::new(format!("{}", x.payment_id))
+                .expect("failed to obtain string from a payment id")
+                .into_raw(),
         }
     }
 }
@@ -2175,7 +2174,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
-            PaymentId::open_from_str(&payment_id_string),
+            PaymentId::open(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
         )) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
@@ -2580,7 +2579,7 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 /// `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
 ///
 /// ## Returns
-/// `TariEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
+/// `TariEncryptedOpenings` - Returns encrypted data. Note that it will be ptr::null_mut() if any argument is
 /// null or if there was an error with the contents of bytes
 ///
 /// # Safety
@@ -2610,6 +2609,81 @@ pub unsafe extern "C" fn encrypted_data_create_from_bytes(
             ptr::null_mut()
         },
     }
+}
+
+/// Extract the transaction type from a TariEncryptedOpenings
+///
+/// ## Arguments
+/// `encrypted_data` - The encrypted data
+/// `commitment_bytes` - The public commitment component as a ByteVector
+/// `wallet` - The TariWallet pointe
+///
+/// ## Returns
+///  `0` => `PaymentToOther`,
+///  `1` => `PaymentToSelf`,
+///  `2` => `Burn`,
+///  `3` => `CoinSplit`,
+///  `4` => `CoinJoin`,
+///  `5` => `ValidatorNodeRegistration`,
+///  `6` => `ClaimAtomicSwap`,
+///  `7` => `HtlcAtomicSwapRefund`,
+///  `8` => `CodeTemplateRegistration`,
+///  `9` => `ImportedUtxoNoneRewindable`,
+///  `99` => `None`
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_type_from_encrypted_data(
+    encrypted_data: *const TariEncryptedOpenings,
+    commitment_bytes: *const ByteVector,
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut transaction_type = 99;
+
+    if encrypted_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("encrypted_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        match Commitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
+            Ok(commitment) => {
+                match (*wallet).runtime.block_on(
+                    (*wallet)
+                        .wallet
+                        .key_manager_service
+                        .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
+                ) {
+                    Ok(payment_id) => {
+                        if let PaymentId::Open { tx_type, .. } |
+                        PaymentId::AddressAndData { tx_type, .. } |
+                        PaymentId::TransactionInfo { tx_type, .. } = payment_id
+                        {
+                            transaction_type = c_uint::from(tx_type.as_u8());
+                        }
+                    },
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {:?}", e);
+                        error = LibWalletError::from(WalletError::TransactionServiceError(
+                            TransactionServiceError::TransactionError(e),
+                        ))
+                        .code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                    },
+                }
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Error creating a commitment from bytes: {:?}", e);
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        }
+    }
+
+    transaction_type
 }
 
 /// Creates a ByteVector containing the encrypted_data bytes from a TariEncryptedOpenings
@@ -6532,7 +6606,14 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        PaymentId::Empty,
+        PaymentId::open(
+            &format!("{} even coin splits", number_of_splits),
+            if number_of_splits > 1 {
+                TxType::CoinSplit
+            } else {
+                TxType::CoinJoin
+            },
+        ),
     )) {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
@@ -6597,10 +6678,15 @@ pub unsafe extern "C" fn wallet_coin_join(
         },
     };
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.coin_join(commitments, fee_per_gram.into(), None))
-    {
+    let commitments_len = commitments.len();
+    match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
+        commitments,
+        fee_per_gram.into(),
+        Some(PaymentId::open(
+            &format!("Coin join {} outputs", commitments_len),
+            TxType::CoinJoin,
+        )),
+    )) {
         Ok(tx_id) => {
             ptr::replace(error_ptr, 0);
             tx_id.as_u64()
@@ -7319,10 +7405,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        PaymentId::Empty
+        PaymentId::open("", TxType::PaymentToOther)
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => PaymentId::open_from_str(v),
+            Ok(v) => PaymentId::open(v, TxType::PaymentToOther),
             _ => {
                 error = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
@@ -11082,6 +11168,7 @@ mod test {
                     0,
                     key_manager,
                     vec![i, i + 1, i + 2, i + 3, i + 4],
+                    None,
                 ));
                 test_outputs.push(uout.clone());
                 alice_wallet_runtime
@@ -11261,6 +11348,7 @@ mod test {
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
                     vec![],
+                    None,
                 ));
                 (*alice_wallet)
                     .runtime
@@ -11312,6 +11400,157 @@ mod test {
             assert_eq!((*outputs).len, 11);
             assert_eq!(utxos.len(), 11);
             destroy_tari_vector(outputs);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_config_destroy(transport_config_alice);
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines, clippy::needless_collect)]
+    fn test_wallet_transaction_type_from_encrypted_data() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_config_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                10800,
+                false,
+                error_ptr,
+            );
+
+            let passphrase: *const c_char =
+                CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
+            let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let alice_wallet = wallet_create(
+                void_ptr,
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                0,
+                passphrase,
+                ptr::null(),
+                ptr::null(),
+                network_str,
+                dns_string,
+                ptr::null(),
+                true,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                wallet_scanned_height_callback,
+                base_node_state_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+
+            // Tests for transaction type extraction from encrypted data
+            for tx_type in [
+                TxType::PaymentToOther,
+                TxType::PaymentToSelf,
+                TxType::Burn,
+                TxType::CoinSplit,
+                TxType::CoinJoin,
+                TxType::ValidatorNodeRegistration,
+                TxType::ClaimAtomicSwap,
+                TxType::HtlcAtomicSwapRefund,
+                TxType::CodeTemplateRegistration,
+                TxType::ImportedUtxoNoneRewindable,
+            ] {
+                for payment_id in [
+                    PaymentId::Open {
+                        user_data: "hallo world".as_bytes().to_vec(),
+                        tx_type: tx_type.clone(),
+                    },
+                    PaymentId::AddressAndData {
+                        sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
+                            .unwrap(),
+                        tx_type: tx_type.clone(),
+                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    },
+                    PaymentId::TransactionInfo {
+                        recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
+                            .unwrap(),
+                        sender_one_sided: false,
+                        amount: MicroMinotari::from(123456),
+                        fee: MicroMinotari::from(123),
+                        weight: 19000,
+                        inputs_count: 712,
+                        outputs_count: 3,
+                        tx_type: tx_type.clone(),
+                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    },
+                ] {
+                    let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(
+                        15000.into(),
+                        0,
+                        &(*alice_wallet).wallet.key_manager_service,
+                        vec![],
+                        Some(payment_id.clone()),
+                    ));
+                    assert_eq!(wallet_output.payment_id, payment_id);
+                    let utxo = (*alice_wallet)
+                        .runtime
+                        .block_on(wallet_output.to_transaction_output(&(*alice_wallet).wallet.key_manager_service))
+                        .unwrap();
+                    let commitment_bytes = Box::into_raw(Box::new(ByteVector(utxo.commitment.to_vec())));
+                    let encrypted_data_ptr = Box::into_raw(Box::new(utxo.encrypted_data));
+                    let transaction_type_extracted = transaction_type_from_encrypted_data(
+                        encrypted_data_ptr,
+                        commitment_bytes,
+                        alice_wallet,
+                        error_ptr,
+                    );
+                    assert_eq!(error, 0);
+                    assert_eq!(transaction_type_extracted, u32::from(tx_type.as_u8()));
+
+                    encrypted_data_destroy(encrypted_data_ptr);
+                    byte_vector_destroy(commitment_bytes);
+                }
+            }
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -11404,6 +11643,7 @@ mod test {
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
                     vec![],
+                    None,
                 ));
                 (*alice_wallet)
                     .runtime
@@ -11478,6 +11718,32 @@ mod test {
             assert_eq!(error, 0);
             assert!(result > 0);
 
+            // Verify payment ID is correctly set in the db and corresponds to the embedded value in encrypted data
+            let utxos_from_db = (*alice_wallet)
+                .wallet
+                .output_db
+                .fetch_outputs_by_query(OutputBackendQuery {
+                    status: vec![OutputStatus::EncumberedToBeReceived],
+                    ..Default::default()
+                })
+                .unwrap();
+            for utxo in &utxos_from_db {
+                let extracted_payment_id = (*alice_wallet)
+                    .runtime
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .key_manager_service
+                            .extract_payment_id_from_encrypted_data(
+                                &utxo.wallet_output.encrypted_data,
+                                &utxo.commitment,
+                                None,
+                            ),
+                    )
+                    .unwrap();
+                assert_eq!(utxo.payment_id, extracted_payment_id);
+            }
+
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
@@ -11532,6 +11798,27 @@ mod test {
 
             // checking fee
             assert_eq!(pre_join_total_amount - post_join_total_amount, (*preview).fee);
+
+            // Verify payment ID is correctly set and can be accessed via the FFI
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived]))),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                assert_eq!(
+                    OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
+                    OutputStatus::EncumberedToBeReceived
+                );
+                assert_eq!(payment_id_c_str, &format!("{}", utxo_from_db.payment_id));
+                assert!(payment_id_c_str.contains("CoinJoin"));
+            }
 
             destroy_tari_vector(outputs);
             destroy_tari_vector(commitments);
@@ -11627,6 +11914,7 @@ mod test {
                     0,
                     &(*alice_wallet).wallet.key_manager_service,
                     vec![],
+                    None,
                 ));
                 (*alice_wallet)
                     .runtime
@@ -11704,6 +11992,32 @@ mod test {
             assert_eq!(error, 0);
             assert!(result > 0);
 
+            // Verify payment ID is correctly set in the db and corresponds to the embedded value in encrypted data
+            let utxos_from_db = (*alice_wallet)
+                .wallet
+                .output_db
+                .fetch_outputs_by_query(OutputBackendQuery {
+                    status: vec![OutputStatus::EncumberedToBeReceived],
+                    ..Default::default()
+                })
+                .unwrap();
+            for utxo in &utxos_from_db {
+                let extracted_payment_id = (*alice_wallet)
+                    .runtime
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .key_manager_service
+                            .extract_payment_id_from_encrypted_data(
+                                &utxo.wallet_output.encrypted_data,
+                                &utxo.commitment,
+                                None,
+                            ),
+                    )
+                    .unwrap();
+                assert_eq!(utxo.payment_id, extracted_payment_id);
+            }
+
             let unspent_outputs = (*alice_wallet)
                 .wallet
                 .output_db
@@ -11764,6 +12078,27 @@ mod test {
 
             // checking fee
             assert_eq!(pre_split_total_amount - post_split_total_amount, (*preview).fee);
+
+            // Verify payment ID is correctly set and can be accessed via the FFI
+            let outputs = wallet_get_utxos(
+                alice_wallet,
+                0,
+                20,
+                TariUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::EncumberedToBeReceived]))),
+                0,
+                error_ptr,
+            );
+            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                assert_eq!(
+                    OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
+                    OutputStatus::EncumberedToBeReceived
+                );
+                assert_eq!(payment_id_c_str, &format!("{}", utxo_from_db.payment_id));
+                assert!(payment_id_c_str.contains("CoinSplit"));
+            }
 
             destroy_tari_vector(outputs);
             destroy_tari_vector(commitments);
@@ -11857,17 +12192,16 @@ mod test {
             for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on(
-                        (*alice_wallet).wallet.output_manager_service.add_output(
-                            (*alice_wallet).runtime.block_on(create_test_input(
-                                (15000 * i).into(),
-                                0,
-                                key_manager,
-                                vec![],
-                            )),
+                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
+                        (*alice_wallet).runtime.block_on(create_test_input(
+                            (15000 * i).into(),
+                            0,
+                            key_manager,
+                            vec![],
                             None,
-                        ),
-                    )
+                        )),
+                        None,
+                    ))
                     .unwrap();
             }
 

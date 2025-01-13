@@ -2200,7 +2200,11 @@ mod test {
         key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+            Transaction,
+        },
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -2280,7 +2284,7 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(PaymentId::open_from_str("Yo!"))
+            .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
             .unwrap()
@@ -2315,7 +2319,7 @@ mod test {
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2334,7 +2338,7 @@ mod test {
                 fee: stp.get_fee_amount().unwrap(),
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2400,7 +2404,7 @@ mod test {
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2418,7 +2422,7 @@ mod test {
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2489,7 +2493,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2519,7 +2523,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2679,7 +2683,7 @@ mod test {
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2707,7 +2711,7 @@ mod test {
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2758,7 +2762,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2822,7 +2826,7 @@ mod test {
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2845,7 +2849,7 @@ mod test {
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2890,7 +2894,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3032,7 +3036,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

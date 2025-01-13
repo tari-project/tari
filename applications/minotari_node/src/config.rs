@@ -135,7 +135,7 @@ pub struct BaseNodeConfig {
     pub status_line_interval: Duration,
     /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
-    /// Liveness meta data auto ping interval between peers
+    /// Liveness metadata auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
     /// The state_machine config settings

@@ -54,7 +54,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
@@ -825,7 +825,10 @@ where
                         binary_url,
                     },
                     UtxoSelectionCriteria::default(),
-                    PaymentId::open_from_str(&format!("Template Registration: {}", template_name)),
+                    PaymentId::open(
+                        &format!("Template Registration: {}", template_name),
+                        TxType::CodeTemplateRegistration,
+                    ),
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     reply_channel.take().expect("Reply channel is not set"),
@@ -1115,7 +1118,15 @@ where
             let (fee, transaction) = self
                 .resources
                 .output_manager_service
-                .create_pay_to_self_transaction(tx_id, amount, selection_criteria, output_features, fee_per_gram, None)
+                .create_pay_to_self_transaction(
+                    tx_id,
+                    amount,
+                    selection_criteria,
+                    output_features,
+                    fee_per_gram,
+                    None,
+                    payment_id.clone(),
+                )
                 .await?;
 
             // Notify that the transaction was successfully resolved.
@@ -1463,6 +1474,8 @@ where
         let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
+        let payment_id =
+            PaymentId::add_sender_address(payment_id, self.resources.interactive_tari_address.clone(), None);
         let mut stp = self
             .resources
             .output_manager_service
@@ -1477,7 +1490,7 @@ where
                 covenant.clone(),
                 minimum_value_promise,
                 destination.clone(),
-                PaymentId::Empty,
+                payment_id.clone(),
             )
             .await?;
 
@@ -1561,7 +1574,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
-                PaymentId::Address(self.resources.interactive_tari_address.clone()),
+                payment_id.clone(),
             )
             .await?
             .with_input_data(ExecutionStack::default())
@@ -1673,15 +1686,18 @@ where
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = match payment_id {
-            PaymentId::Open(v) => PaymentId::AddressAndData {
-                sender_address: self.resources.interactive_tari_address.clone(),
-                user_data: v,
-            },
-            PaymentId::Empty => PaymentId::AddressAndData {
-                sender_address: self.resources.interactive_tari_address.clone(),
-                user_data: vec![],
-            },
+        let payment_id = match payment_id.clone() {
+            PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
+                payment_id,
+                self.resources.interactive_tari_address.clone(),
+                if dest_address == self.resources.one_sided_tari_address ||
+                    dest_address == self.resources.interactive_tari_address
+                {
+                    Some(TxType::PaymentToSelf)
+                } else {
+                    Some(TxType::PaymentToOther)
+                },
+            ),
             _ => payment_id,
         };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
@@ -1915,7 +1931,11 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
+        let payment_id = PaymentId::AddressAndData {
+            sender_address: self.resources.interactive_tari_address.clone(),
+            tx_type: TxType::PaymentToOther,
+            user_data: vec![],
+        };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Prepare sender part of the transaction
@@ -2158,7 +2178,17 @@ where
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        trace!(target: LOG_TARGET, "Burning transaction start - TxId: {}", tx_id);
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.interactive_tari_address.clone(),
+            Some(TxType::Burn),
+        );
+        trace!(
+            target: LOG_TARGET,
+            "Burning transaction start - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, \
+            selection: {}",
+            tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+        );
         let output_features = claim_public_key
             .as_ref()
             .cloned()
@@ -2253,7 +2283,7 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&recovery_key_id),
-                PaymentId::Address(self.resources.interactive_tari_address.clone()),
+                payment_id.clone(),
             )
             .await?
             .with_input_data(Default::default())
@@ -3044,28 +3074,59 @@ where
                         };
                         // we should only be able to recover 1 output per tx, but we use the vec here to be safe
                         let mut source_address = None;
+                        let mut destination_address = None;
                         let mut payment_id = None;
                         let mut amount = None;
                         for ro in recovered {
                             if source_address.is_none() {
+                                payment_id = Some(ro.output.payment_id.clone());
                                 match &ro.output.payment_id {
                                     PaymentId::AddressAndData {
                                         sender_address: address,
+                                        tx_type: _,
                                         user_data: _,
-                                    } |
-                                    PaymentId::Address(address) => {
+                                    } => {
                                         source_address = Some(address.clone());
-                                        payment_id = Some(ro.output.payment_id.clone());
+                                        destination_address = Some(self.resources.one_sided_tari_address.clone());
                                         amount = Some(ro.output.value);
                                     },
                                     PaymentId::TransactionInfo {
                                         recipient_address,
                                         amount: tx_amount,
+                                        tx_type,
+                                        sender_one_sided,
                                         ..
                                     } => {
-                                        source_address = Some(recipient_address.clone());
-                                        payment_id = Some(ro.output.payment_id.clone());
                                         amount = Some(*tx_amount);
+                                        let own_address = if *sender_one_sided {
+                                            self.resources.one_sided_tari_address.clone()
+                                        } else {
+                                            self.resources.interactive_tari_address.clone()
+                                        };
+                                        match tx_type {
+                                            TxType::PaymentToOther => {
+                                                source_address = Some(own_address.clone());
+                                                destination_address = Some(recipient_address.clone());
+                                            },
+                                            TxType::Burn => {
+                                                source_address = Some(own_address.clone());
+                                                destination_address = Some(TariAddress::default());
+                                            },
+                                            TxType::PaymentToSelf |
+                                            TxType::CoinSplit |
+                                            TxType::CoinJoin |
+                                            TxType::ValidatorNodeRegistration |
+                                            TxType::CodeTemplateRegistration |
+                                            TxType::ClaimAtomicSwap |
+                                            TxType::HtlcAtomicSwapRefund => {
+                                                source_address = Some(own_address.clone());
+                                                destination_address = Some(own_address.clone());
+                                            },
+                                            TxType::ImportedUtxoNoneRewindable => {
+                                                source_address = Some(TariAddress::default());
+                                                destination_address = Some(recipient_address.clone());
+                                            },
+                                        }
                                     },
                                     _ => payment_id = Some(ro.output.payment_id.clone()),
                                 };
@@ -3074,7 +3135,7 @@ where
                         let completed_transaction = CompletedTransaction::new(
                             tx_id,
                             source_address.clone().unwrap_or_default(),
-                            self.resources.one_sided_tari_address.clone(),
+                            destination_address.clone().unwrap_or_default(),
                             amount.unwrap_or_default(),
                             transaction.body.get_total_fee()?,
                             transaction.clone(),
@@ -3533,17 +3594,33 @@ where
         let (direction, amount, destination_address) = if let PaymentId::TransactionInfo {
             recipient_address,
             amount,
-            burn,
+            tx_type,
             ..
         } = payment_id.clone()
         {
             (
-                TransactionDirection::Outbound,
+                match tx_type {
+                    TxType::PaymentToOther | TxType::Burn => TransactionDirection::Outbound,
+                    TxType::PaymentToSelf |
+                    TxType::CoinSplit |
+                    TxType::CoinJoin |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CodeTemplateRegistration |
+                    TxType::ClaimAtomicSwap |
+                    TxType::HtlcAtomicSwapRefund |
+                    TxType::ImportedUtxoNoneRewindable => TransactionDirection::Inbound,
+                },
                 amount,
-                if burn {
-                    TariAddress::default()
-                } else {
-                    recipient_address
+                match tx_type {
+                    TxType::PaymentToOther | TxType::ImportedUtxoNoneRewindable => recipient_address.clone(),
+                    TxType::Burn => TariAddress::default(),
+                    TxType::PaymentToSelf |
+                    TxType::CoinSplit |
+                    TxType::CoinJoin |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CodeTemplateRegistration |
+                    TxType::ClaimAtomicSwap |
+                    TxType::HtlcAtomicSwapRefund => self.resources.one_sided_tari_address.clone(),
                 },
             )
         } else {

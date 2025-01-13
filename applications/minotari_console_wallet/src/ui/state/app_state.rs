@@ -60,7 +60,12 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
-    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TemplateType, TransactionError},
+    transaction_components::{
+        encrypted_data::{PaymentId, TxType},
+        OutputFeatures,
+        TemplateType,
+        TransactionError,
+    },
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
@@ -1208,10 +1213,15 @@ impl CompletedTransactionInfo {
         let outputs_count = tx.transaction.body.outputs().len();
         let coinbase = tx.transaction.body.contains_coinbase();
         // Faux transactions for scanned change outputs must correspond to the original transaction
-        let burn = if let PaymentId::TransactionInfo { burn, .. } = tx.payment_id {
-            burn
+        let burn = if tx.transaction.body.contains_burn() {
+            true
+        } else if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        {
+            tx_type == TxType::Burn
         } else {
-            tx.transaction.body.contains_burn()
+            false
         };
 
         Ok(Self {

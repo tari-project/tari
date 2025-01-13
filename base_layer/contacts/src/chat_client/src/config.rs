@@ -86,7 +86,7 @@ pub struct ChatClientConfig {
     pub p2p: P2pConfig,
     /// If set this node will only sync to the nodes in this set
     pub force_sync_peers: StringList,
-    /// Liveness meta data auto ping interval between peers
+    /// Liveness metadata auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
     /// The location of the log path

@@ -42,9 +42,8 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             OutputFeatures,
-            OutputType,
             TransactionOutput,
             TransactionOutputVersion,
             WalletOutput,
@@ -422,16 +421,6 @@ where KM: TransactionKeyManagerInterface
                             .own_address
                             .features()
                             .contains(TariAddressFeatures::INTERACTIVE);
-                        let burn = if let Some(recipient) = self.recipient.clone() {
-                            recipient.recipient_output_features.output_type == OutputType::Burn
-                        } else {
-                            false
-                        };
-                        let burn = burn ||
-                            self.sender_custom_outputs
-                                .iter()
-                                .any(|v| v.output.features.output_type == OutputType::Burn) ||
-                            self.burn_commitment.is_some();
 
                         let mut payment_id = PaymentId::TransactionInfo {
                             recipient_address: TariAddress::default(),
@@ -441,7 +430,16 @@ where KM: TransactionKeyManagerInterface
                             weight: weight_without_change + weight_of_change,
                             inputs_count: num_inputs,
                             outputs_count: num_outputs + 1,
-                            burn,
+                            tx_type: if let Some(
+                                PaymentId::Open { tx_type, .. } | PaymentId::AddressAndData { tx_type, .. },
+                            ) = self.payment_id.clone()
+                            {
+                                tx_type
+                            } else if self.kernel_features.is_burned() {
+                                TxType::Burn
+                            } else {
+                                TxType::default()
+                            },
                             user_data: if let Some(data) = self.payment_id.clone() {
                                 data.user_data_as_bytes()
                             } else {
@@ -450,13 +448,24 @@ where KM: TransactionKeyManagerInterface
                         };
                         if let Some(recipient) = self.recipient.clone() {
                             payment_id.transaction_info_set_amount(recipient.amount);
-                            if !burn {
-                                payment_id.transaction_info_set_address(recipient.recipient_address);
+                            match payment_id.get_type() {
+                                TxType::PaymentToOther => {
+                                    payment_id.transaction_info_set_address(recipient.recipient_address)
+                                },
+                                TxType::PaymentToSelf |
+                                TxType::CoinSplit |
+                                TxType::CoinJoin |
+                                TxType::ValidatorNodeRegistration |
+                                TxType::CodeTemplateRegistration |
+                                TxType::ClaimAtomicSwap |
+                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
+                                _ => {},
                             }
                         } else {
                             payment_id.transaction_info_set_amount(total_to_self);
                             payment_id.transaction_info_set_address(own_address);
                         }
+                        trace!(target: LOG_TARGET, "Modified change payment id: {}, TxId: {:?}", payment_id, self.tx_id);
 
                         let encrypted_data = self
                             .key_manager
@@ -759,7 +768,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![], None).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             MicroMinotari(4),
@@ -824,6 +833,7 @@ mod test {
             0,
             &key_manager,
             vec![],
+            None,
         )
         .await;
         let output = p
@@ -884,7 +894,7 @@ mod test {
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(2));
-        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![]).await;
+        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![], None).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -906,7 +916,7 @@ mod test {
             p.get_size_for_default_features_and_scripts(1)
                 .expect("Failed to borsh serialized size"),
         );
-        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![]).await;
+        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
@@ -944,7 +954,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let output = create_wallet_output_with_data(
             script.clone(),
@@ -998,8 +1008,8 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
-        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
+        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![], None).await;
         let fee_per_gram = MicroMinotari(6);
 
         let script = script!(Nop).unwrap();

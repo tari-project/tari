@@ -4,7 +4,10 @@
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_common_types::wallet_types::WalletType;
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::encrypted_data::{PaymentId, TxType},
+};
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -284,11 +287,7 @@ impl SendTab {
                                             amount.into(),
                                             UtxoSelectionCriteria::default(),
                                             fee_per_gram,
-                                            if self.payment_id_field.is_empty() {
-                                                PaymentId::Empty
-                                            } else {
-                                                PaymentId::open_from_str(&self.payment_id_field)
-                                            },
+                                            PaymentId::open(&self.payment_id_field, TxType::PaymentToOther),
                                             tx,
                                         ),
                                     ) {
@@ -308,11 +307,7 @@ impl SendTab {
                                         amount.into(),
                                         UtxoSelectionCriteria::default(),
                                         fee_per_gram,
-                                        if self.payment_id_field.is_empty() {
-                                            PaymentId::Empty
-                                        } else {
-                                            PaymentId::open_from_str(&self.payment_id_field)
-                                        },
+                                        PaymentId::open(&self.payment_id_field, TxType::PaymentToOther),
                                         tx,
                                     )) {
                                         Err(e) => {

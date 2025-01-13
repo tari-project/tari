@@ -48,7 +48,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CoinBaseExtra,
             EncryptedData,
             OutputFeatures,
@@ -705,12 +705,15 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         amount,
         fee_per_gram: fee,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_str(&format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            source_wallet.as_str(),
-            dest_wallet.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                source_wallet.as_str(),
+                dest_wallet.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -766,12 +769,15 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
-        payment_id: PaymentId::open_from_str(&format!(
-            "One sided transfer amount {} from {} to {}",
-            amount,
-            source_wallet.as_str(),
-            dest_wallet.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "One sided transfer amount {} from {} to {}",
+                amount,
+                source_wallet.as_str(),
+                dest_wallet.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -865,13 +871,16 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // mimblewimble transaction
-        payment_id: PaymentId::open_from_str(&format!(
-            "Transfer amount {} from {} to {} as fee {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str(),
-            fee_per_gram
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "Transfer amount {} from {} to {} as fee {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str(),
+                fee_per_gram
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -1296,12 +1305,15 @@ async fn send_num_transactions_to_wallets_at_fee(
             amount,
             fee_per_gram,
             payment_type: 0, // standard mimblewimble transaction
-            payment_id: PaymentId::open_from_str(&format!(
-                "transfer amount {} from {} to {}",
-                amount,
-                sender_wallet.as_str(),
-                receiver_wallet.as_str()
-            ))
+            payment_id: PaymentId::open(
+                &format!(
+                    "transfer amount {} from {} to {}",
+                    amount,
+                    sender_wallet.as_str(),
+                    receiver_wallet.as_str()
+                ),
+                TxType::PaymentToOther,
+            )
             .to_bytes(),
         };
         let transfer_req = TransferRequest {
@@ -1438,12 +1450,15 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
         payment_type: 0,                // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_str(&format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -1633,12 +1648,15 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_str(&format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver1.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver1.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
 
@@ -1647,12 +1665,15 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_str(&format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver2.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver2.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -1764,8 +1785,11 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_str(&format!("transfer amount {} from {} to self", amount, sender.as_str()))
-            .to_bytes(),
+        payment_id: PaymentId::open(
+            &format!("transfer amount {} from {} to self", amount, sender.as_str()),
+            TxType::PaymentToSelf,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1844,13 +1868,16 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble transaction
-        payment_id: PaymentId::open_from_str(&format!(
-            "Atomic Swap from {} to {} with amount {} at fee {}",
-            sender.as_str(),
-            receiver.as_str(),
-            amount,
-            fee_per_gram
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "Atomic Swap from {} to {} with amount {} at fee {}",
+                sender.as_str(),
+                receiver.as_str(),
+                amount,
+                fee_per_gram
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
 
@@ -2135,12 +2162,15 @@ async fn send_one_sided_stealth_transaction(
         amount,
         fee_per_gram,
         payment_type: 2, // one sided stealth transaction
-        payment_id: PaymentId::open_from_str(&format!(
-            "One sided stealth transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str()
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "One sided stealth transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
         .to_bytes(),
     };
     let transfer_req = TransferRequest {
@@ -2327,8 +2357,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_str(&format!("I import {} unspent outputs to {}", wallet_a, wallet_b))
-            .to_bytes(),
+        payment_id: PaymentId::open(
+            &format!("I import {} unspent outputs to {}", wallet_a, wallet_b),
+            TxType::ImportedUtxoNoneRewindable,
+        )
+        .to_bytes(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2449,8 +2482,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_str(&format!("I import {} spent outputs to {}", wallet_a, wallet_b))
-            .to_bytes(),
+        payment_id: PaymentId::open(
+            &format!("I import {} spent outputs to {}", wallet_a, wallet_b),
+            TxType::ImportedUtxoNoneRewindable,
+        )
+        .to_bytes(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2570,10 +2606,13 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: PaymentId::open_from_str(&format!(
-            "I import {} unspent outputs as pre_mine outputs to {}",
-            wallet_a, wallet_b
-        ))
+        payment_id: PaymentId::open(
+            &format!(
+                "I import {} unspent outputs as pre_mine outputs to {}",
+                wallet_a, wallet_b
+            ),
+            TxType::ImportedUtxoNoneRewindable,
+        )
         .to_bytes(),
     };
 
@@ -2661,13 +2700,16 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             payment_type: 0, // mimblewimble transaction
-            payment_id: PaymentId::open_from_str(&format!(
-                "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
-                amount,
-                sender.as_str(),
-                receiver.as_str(),
-                fee_per_gram
-            ))
+            payment_id: PaymentId::open(
+                &format!(
+                    "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
+                    amount,
+                    sender.as_str(),
+                    receiver.as_str(),
+                    fee_per_gram
+                ),
+                TxType::PaymentToOther,
+            )
             .to_bytes(),
         };
 
@@ -2828,7 +2870,7 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
         amount,
         fee_per_gram: fee,
         claim_public_key: identity.public_key,
-        payment_id: PaymentId::open_from_str("Burning some tari").to_bytes(),
+        payment_id: PaymentId::open("Burning some tari", TxType::Burn).to_bytes(),
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();

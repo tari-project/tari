@@ -1396,7 +1396,7 @@ void covenant_destroy(TariCovenant *covenant);
  * `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
  *
  * ## Returns
- * `TariEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
+ * `TariEncryptedOpenings` - Returns encrypted data. Note that it will be ptr::null_mut() if any argument is
  * null or if there was an error with the contents of bytes
  *
  * # Safety
@@ -1405,6 +1405,35 @@ void covenant_destroy(TariCovenant *covenant);
  */
 TariEncryptedOpenings *encrypted_data_create_from_bytes(const struct ByteVector *encrypted_data_bytes,
                                                         int *error_out);
+
+/**
+ * Extract the transaction type from a TariEncryptedOpenings
+ *
+ * ## Arguments
+ * `encrypted_data` - The encrypted data
+ * `commitment_bytes` - The public commitment component as a ByteVector
+ * `wallet` - The TariWallet pointe
+ *
+ * ## Returns
+ *  `0` => `PaymentToOther`,
+ *  `1` => `PaymentToSelf`,
+ *  `2` => `Burn`,
+ *  `3` => `CoinSplit`,
+ *  `4` => `CoinJoin`,
+ *  `5` => `ValidatorNodeRegistration`,
+ *  `6` => `ClaimAtomicSwap`,
+ *  `7` => `HtlcAtomicSwapRefund`,
+ *  `8` => `CodeTemplateRegistration`,
+ *  `9` => `ImportedUtxoNoneRewindable`,
+ *  `99` => `None`
+ *
+ * # Safety
+ * None
+ */
+unsigned int transaction_type_from_encrypted_data(const TariEncryptedOpenings *encrypted_data,
+                                                  const struct ByteVector *commitment_bytes,
+                                                  struct TariWallet *wallet,
+                                                  int *error_out);
 
 /**
  * Creates a ByteVector containing the encrypted_data bytes from a TariEncryptedOpenings

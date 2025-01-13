@@ -56,7 +56,12 @@ use tari_core::{
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            EncryptedData,
+            OutputFeatures,
+            UnblindedOutput,
+        },
         CryptoFactories,
     },
 };
@@ -760,16 +765,20 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
+        let payment_id = payment_id.unwrap_or(PaymentId::open(
+            &format!("Coin join {} outputs", commitments.len()),
+            TxType::CoinJoin,
+        ));
         let coin_join_tx = self
             .output_manager_service
-            .create_coin_join(commitments, fee_per_gram)
+            .create_coin_join(commitments, fee_per_gram, payment_id.clone())
             .await;
 
         match coin_join_tx {
             Ok((tx_id, tx, output_value)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, tx, output_value, payment_id.unwrap_or_default())
+                    .submit_transaction(tx_id, tx, output_value, payment_id)
                     .await;
 
                 match coin_tx {
