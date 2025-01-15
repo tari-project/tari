@@ -1009,7 +1009,8 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
     let amount_per_output = 10_000 * uT;
     // This value was determined by running the test and evaluating the error message,
     // e.g. `TransactionTooLarge { got: 3205068, expected: 3135488 }`
-    let max_number_of_outputs_in_frame = (rpc::RPC_MAX_FRAME_SIZE as f64 / 1175.0f64).ceil() as usize;
+    let tx_size = rpc::RPC_MAX_FRAME_SIZE - (2 * 1024 * 1024);
+    let max_number_of_outputs_in_frame = (tx_size as f64 / 1175.0f64).ceil() as usize;
     let number_of_outputs = max_number_of_outputs_in_frame + 100;
     let mut uo_reference = make_input(
         &mut OsRng,
