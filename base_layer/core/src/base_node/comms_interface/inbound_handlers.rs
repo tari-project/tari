@@ -125,6 +125,15 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
             )),
+            NodeCommsRequest::GetTargetDifficultyNextBlock(algo) => {
+                let header = self.blockchain_db.fetch_tip_header().await?;
+                let constants = self.consensus_manager.consensus_constants(header.header().height);
+                let target_difficulty = self.get_target_difficulty_for_next_block(algo, constants, *header.hash())
+                    .await?;
+                Ok(NodeCommsResponse::TargetDifficulty(
+                    target_difficulty
+                ))
+            },
             NodeCommsRequest::FetchHeaders(range) => {
                 let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))

@@ -43,6 +43,7 @@ pub struct MmrStateRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
+    GetTargetDifficultyNextBlock(PowAlgorithm),
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
@@ -74,6 +75,7 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
+            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({:?})", algo),
             FetchHeaders(range) => {
                 write!(f, "FetchHeaders ({:?})", range)
             },
