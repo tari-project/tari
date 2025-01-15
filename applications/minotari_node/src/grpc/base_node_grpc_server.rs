@@ -367,42 +367,49 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_network_hash_rate(
         &self,
         _request: Request<tari_rpc::GetNetworkHashRateRequest>,
-    ) -> Result<Response<tari_rpc::GetNetworkHashRateResponse>, Status>{
+    ) -> Result<Response<tari_rpc::GetNetworkHashRateResponse>, Status> {
         trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
         let metadata = handler.get_metadata().await.map_err(|e| {
             warn!(
-                    target: LOG_TARGET,
-                    "Could not get node tip: {}",
-                    e.to_string()
-                );
+                target: LOG_TARGET,
+                "Could not get node tip: {}",
+                e.to_string()
+            );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
-        let reward = self.consensus_rules.get_block_reward_at(metadata.best_block_height()).as_u64();
+        let reward = self
+            .consensus_rules
+            .get_block_reward_at(metadata.best_block_height())
+            .as_u64();
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
-        let sha_target_difficulty = handler.get_target_difficulty_for_next_block(PowAlgorithm::Sha3x).await.map_err(|e| {
-            warn!(
+        let sha_target_difficulty = handler
+            .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
+            .await
+            .map_err(|e| {
+                warn!(
                     target: LOG_TARGET,
                     "Could not get target difficulty for Sha3x: {}",
                     e.to_string()
                 );
-            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-        })?;
-        let sha_target_time = constants
-            .pow_target_block_interval(PowAlgorithm::Sha3x);
-        let sha3x_estimated_hash_rate = sha_target_difficulty.as_u64()/sha_target_time;
-        let rx_target_difficulty = handler.get_target_difficulty_for_next_block(PowAlgorithm::RandomX).await.map_err(|e| {
-            warn!(
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+            })?;
+        let sha_target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
+        let sha3x_estimated_hash_rate = sha_target_difficulty.as_u64() / sha_target_time;
+        let rx_target_difficulty = handler
+            .get_target_difficulty_for_next_block(PowAlgorithm::RandomX)
+            .await
+            .map_err(|e| {
+                warn!(
                     target: LOG_TARGET,
                     "Could not get target difficulty for Rx: {}",
                     e.to_string()
                 );
-            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-        })?;
-        let rx_target_time = constants
-            .pow_target_block_interval(PowAlgorithm::RandomX);
-        let randomx_estimated_hash_rate = rx_target_difficulty.as_u64()/rx_target_time;
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+            })?;
+        let rx_target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
+        let randomx_estimated_hash_rate = rx_target_difficulty.as_u64() / rx_target_time;
 
         let response = tari_rpc::GetNetworkHashRateResponse {
             reward,

@@ -39,10 +39,9 @@ use crate::{
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::TemplateRegistrationEntry,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
-use crate::proof_of_work::Difficulty;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
@@ -82,8 +81,15 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    pub async fn get_target_difficulty_for_next_block(&mut self, algo: PowAlgorithm) -> Result<Difficulty, CommsInterfaceError> {
-        match self.request_sender.call(NodeCommsRequest::GetTargetDifficultyNextBlock(algo)).await?? {
+    pub async fn get_target_difficulty_for_next_block(
+        &mut self,
+        algo: PowAlgorithm,
+    ) -> Result<Difficulty, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetTargetDifficultyNextBlock(algo))
+            .await??
+        {
             NodeCommsResponse::TargetDifficulty(target_difficulty) => Ok(target_difficulty),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
