@@ -689,6 +689,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_new_block_template(
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
