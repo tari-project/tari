@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc};
-use tokio::sync::RwLock;
+use std::sync::Arc;
 
 use tari_common_types::types::FixedHash;
 use tari_core::blocks::NewBlockTemplate;
+use tokio::sync::RwLock;
 
 pub struct DataCache {
     inner_data_cache: Arc<RwLock<InnerDataCache>>,
@@ -84,6 +84,7 @@ impl DataCache {
     pub async fn set_randomx_new_block_template(&self, new_block_template: NewBlockTemplate, current_tip: FixedHash) {
         self.inner_data_cache.write().await.randomx_new_block_template = (new_block_template, current_tip);
     }
+
     pub async fn set_sha3x_new_block_template(&self, new_block_template: NewBlockTemplate, current_tip: FixedHash) {
         self.inner_data_cache.write().await.sha3x_new_block_template = (new_block_template, current_tip);
     }
@@ -92,17 +93,16 @@ impl DataCache {
 struct InnerDataCache {
     pub randomx_estimated_hash_rate: (u64, FixedHash),
     pub sha3x_estimated_hash_rate: (u64, FixedHash),
-    pub sha3x_new_block_template: (NewBlockTemplate,FixedHash),
-    pub randomx_new_block_template: (NewBlockTemplate,FixedHash),
+    pub sha3x_new_block_template: (NewBlockTemplate, FixedHash),
+    pub randomx_new_block_template: (NewBlockTemplate, FixedHash),
 }
 impl Default for InnerDataCache {
     fn default() -> Self {
         Self {
             randomx_estimated_hash_rate: (0, FixedHash::default()),
             sha3x_estimated_hash_rate: (0, FixedHash::default()),
-            sha3x_new_block_template: (NewBlockTemplate::empty(),FixedHash::default()),
-            randomx_new_block_template: (NewBlockTemplate::empty(),FixedHash::default()),
+            sha3x_new_block_template: (NewBlockTemplate::empty(), FixedHash::default()),
+            randomx_new_block_template: (NewBlockTemplate::empty(), FixedHash::default()),
         }
     }
 }
-

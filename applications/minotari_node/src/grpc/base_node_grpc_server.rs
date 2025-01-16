@@ -78,8 +78,8 @@ use tonic::{Request, Response, Status};
 use crate::{
     builder::BaseNodeContext,
     grpc::{
-        data_cache::DataCache,
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        data_cache::DataCache,
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
@@ -387,7 +387,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .get_block_reward_at(metadata.best_block_height())
             .as_u64();
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
-        let sha3x_estimated_hash_rate = match self.data_cache.get_sha3x_estimated_hash_rate(metadata.best_block_hash())
+        let sha3x_estimated_hash_rate = match self
+            .data_cache
+            .get_sha3x_estimated_hash_rate(metadata.best_block_hash())
             .await
         {
             Some(hash_rate) => hash_rate,
@@ -406,12 +408,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
                 let estimated_hash_rate = target_difficulty.as_u64() / target_time;
                 self.data_cache
-                    .set_sha3x_estimated_hash_rate(estimated_hash_rate, metadata.best_block_hash().clone())
+                    .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
                 estimated_hash_rate
             },
         };
-        let randomx_estimated_hash_rate = match self.data_cache.get_randomx_estimated_hash_rate(metadata.best_block_hash())
+        let randomx_estimated_hash_rate = match self
+            .data_cache
+            .get_randomx_estimated_hash_rate(metadata.best_block_hash())
             .await
         {
             Some(hash_rate) => hash_rate,
@@ -430,7 +434,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
                 let estimated_hash_rate = target_difficulty.as_u64() / target_time;
                 self.data_cache
-                    .set_randomx_estimated_hash_rate(estimated_hash_rate, metadata.best_block_hash().clone())
+                    .set_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
                 estimated_hash_rate
             },
@@ -722,45 +726,59 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
 
-        let new_template = match algo{
+        let new_template = match algo {
             PowAlgorithm::Sha3x => {
-                match self.data_cache.get_sha3x_new_block_template(metadata.best_block_hash()).await{
-                    Some(template) => {template},
+                match self
+                    .data_cache
+                    .get_sha3x_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
                     None => {
-                        let new_template = handler
-                            .get_new_block_template(algo, request.max_weight)
-                            .await
-                            .map_err(|e| {
-                                warn!(
-                    target: LOG_TARGET,
-                    "Could not get new block template: {}",
-                    e.to_string()
-                );
-                                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                            })?;
-                        self.data_cache.set_sha3x_new_block_template(new_template.clone(), metadata.best_block_hash().clone()).await;
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e.to_string()
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_sha3x_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
                         new_template
-                    }
+                    },
                 }
-                },
+            },
             PowAlgorithm::RandomX => {
-                match self.data_cache.get_randomx_new_block_template(metadata.best_block_hash()).await{
-                    Some(template) => {template},
+                match self
+                    .data_cache
+                    .get_randomx_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
                     None => {
-                        let new_template = handler
-                            .get_new_block_template(algo, request.max_weight)
-                            .await
-                            .map_err(|e| {
-                                warn!(
-                    target: LOG_TARGET,
-                    "Could not get new block template: {}",
-                    e.to_string()
-                );
-                                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                            })?;
-                        self.data_cache.set_randomx_new_block_template(new_template.clone(), metadata.best_block_hash().clone()).await;
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e.to_string()
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_randomx_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
                         new_template
-                    }
+                    },
                 }
             },
         };
