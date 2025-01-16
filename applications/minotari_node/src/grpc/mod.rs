@@ -22,5 +22,6 @@
 
 pub mod base_node_grpc_server;
 pub mod blocks;
+pub mod data_cache;
 pub mod hash_rate;
 pub mod helpers;

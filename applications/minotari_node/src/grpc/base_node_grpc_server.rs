@@ -78,6 +78,7 @@ use tonic::{Request, Response, Status};
 use crate::{
     builder::BaseNodeContext,
     grpc::{
+        data_cache::DataCache,
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
@@ -117,6 +118,7 @@ pub struct BaseNodeGrpcServer {
     report_grpc_error: bool,
     tari_pulse: TariPulseHandle,
     config: BaseNodeConfig,
+    data_cache: DataCache,
 }
 
 impl BaseNodeGrpcServer {
@@ -133,6 +135,7 @@ impl BaseNodeGrpcServer {
             report_grpc_error: ctx.get_report_grpc_error(),
             tari_pulse: ctx.tari_pulse(),
             config,
+            data_cache: DataCache::new(),
         }
     }
 
@@ -364,10 +367,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    async fn get_network_hash_rate(
+    async fn get_network_state(
         &self,
-        _request: Request<tari_rpc::GetNetworkHashRateRequest>,
-    ) -> Result<Response<tari_rpc::GetNetworkHashRateResponse>, Status> {
+        _request: Request<tari_rpc::GetNetworkStateRequest>,
+    ) -> Result<Response<tari_rpc::GetNetworkStateResponse>, Status> {
         trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
@@ -384,39 +387,69 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .get_block_reward_at(metadata.best_block_height())
             .as_u64();
         let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
-        let sha_target_difficulty = handler
-            .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
+        let sha3x_estimated_hash_rate = match self.data_cache.get_sha3x_estimated_hash_rate(metadata.best_block_hash())
             .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not get target difficulty for Sha3x: {}",
-                    e.to_string()
-                );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
-        let sha_target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
-        let sha3x_estimated_hash_rate = sha_target_difficulty.as_u64() / sha_target_time;
-        let rx_target_difficulty = handler
-            .get_target_difficulty_for_next_block(PowAlgorithm::RandomX)
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
+                    .await
+                    .map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for Sha3x: {}",
+                            e.to_string()
+                        );
+                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                    })?;
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
+                let estimated_hash_rate = target_difficulty.as_u64() / target_time;
+                self.data_cache
+                    .set_sha3x_estimated_hash_rate(estimated_hash_rate, metadata.best_block_hash().clone())
+                    .await;
+                estimated_hash_rate
+            },
+        };
+        let randomx_estimated_hash_rate = match self.data_cache.get_randomx_estimated_hash_rate(metadata.best_block_hash())
             .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not get target difficulty for Rx: {}",
-                    e.to_string()
-                );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
-        let rx_target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
-        let randomx_estimated_hash_rate = rx_target_difficulty.as_u64() / rx_target_time;
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomX)
+                    .await
+                    .map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for RandomX: {}",
+                            e.to_string()
+                        );
+                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                    })?;
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
+                let estimated_hash_rate = target_difficulty.as_u64() / target_time;
+                self.data_cache
+                    .set_randomx_estimated_hash_rate(estimated_hash_rate, metadata.best_block_hash().clone())
+                    .await;
+                estimated_hash_rate
+            },
+        };
 
-        let response = tari_rpc::GetNetworkHashRateResponse {
+        let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
+        let status_watch = self.state_machine_handle.get_status_info_watch();
+        let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
+
+        let response = tari_rpc::GetNetworkStateResponse {
+            metadata: Some(metadata.into()),
+            initial_sync_achieved: status_watch.borrow().bootstrapped,
+            base_node_state: state.into(),
+            failed_checkpoints,
             reward,
             sha3x_estimated_hash_rate,
             randomx_estimated_hash_rate,
         };
-        trace!(target: LOG_TARGET, "Sending GetNetworkHashRate response to client");
+        trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))
     }
 
@@ -680,18 +713,57 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let mut handler = self.node_service.clone();
+        let metadata = handler.get_metadata().await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get node tip: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
 
-        let new_template = handler
-            .get_new_block_template(algo, request.max_weight)
-            .await
-            .map_err(|e| {
-                warn!(
+        let new_template = match algo{
+            PowAlgorithm::Sha3x => {
+                match self.data_cache.get_sha3x_new_block_template(metadata.best_block_hash()).await{
+                    Some(template) => {template},
+                    None => {
+                        let new_template = handler
+                            .get_new_block_template(algo, request.max_weight)
+                            .await
+                            .map_err(|e| {
+                                warn!(
                     target: LOG_TARGET,
                     "Could not get new block template: {}",
                     e.to_string()
                 );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
+                                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                            })?;
+                        self.data_cache.set_sha3x_new_block_template(new_template.clone(), metadata.best_block_hash().clone()).await;
+                        new_template
+                    }
+                }
+                },
+            PowAlgorithm::RandomX => {
+                match self.data_cache.get_randomx_new_block_template(metadata.best_block_hash()).await{
+                    Some(template) => {template},
+                    None => {
+                        let new_template = handler
+                            .get_new_block_template(algo, request.max_weight)
+                            .await
+                            .map_err(|e| {
+                                warn!(
+                    target: LOG_TARGET,
+                    "Could not get new block template: {}",
+                    e.to_string()
+                );
+                                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                            })?;
+                        self.data_cache.set_randomx_new_block_template(new_template.clone(), metadata.best_block_hash().clone()).await;
+                        new_template
+                    }
+                }
+            },
+        };
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let pow = algo as i32;

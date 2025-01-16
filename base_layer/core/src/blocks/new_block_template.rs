@@ -74,6 +74,17 @@ impl NewBlockTemplate {
             is_mempool_in_sync,
         })
     }
+
+    pub fn empty() -> Self {
+        Self {
+            header: NewBlockHeaderTemplate::empty(),
+            body: AggregateBody::empty(),
+            target_difficulty: Difficulty::default(),
+            reward: MicroMinotari::default(),
+            total_fees: MicroMinotari::default(),
+            is_mempool_in_sync: false,
+        }
+    }
 }
 
 impl Display for NewBlockTemplate {
