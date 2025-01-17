@@ -7728,7 +7728,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
             // definitions and storage of a MimbleWimble CompletedTransaction we will remove CompletedTransactions with
             // the Completed and Broadcast states from the list returned by this FFI function
             for tx in completed_transactions
-                .values()
+                .iter()
                 .filter(|ct| ct.status != TransactionStatus::Completed)
                 .filter(|ct| ct.status != TransactionStatus::Broadcast)
                 .filter(|ct| ct.status != TransactionStatus::Imported)
@@ -7781,7 +7781,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 
     match pending_transactions {
         Ok(pending_transactions) => {
-            for tx in pending_transactions.values() {
+            for tx in &pending_transactions {
                 pending.push(tx.clone());
             }
 
@@ -7794,7 +7794,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
                 // list here in the FFI interface
                 for ct in completed_txs
-                    .values()
+                    .iter()
                     .filter(|ct| {
                         ct.status == TransactionStatus::Completed ||
                             ct.status == TransactionStatus::Broadcast ||
@@ -7851,7 +7851,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
         .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
     match pending_transactions {
         Ok(pending_transactions) => {
-            for tx in pending_transactions.values() {
+            for tx in &pending_transactions {
                 pending.push(tx.clone());
             }
             if let Ok(completed_txs) = (*wallet)
@@ -7863,7 +7863,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
                 // list here in the FFI interface
                 for ct in completed_txs
-                    .values()
+                    .iter()
                     .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
                     .filter(|ct| ct.direction == TransactionDirection::Outbound)
                 {
@@ -7950,7 +7950,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     };
 
     let mut completed = Vec::new();
-    for tx in completed_transactions.values() {
+    for tx in &completed_transactions {
         completed.push(tx.clone());
     }
     let runtime = match Runtime::new() {
@@ -7969,12 +7969,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
             return ptr::null_mut();
         },
     };
-    for tx in inbound_transactions.values() {
+    for tx in &inbound_transactions {
         let mut inbound_tx = CompletedTransaction::from(tx.clone());
         inbound_tx.destination_address = wallet_address.clone();
         completed.push(inbound_tx);
     }
-    for tx in outbound_transactions.values() {
+    for tx in &outbound_transactions {
         let mut outbound_tx = CompletedTransaction::from(tx.clone());
         outbound_tx.source_address = wallet_address.clone();
         completed.push(outbound_tx);
@@ -8018,7 +8018,10 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&TxId::from(transaction_id)) {
+            if let Some(tx) = completed_transactions
+                .iter()
+                .find(|tx| tx.tx_id == TxId::from(transaction_id))
+            {
                 if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
                     let completed = tx.clone();
                     return Box::into_raw(Box::new(completed));
@@ -8076,7 +8079,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&transaction_id) {
+            if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
                 if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Inbound
                 {
@@ -8094,7 +8097,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     match pending_transactions {
         Ok(pending_transactions) => {
-            if let Some(tx) = pending_transactions.get(&transaction_id) {
+            if let Some(tx) = pending_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
                 let pending = tx.clone();
                 return Box::into_raw(Box::new(pending));
             }
@@ -8150,7 +8153,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&transaction_id) {
+            if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
                 if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
                     tx.direction == TransactionDirection::Outbound
                 {
@@ -8168,7 +8171,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     match pending_transactions {
         Ok(pending_transactions) => {
-            if let Some(tx) = pending_transactions.get(&transaction_id) {
+            if let Some(tx) = pending_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
                 let pending = tx.clone();
                 return Box::into_raw(Box::new(pending));
             }
@@ -8217,7 +8220,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
 
     let mut transaction = None;
 
-    let mut completed_transactions = match (*wallet).runtime.block_on(
+    let completed_transactions = match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .transaction_service
@@ -8231,10 +8234,10 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         },
     };
 
-    if let Some(tx) = completed_transactions.remove(&transaction_id) {
-        transaction = Some(tx);
+    if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+        transaction = Some(tx.clone());
     } else {
-        let mut outbound_transactions = match (*wallet).runtime.block_on(
+        let outbound_transactions = match (*wallet).runtime.block_on(
             (*wallet)
                 .wallet
                 .transaction_service
@@ -8263,12 +8266,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                 return ptr::null_mut();
             },
         };
-        if let Some(tx) = outbound_transactions.remove(&transaction_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx);
+        if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+            let mut outbound_tx = CompletedTransaction::from(tx.clone());
             outbound_tx.source_address = address;
             transaction = Some(outbound_tx);
         } else {
-            let mut inbound_transactions = match (*wallet).runtime.block_on(
+            let inbound_transactions = match (*wallet).runtime.block_on(
                 (*wallet)
                     .wallet
                     .transaction_service
@@ -8281,8 +8284,8 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
                     return ptr::null_mut();
                 },
             };
-            if let Some(tx) = inbound_transactions.remove(&transaction_id) {
-                let mut inbound_tx = CompletedTransaction::from(tx);
+            if let Some(tx) = inbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+                let mut inbound_tx = CompletedTransaction::from(tx.clone());
                 inbound_tx.destination_address = address;
                 transaction = Some(inbound_tx);
             }
@@ -8291,7 +8294,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
 
     match transaction {
         Some(tx) => {
-            return Box::into_raw(Box::new(tx));
+            return Box::into_raw(Box::new(tx.clone()));
         },
         None => {
             error = LibWalletError::from(WalletError::TransactionServiceError(

@@ -726,7 +726,7 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_inbound_transactions()
                 .await?
-                .values()
+                .iter()
                 .map(|t| CompletedTransaction::from(t.clone()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
@@ -735,11 +735,10 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_outbound_transactions()
                 .await?
-                .values()
+                .iter()
                 .map(|t| CompletedTransaction::from(t.clone()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
-
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
             b.timestamp.partial_cmp(&a.timestamp).unwrap()
         });
@@ -752,26 +751,14 @@ impl AppStateInner {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
-        completed_transactions.extend(
-            self.wallet
-                .transaction_service
-                .get_completed_transactions()
-                .await?
-                .values()
-                .cloned()
-                .collect::<Vec<CompletedTransaction>>(),
-        );
+        completed_transactions.extend(self.wallet.transaction_service.get_completed_transactions().await?);
 
         completed_transactions.extend(
             self.wallet
                 .transaction_service
                 .get_cancelled_completed_transactions()
-                .await?
-                .values()
-                .cloned()
-                .collect::<Vec<CompletedTransaction>>(),
+                .await?,
         );
-
         completed_transactions.sort_by(|a, b| {
             b.timestamp
                 .partial_cmp(&a.timestamp)

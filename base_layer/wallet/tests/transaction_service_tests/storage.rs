@@ -163,8 +163,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         assert_eq!(&retrieved_outbound_tx, i);
         assert_eq!(retrieved_outbound_tx.send_count, 0);
         assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
-
-        assert_eq!(&retrieved_outbound_txs.get(&i.tx_id).unwrap(), &i);
+        assert!(retrieved_outbound_txs.iter().any(|tx| tx == i));
     }
 
     db.increment_send_count(outbound_txs[0].tx_id).unwrap();
@@ -270,7 +269,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_inbound_txs = db.get_pending_inbound_transactions().unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
     for i in inbound_txs.iter().take(messages.len()) {
-        let retrieved_tx = retrieved_inbound_txs.get(&i.tx_id).unwrap();
+        let retrieved_tx = retrieved_inbound_txs.iter().find(|tx| tx.tx_id == i.tx_id).unwrap();
         assert_eq!(&retrieved_tx, &i);
         assert_eq!(retrieved_tx.send_count, 0);
         assert!(retrieved_tx.last_send_timestamp.is_none());
@@ -361,14 +360,20 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         assert_eq!(
-            retrieved_completed_txs.get(&inbound_txs[i].tx_id).unwrap(),
+            retrieved_completed_txs
+                .iter()
+                .find(|tx| tx.tx_id == inbound_txs[i].tx_id)
+                .unwrap(),
             &CompletedTransaction {
                 tx_id: inbound_txs[i].tx_id,
                 ..completed_txs[i].clone()
             }
         );
         assert_eq!(
-            retrieved_completed_txs.get(&outbound_txs[i].tx_id).unwrap(),
+            retrieved_completed_txs
+                .iter()
+                .find(|tx| tx.tx_id == outbound_txs[i].tx_id)
+                .unwrap(),
             &completed_txs[i]
         );
     }
@@ -408,23 +413,23 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs_map = db.get_completed_transactions().unwrap();
-    let num_completed_txs = completed_txs_map.len();
+    let completed_txs = db.get_completed_transactions().unwrap();
+    let num_completed_txs = completed_txs.len();
     assert_eq!(db.get_cancelled_completed_transactions().unwrap().len(), 0);
 
-    let cancelled_tx_id = completed_txs_map[&1u64.into()].tx_id;
+    let cancelled_tx_id = completed_txs[1].tx_id;
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
     db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
         .unwrap();
-    let completed_txs_map = db.get_completed_transactions().unwrap();
-    assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
+    let completed_txs = db.get_completed_transactions().unwrap();
+    assert_eq!(completed_txs.len(), num_completed_txs - 1);
 
     db.get_cancelled_completed_transaction(cancelled_tx_id)
         .expect("Should find cancelled transaction");
 
-    let mut cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&cancelled_tx_id).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == cancelled_tx_id));
 
     let any_cancelled_completed_tx = db.get_any_transaction(cancelled_tx_id).unwrap().unwrap();
     if let WalletTransaction::Completed(tx) = any_cancelled_completed_tx {
@@ -481,9 +486,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled inbound tx");
     }
 
-    let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&999u64.into()).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == TxId::from(999u64)));
     let address = TariAddress::new_dual_address_with_default_features(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -530,9 +535,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     assert_eq!(db.get_pending_outbound_transactions().unwrap().len(), 0);
 
-    let mut cancelled_txs = db.get_cancelled_pending_outbound_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_pending_outbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&998u64.into()).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == TxId::from(998u64)));
 
     let any_cancelled_outbound_tx = db.get_any_transaction(998u64.into()).unwrap().unwrap();
     if let WalletTransaction::PendingOutbound(tx) = any_cancelled_outbound_tx {

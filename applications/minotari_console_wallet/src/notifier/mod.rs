@@ -196,7 +196,7 @@ impl Notifier {
             self.handle.spawn(async move {
                 match transaction_service.get_pending_outbound_transactions().await {
                     Ok(txs) => {
-                        if let Some(tx) = txs.get(&tx_id) {
+                        if let Some(tx) = txs.iter().find(|tx| tx.tx_id == tx_id) {
                             let args = args_from_outbound(tx, event);
                             let result = Command::new(program).args(&args).output();
                             let message = WalletEventMessage::Outbound {

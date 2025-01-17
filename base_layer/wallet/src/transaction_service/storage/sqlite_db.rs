@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::{Arc, RwLock},
 };
@@ -266,67 +265,49 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 None
             },
             DbKey::PendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from(o.clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from(o.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from((i).clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from((i).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from((o).clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from((o).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from(i.clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from(i.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CancelledCompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -1192,6 +1173,7 @@ impl InboundTransactionSql {
     ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(inbound_transactions::timestamp.desc())
             .load::<InboundTransactionSql>(conn)?)
     }
 
@@ -1456,6 +1438,7 @@ impl OutboundTransactionSql {
     ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(outbound_transactions::timestamp.desc())
             .load::<OutboundTransactionSql>(conn)?)
     }
 
@@ -1726,7 +1709,9 @@ impl CompletedTransactionSql {
             query.filter(completed_transactions::cancelled.is_null())
         };
 
-        Ok(query.load::<CompletedTransactionSql>(conn)?)
+        Ok(query
+            .order_by(completed_transactions::mined_timestamp.desc())
+            .load::<CompletedTransactionSql>(conn)?)
     }
 
     pub fn index_by_status_and_cancelled(

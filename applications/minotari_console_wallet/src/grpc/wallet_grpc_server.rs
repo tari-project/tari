@@ -771,7 +771,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
-            for (i, (_, txn)) in transactions.iter().enumerate() {
+            for (i, txn) in transactions.iter().enumerate() {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
@@ -1092,15 +1092,17 @@ async fn handle_pending_outbound(
     transaction_service: &mut TransactionServiceHandle,
     sender: &mut Sender<Result<TransactionEventResponse, Status>>,
 ) {
-    match transaction_service.get_pending_outbound_transactions().await {
-        Ok(mut txs) => {
-            if let Some(tx) = txs.remove(&tx_id) {
+    use models::WalletTransaction::PendingOutbound;
+    match transaction_service.get_any_transaction(tx_id).await {
+        Ok(tx) => match tx {
+            Some(PendingOutbound(tx)) => {
                 let transaction_event =
-                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx)));
+                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx.clone())));
                 send_transaction_event(transaction_event, sender).await;
-            } else {
+            },
+            _ => {
                 error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
-            }
+            },
         },
         Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
     }

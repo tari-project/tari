@@ -2780,29 +2780,29 @@ where
         >,
     ) -> Result<(), TransactionServiceError> {
         let outbound_txs = self.db.get_pending_outbound_transactions()?;
-        for (tx_id, tx) in outbound_txs {
+        for tx in outbound_txs {
             let (sender_protocol, stage) = if tx.send_count > 0 {
                 (None, TransactionSendProtocolStage::WaitForReply)
             } else {
                 (Some(tx.sender_protocol), TransactionSendProtocolStage::Queued)
             };
             let (not_yet_pending, queued) = (
-                !self.pending_transaction_reply_senders.contains_key(&tx_id),
+                !self.pending_transaction_reply_senders.contains_key(&tx.tx_id),
                 stage == TransactionSendProtocolStage::Queued,
             );
 
             if not_yet_pending {
                 debug!(
                     target: LOG_TARGET,
-                    "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
+                    "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx.tx_id
                 );
             } else if queued {
                 debug!(
                     target: LOG_TARGET,
-                    "Retry sending queued Pending Outbound Transaction TxId: {}", tx_id
+                    "Retry sending queued Pending Outbound Transaction TxId: {}", tx.tx_id
                 );
-                let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
-                let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
+                let _sender = self.pending_transaction_reply_senders.remove(&tx.tx_id);
+                let _sender = self.send_transaction_cancellation_senders.remove(&tx.tx_id);
             } else {
                 // dont care
             }
@@ -2810,12 +2810,12 @@ where
             if not_yet_pending || queued {
                 let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
                 let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-                self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
+                self.pending_transaction_reply_senders.insert(tx.tx_id, tx_reply_sender);
                 self.send_transaction_cancellation_senders
-                    .insert(tx_id, cancellation_sender);
+                    .insert(tx.tx_id, cancellation_sender);
 
                 let protocol = TransactionSendProtocol::new(
-                    tx_id,
+                    tx.tx_id,
                     self.resources.clone(),
                     tx_reply_receiver,
                     cancellation_receiver,
