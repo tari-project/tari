@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.10.0-pre.1](https://github.com/tari-project/tari/compare/v1.10.0-pre.0...v1.10.0-pre.1) (2025-01-17)
+
+### Bug Fixes
+* fixes build version
+
 ## [1.10.0-pre.0](https://github.com/tari-project/tari/compare/v1.9.2-pre.0...v1.10.0-pre.0) (2025-01-17)
 
 
