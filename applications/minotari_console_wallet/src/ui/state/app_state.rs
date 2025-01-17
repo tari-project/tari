@@ -1064,6 +1064,14 @@ impl AppStateInner {
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
         self.data.base_node_peer_custom = Some(peer.clone());
+        if let Some(pos) = self
+            .data
+            .base_node_list
+            .iter()
+            .position(|(s, _)| s == "Custom Base Node")
+        {
+            self.data.base_node_list.remove(pos);
+        }
         self.data
             .base_node_list
             .insert(0, ("Custom Base Node".to_string(), peer.clone()));
