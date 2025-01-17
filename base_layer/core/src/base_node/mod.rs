@@ -66,5 +66,5 @@ pub mod proto;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod rpc;
 
-#[cfg(feature = "base_node")]
+#[cfg(all(feature = "base_node", feature ="hickory"))]
 pub mod tari_pulse_service;

@@ -16,6 +16,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
+    "hickory",
 ] }
 tari_crypto = { version = "0.21.0" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
