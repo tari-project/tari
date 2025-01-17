@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.10.0-pre.0](https://github.com/tari-project/tari/compare/v1.9.2-pre.0...v1.10.0-pre.0) (2025-01-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* update payment id to cover all transaction types (#6744)
+
+### Features
+
+* clear out custom base node ([#6746](https://github.com/tari-project/tari/issues/6746)) ([9b35465](https://github.com/tari-project/tari/commit/9b354655e4b0858a90e0231c30490eb08a9d7de3))
+* new grpc method ([#6742](https://github.com/tari-project/tari/issues/6742)) ([ef81ccb](https://github.com/tari-project/tari/commit/ef81ccb03dfde1dc3d89424ba7be1f54555b6f60))
+* update payment id to cover all transaction types ([#6744](https://github.com/tari-project/tari/issues/6744)) ([5f4f95b](https://github.com/tari-project/tari/commit/5f4f95b1ff329e46a4ec1261e683ae625d12a571))
+
+
+### Bug Fixes
+
+* ledger ([#6737](https://github.com/tari-project/tari/issues/6737)) ([16fb40c](https://github.com/tari-project/tari/commit/16fb40c1044adf71888fe8fce98901e9a2d3ca32))
+
 ### [1.9.2-pre.0](https://github.com/tari-project/tari/compare/v1.9.1-pre.2...v1.9.2-pre.0) (2025-01-09)
 
 
