@@ -22,7 +22,7 @@
 
 use std::{borrow::Borrow, convert::TryFrom};
 
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
@@ -31,8 +31,8 @@ impl TryFrom<grpc::Signature> for Signature {
     type Error = String;
 
     fn try_from(sig: grpc::Signature) -> Result<Self, Self::Error> {
-        let public_nonce =
-            PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|_| "Could not get public nonce".to_string())?;
+        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce)
+            .map_err(|_| "Could not get public nonce".to_string())?;
         let signature =
             PrivateKey::from_canonical_bytes(&sig.signature).map_err(|_| "Could not get signature".to_string())?;
 
@@ -43,7 +43,7 @@ impl TryFrom<grpc::Signature> for Signature {
 impl<T: Borrow<Signature>> From<T> for grpc::Signature {
     fn from(sig: T) -> Self {
         Self {
-            public_nonce: sig.borrow().get_public_nonce().to_vec(),
+            public_nonce: sig.borrow().get_compressed_public_nonce().to_vec(),
             signature: sig.borrow().get_signature().to_vec(),
         }
     }

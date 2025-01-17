@@ -32,11 +32,10 @@ use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey},
 };
 use tari_comms::PeerManager;
-use tari_crypto::keys::{PublicKey as PublicKeyT, SecretKey};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_crypto::keys::SecretKey;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -46,9 +45,9 @@ use crate::{
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         generate_coinbase_with_wallet_output,
-        key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
+        transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
     },
 };
 
@@ -78,8 +77,8 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
     let _key = key_manager.import_key(wallet_private_view_key.clone()).await.unwrap();
     let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
     let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&wallet_private_view_key),
-        PublicKey::from_secret_key(&wallet_private_spend_key),
+        CompressedPublicKey::from_secret_key(&wallet_private_view_key),
+        CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
         Network::LocalNet,
     );
     (script_key_id, wallet_payment_address)
@@ -199,8 +198,8 @@ pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumula
     ChainHeader::try_construct(header, accumulated_data).unwrap()
 }
 
-pub fn new_public_key() -> PublicKey {
-    PublicKey::random_keypair(&mut OsRng).1
+pub fn new_public_key() -> CompressedPublicKey {
+    CompressedPublicKey::random_keypair(&mut OsRng).1
 }
 
 pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {

@@ -23,14 +23,13 @@
 use derivative::Derivative;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{ComAndPubSignature, PublicKey},
+    types::{ComAndPubSignature, CompressedPublicKey},
 };
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -41,6 +40,7 @@ use crate::{
             TransactionOutputVersion,
             WalletOutput,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     },
 };
 
@@ -56,7 +56,7 @@ pub struct WalletOutputBuilder {
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
     script_key_id: Option<TariKeyId>,
-    sender_offset_public_key: Option<PublicKey>,
+    sender_offset_public_key: Option<CompressedPublicKey>,
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
@@ -90,7 +90,7 @@ impl WalletOutputBuilder {
         }
     }
 
-    pub fn with_sender_offset_public_key(mut self, sender_offset_public_key: PublicKey) -> Self {
+    pub fn with_sender_offset_public_key(mut self, sender_offset_public_key: CompressedPublicKey) -> Self {
         self.sender_offset_public_key = Some(sender_offset_public_key);
         self
     }
@@ -247,8 +247,8 @@ impl WalletOutputBuilder {
         mut self,
         key_manager: &KM,
         sender_offset_key_id: &TariKeyId,
-        aggregated_sender_offset_public_key_shares: &PublicKey,
-        aggregated_ephemeral_public_key_shares: &PublicKey,
+        aggregated_sender_offset_public_key_shares: &CompressedPublicKey,
+        aggregated_ephemeral_public_key_shares: &CompressedPublicKey,
     ) -> Result<Self, TransactionError> {
         let script = self
             .script
@@ -264,18 +264,19 @@ impl WalletOutputBuilder {
         );
 
         let sender_offset_public_key_self = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
-        let aggregate_sender_offset_public_key =
-            aggregated_sender_offset_public_key_shares + &sender_offset_public_key_self;
+        let aggregate_sender_offset_public_key = aggregated_sender_offset_public_key_shares.to_public_key()? +
+            &sender_offset_public_key_self.to_public_key()?;
 
         let ephemeral_pubkey_self = key_manager.get_random_key().await?;
-        let aggregate_ephemeral_pubkey = aggregated_ephemeral_public_key_shares + &ephemeral_pubkey_self.pub_key;
+        let aggregate_ephemeral_pubkey =
+            aggregated_ephemeral_public_key_shares.to_public_key()? + &ephemeral_pubkey_self.pub_key.to_public_key()?;
 
         let receiver_partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
                 &self.commitment_mask_key_id,
                 &self.value.into(),
-                &aggregate_sender_offset_public_key,
-                &aggregate_ephemeral_pubkey,
+                &CompressedPublicKey::new_from_pk(aggregate_sender_offset_public_key.clone()),
+                &CompressedPublicKey::new_from_pk(aggregate_ephemeral_pubkey.clone()),
                 &TransactionOutputVersion::get_current_version(),
                 &metadata_message,
                 self.features.range_proof_type,
@@ -288,9 +289,9 @@ impl WalletOutputBuilder {
         let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
         let challenge = TransactionOutput::finalize_metadata_signature_challenge(
             &TransactionOutputVersion::get_current_version(),
-            &aggregate_sender_offset_public_key,
+            &CompressedPublicKey::new_from_pk(aggregate_sender_offset_public_key.clone()),
             ephemeral_commitment,
-            &aggregate_ephemeral_pubkey,
+            &CompressedPublicKey::new_from_pk(aggregate_ephemeral_pubkey),
             &commitment,
             &metadata_message,
         );
@@ -298,12 +299,15 @@ impl WalletOutputBuilder {
             .sign_with_nonce_and_challenge(sender_offset_key_id, &ephemeral_pubkey_self.key_id, &challenge)
             .await?;
 
-        let metadata_signature = &receiver_partial_metadata_signature + &sender_partial_metadata_signature_self;
+        let metadata_signature = ComAndPubSignature::new_from_capk_signature(
+            &receiver_partial_metadata_signature.to_capk_signature()? +
+                &sender_partial_metadata_signature_self.to_schnorr_signature()?,
+        );
 
         self.metadata_signature = Some(metadata_signature);
         self.metadata_signed_by_receiver = true;
         self.metadata_signed_by_sender = true;
-        self.sender_offset_public_key = Some(aggregate_sender_offset_public_key);
+        self.sender_offset_public_key = Some(CompressedPublicKey::new_from_pk(aggregate_sender_offset_public_key));
         Ok(self)
     }
 
@@ -351,10 +355,9 @@ impl WalletOutputBuilder {
 #[cfg(test)]
 mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {
@@ -461,7 +464,10 @@ mod test {
                     .await
                     .unwrap();
 
-                let metadata_signature_from_partials = &receiver_metadata_signature + &sender_metadata_signature;
+                let metadata_signature_from_partials = ComAndPubSignature::new_from_capk_signature(
+                    &receiver_metadata_signature.to_capk_signature().unwrap() +
+                        &sender_metadata_signature.to_capk_signature().unwrap(),
+                );
                 assert_ne!(output.metadata_signature, metadata_signature_from_partials);
                 output.metadata_signature = metadata_signature_from_partials;
                 assert!(output.verify_metadata_signature().is_ok());

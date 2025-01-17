@@ -31,7 +31,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
-    types::{CommsPublicKey, CommsSecretKey, Signature},
+    types::{CommsPublicKey, CommsSecretKey, CompressedSignature},
     NodeIdentity,
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -169,7 +169,11 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
         let updated_at = DateTime::<Utc>::from_timestamp(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
 
-        Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
+        Ok(Self::new(
+            version,
+            CompressedSignature::new(public_nonce, signature),
+            updated_at,
+        ))
     }
 }
 
@@ -178,7 +182,7 @@ impl From<&IdentitySignature> for common::IdentitySignature {
         common::IdentitySignature {
             version: u32::from(identity_sig.version()),
             signature: identity_sig.signature().get_signature().to_vec(),
-            public_nonce: identity_sig.signature().get_public_nonce().to_vec(),
+            public_nonce: identity_sig.signature().get_compressed_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at().timestamp(),
         }
     }

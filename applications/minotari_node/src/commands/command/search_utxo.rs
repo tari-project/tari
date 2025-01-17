@@ -23,7 +23,7 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::types::Commitment;
+use tari_common_types::types::CompressedCommitment;
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
@@ -35,7 +35,7 @@ use crate::commands::parser::FromHex;
 #[derive(Debug, Parser)]
 pub struct Args {
     /// hex of commitment of the utxo
-    commitment: FromHex<Commitment>,
+    commitment: FromHex<CompressedCommitment>,
 }
 
 #[async_trait]
@@ -47,7 +47,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     /// Function to process the search utxo command
-    pub async fn search_utxo(&mut self, commitment: Commitment) -> Result<(), Error> {
+    pub async fn search_utxo(&mut self, commitment: CompressedCommitment) -> Result<(), Error> {
         let v = self
             .node_service
             .fetch_blocks_with_utxos(vec![commitment.clone()])

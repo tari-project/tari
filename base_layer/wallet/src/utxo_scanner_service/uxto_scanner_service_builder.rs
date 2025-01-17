@@ -22,8 +22,10 @@
 
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_core::transactions::{
+    transaction_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerInterface},
+    CryptoFactories,
+};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 

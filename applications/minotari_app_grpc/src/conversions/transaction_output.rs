@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey, RangeProof};
+use tari_common_types::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
@@ -42,10 +42,11 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_canonical_bytes(&output.commitment)
+        let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err))?;
-        let sender_offset_public_key = PublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-            .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
+        let sender_offset_public_key =
+            CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)

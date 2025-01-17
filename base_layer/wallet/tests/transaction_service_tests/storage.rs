@@ -45,12 +45,11 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
@@ -62,13 +61,13 @@ use tari_core::{
             TransactionOutputVersion,
             WalletOutput,
         },
+        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
@@ -130,8 +129,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         outbound_txs.push(OutboundTransaction {
@@ -182,7 +181,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
-    let script_key_id = KeyId::Derived {
+    let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
 
@@ -242,8 +241,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let tx_id = TxId::from(i);
@@ -312,13 +311,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let dest_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         completed_txs.push(CompletedTransaction {
@@ -438,8 +437,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled completed tx");
     }
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     db.add_pending_inbound_transaction(
@@ -490,8 +489,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == TxId::from(999u64)));
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     db.add_pending_outbound_transaction(

@@ -38,7 +38,15 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        Signature,
+        UncompressedCommitment,
+    },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{
@@ -280,22 +288,26 @@ where B: BlockchainBackend
             txn = DbTransaction::new();
             self.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
-            let input_sum = body
-                .inputs()
-                .iter()
-                .map(|k| k.commitment())
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .sum::<Commitment>();
-            let output_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
-            let total_utxo_sum = &output_sum - &input_sum;
-            let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
+
+            let mut input_sum = UncompressedCommitment::default();
+            for input in body.inputs() {
+                input_sum = &input_sum + &input.commitment()?.to_commitment()?;
+            }
+            let mut output_sum = UncompressedCommitment::default();
+            for output in body.outputs() {
+                output_sum = &output_sum + &output.commitment.to_commitment()?;
+            }
+            let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
+            let mut kernel_sum = UncompressedCommitment::default();
+            for kernel in body.kernels() {
+                kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
+            }
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(kernel_sum.clone()),
+                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(kernel_sum, total_utxo_sum);
+            txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
             self.store_pruning_horizon(config.pruning_horizon)?;
         } else if !self.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
@@ -470,7 +482,7 @@ where B: BlockchainBackend
 
     pub fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_unspent_output_hash_by_commitment(&commitment)
@@ -756,7 +768,7 @@ where B: BlockchainBackend
     }
 
     /// Returns the sum of all kernels
-    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
+    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<CompressedCommitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(*at_hash)?.kernel_sum().clone())
     }
 
@@ -977,7 +989,11 @@ where B: BlockchainBackend
         db.fetch_mmr_size(tree)
     }
 
-    pub fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    pub fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.get_shard_key(height, public_key)
     }
@@ -1212,7 +1228,10 @@ where B: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided utxo hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_utxo(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_by_utxo_commitment(&*db, &commitment)
     }
@@ -1318,7 +1337,10 @@ where B: BlockchainBackend
         db.write(txn)
     }
 
-    pub fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    pub fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(height)
     }
@@ -1519,8 +1541,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     Ok(mmr_roots)
 }
 
-pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
-    fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
+pub fn calculate_validator_node_mr(validator_nodes: &[(CompressedPublicKey, [u8; 32])]) -> tari_mmr::Hash {
+    fn hash_node((pk, s): &(CompressedPublicKey, [u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
             .chain(pk)
             .chain(s)
@@ -1798,7 +1820,7 @@ fn fetch_block_by_kernel_signature<T: BlockchainBackend>(
 
 fn fetch_block_by_utxo_commitment<T: BlockchainBackend>(
     db: &T,
-    commitment: &Commitment,
+    commitment: &CompressedCommitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
     match output {

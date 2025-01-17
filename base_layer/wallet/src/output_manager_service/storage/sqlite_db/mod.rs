@@ -36,11 +36,11 @@ pub use output_sql::OutputSql;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash},
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_core::transactions::{
-    key_manager::TariKeyId,
     transaction_components::{OutputType, TransactionOutput},
+    transaction_key_manager::TariKeyId,
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
@@ -428,7 +428,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
+        let commitments: Vec<CompressedCommitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
@@ -566,7 +566,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn update_last_validation_timestamps(&self, commitments: Vec<Commitment>) -> Result<(), OutputManagerStorageError> {
+    fn update_last_validation_timestamps(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -639,7 +642,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let commitments: Vec<Commitment> = updates.iter().map(|update| update.commitment.clone()).collect();
+        let commitments: Vec<CompressedCommitment> = updates.iter().map(|update| update.commitment.clone()).collect();
         if !OutputSql::verify_outputs_exist(&commitments, &mut conn)? {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
@@ -1068,7 +1071,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
+    fn revalidate_unspent_output(&self, commitment: &CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -1207,7 +1210,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 #[derive(Clone, Debug, Default)]
 pub struct ReceivedOutputInfoForBatch {
     /// The Pedersen commitment of the output
-    pub commitment: Commitment,
+    pub commitment: CompressedCommitment,
     /// The height at which the output was mined
     pub mined_height: u64,
     /// The block hash in which the output was mined
@@ -1222,7 +1225,7 @@ pub struct ReceivedOutputInfoForBatch {
 #[derive(Clone, Debug, Default)]
 pub struct SpentOutputInfoForBatch {
     /// The hash of the output
-    pub commitment: Commitment,
+    pub commitment: CompressedCommitment,
     /// Whether the output is confirmed
     pub confirmed: bool,
     /// The height at which the output was marked as deleted
@@ -1440,10 +1443,10 @@ mod test {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_core::transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
     use tari_script::script;
     use tari_test_utils::random;

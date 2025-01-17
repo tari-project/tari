@@ -38,7 +38,7 @@ mod test {
         chain_metadata::ChainMetadata,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus},
-        types::{PrivateKey, PublicKey},
+        types::{CompressedPublicKey, PrivateKey},
     };
     use tari_comms::peer_manager::NodeId;
     use tari_comms_dht::event::DhtEvent;
@@ -56,7 +56,7 @@ mod test {
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tokio::{
@@ -312,8 +312,8 @@ mod test {
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let inbound_tx = InboundTransaction::new(
@@ -329,13 +329,13 @@ mod test {
             .unwrap();
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let completed_tx = CompletedTransaction::new(
@@ -364,8 +364,8 @@ mod test {
 
         let stp = SenderTransactionProtocol::new_placeholder();
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let outbound_tx = OutboundTransaction::new(
@@ -400,13 +400,13 @@ mod test {
         db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
             .unwrap();
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let faux_unconfirmed_tx = CompletedTransaction::new(
@@ -434,13 +434,13 @@ mod test {
             .unwrap();
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let faux_confirmed_tx = CompletedTransaction::new(
@@ -498,8 +498,8 @@ mod test {
         let (utxo_scanner_events_sender, _) = broadcast::channel(250);
         let utxo_scanner_events = utxo_scanner_events_sender.subscribe();
         let comms_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;

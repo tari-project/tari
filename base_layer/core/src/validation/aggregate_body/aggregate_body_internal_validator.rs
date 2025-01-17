@@ -23,12 +23,17 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
+use tari_common_types::types::{
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    RangeProofService,
+    UncompressedCommitment,
+    UncompressedPublicKey,
 };
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
@@ -127,7 +132,8 @@ impl AggregateBodyInternalConsistencyValidator {
         check_maturity(height, body.inputs())?;
         check_kernel_lock_height(height, body.kernels())?;
 
-        let total_offset = self.factories.commitment.commit_value(tx_offset, total_reward.0);
+        let total_offset =
+            CompressedCommitment::from_commitment(self.factories.commitment.commit_value(tx_offset, total_reward.0));
         validate_kernel_sum(body, total_offset, &self.factories.commitment)?;
 
         if !self.bypass_range_proof_verification {
@@ -135,7 +141,7 @@ impl AggregateBodyInternalConsistencyValidator {
         }
         verify_metadata_signatures(body)?;
 
-        let script_offset_g = PublicKey::from_secret_key(script_offset);
+        let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
         validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
         validate_covenants(body, height)?;
 
@@ -207,7 +213,7 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationEr
 /// block balances, or zero for transaction balances)
 fn validate_kernel_sum(
     body: &AggregateBody,
-    offset_and_reward: Commitment,
+    offset_and_reward: CompressedCommitment,
     factory: &CommitmentFactory,
 ) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel total");
@@ -222,14 +228,14 @@ fn validate_kernel_sum(
         sum_io.to_hex(),
         fees.to_hex()
     );
-    if excess != &sum_io + &fees {
+    if excess.to_commitment()? != &sum_io.to_commitment()? + &fees {
         return Err(ValidationError::InvalidAccountingBalance);
     }
 
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Result<KernelSum, ValidationError> {
+fn sum_kernels(body: &AggregateBody, offset_with_fee: CompressedCommitment) -> Result<KernelSum, ValidationError> {
     // Sum all kernel excesses and fees
     let mut kernel_sum = KernelSum {
         fees: MicroMinotari(0),
@@ -240,22 +246,24 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Res
             .fees
             .checked_add(kernel.fee)
             .ok_or(ValidationError::InvalidAccountingBalance)?;
-        kernel_sum.sum = &kernel_sum.sum + &kernel.excess;
+        kernel_sum.sum =
+            CompressedCommitment::from_commitment(&kernel_sum.sum.to_commitment()? + &kernel.excess.to_commitment()?);
     }
     Ok(kernel_sum)
 }
 
 /// Calculate the sum of the outputs - inputs
-fn sum_commitments(body: &AggregateBody) -> Result<Commitment, ValidationError> {
-    let sum_inputs = body
-        .inputs()
-        .iter()
-        .map(|i| i.commitment())
-        .collect::<Result<Vec<&Commitment>, _>>()?
-        .into_iter()
-        .sum::<Commitment>();
-    let sum_outputs = body.outputs().iter().map(|o| &o.commitment).sum::<Commitment>();
-    Ok(&sum_outputs - &sum_inputs)
+fn sum_commitments(body: &AggregateBody) -> Result<CompressedCommitment, ValidationError> {
+    let mut sum_inputs = UncompressedCommitment::default();
+    for inputs in body.inputs() {
+        sum_inputs = &sum_inputs + &inputs.commitment()?.to_commitment()?;
+    }
+    let mut sum_outputs = UncompressedCommitment::default();
+    for outputs in body.outputs() {
+        sum_outputs = &sum_outputs + &outputs.commitment.to_commitment()?;
+    }
+
+    Ok(CompressedCommitment::from_commitment(&sum_outputs - &sum_inputs))
 }
 
 fn validate_range_proofs(
@@ -279,30 +287,30 @@ fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), ValidationErro
 /// this will validate the script and script offset of the aggregate body.
 fn validate_script_and_script_offset(
     body: &AggregateBody,
-    script_offset: PublicKey,
+    script_offset: CompressedPublicKey,
     factory: &CommitmentFactory,
     prev_header: Option<HashOutput>,
     height: u64,
 ) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking script and script offset");
     // lets count up the input script public keys
-    let mut input_keys = PublicKey::default();
+    let mut input_keys = UncompressedPublicKey::default();
     let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
     for input in body.inputs() {
         let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
-        input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
+        input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?.to_public_key()?;
     }
 
     // Now lets gather the output public keys and hashes.
-    let mut output_keys = PublicKey::default();
+    let mut output_keys = UncompressedPublicKey::default();
     for output in body.outputs() {
         // We should not count the coinbase tx here
         if !output.is_coinbase() {
-            output_keys = output_keys + output.sender_offset_public_key.clone();
+            output_keys = output_keys + output.sender_offset_public_key.to_public_key()?;
         }
     }
     let lhs = input_keys - output_keys;
-    if lhs != script_offset {
+    if lhs != script_offset.to_public_key()? {
         return Err(ValidationError::TransactionError(TransactionError::ScriptOffset));
     }
     Ok(())
@@ -449,9 +457,9 @@ mod test {
     use crate::{
         covenants::Covenant,
         transactions::{
-            key_manager::create_memory_db_key_manager,
             test_helpers,
             transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
+            transaction_key_manager::create_memory_db_key_manager,
         },
     };
 

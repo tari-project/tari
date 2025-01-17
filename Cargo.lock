@@ -7106,6 +7106,8 @@ dependencies = [
  "criterion 0.4.0",
  "decimal-rs",
  "derivative",
+ "diesel",
+ "diesel_migrations",
  "digest 0.10.7",
  "dirs-next 1.0.2",
  "env_logger 0.7.1",
@@ -7171,8 +7173,7 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2c126518e7d09ec8a95de51921c17430b85b3a729375310326bb95cfaa1d12b"
+source = "git+https://github.com/SWvheerden/tari-crypto?rev=42237731dd5886554b3bfe6ed22e091dce4af557#42237731dd5886554b3bfe6ed22e091dce4af557"
 dependencies = [
  "blake2",
  "borsh",

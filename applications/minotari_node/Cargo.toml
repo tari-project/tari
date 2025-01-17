@@ -17,7 +17,7 @@ tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = [
     "transactions",
 ] }
-tari_crypto = { version = "0.21.0" }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto", rev = "42237731dd5886554b3bfe6ed22e091dce4af557" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = { path = "../../infrastructure/storage" }

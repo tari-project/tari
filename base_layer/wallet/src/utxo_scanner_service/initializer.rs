@@ -27,7 +27,7 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
 use tari_comms::connectivity::ConnectivityRequester;
-use tari_core::transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories};
+use tari_core::transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 

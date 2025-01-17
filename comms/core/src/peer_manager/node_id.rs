@@ -265,7 +265,7 @@ where D: Deserializer<'de> {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::types::CommsSecretKey;

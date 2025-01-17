@@ -24,7 +24,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, Signature};
 use tari_max_size::MaxSizeString;
 use tari_utilities::ByteArray;
 
@@ -90,7 +90,7 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
         Ok(Self::new(ValidatorNodeSignature::new(
-            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
             value
                 .signature
                 .map(Signature::try_from)
@@ -114,7 +114,8 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: CompressedPublicKey::from_canonical_bytes(&value.author_public_key)
+                .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)
@@ -159,7 +160,8 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
         Ok(ConfidentialOutputData {
-            claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            claim_public_key: CompressedPublicKey::from_canonical_bytes(&value.claim_public_key)
+                .map_err(|e| e.to_string())?,
         })
     }
 }

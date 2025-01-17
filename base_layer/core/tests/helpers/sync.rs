@@ -51,10 +51,10 @@ use tari_core::{
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::T,
         test_helpers::schema_to_transaction,
         transaction_components::{Transaction, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     txn_schema,
     validation::mocks::MockValidator,

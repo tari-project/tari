@@ -382,7 +382,6 @@ mod tests {
 
     mod node_destination {
         use rand::rngs::OsRng;
-        use tari_crypto::keys::PublicKey;
         use tari_utilities::hex::{to_hex, Hex};
 
         use super::*;

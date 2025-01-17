@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
@@ -31,9 +31,9 @@ impl TryFrom<grpc::ComAndPubSignature> for ComAndPubSignature {
     type Error = String;
 
     fn try_from(sig: grpc::ComAndPubSignature) -> Result<Self, Self::Error> {
-        let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)
+        let ephemeral_commitment = CompressedCommitment::from_canonical_bytes(&sig.ephemeral_commitment)
             .map_err(|_| "Could not get ephemeral commitment".to_string())?;
-        let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)
+        let ephemeral_pubkey = CompressedPublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)
             .map_err(|_| "Could not get ephemeral public key".to_string())?;
         let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)
             .map_err(|_| "Could not get partial signature u_a".to_string())?;

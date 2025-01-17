@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
@@ -67,7 +67,6 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{
             RangeProofType,
             TransactionInput,
@@ -75,6 +74,7 @@ use crate::{
             TransactionOutput,
             WalletOutput,
         },
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
     },
     validation::{
@@ -302,7 +302,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         self.db
             .as_ref()
@@ -405,11 +405,18 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
         self.db.as_ref().unwrap().get_shard_key(height, public_key)
     }
 

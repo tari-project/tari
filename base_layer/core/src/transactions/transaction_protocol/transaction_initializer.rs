@@ -28,9 +28,8 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -39,7 +38,6 @@ use crate::{
     covenants::Covenant,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -50,6 +48,7 @@ use crate::{
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
+        transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
             sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
@@ -103,7 +102,7 @@ pub struct SenderTransactionInitializer<KM> {
     prevent_fee_gt_amount: bool,
     tx_id: Option<TxId>,
     kernel_features: KernelFeatures,
-    burn_commitment: Option<Commitment>,
+    burn_commitment: Option<CompressedCommitment>,
     fee: Fee,
     key_manager: KM,
     sender_address: TariAddress,
@@ -264,7 +263,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// This will allow the receipient to sign the burn commitment
-    pub fn with_burn_commitment(&mut self, commitment: Option<Commitment>) -> &mut Self {
+    pub fn with_burn_commitment(&mut self, commitment: Option<CompressedCommitment>) -> &mut Self {
         self.burn_commitment = commitment;
         self
     }
@@ -638,12 +637,12 @@ where KM: TransactionKeyManagerInterface
             tx_id,
             recipient_data: self.recipient,
             recipient_output: None,
-            recipient_partial_kernel_excess: PublicKey::default(),
+            recipient_partial_kernel_excess: CompressedPublicKey::default(),
             recipient_partial_kernel_signature: Signature::default(),
             recipient_partial_kernel_offset: PrivateKey::default(),
             change_output: change_output_pair,
-            total_sender_nonce: PublicKey::default(),
-            total_sender_excess: PublicKey::default(),
+            total_sender_nonce: CompressedPublicKey::default(),
+            total_sender_excess: CompressedPublicKey::default(),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
@@ -676,10 +675,10 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             fee::Fee,
-            key_manager::create_memory_db_key_manager,
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction_key_manager::create_memory_db_key_manager,
             transaction_protocol::{sender::SenderState, transaction_initializer::SenderTransactionInitializer},
         },
     };

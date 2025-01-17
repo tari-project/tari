@@ -40,7 +40,7 @@ use log::*;
 use tari_core::{
     consensus::NetworkConsensus,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+        transaction_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };

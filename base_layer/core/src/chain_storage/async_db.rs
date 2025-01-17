@@ -31,7 +31,7 @@ use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -168,7 +168,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_input(output_hash: HashOutput) -> Option<InputMinedInfo>, "fetch_input");
 
-    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: Commitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
+    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
 
     make_async_fn!(fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_outputs_with_spend_status_at_tip");
 
@@ -254,7 +254,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
-    make_async_fn!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+    make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 
     make_async_fn!(fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData, "fetch_block_accumulated_data");
 
@@ -280,9 +280,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
-    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(PublicKey, [u8;32])>, "fetch_active_validator_nodes");
+    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(CompressedPublicKey, [u8;32])>, "fetch_active_validator_nodes");
 
-    make_async_fn!(get_shard_key(height:u64, public_key: PublicKey) -> Option<[u8;32]>, "get_shard_key");
+    make_async_fn!(get_shard_key(height:u64, public_key: CompressedPublicKey) -> Option<[u8;32]>, "get_shard_key");
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
@@ -337,7 +337,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_horizon_data(&mut self, kernel_sum: CompressedCommitment, utxo_sum: CompressedCommitment) -> &mut Self {
         self.transaction.set_horizon_data(kernel_sum, utxo_sum);
         self
     }
@@ -367,7 +367,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     pub fn prune_output_from_all_dbs(
         &mut self,
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     ) -> &mut Self {
         self.transaction

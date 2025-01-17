@@ -42,7 +42,7 @@ use grpc::{
 use minotari_app_grpc::tari_rpc::{self as grpc, TransactionStatus};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
 use tari_core::{
     covenants::Covenant,
     transactions::{
@@ -59,7 +59,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::commitment::HomomorphicCommitment;
+use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
@@ -2306,10 +2306,9 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2431,10 +2430,9 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2555,10 +2553,9 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();

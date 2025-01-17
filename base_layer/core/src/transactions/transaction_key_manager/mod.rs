@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2023 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,24 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::signatures::CommitmentAndPublicKeySignatureError;
-use tari_key_manager::error::KeyManagerError;
-use thiserror::Error;
+mod wrapper;
+pub use wrapper::TransactionKeyManagerWrapper;
 
-use crate::transactions::transaction_components::TransactionError;
+mod interface;
+pub use interface::{
+    SecretTransactionKeyManagerInterface,
+    SerializedKeyString,
+    TariKeyAndId,
+    TariKeyId,
+    TransactionKeyManagerInterface,
+    TransactionKeyManagerLabel,
+    TxoStage,
+};
 
-#[derive(Debug, Error, PartialEq)]
-pub enum CoreKeyManagerError {
-    #[error("KeyManagerError: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
-    #[error("Error generating Commitment and PublicKey signature: `{0}`")]
-    CommitmentAndPublicKeySignatureError(String),
-    #[error("Transaction error: `{0}`")]
-    TransactionError(#[from] TransactionError),
-}
+mod initializer;
+pub use initializer::TransactionKeyManagerInitializer;
 
-impl From<CommitmentAndPublicKeySignatureError> for CoreKeyManagerError {
-    fn from(err: CommitmentAndPublicKeySignatureError) -> Self {
-        CoreKeyManagerError::CommitmentAndPublicKeySignatureError(err.to_string())
-    }
-}
+mod inner;
+pub use inner::LEDGER_NOT_SUPPORTED;
+/// This is a memory database implementation of the `TransactionKeyManager` trait.
+mod memory_db_key_manager;
+pub use inner::TransactionKeyManagerInner;
+pub use memory_db_key_manager::{
+    create_memory_db_key_manager,
+    create_memory_db_key_manager_from_seed,
+    create_memory_db_key_manager_with_range_proof_size,
+    MemoryDbKeyManager,
+};
+
+pub mod error;
+pub use error::CoreKeyManagerError;
+pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
+
+pub mod storage;
+
+pub mod schema;
+
+pub mod key_manager;

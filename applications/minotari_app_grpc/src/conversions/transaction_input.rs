@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_core::{
     borsh::FromBytes,
     covenants::Covenant,
@@ -58,14 +58,16 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 script_signature,
             ))
         } else {
-            let commitment = Commitment::from_canonical_bytes(&input.commitment).map_err(|e| e.to_string())?;
+            let commitment =
+                CompressedCommitment::from_canonical_bytes(&input.commitment).map_err(|e| e.to_string())?;
             let features = input
                 .features
                 .map(TryInto::try_into)
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key = PublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("{:?}", err))?;
+            let sender_offset_public_key =
+                CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
+                    .map_err(|err| format!("{:?}", err))?;
 
             let encrypted_data = EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?;
             let minimum_value_promise = input.minimum_value_promise.into();

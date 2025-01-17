@@ -137,7 +137,6 @@ impl fmt::Debug for XorDistance {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_crypto::keys::PublicKey;
 
     use super::*;
     use crate::types::CommsPublicKey;

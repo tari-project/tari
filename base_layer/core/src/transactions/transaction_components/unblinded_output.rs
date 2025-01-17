@@ -29,14 +29,13 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::{RangeProofType, TransactionOutputVersion};
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -45,6 +44,7 @@ use crate::{
             TransactionError,
             WalletOutput,
         },
+        transaction_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     },
 };
 
@@ -61,7 +61,7 @@ pub struct UnblindedOutput {
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
@@ -81,7 +81,7 @@ impl UnblindedOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
@@ -120,7 +120,7 @@ impl UnblindedOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,

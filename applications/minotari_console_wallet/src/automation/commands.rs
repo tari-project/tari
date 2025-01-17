@@ -63,7 +63,17 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        Signature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -78,7 +88,6 @@ use tari_core::{
     covenants::Covenant,
     one_sided::shared_secret_to_output_encryption_key,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -93,21 +102,18 @@ use tari_core::{
             UnblindedOutput,
             WalletOutput,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     dhke::DiffieHellmanSharedSecret,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+    ristretto::RistrettoSecretKey,
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{KeyId, KeyManagerInterface},
-    SeedWords,
-};
+use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
-use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
+use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
@@ -207,17 +213,27 @@ pub async fn burn_tari(
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
-    expected_commitment: PedersenCommitment,
-    script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-    script_signature_public_nonces: Vec<PublicKey>,
-    sender_offset_public_key_shares: Vec<PublicKey>,
-    metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-    dh_shared_secret_shares: Vec<PublicKey>,
+    expected_commitment: CompressedCommitment,
+    script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+    script_signature_public_nonces: Vec<CompressedPublicKey>,
+    sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+    dh_shared_secret_shares: Vec<CompressedPublicKey>,
     recipient_address: TariAddress,
     original_maturity: u64,
     use_output: UseOutput,
     payment_id: PaymentId,
-) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), CommandError> {
+) -> Result<
+    (
+        TxId,
+        Transaction,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+    ),
+    CommandError,
+> {
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
@@ -240,7 +256,7 @@ async fn spend_backup_pre_mine_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
     output_hash: HashOutput,
-    expected_commitment: PedersenCommitment,
+    expected_commitment: CompressedCommitment,
     recipient_address: TariAddress,
     payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
@@ -266,18 +282,23 @@ async fn finalise_aggregate_utxo(
 ) -> Result<TxId, CommandError> {
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
 
-    let mut meta_sig = Signature::default();
+    let mut meta_sig = UncompressedSignature::default();
     for sig in &meta_signatures {
-        meta_sig = &meta_sig + sig;
+        meta_sig = &meta_sig + sig.to_schnorr_signature()?;
     }
-    let mut script_sig = Signature::default();
+    let mut script_sig = UncompressedSignature::default();
     for sig in &script_signatures {
-        script_sig = &script_sig + sig;
+        script_sig = &script_sig + sig.to_schnorr_signature()?;
     }
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: aggregated signatures");
 
     wallet_transaction_service
-        .finalize_aggregate_utxo(tx_id, meta_sig, script_sig, wallet_script_secret_key)
+        .finalize_aggregate_utxo(
+            tx_id,
+            Signature::new_from_schnorr(meta_sig),
+            Signature::new_from_schnorr(script_sig),
+            wallet_script_secret_key,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -290,7 +311,7 @@ pub async fn init_sha_atomic_swap(
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     payment_id: PaymentId,
-) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
+) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
         .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
         .await
@@ -303,7 +324,7 @@ pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
-    pre_image: PublicKey,
+    pre_image: CompressedPublicKey,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
@@ -336,7 +357,7 @@ pub async fn claim_htlc_refund(
 pub async fn register_validator_node(
     amount: MicroMinotari,
     mut wallet_transaction_service: TransactionServiceHandle,
-    validator_node_public_key: PublicKey,
+    validator_node_public_key: CompressedPublicKey,
     validator_node_signature: Signature,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
@@ -419,7 +440,7 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
 
 async fn set_base_node_peer(
     mut wallet: WalletSqlite,
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     address: Multiaddr,
 ) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
     println!("Setting base node peer...");
@@ -432,7 +453,7 @@ async fn set_base_node_peer(
 
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
-    dest_public_key: PublicKey,
+    dest_public_key: CompressedPublicKey,
 ) -> Result<(), CommandError> {
     let start = Instant::now();
     println!("🌎 Peer discovery started.");
@@ -803,7 +824,7 @@ pub async fn command_runner(
                         println!("The following can be used to claim the burnt funds:");
                         println!();
                         println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
-                        println!("commitment: {}", proof.commitment.as_public_key());
+                        println!("commitment: {}", proof.commitment.to_public_key()?);
                         println!("ownership_proof: {:?}", proof.ownership_proof);
                         println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
@@ -1103,9 +1124,10 @@ pub async fn command_runner(
                                     .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
                             )
                             .await?;
-                        let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
+                        let shared_secret_public_key =
+                            CompressedPublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
-                        let pre_mine_script_key_id = KeyId::Managed {
+                        let pre_mine_script_key_id = TariKeyId::Managed {
                             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
                             index: *output_index as u64,
                         };
@@ -1528,7 +1550,7 @@ pub async fn command_runner(
                     };
 
                     // lets verify the script
-                    let shared_secret = match DiffieHellmanSharedSecret::<PublicKey>::from_canonical_bytes(
+                    let shared_secret = match DiffieHellmanSharedSecret::<UncompressedPublicKey>::from_canonical_bytes(
                         leader_info.shared_secret.as_bytes(),
                     ) {
                         Ok(v) => v,
@@ -1805,15 +1827,15 @@ pub async fn command_runner(
                                     },
                                 }
 
-                                let mut utxo_sum = Commitment::default();
+                                let mut utxo_sum = UncompressedCommitment::default();
                                 for output in tx.transaction.body.outputs() {
                                     outputs.push(output.clone());
-                                    utxo_sum = &utxo_sum + &output.commitment;
+                                    utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
                                 }
                                 for input in tx.transaction.body.inputs() {
                                     inputs.push(input.clone());
                                     match input.commitment() {
-                                        Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                                        Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
                                         Err(e) => {
                                             eprintln!("\nError: Input commitment ({})!\n", e);
                                             error = true;
@@ -1824,10 +1846,10 @@ pub async fn command_runner(
                                 if error {
                                     break;
                                 }
-                                let mut kernel_sum = Commitment::default();
+                                let mut kernel_sum = UncompressedCommitment::default();
                                 for kernel in tx.transaction.body.kernels() {
                                     kernels.push(kernel.clone());
-                                    kernel_sum = &kernel_sum + &kernel.excess;
+                                    kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
                                 }
                                 kernel_offset = &kernel_offset + &tx.transaction.offset;
                                 // Ensure that the balance equation holds:
@@ -1873,22 +1895,22 @@ pub async fn command_runner(
                 if session_info.use_pre_mine_input_file {
                     // Ensure that the balance equation holds:
                     //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + kernel_offset
-                    let mut utxo_sum = Commitment::default();
+                    let mut utxo_sum = UncompressedCommitment::default();
                     for output in &outputs {
-                        utxo_sum = &utxo_sum + &output.commitment;
+                        utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
                     }
                     for input in &inputs {
                         match input.commitment() {
-                            Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                            Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
                             Err(e) => {
                                 eprintln!("\nError: Input commitment ({})!\n", e);
                                 break;
                             },
                         }
                     }
-                    let mut kernel_sum = Commitment::default();
+                    let mut kernel_sum = UncompressedCommitment::default();
                     for kernel in &kernels {
-                        kernel_sum = &kernel_sum + &kernel.excess;
+                        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
                     }
                     let offset = CryptoFactories::default().commitment.commit_value(&kernel_offset, 0);
                     if utxo_sum != &kernel_sum + &offset {
@@ -2073,7 +2095,8 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
+                        Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
@@ -2141,7 +2164,8 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
+                        Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
@@ -2915,7 +2939,7 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
 }
 
 fn write_utxos_to_csv_file(
-    utxos: Vec<(UnblindedOutput, Commitment)>,
+    utxos: Vec<(UnblindedOutput, CompressedCommitment)>,
     file_path: PathBuf,
     with_private_keys: bool,
 ) -> Result<(), CommandError> {

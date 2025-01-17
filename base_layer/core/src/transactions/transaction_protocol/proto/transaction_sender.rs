@@ -27,7 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
-use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
@@ -97,17 +97,19 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     type Error = String;
 
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
-        let public_excess = PublicKey::from_canonical_bytes(&data.public_excess).map_err(|err| err.to_string())?;
-        let public_nonce = PublicKey::from_canonical_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
+        let public_excess =
+            CompressedPublicKey::from_canonical_bytes(&data.public_excess).map_err(|err| err.to_string())?;
+        let public_nonce =
+            CompressedPublicKey::from_canonical_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
         let sender_offset_public_key =
-            PublicKey::from_canonical_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
+            CompressedPublicKey::from_canonical_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
         let payment_id = PaymentId::from_bytes(&data.payment_id);
         let ephemeral_public_nonce =
-            PublicKey::from_canonical_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
+            CompressedPublicKey::from_canonical_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
         let features = data
             .features
             .map(TryInto::try_into)

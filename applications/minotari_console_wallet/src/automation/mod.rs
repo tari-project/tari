@@ -30,14 +30,14 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_core::transactions::{
-    key_manager::TariKeyId,
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, OutputFeatures},
+    transaction_key_manager::TariKeyId,
 };
-use tari_script::{CheckSigSchnorrSignature, ExecutionStack, TariScript};
+use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
 
 // Step 1 outputs for all with `PreMineSpendSessionInfo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -88,12 +88,12 @@ struct PreMineSpendStep2OutputsForLeader {
 pub struct Step2OutputsForLeader {
     output_index: usize,
     recipient_address: TariAddress,
-    script_input_signature: CheckSigSchnorrSignature,
-    public_script_nonce_key: PublicKey,
-    public_sender_offset_key: PublicKey,
-    public_sender_offset_nonce_key: PublicKey,
-    dh_shared_secret_public_key: PublicKey,
-    pre_mine_public_script_key: PublicKey,
+    script_input_signature: CompressedCheckSigSchnorrSignature,
+    public_script_nonce_key: CompressedPublicKey,
+    public_sender_offset_key: CompressedPublicKey,
+    public_sender_offset_nonce_key: CompressedPublicKey,
+    dh_shared_secret_public_key: CompressedPublicKey,
+    pre_mine_public_script_key: CompressedPublicKey,
 }
 
 // Step 3 outputs for self with `PreMineSpendEncumberAggregateUtxo`
@@ -119,16 +119,16 @@ struct Step3OutputsForParties {
     output_index: usize,
     input_stack: ExecutionStack,
     input_script: TariScript,
-    total_script_key: PublicKey,
-    script_signature_ephemeral_commitment: Commitment,
-    script_signature_ephemeral_pubkey: PublicKey,
-    output_commitment: Commitment,
-    sender_offset_pubkey: PublicKey,
-    metadata_signature_ephemeral_commitment: Commitment,
-    metadata_signature_ephemeral_pubkey: PublicKey,
+    total_script_key: CompressedPublicKey,
+    script_signature_ephemeral_commitment: CompressedCommitment,
+    script_signature_ephemeral_pubkey: CompressedPublicKey,
+    output_commitment: CompressedCommitment,
+    sender_offset_pubkey: CompressedPublicKey,
+    metadata_signature_ephemeral_commitment: CompressedCommitment,
+    metadata_signature_ephemeral_pubkey: CompressedPublicKey,
     encrypted_data: EncryptedData,
     output_features: OutputFeatures,
-    shared_secret: PublicKey,
+    shared_secret: CompressedPublicKey,
 }
 
 // Step 4 outputs for leader with `PreMineSpendInputOutputSigs`

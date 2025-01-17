@@ -618,7 +618,10 @@ mod test {
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
-        let ecdh_key = CommsDHKE::new(node_identity2.secret_key(), node_identity2.public_key());
+        let ecdh_key = CommsDHKE::new(
+            node_identity2.secret_key(),
+            &node_identity2.public_key().to_public_key().unwrap(),
+        );
         let key_message = crypt::generate_key_message(&ecdh_key);
         let mut encrypted_bytes = msg.encode_into_bytes_mut();
         crypt::encrypt_message(&key_message, &mut encrypted_bytes, b"test associated data").unwrap();

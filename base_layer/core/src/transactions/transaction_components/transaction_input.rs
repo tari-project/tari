@@ -33,7 +33,14 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    FixedHash,
+    HashOutput,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_hashing::TransactionHashDomain;
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
@@ -110,11 +117,11 @@ impl TransactionInput {
     pub fn new_with_output_data(
         version: TransactionInputVersion,
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
         input_data: ExecutionStack,
         script_signature: ComAndPubSignature,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         covenant: Covenant,
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
@@ -145,9 +152,9 @@ impl TransactionInput {
         &mut self,
         version: TransactionOutputVersion,
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         covenant: Covenant,
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
@@ -171,12 +178,12 @@ impl TransactionInput {
     /// Convenience function to create the entire script challenge
     pub fn build_script_signature_challenge(
         version: &TransactionInputVersion,
-        ephemeral_commitment: &Commitment,
-        ephemeral_pubkey: &PublicKey,
+        ephemeral_commitment: &CompressedCommitment,
+        ephemeral_pubkey: &CompressedPublicKey,
         script: &TariScript,
         input_data: &ExecutionStack,
-        script_public_key: &PublicKey,
-        commitment: &Commitment,
+        script_public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
     ) -> [u8; 64] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
@@ -194,10 +201,10 @@ impl TransactionInput {
     /// Convenience function to create the finalize script challenge
     pub fn finalize_script_signature_challenge(
         version: &TransactionInputVersion,
-        ephemeral_commitment: &Commitment,
-        ephemeral_pubkey: &PublicKey,
-        script_public_key: &PublicKey,
-        commitment: &Commitment,
+        ephemeral_commitment: &CompressedCommitment,
+        ephemeral_pubkey: &CompressedPublicKey,
+        script_public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
         message: &[u8; 32],
     ) -> [u8; 64] {
         match version {
@@ -234,7 +241,7 @@ impl TransactionInput {
     }
 
     /// Returns the Commitment of this input. An error is returned if this is a compact input.
-    pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
+    pub fn commitment(&self) -> Result<&CompressedCommitment, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::CompactInputMissingData("commitment".to_string())),
             SpentOutput::OutputData { ref commitment, .. } => Ok(commitment),
@@ -269,7 +276,7 @@ impl TransactionInput {
 
     /// Returns a reference to the sender offset public key of this input. An error is returned if this is a compact
     /// input.
-    pub fn sender_offset_public_key(&self) -> Result<&PublicKey, TransactionError> {
+    pub fn sender_offset_public_key(&self) -> Result<&CompressedPublicKey, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::CompactInputMissingData(
                 "sender offset public key".to_string(),
@@ -340,7 +347,7 @@ impl TransactionInput {
 
     /// This will run the script contained in the TransactionInput, returning the resulting
     /// public key if execution succeeds, or otherwise a script error. An error is returned if this is a compact input.
-    pub fn run_script(&self, context: Option<ScriptContext>) -> Result<PublicKey, TransactionError> {
+    pub fn run_script(&self, context: Option<ScriptContext>) -> Result<CompressedPublicKey, TransactionError> {
         let context = context.unwrap_or_default();
 
         match self.spent_output {
@@ -362,7 +369,7 @@ impl TransactionInput {
     /// input.
     pub fn validate_script_signature(
         &self,
-        script_public_key: &PublicKey,
+        script_public_key: &CompressedPublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         match self.spent_output {
@@ -384,9 +391,9 @@ impl TransactionInput {
                     commitment,
                 );
 
-                if self.script_signature.verify_challenge(
-                    commitment,
-                    script_public_key,
+                if self.script_signature.to_capk_signature()?.verify_challenge(
+                    &commitment.to_commitment()?,
+                    &script_public_key.to_public_key()?,
                     &challenge,
                     factory,
                     &mut OsRng,
@@ -407,7 +414,7 @@ impl TransactionInput {
         &self,
         factory: &CommitmentFactory,
         context: Option<ScriptContext>,
-    ) -> Result<PublicKey, TransactionError> {
+    ) -> Result<CompressedPublicKey, TransactionError> {
         let key = self.run_script(context)?;
         self.validate_script_signature(&key, factory)?;
         Ok(key)
@@ -581,9 +588,9 @@ pub enum SpentOutput {
     OutputData {
         version: TransactionOutputVersion,
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         /// The transaction covenant
         covenant: Covenant,
         encrypted_data: EncryptedData,

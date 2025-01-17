@@ -26,31 +26,16 @@ use blake2::Blake2b;
 use digest::consts::U64;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, RangeProof, Signature},
     wallet_types::WalletType,
 };
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::database::{KeyManagerBackend, KeyManagerDatabase},
-        AddResult,
-        KeyAndId,
-        KeyManagerInterface,
-        KeyManagerServiceError,
-    },
-};
-use tari_script::{CheckSigSchnorrSignature, TariScript};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager_service::AddResult};
+use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tokio::sync::RwLock;
 
 use crate::transactions::{
-    key_manager::{
-        interface::{SecretTransactionKeyManagerInterface, TxoStage},
-        TariKeyId,
-        TransactionKeyManagerInner,
-        TransactionKeyManagerInterface,
-    },
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -62,6 +47,14 @@ use crate::transactions::{
         TransactionKernelVersion,
         TransactionOutput,
         TransactionOutputVersion,
+    },
+    transaction_key_manager::{
+        error::KeyManagerServiceError,
+        interface::{SecretTransactionKeyManagerInterface, TariKeyAndId, TxoStage},
+        storage::database::{TransactionKeyManagerBackend, TransactionKeyManagerDatabase},
+        TariKeyId,
+        TransactionKeyManagerInner,
+        TransactionKeyManagerInterface,
     },
     CryptoFactories,
 };
@@ -77,14 +70,14 @@ pub struct TransactionKeyManagerWrapper<TBackend> {
 }
 
 impl<TBackend> TransactionKeyManagerWrapper<TBackend>
-where TBackend: KeyManagerBackend<PublicKey> + 'static
+where TBackend: TransactionKeyManagerBackend + 'static
 {
     /// Creates a new key manager.
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
     /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
     pub fn new(
         master_seed: CipherSeed,
-        db: KeyManagerDatabase<TBackend, PublicKey>,
+        db: TransactionKeyManagerDatabase<TBackend>,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
@@ -105,8 +98,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 }
 
 #[async_trait::async_trait]
-impl<TBackend> KeyManagerInterface<PublicKey> for TransactionKeyManagerWrapper<TBackend>
-where TBackend: KeyManagerBackend<PublicKey> + 'static
+impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
+where TBackend: TransactionKeyManagerBackend + 'static
 {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         self.transaction_key_manager_inner
@@ -115,10 +108,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .add_key_manager_branch(&branch.into())
     }
 
-    async fn get_next_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -126,7 +116,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_random_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
+    async fn get_random_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_random_key().await
     }
 
@@ -138,7 +128,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
+    async fn get_public_key_at_key_id(
+        &self,
+        key_id: &TariKeyId,
+    ) -> Result<CompressedPublicKey, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -149,7 +142,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,
-        key: &PublicKey,
+        key: &CompressedPublicKey,
     ) -> Result<u64, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
@@ -177,17 +170,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .import_key(private_key)
             .await
     }
-}
 
-#[async_trait::async_trait]
-impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
-where TBackend: KeyManagerBackend<PublicKey> + 'static
-{
     async fn get_commitment(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-    ) -> Result<Commitment, KeyManagerServiceError> {
+    ) -> Result<CompressedCommitment, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -197,7 +185,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn verify_mask(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
@@ -208,7 +196,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_view_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
+    async fn get_view_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_view_key().await
     }
 
@@ -220,17 +208,17 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_spend_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
+    async fn get_spend_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_spend_key().await
     }
 
-    async fn get_comms_key(&self) -> Result<KeyAndId<PublicKey>, KeyManagerServiceError> {
+    async fn get_comms_key(&self) -> Result<TariKeyAndId, KeyManagerServiceError> {
         self.transaction_key_manager_inner.read().await.get_comms_key().await
     }
 
     async fn get_next_commitment_mask_and_script_key(
         &self,
-    ) -> Result<(KeyAndId<PublicKey>, KeyAndId<PublicKey>), KeyManagerServiceError> {
+    ) -> Result<(TariKeyAndId, TariKeyAndId), KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -241,7 +229,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn find_script_key_id_from_commitment_mask_key_id(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        public_script_key: Option<&PublicKey>,
+        public_script_key: Option<&CompressedPublicKey>,
     ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
@@ -253,7 +241,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
-        public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -265,7 +253,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn get_diffie_hellman_stealth_domain_hasher(
         &self,
         secret_key_id: &TariKeyId,
-        public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -274,7 +262,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
+    async fn get_spending_key_id(
+        &self,
+        public_spending_key: &CompressedPublicKey,
+    ) -> Result<TariKeyId, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -321,8 +312,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         commitment_mask_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
-        ephemeral_pubkey: &PublicKey,
-        script_public_key: &PublicKey,
+        ephemeral_pubkey: &CompressedPublicKey,
+        script_public_key: &CompressedPublicKey,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
         self.transaction_key_manager_inner
@@ -343,8 +334,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
-        total_nonce: &PublicKey,
-        total_excess: &PublicKey,
+        total_nonce: &CompressedPublicKey,
+        total_excess: &CompressedPublicKey,
         kernel_version: &TransactionKernelVersion,
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
@@ -370,7 +361,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
-    ) -> Result<PublicKey, TransactionError> {
+    ) -> Result<CompressedPublicKey, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -407,7 +398,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<PaymentId, TransactionError> {
         self.transaction_key_manager_inner
@@ -445,7 +436,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         nonce_id: &TariKeyId,
         range_proof_type: RangeProofType,
-    ) -> Result<Commitment, TransactionError> {
+    ) -> Result<CompressedCommitment, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -507,7 +498,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         private_key_id: &TariKeyId,
         challenge: &[u8],
-    ) -> Result<CheckSigSchnorrSignature, TransactionError> {
+    ) -> Result<CompressedCheckSigSchnorrSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -532,8 +523,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: &PrivateKey,
-        sender_offset_public_key: &PublicKey,
-        ephemeral_pubkey: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
+        ephemeral_pubkey: &CompressedPublicKey,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
@@ -560,8 +551,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
         sender_offset_key_id: &TariKeyId,
-        commitment: &Commitment,
-        ephemeral_commitment: &Commitment,
+        commitment: &CompressedCommitment,
+        ephemeral_commitment: &CompressedCommitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
@@ -583,7 +574,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         spending_key: &TariKeyId,
         amount: &PrivateKey,
-        claim_public_key: &PublicKey,
+        claim_public_key: &CompressedPublicKey,
     ) -> Result<RistrettoComSig, TransactionError> {
         self.transaction_key_manager_inner
             .read()
@@ -595,8 +586,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     async fn stealth_address_script_spending_key(
         &self,
         commitment_mask_key_id: &TariKeyId,
-        spend_key: &PublicKey,
-    ) -> Result<PublicKey, TransactionError> {
+        spend_key: &CompressedPublicKey,
+    ) -> Result<CompressedPublicKey, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -607,7 +598,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
 #[async_trait::async_trait]
 impl<TBackend> SecretTransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
-where TBackend: KeyManagerBackend<PublicKey> + 'static
+where TBackend: TransactionKeyManagerBackend + 'static
 {
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         self.transaction_key_manager_inner

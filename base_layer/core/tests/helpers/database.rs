@@ -26,7 +26,11 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
     proof_of_work::Difficulty,
-    transactions::{key_manager::MemoryDbKeyManager, tari_amount::MicroMinotari, transaction_components::Transaction},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::Transaction,
+        transaction_key_manager::MemoryDbKeyManager,
+    },
 };
 
 use crate::helpers::block_builders::create_coinbase;

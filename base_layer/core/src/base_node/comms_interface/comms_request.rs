@@ -26,7 +26,14 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{
+    BlockHash,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    Signature,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -47,20 +54,35 @@ pub enum NodeCommsRequest {
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
-    FetchMatchingBlocks { range: RangeInclusive<u64>, compact: bool },
+    FetchMatchingBlocks {
+        range: RangeInclusive<u64>,
+        compact: bool,
+    },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
-    FetchBlocksByUtxos(Vec<Commitment>),
+    FetchBlocksByUtxos(Vec<CompressedCommitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     GetBlockFromAllChains(HashOutput),
     FetchKernelByExcessSig(Signature),
-    FetchMempoolTransactionsByExcessSigs { excess_sigs: Vec<PrivateKey> },
-    FetchValidatorNodesKeys { height: u64 },
-    GetShardKey { height: u64, public_key: PublicKey },
-    FetchTemplateRegistrations { start_height: u64, end_height: u64 },
-    FetchUnspentUtxosInBlock { block_hash: BlockHash },
+    FetchMempoolTransactionsByExcessSigs {
+        excess_sigs: Vec<PrivateKey>,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+    },
+    GetShardKey {
+        height: u64,
+        public_key: CompressedPublicKey,
+    },
+    FetchTemplateRegistrations {
+        start_height: u64,
+        end_height: u64,
+    },
+    FetchUnspentUtxosInBlock {
+        block_hash: BlockHash,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,7 +116,7 @@ impl Display for NodeCommsRequest {
             FetchKernelByExcessSig(s) => write!(
                 f,
                 "FetchKernelByExcessSig (signature=({}, {}))",
-                s.get_public_nonce().to_hex(),
+                s.get_compressed_public_nonce().to_hex(),
                 s.get_signature().to_hex()
             ),
             FetchMempoolTransactionsByExcessSigs { .. } => {

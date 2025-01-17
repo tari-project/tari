@@ -32,7 +32,7 @@ use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::proto::protocol as proto,
         CryptoFactories,
     },

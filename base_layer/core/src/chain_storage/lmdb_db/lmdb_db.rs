@@ -52,7 +52,15 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        Signature,
+        UncompressedCommitment,
+    },
 };
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
@@ -653,7 +661,7 @@ impl LMDBDatabase {
         )?;
 
         let mut excess_sig_key = Vec::<u8>::with_capacity(32 * 2);
-        excess_sig_key.extend(kernel.excess_sig.get_public_nonce().as_bytes());
+        excess_sig_key.extend(kernel.excess_sig.get_compressed_public_nonce().as_bytes());
         excess_sig_key.extend(kernel.excess_sig.get_signature().as_bytes());
         lmdb_insert(
             txn,
@@ -1120,7 +1128,7 @@ impl LMDBDatabase {
                 "kernel_excess_index",
             )?;
             let mut excess_sig_key = Vec::<u8>::new();
-            excess_sig_key.extend(kernel.kernel.excess_sig.get_public_nonce().as_bytes());
+            excess_sig_key.extend(kernel.kernel.excess_sig.get_compressed_public_nonce().as_bytes());
             excess_sig_key.extend(kernel.kernel.excess_sig.get_signature().as_bytes());
             trace!(
                 target: LOG_TARGET,
@@ -1280,7 +1288,7 @@ impl LMDBDatabase {
                 })?
         };
 
-        let mut total_kernel_sum = Commitment::default();
+        let mut total_kernel_sum = UncompressedCommitment::default();
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             ..
@@ -1289,7 +1297,7 @@ impl LMDBDatabase {
         let mut kernel_mmr = PrunedKernelMmr::new(pruned_kernel_set);
 
         for kernel in kernels {
-            total_kernel_sum = &total_kernel_sum + &kernel.excess;
+            total_kernel_sum = &total_kernel_sum + &kernel.excess.to_commitment()?;
             let pos =
                 u64::try_from(kernel_mmr.push(kernel.hash().to_vec())?).map_err(|_| ChainStorageError::OutOfRange)?;
             trace!(
@@ -1395,7 +1403,10 @@ impl LMDBDatabase {
         self.insert_block_accumulated_data(
             txn,
             header.height,
-            &BlockAccumulatedData::new(kernel_mmr.get_pruned_hash_set()?, total_kernel_sum),
+            &BlockAccumulatedData::new(
+                kernel_mmr.get_pruned_hash_set()?,
+                CompressedCommitment::from_commitment(total_kernel_sum),
+            ),
         )?;
         allow_smt_change.store(false, Ordering::SeqCst);
         if header.height % self.smt_cache_period == 0 {
@@ -1416,7 +1427,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         vn_reg: &ValidatorNodeRegistration,
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
@@ -1574,7 +1585,7 @@ impl LMDBDatabase {
         &self,
         write_txn: &WriteTransaction<'_>,
         output_hash: &HashOutput,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         output_type: OutputType,
     ) -> Result<(), ChainStorageError> {
         match lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
@@ -2121,7 +2132,7 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let mut key = Vec::<u8>::new();
-        key.extend(excess_sig.get_public_nonce().as_bytes());
+        key.extend(excess_sig.get_compressed_public_nonce().as_bytes());
         key.extend(excess_sig.get_signature().as_bytes());
         if let Some((header_hash, mmr_position, hash)) =
             lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
@@ -2193,7 +2204,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
@@ -2571,7 +2582,10 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
         let constants = self.consensus_manager.consensus_constants(height);
@@ -2587,7 +2601,11 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(nodes)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let store = self.validator_node_store(&txn);
         let constants = self.get_consensus_constants(height);

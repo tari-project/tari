@@ -28,8 +28,8 @@ use digest::consts::U64;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyTrait};
-use tari_utilities::ByteArray;
+use tari_crypto::hashing::DomainSeparatedHasher;
+use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain, IDENTITY_SIGNATURE};
 use crate::{
@@ -37,14 +37,14 @@ use crate::{
     multiaddr::Multiaddr,
     peer_manager::{PeerFeatures, PeerManagerError},
     proto,
-    types::{CommsPublicKey, CommsSecretKey, Signature},
+    types::{CommsPublicKey, CommsSecretKey, CompressedSignature, Signature},
 };
 
 /// Signature that secures the peer identity
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IdentitySignature {
     version: u8,
-    signature: Signature,
+    signature: CompressedSignature,
     updated_at: DateTime<Utc>,
 }
 
@@ -52,7 +52,7 @@ impl IdentitySignature {
     /// The latest version of the Identity Signature.
     pub const LATEST_VERSION: u8 = 0;
 
-    pub fn new(version: u8, signature: Signature, updated_at: DateTime<Utc>) -> Self {
+    pub fn new(version: u8, signature: CompressedSignature, updated_at: DateTime<Utc>) -> Self {
         Self {
             version,
             signature,
@@ -77,8 +77,10 @@ impl IdentitySignature {
             updated_at,
         )
         .finalize();
-        let signature = Signature::sign_raw_uniform(secret_key, secret_nonce, challenge.as_ref())
-            .expect("unreachable panic: challenge hash digest is the correct length");
+        let signature = CompressedSignature::new_from_schnorr(
+            Signature::sign_raw_uniform(secret_key, secret_nonce, challenge.as_ref())
+                .expect("unreachable panic: challenge hash digest is the correct length"),
+        );
         Self {
             version: Self::LATEST_VERSION,
             signature,
@@ -86,7 +88,7 @@ impl IdentitySignature {
         }
     }
 
-    pub fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &CompressedSignature {
         &self.signature
     }
 
@@ -103,26 +105,28 @@ impl IdentitySignature {
         public_key: &CommsPublicKey,
         features: PeerFeatures,
         addresses: I,
-    ) -> bool {
+    ) -> Result<bool, ByteArrayError> {
         // A negative timestamp is considered invalid
         if self.updated_at.timestamp() < 0 {
-            return false;
+            return Ok(false);
         }
         // Do not accept timestamp more than 1 day in the future
         if self.updated_at > Utc::now() + chrono::Duration::days(1) {
-            return false;
+            return Ok(false);
         }
 
         let challenge = Self::construct_challenge(
             public_key,
-            self.signature.get_public_nonce(),
+            self.signature.get_compressed_public_nonce(),
             self.version,
             features,
             addresses,
             self.updated_at,
         )
         .finalize();
-        self.signature.verify_raw_uniform(public_key, challenge.as_ref())
+        let ristretto_key = public_key.to_public_key()?;
+        let ristretto_signature = self.signature.to_schnorr_signature()?;
+        Ok(ristretto_signature.verify_raw_uniform(&ristretto_key, challenge.as_ref()))
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -171,7 +175,7 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
 
         Ok(Self {
             version,
-            signature: Signature::new(public_nonce, signature),
+            signature: CompressedSignature::new(public_nonce, signature),
             updated_at,
         })
     }
@@ -182,7 +186,7 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
         proto::identity::IdentitySignature {
             version: u32::from(identity_sig.version),
             signature: identity_sig.signature.get_signature().to_vec(),
-            public_nonce: identity_sig.signature.get_public_nonce().to_vec(),
+            public_nonce: identity_sig.signature.get_compressed_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at.timestamp(),
         }
     }
@@ -192,7 +196,7 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
 mod test {
     use std::str::FromStr;
 
-    use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
 
@@ -208,7 +212,9 @@ mod test {
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             assert!(
-                identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                identity
+                    .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address])
+                    .unwrap(),
                 "Signature is not valid"
             );
         }
@@ -224,7 +230,9 @@ mod test {
 
             let tampered = Multiaddr::from_str("/ip4/127.0.0.1/tcp/4321").unwrap();
             assert!(
-                !identity.is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered]),
+                !identity
+                    .is_valid(&public_key, PeerFeatures::COMMUNICATION_NODE, [&tampered])
+                    .unwrap(),
                 "Signature is not valid"
             );
         }
@@ -241,7 +249,7 @@ mod test {
             let tampered = PeerFeatures::COMMUNICATION_CLIENT;
 
             assert!(
-                !identity.is_valid(&public_key, tampered, [&address]),
+                !identity.is_valid(&public_key, tampered, [&address]).unwrap(),
                 "Signature is not valid"
             );
         }

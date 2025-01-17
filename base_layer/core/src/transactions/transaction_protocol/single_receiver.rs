@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::key_branches::TransactionKeyManagerBranch;
+use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::CompressedPublicKey};
 
 use crate::{
     consensus::ConsensusConstants,
     transactions::{
-        key_manager::{TransactionKeyManagerInterface, TxoStage},
         transaction_components::{TransactionKernel, WalletOutput},
+        transaction_key_manager::{TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
             recipient::RecipientSignedMessage,
             sender::SingleRoundSenderData,
@@ -75,12 +75,14 @@ impl SingleReceiverTransactionProtocol {
             &tx_meta.kernel_features,
             &tx_meta.burn_commitment,
         );
+        let total_nonce = &sender_info.public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
+        let total_excess = &sender_info.public_excess.to_public_key()? + &public_excess.to_public_key()?;
         let signature = key_manager
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &public_nonce.key_id,
-                &(&sender_info.public_nonce + &public_nonce.pub_key),
-                &(&sender_info.public_excess + &public_excess),
+                &CompressedPublicKey::new_from_pk(total_nonce),
+                &CompressedPublicKey::new_from_pk(total_excess),
                 &sender_info.kernel_version,
                 &kernel_message,
                 &tx_meta.kernel_features,
@@ -143,16 +145,17 @@ impl SingleReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-    use tari_crypto::{keys::PublicKey as PublicKeyTrait, signatures::CommitmentAndPublicKeySignature};
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_common_types::{
+        tari_address::TariAddress,
+        types::{ComAndPubSignature, CompressedPublicKey, UncompressedPublicKey},
+    };
+    use tari_crypto::keys::PublicKey as pkt;
     use tari_script::{script, ExecutionStack};
 
     use crate::{
         covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
@@ -165,6 +168,7 @@ mod test {
                 TransactionOutputVersion,
                 WalletOutput,
             },
+            transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{
                 sender::SingleRoundSenderData,
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -187,8 +191,8 @@ mod test {
             script!(Nop).unwrap(),
             ExecutionStack::default(),
             test_params.script_key_id,
-            PublicKey::default(),
-            CommitmentAndPublicKeySignature::default(),
+            CompressedPublicKey::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -228,8 +232,8 @@ mod test {
             script!(Nop).unwrap(),
             ExecutionStack::default(),
             test_params.script_key_id,
-            PublicKey::default(),
-            CommitmentAndPublicKeySignature::default(),
+            CompressedPublicKey::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -253,8 +257,8 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn valid_request() {
-        let key_manager: crate::transactions::key_manager::TransactionKeyManagerWrapper<
-            tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
+        let key_manager: crate::transactions::transaction_key_manager::TransactionKeyManagerWrapper<
+            crate::transactions::transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase<
                 tari_common_sqlite::connection::DbConnection,
             >,
         > = create_memory_db_key_manager().unwrap();
@@ -308,7 +312,7 @@ mod test {
             ExecutionStack::default(),
             test_params2.script_key_id,
             bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -341,20 +345,31 @@ mod test {
         let pubkey = key_manager
             .get_public_key_at_key_id(&test_params2.commitment_mask_key_id)
             .await
+            .unwrap()
+            .to_public_key()
             .unwrap();
         let offset = prot.offset.clone();
-        let public_offset = PublicKey::from_secret_key(&offset);
-        let signing_pubkey = &pubkey - &public_offset;
+        let public_offset = UncompressedPublicKey::from_secret_key(&offset);
+        let signing_pubkey = CompressedPublicKey::new_from_pk(&pubkey - &public_offset);
         assert_eq!(prot.public_spend_key, signing_pubkey, "Public key is incorrect");
-        let excess = &pub_xs + &signing_pubkey;
+        let excess = &pub_xs.to_public_key().unwrap() + &signing_pubkey.to_public_key().unwrap();
         let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
             &TransactionKernelVersion::get_current_version(),
-            &(&pub_rs + prot.partial_signature.get_public_nonce()),
-            &excess,
+            &CompressedPublicKey::new_from_pk(
+                &pub_rs.to_public_key().unwrap() +
+                    prot.partial_signature
+                        .get_compressed_public_nonce()
+                        .to_public_key()
+                        .unwrap(),
+            ),
+            &CompressedPublicKey::new_from_pk(excess),
             &m,
         );
         assert!(
-            prot.partial_signature.verify_raw_uniform(&signing_pubkey, &e),
+            prot.partial_signature
+                .to_schnorr_signature()
+                .unwrap()
+                .verify_raw_uniform(&signing_pubkey.to_public_key().unwrap(), &e),
             "Partial signature is incorrect"
         );
     }

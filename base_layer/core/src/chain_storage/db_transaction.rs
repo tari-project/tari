@@ -27,7 +27,7 @@ use std::{
 };
 
 use primitive_types::U256;
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -135,7 +135,7 @@ impl DbTransaction {
     pub fn prune_output_from_all_dbs(
         &mut self,
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     ) -> &mut Self {
         self.operations.push(WriteOperation::PruneOutputFromAllDbs {
@@ -261,7 +261,7 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_horizon_data(&mut self, kernel_sum: CompressedCommitment, utxo_sum: CompressedCommitment) -> &mut Self {
         self.operations.push(WriteOperation::SetHorizonData {
             horizon_data: HorizonData::new(kernel_sum, utxo_sum),
         });
@@ -334,7 +334,7 @@ pub enum WriteOperation {
     },
     PruneOutputFromAllDbs {
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     },
     DeleteAllKernelsInBlock {

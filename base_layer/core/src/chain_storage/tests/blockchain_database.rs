@@ -35,10 +35,10 @@ use crate::{
         BlockSpec,
     },
     transactions::{
-        key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::T,
         test_helpers::schema_to_transaction,
         transaction_components::{Transaction, WalletOutput},
+        transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
     txn_schema,
 };
@@ -115,7 +115,7 @@ async fn add_many_chained_blocks(
 
 mod fetch_blocks {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -206,7 +206,7 @@ mod fetch_blocks {
 
 mod fetch_headers {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -294,7 +294,7 @@ mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
 
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -349,7 +349,7 @@ mod find_headers_after_hash {
 
 mod fetch_block_hashes_from_header_tip {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -418,7 +418,7 @@ mod get_stats {
 
 mod fetch_total_size_stats {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
@@ -477,7 +477,7 @@ mod prepare_new_block {
 
 mod fetch_header_containing_kernel_mmr {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
     #[tokio::test]
     async fn it_returns_corresponding_header() {
         let db = setup();
@@ -526,7 +526,7 @@ mod fetch_header_containing_kernel_mmr {
 
 mod clear_all_pending_headers {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_clears_no_headers() {
@@ -587,15 +587,14 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::types::PublicKey;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_common_types::types::CompressedPublicKey;
 
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
         transactions::{
-            key_manager::create_memory_db_key_manager,
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
+            transaction_key_manager::create_memory_db_key_manager,
         },
         ValidatorNodeBMT,
     };
@@ -615,7 +614,7 @@ mod validator_node_merkle_root {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
-        let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign(&sk, &[]);
         let features =
             OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone());

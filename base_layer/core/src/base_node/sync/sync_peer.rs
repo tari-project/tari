@@ -137,7 +137,7 @@ mod test {
     mod sort_by_latency {
         use tari_common_types::types::FixedHash;
         use tari_comms::types::{CommsPublicKey, CommsSecretKey};
-        use tari_crypto::keys::{PublicKey, SecretKey};
+        use tari_crypto::keys::SecretKey;
 
         use super::*;
 

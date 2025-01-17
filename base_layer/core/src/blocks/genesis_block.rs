@@ -524,7 +524,10 @@ mod test {
     use std::convert::TryFrom;
 
     use serial_test::serial;
-    use tari_common_types::{epoch::VnEpoch, types::Commitment};
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedCommitment, UncompressedCommitment},
+    };
 
     use super::*;
     use crate::{
@@ -796,23 +799,37 @@ mod test {
             .body
             .inputs()
             .iter()
-            .map(|o| o.commitment().unwrap())
-            .sum::<Commitment>();
+            .map(|o| o.commitment().unwrap().to_commitment().unwrap())
+            .sum::<UncompressedCommitment>();
         let output_sum = block
             .block()
             .body
             .outputs()
             .iter()
-            .map(|o| &o.commitment)
-            .sum::<Commitment>();
+            .map(|o| o.commitment.to_commitment().unwrap())
+            .sum::<UncompressedCommitment>();
         let total_utxo_sum = &output_sum - &input_sum;
-        let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
+        let kernel_sum = CompressedCommitment::from_commitment(
+            block
+                .block()
+                .body
+                .kernels()
+                .iter()
+                .map(|k| k.excess.to_commitment().unwrap())
+                .sum(),
+        );
 
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &total_utxo_sum, &kernel_sum, &Commitment::default())
+            .validate(
+                &*lock,
+                0,
+                &CompressedCommitment::from_commitment(total_utxo_sum),
+                &kernel_sum,
+                &CompressedCommitment::default(),
+            )
             .unwrap();
     }
 

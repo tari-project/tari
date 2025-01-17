@@ -55,7 +55,7 @@ use tari_common::{
 };
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
@@ -67,8 +67,8 @@ use tari_comms::{
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
         transaction_components::TransactionError,
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
         CryptoFactories,
     },
 };
@@ -545,7 +545,10 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        sig.is_valid(&comms_public_key, node_features, &node_addresses)
+        matches!(
+            sig.is_valid(&comms_public_key, node_features, &node_addresses),
+            Ok(true)
+        )
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
@@ -864,7 +867,7 @@ pub fn prompt_wallet_type(
                 prompt_private_key("Enter view key: ").expect("View key provided was invalid")
             };
             let spend_key = if let Some(sk) = spend_key {
-                match PublicKey::from_hex(&sk) {
+                match CompressedPublicKey::from_hex(&sk) {
                     Ok(pk) => pk,
                     Err(_) => {
                         println!("Invalid spend key provided");
@@ -959,7 +962,7 @@ pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
     }
 }
 
-pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
+pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
     // see what we type, as we type it
     let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
     disable_raw_mode().expect("Could not disable raw mode");
@@ -970,9 +973,9 @@ pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
         enable_raw_mode().expect("Could not enable raw mode");
     }
     let input = input.trim();
-    match PublicKey::from_hex(input) {
+    match CompressedPublicKey::from_hex(input) {
         Ok(pk) => Some(pk),
-        Err(_) => match PublicKey::from_monero_base58(input) {
+        Err(_) => match CompressedPublicKey::from_monero_base58(input) {
             Ok(pk) => Some(pk),
             Err(_) => None,
         },

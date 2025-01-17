@@ -1,4 +1,4 @@
-// Copyright 2023 The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,33 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod wrapper;
-pub use wrapper::TransactionKeyManagerWrapper;
-
-mod interface;
-pub use interface::{
-    SecretTransactionKeyManagerInterface,
-    TariKeyId,
-    TransactionKeyManagerInterface,
-    TransactionKeyManagerLabel,
-    TxoStage,
-};
-
-mod initializer;
-pub use initializer::TransactionKeyManagerInitializer;
-
-mod inner;
-pub use inner::LEDGER_NOT_SUPPORTED;
-/// This is a memory database implementation of the `TransactionKeyManager` trait.
-mod memory_db_key_manager;
-pub use inner::TransactionKeyManagerInner;
-pub use memory_db_key_manager::{
-    create_memory_db_key_manager,
-    create_memory_db_key_manager_from_seed,
-    create_memory_db_key_manager_with_range_proof_size,
-    MemoryDbKeyManager,
-};
-
-mod error;
-pub use error::CoreKeyManagerError;
-pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
+pub mod database;
+pub mod sqlite_db;

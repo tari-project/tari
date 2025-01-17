@@ -17,7 +17,7 @@ minotari_app_utilities = { path = "../minotari_app_utilities", features = [
     "miner_input",
 ] }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_crypto = { version = "0.21.0" }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto", rev = "42237731dd5886554b3bfe6ed22e091dce4af557" }
 tari_utilities = { version = "0.8" }
 
 base64 = "0.13.0"

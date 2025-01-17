@@ -32,7 +32,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -51,9 +51,8 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -100,16 +99,16 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
-        claim_public_key: Option<PublicKey>,
+        claim_public_key: Option<CompressedPublicKey>,
     },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
-        expected_commitment: PedersenCommitment,
-        script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-        script_signature_public_nonces: Vec<PublicKey>,
-        sender_offset_public_key_shares: Vec<PublicKey>,
-        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<PublicKey>,
+        expected_commitment: CompressedCommitment,
+        script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+        script_signature_public_nonces: Vec<CompressedPublicKey>,
+        sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+        dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
@@ -118,7 +117,7 @@ pub enum TransactionServiceRequest {
     SpendBackupPreMineUtxo {
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
-        expected_commitment: PedersenCommitment,
+        expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
         payment_id: PaymentId,
     },
@@ -140,7 +139,7 @@ pub enum TransactionServiceRequest {
         payment_id: PaymentId,
     },
     RegisterCodeTemplate {
-        author_public_key: PublicKey,
+        author_public_key: CompressedPublicKey,
         author_signature: Signature,
         template_name: MaxSizeString<32>,
         template_version: u16,
@@ -283,7 +282,7 @@ impl fmt::Display for TransactionServiceRequest {
                             "(public_key: {}, sig: {}, nonce: {})",
                             v.0.to_hex(),
                             v.1.get_signature().to_hex(),
-                            v.1.get_public_nonce().to_hex()
+                            v.1.get_compressed_public_nonce().to_hex()
                         ))
                         .collect::<Vec<String>>(),
                     script_signature_public_nonces
@@ -324,9 +323,9 @@ impl fmt::Display for TransactionServiceRequest {
                  {}) and script_offset: {}",
                 tx_id,
                 total_meta_data_signature.get_signature().to_hex(),
-                total_meta_data_signature.get_public_nonce().to_hex(),
+                total_meta_data_signature.get_compressed_public_nonce().to_hex(),
                 total_script_data_signature.get_signature().to_hex(),
-                total_script_data_signature.get_public_nonce().to_hex(),
+                total_script_data_signature.get_compressed_public_nonce().to_hex(),
                 script_offset.to_hex(),
             )),
             Self::RegisterValidatorNode {
@@ -401,10 +400,10 @@ pub enum TransactionServiceResponse {
     EncumberAggregateUtxo(
         TxId,
         Box<Transaction>,
-        Box<PublicKey>,
-        Box<PublicKey>,
-        Box<PublicKey>,
-        Box<PublicKey>,
+        Box<CompressedPublicKey>,
+        Box<CompressedPublicKey>,
+        Box<CompressedPublicKey>,
+        Box<CompressedPublicKey>,
     ),
     UnspentOutputs(Vec<TransactionOutput>),
     TransactionImported(TxId),
@@ -432,7 +431,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsSet,
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
-    ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
+    ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
 }
 
@@ -645,7 +644,7 @@ impl TransactionServiceHandle {
     pub async fn register_validator_node(
         &mut self,
         amount: MicroMinotari,
-        validator_node_public_key: PublicKey,
+        validator_node_public_key: CompressedPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
@@ -670,7 +669,7 @@ impl TransactionServiceHandle {
 
     pub async fn register_code_template(
         &mut self,
-        author_public_key: PublicKey,
+        author_public_key: CompressedPublicKey,
         author_signature: Signature,
         template_name: MaxSizeString<32>,
         template_version: u16,
@@ -733,7 +732,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
-        claim_public_key: Option<PublicKey>,
+        claim_public_key: Option<CompressedPublicKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -755,17 +754,27 @@ impl TransactionServiceHandle {
     pub async fn encumber_aggregate_utxo(
         &mut self,
         fee_per_gram: MicroMinotari,
-        expected_commitment: PedersenCommitment,
-        script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-        script_signature_public_nonces: Vec<PublicKey>,
-        sender_offset_public_key_shares: Vec<PublicKey>,
-        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<PublicKey>,
+        expected_commitment: CompressedCommitment,
+        script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+        script_signature_public_nonces: Vec<CompressedPublicKey>,
+        sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+        dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
         payment_id: PaymentId,
-    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
+    ) -> Result<
+        (
+            TxId,
+            Transaction,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+        ),
+        TransactionServiceError,
+    > {
         match self
             .handle
             .call(TransactionServiceRequest::EncumberAggregateUtxo {
@@ -806,7 +815,7 @@ impl TransactionServiceHandle {
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
-        expected_commitment: PedersenCommitment,
+        expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
@@ -1155,7 +1164,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
-    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+    ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(

@@ -39,7 +39,7 @@ mod tests {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::key_manager::create_memory_db_key_manager,
+        transactions::transaction_key_manager::create_memory_db_key_manager,
     };
 
     #[tokio::test]

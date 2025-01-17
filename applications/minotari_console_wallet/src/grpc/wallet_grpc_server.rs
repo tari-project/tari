@@ -98,7 +98,7 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, PublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -263,7 +263,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<SetBaseNodeRequest>,
     ) -> Result<Response<SetBaseNodeResponse>, Status> {
         let message = request.into_inner();
-        let public_key = PublicKey::from_hex(&message.public_key_hex)
+        let public_key = CompressedPublicKey::from_hex(&message.public_key_hex)
             .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
         let net_address = message
             .net_address
@@ -672,7 +672,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     None
                 } else {
                     Some(
-                        PublicKey::from_canonical_bytes(&message.claim_public_key)
+                        CompressedPublicKey::from_canonical_bytes(&message.claim_public_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },

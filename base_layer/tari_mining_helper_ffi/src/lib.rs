@@ -35,15 +35,15 @@ use std::{convert::TryFrom, ffi::CString, slice, str::FromStr};
 use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,
     proof_of_work::sha3x_difficulty,
     transactions::{
         generate_coinbase,
-        key_manager::create_memory_db_key_manager,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
+        transaction_key_manager::create_memory_db_key_manager,
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -56,6 +56,7 @@ mod consts {
 }
 
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
+pub type UncompressedTariPublicKey = UncompressedPublicKey;
 #[derive(Debug, PartialEq, Clone)]
 pub struct ByteVector(Vec<c_uchar>);
 
@@ -202,7 +203,7 @@ pub unsafe extern "C" fn public_key_hex_validate(hex: *const c_char, error_out: 
         return false;
     }
     let native = CString::from_raw(hex as *mut i8).to_str().unwrap().to_owned();
-    let pk = TariPublicKey::from_hex(&native);
+    let pk = UncompressedTariPublicKey::from_hex(&native);
     match pk {
         Ok(_pk) => true,
         Err(e) => {

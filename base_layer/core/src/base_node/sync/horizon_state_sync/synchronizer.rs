@@ -29,7 +29,7 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use tari_common_types::types::{Commitment, FixedHash, RangeProofService};
+use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
@@ -690,7 +690,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Txo::Commitment(commitment_bytes) => {
                     stxo_counter += 1;
 
-                    let commitment = Commitment::from_canonical_bytes(commitment_bytes.as_slice())?;
+                    let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes.as_slice())?;
                     match self
                         .db()
                         .fetch_unspent_output_hash_by_commitment(commitment.clone())
@@ -851,7 +851,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn calculate_commitment_sums(
         &mut self,
         header: &ChainHeader,
-    ) -> Result<(Commitment, Commitment, Commitment), HorizonSyncError> {
+    ) -> Result<(CompressedCommitment, CompressedCommitment, CompressedCommitment), HorizonSyncError> {
         let mut utxo_sum = HomomorphicCommitment::default();
         let mut kernel_sum = HomomorphicCommitment::default();
         let mut burned_sum = HomomorphicCommitment::default();
@@ -888,16 +888,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
                 for (u, spent) in utxos {
                     if !spent {
-                        utxo_sum = &u.commitment + &utxo_sum;
+                        utxo_sum = &u.commitment.to_commitment()? + &utxo_sum;
                     }
                 }
 
                 let kernels = db.fetch_kernels_in_block(*curr_header.hash())?;
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
-                    kernel_sum = &k.excess + &kernel_sum;
+                    kernel_sum = &k.excess.to_commitment()? + &kernel_sum;
                     if k.is_burned() {
-                        burned_sum = k.get_burn_commitment()? + &burned_sum;
+                        burned_sum = &(k.get_burn_commitment()?.to_commitment()?) + &burned_sum;
                     }
                 }
                 prev_kernel_mmr = curr_header.header().kernel_mmr_size;
@@ -912,7 +912,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
             }
 
-            Ok((utxo_sum, kernel_sum, burned_sum))
+            Ok((
+                CompressedCommitment::from_commitment(utxo_sum),
+                CompressedCommitment::from_commitment(kernel_sum),
+                CompressedCommitment::from_commitment(burned_sum),
+            ))
         })
         .await?
     }

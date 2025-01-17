@@ -27,7 +27,7 @@ use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
+use tari_core::transactions::transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
 
@@ -138,7 +138,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
         TransactionServiceSqliteDatabase,
         OutputManagerSqliteDatabase,
         ContactsServiceSqliteDatabase<WalletDbConnection>,
-        KeyManagerSqliteDatabase<WalletDbConnection>,
+        TransactionKeyManagerSqliteDatabase<WalletDbConnection>,
     ),
     WalletStorageError,
 > {
@@ -154,7 +154,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
     let contacts_backend = ContactsServiceSqliteDatabase::init(connection.clone());
-    let key_manager_backend = KeyManagerSqliteDatabase::init(connection, wallet_backend.cipher());
+    let key_manager_backend = TransactionKeyManagerSqliteDatabase::init(connection, wallet_backend.cipher());
     Ok((
         wallet_backend,
         transaction_backend,

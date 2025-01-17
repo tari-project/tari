@@ -33,8 +33,8 @@ use tari_core::{
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
     transactions::{
         generate_coinbase,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, TransactionKernel, TransactionOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     AuxChainHashes,
 };

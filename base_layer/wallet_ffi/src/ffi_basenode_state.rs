@@ -333,14 +333,16 @@ pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState,
 #[cfg(test)]
 mod tests {
     use tari_common_types::types::FixedHash;
-    use tari_comms::types::CommsPublicKey;
 
     use super::*;
+    use crate::{TariPublicKey, UncompressedTariPublicKey};
 
     #[test]
     fn test_basenode_state_ffi_accessors() {
         let mut error_code = 0;
-        let original_node_id = NodeId::from_key(&CommsPublicKey::new_generator("test").unwrap());
+        let original_node_id = NodeId::from_key(&TariPublicKey::new_from_pk(
+            UncompressedTariPublicKey::new_generator("test").unwrap(),
+        ));
         let original_best_block = BlockHash::zero();
 
         let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {

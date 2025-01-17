@@ -33,7 +33,7 @@ use minotari_wallet::{
 use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{PublicKey, Signature},
+    types::{CompressedPublicKey, Signature, UncompressedSignature},
 };
 use tari_core::{
     consensus::DomainSeparatedConsensusHasher,
@@ -42,7 +42,7 @@ use tari_core::{
         transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
     },
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_hashing::TransactionHashDomain;
 use tari_key_manager::key_manager::KeyManager;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
@@ -188,7 +188,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
 
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
-    claim_public_key: Option<PublicKey>,
+    claim_public_key: Option<CompressedPublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     payment_id: PaymentId,
@@ -408,8 +408,8 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
-    let author_public_key = PublicKey::from_secret_key(&author_private_key);
-    let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
+    let author_public_key = CompressedPublicKey::from_secret_key(&author_private_key);
+    let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
     let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
         .chain(&author_public_key)
         .chain(&public_nonce)
@@ -417,8 +417,10 @@ pub async fn send_register_template_transaction_task(
         .chain(&b"")
         .finalize();
 
-    let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
-        .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
+    let author_signature = Signature::new_from_schnorr(
+        UncompressedSignature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
+            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey"),
+    );
 
     // ----------------------------------------------------------------------------
     // ============================================================================

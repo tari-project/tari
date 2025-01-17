@@ -32,7 +32,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 use tari_common_types::types::FixedHash;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey};
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, PrivateKey, UncompressedCommitment};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 #[cfg(feature = "base_node")]
 use tari_mmr::pruned_hashset::PrunedHashSet;
@@ -117,7 +117,7 @@ impl AggregateBody {
     /// Update an existing transaction input's script signature (found by matching commitment)
     pub fn update_script_signature(
         &mut self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         script_signature: ComAndPubSignature,
     ) -> Result<(), TransactionError> {
         let input = self
@@ -141,7 +141,7 @@ impl AggregateBody {
     /// Update an existing transaction output's metadata signature (found by matching commitment)
     pub fn update_metadata_signature(
         &mut self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         metadata_signature: ComAndPubSignature,
     ) -> Result<(), TransactionError> {
         let output = self
@@ -296,7 +296,7 @@ impl AggregateBody {
         height: u64,
         maximum_coinbase_count: u64,
     ) -> Result<(), TransactionError> {
-        let mut coinbase_utxo_sum = Commitment::default();
+        let mut coinbase_utxo_sum = UncompressedCommitment::default();
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0;
         for utxo in self.outputs() {
@@ -306,7 +306,7 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment;
+                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment.to_commitment()?;
             }
         }
 
@@ -346,7 +346,8 @@ impl AggregateBody {
 
         let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
 
-        let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
+        let rhs = &coinbase_kernel.excess.to_commitment()? +
+            &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
         if rhs != coinbase_utxo_sum {
             warn!(
                 target: LOG_TARGET,
@@ -531,7 +532,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{FixedHash, PublicKey, Signature};
+    use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
@@ -548,7 +549,7 @@ mod test {
             KernelFeatures::default(),
             0.into(),
             0,
-            Commitment::default(),
+            CompressedCommitment::default(),
             Signature::default(),
             None,
         );
@@ -556,11 +557,11 @@ mod test {
         let input = TransactionInput::new_with_output_data(
             TransactionInputVersion::get_current_version(),
             OutputFeatures::default(),
-            Commitment::default(),
+            CompressedCommitment::default(),
             TariScript::default(),
             ExecutionStack::default(),
             ComAndPubSignature::default(),
-            PublicKey::default(),
+            CompressedPublicKey::default(),
             Covenant::default(),
             EncryptedData::default(),
             ComAndPubSignature::default(),

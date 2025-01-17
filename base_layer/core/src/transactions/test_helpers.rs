@@ -28,10 +28,9 @@ use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::Pool
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
 };
-use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface};
+use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
@@ -42,14 +41,6 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerWrapper,
-            TxoStage,
-        },
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::PaymentId,
@@ -64,6 +55,15 @@ use crate::{
             WalletOutput,
             WalletOutputBuilder,
         },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+            TransactionKeyManagerWrapper,
+            TxoStage,
+        },
         transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
         weight::TransactionWeight,
         SenderTransactionProtocol,
@@ -75,7 +75,7 @@ pub async fn create_test_input<
 >(
     amount: MicroMinotari,
     maturity: u64,
-    key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+    key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     coinbase_extra: Vec<u8>,
     payment_id: Option<PaymentId>,
 ) -> WalletOutput {
@@ -101,21 +101,21 @@ pub async fn create_test_input<
 pub struct TestParams {
     pub commitment_mask_key_id: TariKeyId,
     pub script_key_id: TariKeyId,
-    pub script_key_pk: PublicKey,
+    pub script_key_pk: CompressedPublicKey,
     pub sender_offset_key_id: TariKeyId,
-    pub sender_offset_key_pk: PublicKey,
+    pub sender_offset_key_pk: CompressedPublicKey,
     pub kernel_nonce_key_id: TariKeyId,
-    pub kernel_nonce_key_pk: PublicKey,
+    pub kernel_nonce_key_pk: CompressedPublicKey,
     pub public_nonce_key_id: TariKeyId,
-    pub public_nonce_key_pk: PublicKey,
+    pub public_nonce_key_pk: CompressedPublicKey,
     pub ephemeral_public_nonce_key_id: TariKeyId,
-    pub ephemeral_public_nonce_key_pk: PublicKey,
+    pub ephemeral_public_nonce_key_pk: CompressedPublicKey,
     pub transaction_weight: TransactionWeight,
 }
 
 impl TestParams {
     pub async fn new<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Clone + 'static>(
-        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+        key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let sender_offset = key_manager
@@ -160,7 +160,7 @@ impl TestParams {
     >(
         &self,
         params: UtxoTestParams,
-        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+        key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> Result<WalletOutput, String> {
         let version = match params.output_version {
             Some(v) => v,
@@ -197,7 +197,7 @@ impl TestParams {
     >(
         &self,
         params: UtxoTestParams,
-        key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+        key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> WalletOutput {
         self.create_output(params, key_manager).await.unwrap()
     }
@@ -250,9 +250,9 @@ impl Default for UtxoTestParams {
 /// A convenience struct for a set of public-private keys and a public-private nonce
 pub struct TestKeySet {
     pub k: PrivateKey,
-    pub pk: PublicKey,
+    pub pk: CompressedPublicKey,
     pub r: PrivateKey,
-    pub pr: PublicKey,
+    pub pr: CompressedPublicKey,
 }
 
 /// Generate a new random key set. The key set includes
@@ -260,8 +260,8 @@ pub struct TestKeySet {
 /// * a public-private nonce keypair (r, pr)
 pub fn generate_keys() -> TestKeySet {
     let _rng = rand::thread_rng();
-    let (k, pk) = PublicKey::random_keypair(&mut OsRng);
-    let (r, pr) = PublicKey::random_keypair(&mut OsRng);
+    let (k, pk) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let (r, pr) = CompressedPublicKey::random_keypair(&mut OsRng);
     TestKeySet { k, pk, r, pr }
 }
 
@@ -270,8 +270,8 @@ pub fn create_random_signature(
     fee: MicroMinotari,
     lock_height: u64,
     features: KernelFeatures,
-) -> (PublicKey, Signature) {
-    let (k, p) = PublicKey::random_keypair(&mut OsRng);
+) -> (CompressedPublicKey, Signature) {
+    let (k, p) = CompressedPublicKey::random_keypair(&mut OsRng);
     (p, create_signature(k, fee, lock_height, features))
 }
 
@@ -281,11 +281,12 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
         &TransactionKernelVersion::get_current_version(),
-        &PublicKey::from_secret_key(&r),
-        &PublicKey::from_secret_key(&k),
+        &CompressedPublicKey::from_secret_key(&r),
+        &CompressedPublicKey::from_secret_key(&k),
         &tx_meta,
     );
-    Signature::sign_raw_uniform(&k, r, &e).unwrap()
+    let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
+    Signature::new_from_schnorr(sig)
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
@@ -296,7 +297,7 @@ pub async fn create_random_signature_from_secret_key(
     lock_height: u64,
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
-) -> (PublicKey, Signature) {
+) -> (CompressedPublicKey, Signature) {
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, kernel_features);
     let total_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -369,7 +370,7 @@ pub async fn create_wallet_output_with_data<
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroMinotari,
-    key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
+    key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
 ) -> Result<WalletOutput, String> {
     test_params
         .create_output(
@@ -742,7 +743,7 @@ pub async fn create_stx_protocol_internal(
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
-        let script_key_id = KeyId::Derived {
+        let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
@@ -832,7 +833,7 @@ pub async fn create_coinbase_kernel(
 
     KernelBuilder::new()
         .with_features(kernel_features)
-        .with_excess(&Commitment::from_public_key(&public_commitment_mask))
+        .with_excess(&CompressedCommitment::from_compressed_key(public_commitment_mask))
         .with_signature(kernel_signature)
         .build()
         .unwrap()
@@ -845,7 +846,7 @@ pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: Kernel
         .with_fee(fee)
         .with_lock_height(lock_height)
         .with_features(features)
-        .with_excess(&Commitment::from_public_key(&excess))
+        .with_excess(&CompressedCommitment::from_compressed_key(excess))
         .with_signature(s)
         .build()
         .unwrap()

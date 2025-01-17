@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{Commitment, PublicKey},
+    types::{CompressedCommitment, CompressedPublicKey},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -31,6 +31,6 @@ pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
     pub start_epoch: VnEpoch,
     pub end_epoch: VnEpoch,
-    pub public_key: PublicKey,
-    pub commitment: Commitment,
+    pub public_key: CompressedPublicKey,
+    pub commitment: CompressedCommitment,
 }

@@ -24,6 +24,7 @@ use lmdb_zero::error;
 use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
@@ -144,6 +145,8 @@ pub enum ChainStorageError {
     InvalidChainMetaData(#[from] ChainMetaDataError),
     #[error("Block header error: `{0}`")]
     MrHashError(#[from] MrHashError),
+    #[error("Invalid Transaction: {0}")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 impl ChainStorageError {
@@ -163,7 +166,8 @@ impl ChainStorageError {
             err @ ChainStorageError::MerkleMountainRangeError { .. } |
             err @ ChainStorageError::MismatchedMmrRoot(_) |
             err @ ChainStorageError::TransactionError(_) |
-            err @ ChainStorageError::SMTError(_) => Some(BanReason {
+            err @ ChainStorageError::SMTError(_) |
+            err @ ChainStorageError::ByteArrayError(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

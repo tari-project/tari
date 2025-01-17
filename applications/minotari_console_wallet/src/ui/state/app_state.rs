@@ -48,7 +48,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
+    types::CompressedPublicKey,
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -382,7 +382,7 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         let claim_public_key = match claim_public_key {
             None => return Err(UiError::PublicKeyParseError),
-            Some(claim_public_key) => match PublicKey::from_hex(claim_public_key.as_str()) {
+            Some(claim_public_key) => match CompressedPublicKey::from_hex(claim_public_key.as_str()) {
                 Ok(claim_public_key) => Some(claim_public_key),
                 Err(_) => return Err(UiError::PublicKeyParseError),
             },
@@ -588,7 +588,7 @@ impl AppState {
     }
 
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
-        let pub_key = PublicKey::from_hex(public_key.as_str())?;
+        let pub_key = CompressedPublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
         let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(
@@ -1200,7 +1200,7 @@ impl CompletedTransactionInfo {
                 .unwrap_or_default(),
             tx.transaction
                 .first_kernel_excess_sig()
-                .map(|s| s.get_public_nonce().to_hex())
+                .map(|s| s.get_compressed_public_nonce().to_hex())
                 .unwrap_or_default()
         );
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;

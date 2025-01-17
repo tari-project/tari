@@ -30,11 +30,14 @@ use tari_crypto::{
     errors::RangeProofError,
     signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
 };
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transactions::transaction_components::EncryptedDataError;
+use crate::transactions::{
+    transaction_components::EncryptedDataError,
+    transaction_key_manager::error::KeyManagerServiceError,
+};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
@@ -105,6 +108,12 @@ impl From<EncryptedDataError> for TransactionError {
 impl From<RangeProofError> for TransactionError {
     fn from(e: RangeProofError) -> Self {
         TransactionError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<ByteArrayError> for TransactionError {
+    fn from(e: ByteArrayError) -> Self {
+        TransactionError::SerializationError(e.to_string())
     }
 }
 

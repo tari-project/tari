@@ -30,9 +30,9 @@ use tari_core::{
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, T},
         transaction_components::WalletOutput,
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     txn_schema,
     validation::DifficultyCalculator,

@@ -169,15 +169,14 @@ pub unsafe extern "C" fn destroy_conversationalists_vector(ptr: *mut Conversatio
 mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::PublicKey;
-    use tari_crypto::keys::PublicKey as PubKeyTrait;
+    use tari_common_types::types::CompressedPublicKey;
 
     use super::*;
     use crate::tari_address::destroy_tari_address;
 
     #[test]
     fn test_retrieving_conversationalists_from_vector() {
-        let (_, pk) = PublicKey::random_keypair(&mut OsRng);
+        let (_, pk) = CompressedPublicKey::random_keypair(&mut OsRng);
         let a = TariAddress::new_single_address_with_interactive_only(pk, Network::LocalNet);
         let conversationalists =
             ConversationalistsVector(vec![TariAddress::default(), TariAddress::default(), a.clone()]);

@@ -26,11 +26,11 @@ use chrono::{DateTime, Utc};
 use derivative::Derivative;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput},
+    types::{BlockHash, CompressedCommitment, HashOutput},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{encrypted_data::PaymentId, WalletOutput},
+    transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_script::{ExecutionStack, TariScript};
 
@@ -43,7 +43,7 @@ use crate::output_manager_service::{
 
 #[derive(Debug, Clone)]
 pub struct DbWalletOutput {
-    pub commitment: Commitment,
+    pub commitment: CompressedCommitment,
     pub wallet_output: WalletOutput,
     pub hash: HashOutput,
     pub status: OutputStatus,

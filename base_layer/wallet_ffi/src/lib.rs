@@ -121,7 +121,14 @@ use tari_common_types::{
     emoji::{emoji_set, EMOJI},
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PublicKey, RangeProof, SignatureWithDomain},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        RangeProof,
+        SignatureWithDomain,
+        UncompressedPublicKey,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -143,7 +150,6 @@ use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -154,11 +160,12 @@ use tari_core::{
             RangeProofType,
             UnblindedOutput,
         },
+        transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
     },
 };
 use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},
 };
 use tari_key_manager::{
@@ -214,7 +221,8 @@ mod consts {
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportConfig = TransportConfig;
-pub type TariPublicKey = PublicKey;
+pub type TariPublicKey = CompressedPublicKey;
+pub type UncompressedTariPublicKey = UncompressedPublicKey;
 pub type TariWalletAddress = TariAddress;
 pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
@@ -408,8 +416,8 @@ impl From<Vec<String>> for TariVector {
     }
 }
 
-impl From<Vec<Commitment>> for TariVector {
-    fn from(v: Vec<Commitment>) -> Self {
+impl From<Vec<CompressedCommitment>> for TariVector {
+    fn from(v: Vec<CompressedCommitment>) -> Self {
         let mut v = ManuallyDrop::new(
             v.into_iter()
                 .map(|x| CString::new(x.to_hex().as_str()).unwrap().into_raw())
@@ -480,14 +488,14 @@ impl TariVector {
         })
     }
 
-    fn to_commitment_vec(&self) -> Result<Vec<Commitment>, InterfaceError> {
+    fn to_commitment_vec(&self) -> Result<Vec<CompressedCommitment>, InterfaceError> {
         self.to_string_vec()?
             .into_iter()
             .map(|x| {
-                Commitment::from_hex(x.as_str())
+                CompressedCommitment::from_hex(x.as_str())
                     .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
             })
-            .try_collect::<Commitment, Vec<Commitment>, InterfaceError>()
+            .try_collect::<CompressedCommitment, Vec<CompressedCommitment>, InterfaceError>()
     }
 
     #[allow(dead_code)]
@@ -708,7 +716,7 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_public_nonce_hex(
         ptr::swap(error_out, &mut error as *mut c_int);
         return CString::into_raw(result);
     }
-    let nonce = (*kernel).excess_sig.get_public_nonce().to_hex();
+    let nonce = (*kernel).excess_sig.get_compressed_public_nonce().to_hex();
 
     match CString::new(nonce) {
         Ok(v) => result = v,
@@ -1588,19 +1596,20 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         return ptr::null_mut();
     }
 
-    let ephemeral_commitment = match Commitment::from_canonical_bytes(&(*ephemeral_commitment_bytes).0.clone()) {
-        Ok(ephemeral_commitment) => ephemeral_commitment,
-        Err(e) => {
-            error!(
-                target: LOG_TARGET,
-                "Error creating a ephemeral commitment from bytes: {:?}", e
-            );
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-    let ephemeral_pubkey = match PublicKey::from_canonical_bytes(&(*ephemeral_pubkey_bytes).0.clone()) {
+    let ephemeral_commitment =
+        match CompressedCommitment::from_canonical_bytes(&(*ephemeral_commitment_bytes).0.clone()) {
+            Ok(ephemeral_commitment) => ephemeral_commitment,
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Error creating a ephemeral commitment from bytes: {:?}", e
+                );
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+    let ephemeral_pubkey = match CompressedPublicKey::from_canonical_bytes(&(*ephemeral_pubkey_bytes).0.clone()) {
         Ok(ephemeral_pubkey) => ephemeral_pubkey,
         Err(e) => {
             error!(
@@ -2649,7 +2658,7 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
         error = LibWalletError::from(InterfaceError::NullError("encrypted_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
-        match Commitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
+        match CompressedCommitment::from_canonical_bytes(&(*commitment_bytes).0.clone()) {
             Ok(commitment) => {
                 match (*wallet).runtime.block_on(
                     (*wallet)
@@ -6097,7 +6106,10 @@ pub unsafe extern "C" fn wallet_create(
         // to None
         let identity_sig = identity_sig.filter(|sig| {
             let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-            sig.is_valid(&comms_public_key, node_features, &node_addresses)
+            matches!(
+                sig.is_valid(&comms_public_key, node_features, &node_addresses),
+                Ok(true)
+            )
         });
 
         // SAFETY: we are manually checking the validity of this signature before adding Some(..)
@@ -6998,7 +7010,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
             let secret = TariPrivateKey::from_hex(key1);
             match secret {
                 Ok(p) => {
-                    let public_nonce = TariPublicKey::from_hex(key2);
+                    let public_nonce = UncompressedTariPublicKey::from_hex(key2);
                     match public_nonce {
                         Ok(pn) => {
                             let sig = SignatureWithDomain::<WalletMessageSigningDomain>::new(pn, p);
@@ -9604,8 +9616,8 @@ mod test {
     use tari_core::{
         covenant,
         transactions::{
-            key_manager::{create_memory_db_key_manager, SecretTransactionKeyManagerInterface},
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+            transaction_key_manager::{create_memory_db_key_manager, SecretTransactionKeyManagerInterface},
         },
     };
     use tari_key_manager::mnemonic_wordlists;
@@ -9952,8 +9964,8 @@ mod test {
     fn test_address_getters() {
         unsafe {
             let mut rng = rand::thread_rng();
-            let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-            let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+            let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+            let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
             let address = TariAddress::new_dual_address(
                 view_key.clone(),
@@ -10280,7 +10292,8 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let spending_key = PrivateKey::random(&mut OsRng);
-            let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
+            let commitment =
+                CompressedCommitment::from_compressed_key(CompressedPublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroMinotari::from(123456);
             let encrypted_data = TariEncryptedOpenings::encrypt_data(
@@ -10435,7 +10448,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let key = PublicKey::from_secret_key(&(*test_contact_private_key));
+            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
             let test_address = Box::into_raw(Box::new(TariWalletAddress::new_single_address_with_interactive_only(
                 key,
                 Network::default(),
@@ -10467,7 +10480,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let key = PublicKey::from_secret_key(&(*test_contact_private_key));
+            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
             let test_contact_address = Box::into_raw(Box::new(
                 TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()),
             ));
@@ -12272,10 +12285,10 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let (a_value, ephemeral_pubkey) = PublicKey::random_keypair(&mut OsRng);
-            let (x_value, ephemeral_com) = PublicKey::random_keypair(&mut OsRng);
-            let (y_value, _) = PublicKey::random_keypair(&mut OsRng);
-            let ephemeral_com = Commitment::from_public_key(&ephemeral_com);
+            let (a_value, ephemeral_pubkey) = CompressedPublicKey::random_keypair(&mut OsRng);
+            let (x_value, ephemeral_com) = CompressedPublicKey::random_keypair(&mut OsRng);
+            let (y_value, _) = CompressedPublicKey::random_keypair(&mut OsRng);
+            let ephemeral_com = CompressedCommitment::from_compressed_key(ephemeral_com.clone());
 
             let a_bytes = Box::into_raw(Box::new(ByteVector(a_value.to_vec())));
             let x_bytes = Box::into_raw(Box::new(ByteVector(x_value.to_vec())));

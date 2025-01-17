@@ -25,23 +25,30 @@ use std::{
     convert::{TryFrom, TryInto},
 };
 
-use tari_common_types::types::{ComAndPubSignature, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{
+    ComAndPubSignature,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    Signature,
+};
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
 
 //---------------------------------- Commitment --------------------------------------------//
 
-impl TryFrom<proto::Commitment> for Commitment {
+impl TryFrom<proto::Commitment> for CompressedCommitment {
     type Error = ByteArrayError;
 
     fn try_from(commitment: proto::Commitment) -> Result<Self, Self::Error> {
-        Commitment::from_canonical_bytes(&commitment.data)
+        CompressedCommitment::from_canonical_bytes(&commitment.data)
     }
 }
 
-impl From<Commitment> for proto::Commitment {
-    fn from(commitment: Commitment) -> Self {
+impl From<CompressedCommitment> for proto::Commitment {
+    fn from(commitment: CompressedCommitment) -> Self {
         Self {
             data: commitment.to_vec(),
         }
@@ -53,7 +60,7 @@ impl TryFrom<proto::Signature> for Signature {
     type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
         let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
@@ -63,7 +70,7 @@ impl TryFrom<proto::Signature> for Signature {
 impl<T: Borrow<Signature>> From<T> for proto::Signature {
     fn from(sig: T) -> Self {
         Self {
-            public_nonce: sig.borrow().get_public_nonce().to_vec(),
+            public_nonce: sig.borrow().get_compressed_public_nonce().to_vec(),
             signature: sig.borrow().get_signature().to_vec(),
         }
     }
@@ -75,8 +82,8 @@ impl TryFrom<proto::ComAndPubSignature> for ComAndPubSignature {
     type Error = ByteArrayError;
 
     fn try_from(sig: proto::ComAndPubSignature) -> Result<Self, Self::Error> {
-        let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
-        let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
+        let ephemeral_commitment = CompressedCommitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
+        let ephemeral_pubkey = CompressedPublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
         let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)?;
         let u_x = PrivateKey::from_canonical_bytes(&sig.u_x)?;
         let u_y = PrivateKey::from_canonical_bytes(&sig.u_y)?;

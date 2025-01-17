@@ -30,8 +30,8 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
 use tari_core::transactions::{
-    key_manager::TransactionKeyManagerInterface,
     transaction_components::Transaction,
+    transaction_key_manager::TransactionKeyManagerInterface,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tokio::{

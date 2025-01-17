@@ -78,13 +78,13 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
             OutputFeatures,
         },
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         CryptoFactories,
     },
     txn_schema,

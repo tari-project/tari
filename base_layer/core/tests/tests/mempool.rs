@@ -26,7 +26,14 @@ use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
 };
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
@@ -38,7 +45,6 @@ use tari_core::{
     proto,
     transactions::{
         fee::Fee,
-        key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_wallet_output_with_data,
@@ -57,6 +63,7 @@ use tari_core::{
             TransactionKernel,
             TransactionKernelVersion,
         },
+        transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::TransactionMetadata,
         CryptoFactories,
     },
@@ -71,7 +78,6 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
@@ -89,7 +95,6 @@ use crate::helpers::{
     nodes::create_network_with_multiple_base_nodes_with_config,
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
-
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
@@ -1221,13 +1226,15 @@ async fn consensus_validation_large_tx() {
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
-    let mut pub_excess = PublicKey::default() -
+    let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
             .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
+            .unwrap()
+            .to_public_key()
             .unwrap();
     let mut sender_offsets = Vec::new();
-    let mut pub_nonce = input_kernel_nonce.pub_key.clone();
+    let mut pub_nonce = input_kernel_nonce.pub_key.clone().to_public_key().unwrap();
     for i in 0..output_count {
         let test_params = TestParams::new(&key_manager).await;
         let output_amount = if i < output_count - 1 {
@@ -1248,14 +1255,16 @@ async fn consensus_validation_large_tx() {
             key_manager
                 .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &test_params.kernel_nonce_key_id)
                 .await
+                .unwrap()
+                .to_public_key()
                 .unwrap();
-        pub_nonce = pub_nonce + test_params.kernel_nonce_key_pk;
+        pub_nonce = pub_nonce + test_params.kernel_nonce_key_pk.to_public_key().unwrap();
         sender_offsets.push(test_params.sender_offset_key_id.clone());
 
         wallet_outputs.push((output.clone(), test_params.kernel_nonce_key_id));
     }
 
-    let mut agg_sig = Signature::default();
+    let mut agg_sig = UncompressedSignature::default();
     let mut outputs = Vec::new();
     let mut offset = PrivateKey::default();
     let tx_meta = TransactionMetadata::new(fee, 0);
@@ -1278,8 +1287,8 @@ async fn consensus_validation_large_tx() {
             .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &nonce_id,
-                &pub_nonce,
-                &pub_excess,
+                &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
+                &CompressedPublicKey::new_from_pk(pub_excess.clone()),
                 &kernel_version,
                 &kernel_message,
                 &tx_meta.kernel_features,
@@ -1287,7 +1296,7 @@ async fn consensus_validation_large_tx() {
             )
             .await
             .unwrap();
-        agg_sig = &agg_sig + sig;
+        agg_sig = &agg_sig + sig.to_schnorr_signature().unwrap();
     }
 
     offset = &offset -
@@ -1299,8 +1308,8 @@ async fn consensus_validation_large_tx() {
         .get_partial_txo_kernel_signature(
             &input.spending_key_id,
             &input_kernel_nonce.key_id,
-            &pub_nonce,
-            &pub_excess,
+            &CompressedPublicKey::new_from_pk(pub_nonce),
+            &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
@@ -1308,14 +1317,14 @@ async fn consensus_validation_large_tx() {
         )
         .await
         .unwrap();
-    agg_sig = &agg_sig + sig;
+    agg_sig = &agg_sig + &sig.to_schnorr_signature().unwrap();
 
     let kernel = KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(0)
-        .with_excess(&Commitment::from_public_key(&pub_excess))
+        .with_excess(&CompressedCommitment::from_public_key(pub_excess))
         .with_features(tx_meta.kernel_features)
-        .with_signature(agg_sig)
+        .with_signature(Signature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();
     let kernels = vec![kernel];
@@ -1389,10 +1398,12 @@ async fn validation_reject_min_fee() {
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
-    let mut pub_excess = PublicKey::default() -
+    let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
             .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
             .await
+            .unwrap()
+            .to_public_key()
             .unwrap();
     let mut sender_offsets = Vec::new();
 
@@ -1413,11 +1424,14 @@ async fn validation_reject_min_fee() {
                 &test_params.kernel_nonce_key_id,
             )
             .await
+            .unwrap()
+            .to_public_key()
             .unwrap();
-    let pub_nonce = input_kernel_nonce.pub_key + test_params.kernel_nonce_key_pk;
+    let pub_nonce =
+        input_kernel_nonce.pub_key.to_public_key().unwrap() + test_params.kernel_nonce_key_pk.to_public_key().unwrap();
     sender_offsets.push(test_params.sender_offset_key_id.clone());
 
-    let mut agg_sig = Signature::default();
+    let mut agg_sig = UncompressedSignature::default();
     let mut offset = PrivateKey::default();
     let tx_meta = TransactionMetadata::new(fee, 0);
     let kernel_version = TransactionKernelVersion::get_current_version();
@@ -1439,8 +1453,8 @@ async fn validation_reject_min_fee() {
         .get_partial_txo_kernel_signature(
             &wallet_output.spending_key_id,
             &test_params.kernel_nonce_key_id,
-            &pub_nonce,
-            &pub_excess,
+            &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
+            &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
@@ -1448,7 +1462,7 @@ async fn validation_reject_min_fee() {
         )
         .await
         .unwrap();
-    agg_sig = &agg_sig + sig;
+    agg_sig = &agg_sig + sig.to_schnorr_signature().unwrap();
 
     offset = &offset -
         &key_manager
@@ -1459,8 +1473,8 @@ async fn validation_reject_min_fee() {
         .get_partial_txo_kernel_signature(
             &input.spending_key_id,
             &input_kernel_nonce.key_id,
-            &pub_nonce,
-            &pub_excess,
+            &CompressedPublicKey::new_from_pk(pub_nonce),
+            &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
             &tx_meta.kernel_features,
@@ -1468,14 +1482,14 @@ async fn validation_reject_min_fee() {
         )
         .await
         .unwrap();
-    agg_sig = &agg_sig + sig;
+    agg_sig = &agg_sig + sig.to_schnorr_signature().unwrap();
 
     let kernel = KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(0)
-        .with_excess(&Commitment::from_public_key(&pub_excess))
+        .with_excess(&CompressedCommitment::from_public_key(pub_excess))
         .with_features(tx_meta.kernel_features)
-        .with_signature(agg_sig)
+        .with_signature(Signature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();
     let kernels = vec![kernel];

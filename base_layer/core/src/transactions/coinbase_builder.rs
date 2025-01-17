@@ -25,9 +25,8 @@ use log::*;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
-    types::{Commitment, PrivateKey},
+    types::{CompressedCommitment, PrivateKey},
 };
-use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
@@ -40,7 +39,6 @@ use crate::{
     covenants::Covenant,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
-        key_manager::{CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -57,6 +55,14 @@ use crate::{
             TransactionOutput,
             TransactionOutputVersion,
             WalletOutput,
+        },
+        transaction_key_manager::{
+            error::KeyManagerServiceError,
+            CoreKeyManagerError,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+            TxoStage,
         },
         transaction_protocol::TransactionMetadata,
     },
@@ -297,7 +303,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             )
             .await?;
 
-        let excess = Commitment::from_public_key(&public_commitment_mask_key);
+        let excess = CompressedCommitment::from_compressed_key(public_commitment_mask_key);
         // generate tx details
         let value: u64 = total_reward.into();
         let output_features =
@@ -500,7 +506,12 @@ pub async fn generate_coinbase_with_wallet_output(
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::Commitment};
+    use tari_common_types::{
+        key_branches::TransactionKeyManagerBranch,
+        tari_address::TariAddress,
+        types::{CompressedCommitment, CompressedPublicKey, Signature},
+    };
+    use tari_comms::types::CompressedSignature;
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -766,19 +777,18 @@ mod test {
             )
             .is_ok());
     }
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::push_pubkey_script;
 
     use crate::transactions::{
         aggregated_body::AggregateBody,
-        key_manager::{
+        transaction_components::{encrypted_data::PaymentId, KernelBuilder, RangeProofType, TransactionKernelVersion},
+        transaction_key_manager::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
             TariKeyId,
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        transaction_components::{encrypted_data::PaymentId, KernelBuilder, RangeProofType, TransactionKernelVersion},
     };
 
     #[tokio::test]
@@ -877,11 +887,14 @@ mod test {
             &excess,
             &kernel_message,
         );
-        assert!(sig.verify_raw_uniform(&excess, &sig_challenge));
+        assert!(sig
+            .to_schnorr_signature()
+            .unwrap()
+            .verify_raw_uniform(&excess.to_public_key().unwrap(), &sig_challenge));
 
         // we fix the signature and the excess with the now included offset.
         coinbase_kernel2.excess_sig = sig;
-        coinbase_kernel2.excess = Commitment::from_public_key(&excess);
+        coinbase_kernel2.excess = CompressedCommitment::from_compressed_key(excess);
 
         tx.body.add_output(coinbase2);
         tx.body.add_kernel(coinbase_kernel2);
@@ -976,9 +989,13 @@ mod test {
         let coinbase2 = tx2.body.outputs()[0].clone();
         let mut kernel_1 = tx1.body.kernels()[0].clone();
         let kernel_2 = tx2.body.kernels()[0].clone();
-        let excess = &kernel_1.excess + &kernel_2.excess;
-        kernel_1.excess = &kernel_1.excess + &kernel_2.excess;
-        kernel_1.excess_sig = &kernel_1.excess_sig + &kernel_2.excess_sig;
+        let excess = &kernel_1.excess.to_commitment().unwrap() + &kernel_2.excess.to_commitment().unwrap();
+        kernel_1.excess = CompressedCommitment::from_commitment(
+            &kernel_1.excess.to_commitment().unwrap() + &kernel_2.excess.to_commitment().unwrap(),
+        );
+        kernel_1.excess_sig = CompressedSignature::new_from_schnorr(
+            &kernel_1.excess_sig.to_schnorr_signature().unwrap() + &kernel_2.excess_sig.to_schnorr_signature().unwrap(),
+        );
         let mut body1 = AggregateBody::new(Vec::new(), vec![coinbase1, coinbase2], vec![kernel_1.clone()]);
         body1.sort();
 
@@ -1002,7 +1019,7 @@ mod test {
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let nonce = &new_nonce1.pub_key + &new_nonce2.pub_key;
+        let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             kernel_1.fee,
@@ -1015,35 +1032,39 @@ mod test {
             .get_partial_txo_kernel_signature(
                 &wo1.spending_key_id,
                 &new_nonce1.key_id,
-                &nonce,
-                excess.as_public_key(),
+                &CompressedPublicKey::new_from_pk(nonce.clone()),
+                &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
                 &TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &kernel_1.features,
                 TxoStage::Output,
             )
             .await
+            .unwrap()
+            .to_schnorr_signature()
             .unwrap();
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
-                    &nonce,
-                    excess.as_public_key(),
+                    &CompressedPublicKey::new_from_pk(nonce.clone()),
+                    &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
                     &TransactionKernelVersion::get_current_version(),
                     &kernel_message,
                     &kernel_1.features,
                     TxoStage::Output,
                 )
                 .await
+                .unwrap()
+                .to_schnorr_signature()
                 .unwrap();
         let kernel_new = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(kernel_1.features)
             .with_lock_height(kernel_1.lock_height)
-            .with_excess(&excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 

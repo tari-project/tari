@@ -51,18 +51,17 @@ use tari_common::{
     load_configuration,
     DefaultConfigLoader,
 };
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
     transactions::{
         generate_coinbase,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
@@ -113,7 +112,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     if !config.stratum_mining_wallet_address.is_empty() && !config.stratum_mining_pool_address.is_empty() {
         let url = config.stratum_mining_pool_address.clone();
         let mut miner_address = config.stratum_mining_wallet_address.clone();
-        let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
+        let _ = UncompressedPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,
                 "Miner is not configured with a valid wallet address.",

@@ -6,7 +6,7 @@ license = "BSD-3-Clause"
 edition = "2021"
 
 [dependencies]
-tari_crypto = { version = "0.21.0", default-features = false }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto", rev = "42237731dd5886554b3bfe6ed22e091dce4af557", default-features = false }
 tari_utilities = { version = "0.8" }
 tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }

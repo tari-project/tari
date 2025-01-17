@@ -33,7 +33,7 @@ use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::Difficulty,
     test_helpers::blockchain::TempDatabase,
-    transactions::{key_manager::MemoryDbKeyManager, transaction_components::WalletOutput},
+    transactions::{transaction_components::WalletOutput, transaction_key_manager::MemoryDbKeyManager},
 };
 
 use crate::helpers::{

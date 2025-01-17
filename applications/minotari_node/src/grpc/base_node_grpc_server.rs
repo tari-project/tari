@@ -38,7 +38,15 @@ use minotari_app_utilities::consts;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        Signature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
 };
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
@@ -57,7 +65,6 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
     transactions::{
         generate_coinbase_with_wallet_output,
-        key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_components::{
             encrypted_data::PaymentId,
             CoinBaseExtra,
@@ -67,9 +74,9 @@ use tari_core::{
             TransactionKernel,
             TransactionKernelVersion,
         },
+        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
@@ -1028,8 +1035,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
 
-        let mut total_excess = Commitment::default();
-        let mut total_nonce = PublicKey::default();
+        let mut total_excess = UncompressedCommitment::default();
+        let mut total_nonce = UncompressedPublicKey::default();
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
@@ -1062,8 +1069,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.pub_key;
-            total_excess = &total_excess + &coinbase_kernel.excess;
+            total_nonce = &total_nonce +
+                &new_nonce
+                    .pub_key
+                    .to_public_key()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_excess = &total_excess +
+                &coinbase_kernel
+                    .excess
+                    .to_commitment()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
@@ -1074,29 +1089,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
             last_kernel = coinbase_kernel;
         }
-        let mut kernel_signature = Signature::default();
+        let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
             kernel_signature = &kernel_signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
-                        &total_nonce,
-                        total_excess.as_public_key(),
+                        &CompressedPublicKey::new_from_pk(total_nonce.clone()),
+                        &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
                         &TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,
                     )
                     .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+                    .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         }
         let kernel_new = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
-            .with_excess(&total_excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(total_excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1226,8 +1243,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
 
-        let mut total_excess = Commitment::default();
-        let mut total_nonce = PublicKey::default();
+        let mut total_excess = UncompressedCommitment::default();
+        let mut total_nonce = UncompressedPublicKey::default();
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
@@ -1260,8 +1277,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.pub_key;
-            total_excess = &total_excess + &coinbase_kernel.excess;
+            total_nonce = &total_nonce +
+                &new_nonce
+                    .pub_key
+                    .to_public_key()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_excess = &total_excess +
+                &coinbase_kernel
+                    .excess
+                    .to_commitment()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
@@ -1272,29 +1297,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
             last_kernel = coinbase_kernel;
         }
-        let mut kernel_signature = Signature::default();
+        let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
             kernel_signature = &kernel_signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
-                        &total_nonce,
-                        total_excess.as_public_key(),
+                        &CompressedPublicKey::new_from_pk(total_nonce.clone()),
+                        &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
                         &TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,
                     )
                     .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+                    .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         }
         let kernel_new = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
-            .with_excess(&total_excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(total_excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1886,7 +1913,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let outputs = request
             .commitments
             .into_iter()
-            .map(|s| Commitment::from_canonical_bytes(&s))
+            .map(|s| CompressedCommitment::from_canonical_bytes(&s))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2424,7 +2451,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
-        let public_key = PublicKey::from_canonical_bytes(&request.public_key)
+        let public_key = CompressedPublicKey::from_canonical_bytes(&request.public_key)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
 
         let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {

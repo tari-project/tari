@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -37,7 +37,6 @@ use crate::{
     borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
@@ -51,6 +50,7 @@ use crate::{
             TransactionError,
             TransactionInputVersion,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     },
 };
 
@@ -66,7 +66,7 @@ pub struct WalletOutput {
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
     pub script_key_id: TariKeyId,
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
@@ -87,7 +87,7 @@ impl WalletOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_key_id: TariKeyId,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
@@ -133,7 +133,7 @@ impl WalletOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_key_id: TariKeyId,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
@@ -169,7 +169,7 @@ impl WalletOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_key_id: TariKeyId,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
@@ -243,10 +243,10 @@ impl WalletOutput {
     /// `script_signature_public_nonces` and `script_public_key_shares` exclude the caller's data.
     pub async fn to_transaction_input_with_multi_party_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
-        aggregated_script_signature_public_nonces: &PublicKey,
-        aggregated_script_public_key_shares: &PublicKey,
+        aggregated_script_signature_public_nonces: &CompressedPublicKey,
+        aggregated_script_public_key_shares: &CompressedPublicKey,
         key_manager: &KM,
-    ) -> Result<(TransactionInput, PublicKey), TransactionError> {
+    ) -> Result<(TransactionInput, CompressedPublicKey), TransactionError> {
         let value = self.value.into();
         let version = TransactionInputVersion::get_current_version();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
@@ -254,9 +254,14 @@ impl WalletOutput {
         let message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
         let ephemeral_public_key_self = key_manager.get_random_key().await?;
         let script_public_key_self = key_manager.get_public_key_at_key_id(&self.script_key_id).await?;
-        let script_public_key = aggregated_script_public_key_shares + script_public_key_self;
+        let script_public_key = CompressedPublicKey::new_from_pk(
+            aggregated_script_public_key_shares.to_public_key()? + script_public_key_self.to_public_key()?,
+        );
 
-        let total_ephemeral_public_key = aggregated_script_signature_public_nonces + &ephemeral_public_key_self.pub_key;
+        let total_ephemeral_public_key = CompressedPublicKey::new_from_pk(
+            aggregated_script_signature_public_nonces.to_public_key()? +
+                &ephemeral_public_key_self.pub_key.to_public_key()?,
+        );
         let commitment_partial_script_signature = key_manager
             .get_partial_script_signature(
                 &self.spending_key_id,
@@ -278,7 +283,10 @@ impl WalletOutput {
         let script_key_partial_script_signature = key_manager
             .sign_with_nonce_and_challenge(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
             .await?;
-        let script_signature = &commitment_partial_script_signature + &script_key_partial_script_signature;
+        let script_signature = ComAndPubSignature::new_from_capk_signature(
+            &commitment_partial_script_signature.to_capk_signature()? +
+                &script_key_partial_script_signature.to_schnorr_signature()?,
+        );
 
         let input = TransactionInput::new_current_version(
             SpentOutput::OutputData {
@@ -381,7 +389,7 @@ impl WalletOutput {
     pub async fn commitment<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
-    ) -> Result<Commitment, TransactionError> {
+    ) -> Result<CompressedCommitment, TransactionError> {
         Ok(key_manager
             .get_commitment(&self.spending_key_id, &self.value.into())
             .await?)

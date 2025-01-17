@@ -134,7 +134,7 @@ mod tests {
     use tari_comms::{
         multiaddr::Multiaddr,
         peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
-        types::Signature,
+        types::{CompressedSignature, Signature},
     };
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
     use tari_test_utils::unpack_enum;
@@ -156,10 +156,10 @@ mod tests {
                 features: PeerFeatures::COMMUNICATION_NODE,
                 signature: IdentitySignature::new(
                     0,
-                    Signature::new(
+                    CompressedSignature::new_from_schnorr(Signature::new(
                         RistrettoPublicKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
                         RistrettoSecretKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
-                    ),
+                    )),
                     Default::default(),
                 ),
             },

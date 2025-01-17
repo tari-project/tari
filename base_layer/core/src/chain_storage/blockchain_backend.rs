@@ -3,7 +3,7 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 
 use super::TemplateRegistrationEntry;
@@ -104,7 +104,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// set, otherwise None is returned.
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
     /// Fetch all outputs in a block
@@ -172,9 +172,16 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the validator node set for the given height ordered according to height of registration and canonical
     /// block body ordering.
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError>;
     /// Returns the shard key for the validator node if valid at the given height.
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
+    fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.
     fn fetch_template_registrations(
         &self,

@@ -24,7 +24,7 @@ use std::{convert::TryFrom, sync::Arc};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{Commitment, FixedHash},
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
@@ -42,7 +42,6 @@ use tari_core::{
     output_mr_hash_from_smt,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
@@ -57,6 +56,7 @@ use tari_core::{
             TransactionOutput,
             WalletOutput,
         },
+        transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
     KernelMmr,
     OutputSmt,
@@ -64,7 +64,6 @@ use tari_core::{
     PrunedKernelMmr,
     PrunedOutputMmr,
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
     sparse_merkle_tree::{NodeKey, ValueHash},
@@ -88,7 +87,7 @@ pub async fn create_coinbase(
         .await
         .unwrap();
 
-    let excess = Commitment::from_public_key(&public_exess);
+    let excess = CompressedCommitment::from_compressed_key(public_exess.clone());
     let kernel_features = KernelFeatures::create_coinbase();
     let kernel_message = TransactionKernel::build_kernel_signature_message(
         &TransactionKernelVersion::get_current_version(),

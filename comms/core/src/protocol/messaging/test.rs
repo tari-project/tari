@@ -25,7 +25,6 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{

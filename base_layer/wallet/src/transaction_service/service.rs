@@ -39,7 +39,16 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{CommitmentFactory, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{
+        ComAndPubSignature,
+        CommitmentFactory,
+        CompressedCommitment,
+        CompressedPublicKey,
+        HashOutput,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
@@ -51,7 +60,6 @@ use tari_core::{
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -62,6 +70,7 @@ use tari_core::{
             TransactionOutput,
             WalletOutputBuilder,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -73,13 +82,18 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    keys::{PublicKey as PKtrait, SecretKey},
-    ristretto::pedersen::PedersenCommitment,
+    keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_key_manager::key_manager_service::KeyId;
 use tari_p2p::domain_message::DomainMessage;
-use tari_script::{push_pubkey_script, script, CheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript};
+use tari_script::{
+    push_pubkey_script,
+    script,
+    CompressedCheckSigSchnorrSignature,
+    ExecutionStack,
+    ScriptContext,
+    TariScript,
+};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -1221,17 +1235,27 @@ where
     pub async fn encumber_aggregate_tx(
         &mut self,
         fee_per_gram: MicroMinotari,
-        expected_commitment: PedersenCommitment,
-        script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-        script_signature_public_nonces: Vec<PublicKey>,
-        sender_offset_public_key_shares: Vec<PublicKey>,
-        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<PublicKey>,
+        expected_commitment: CompressedCommitment,
+        script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+        script_signature_public_nonces: Vec<CompressedPublicKey>,
+        sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+        dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
         payment_id: PaymentId,
-    ) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), TransactionServiceError> {
+    ) -> Result<
+        (
+            TxId,
+            Transaction,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+        ),
+        TransactionServiceError,
+    > {
         let tx_id = TxId::new_random();
 
         match self
@@ -1295,7 +1319,7 @@ where
         &mut self,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
-        expected_commitment: PedersenCommitment,
+        expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
         payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
@@ -1356,19 +1380,29 @@ where
 
         transaction.transaction.body.update_metadata_signature(
             &(transaction.transaction.body.outputs()[0].commitment.clone()),
-            &transaction.transaction.body.outputs()[0].metadata_signature + &total_meta_data_signature,
+            ComAndPubSignature::new_from_capk_signature(
+                &transaction.transaction.body.outputs()[0]
+                    .metadata_signature
+                    .to_capk_signature()? +
+                    &total_meta_data_signature.to_schnorr_signature()?,
+            ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated metadata_signature");
 
         transaction.transaction.body.update_script_signature(
             &(transaction.transaction.body.inputs()[0].commitment()?.clone()),
-            &transaction.transaction.body.inputs()[0].script_signature + &total_script_data_signature,
+            ComAndPubSignature::new_from_capk_signature(
+                &transaction.transaction.body.inputs()[0]
+                    .script_signature
+                    .to_capk_signature()? +
+                    &total_script_data_signature.to_schnorr_signature()?,
+            ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated script_signature");
 
         // Validate the aggregate signatures and script offset
         let factory = CommitmentFactory::default();
-        let mut input_keys = PublicKey::default();
+        let mut input_keys = UncompressedPublicKey::default();
         for input in transaction.transaction.body.inputs() {
             let context = ScriptContext::new(
                 self.last_seen_tip_height.unwrap_or(0),
@@ -1381,19 +1415,20 @@ where
             input_keys = input_keys +
                 input
                     .run_and_verify_script(&factory, Some(context))
-                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?;
+                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?
+                    .to_public_key()?;
         }
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: validated inputs");
-        let mut output_keys = PublicKey::default();
+        let mut output_keys = UncompressedPublicKey::default();
         for output in transaction.transaction.body.outputs() {
             output
                 .verify_metadata_signature()
                 .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?;
-            output_keys = output_keys + output.sender_offset_public_key.clone();
+            output_keys = output_keys + output.sender_offset_public_key.clone().to_public_key()?;
         }
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: validated outputs");
         let lhs = input_keys - output_keys;
-        if lhs != PublicKey::from_secret_key(&transaction.transaction.script_offset) {
+        if lhs != UncompressedPublicKey::from_secret_key(&transaction.transaction.script_offset) {
             return Err(TransactionServiceError::ServiceError(format!(
                 "Invalid script offset (TxId: {})",
                 tx_id
@@ -1447,11 +1482,11 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
+    ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
         let tx_id = TxId::new_random();
         self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         // this can be anything, so lets generate a random private key
-        let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+        let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
@@ -1830,7 +1865,7 @@ where
             .await?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(KeyId::Zero)
+            .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
@@ -2046,7 +2081,7 @@ where
             .await?
             .with_input_data(Default::default())
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(KeyId::Zero)
+            .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
@@ -2172,7 +2207,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
-        claim_public_key: Option<PublicKey>,
+        claim_public_key: Option<CompressedPublicKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2254,8 +2289,8 @@ where
                     .transaction_key_manager_service
                     .import_key(encryption_key.clone())
                     .await?;
-                KeyId::Imported {
-                    key: PublicKey::from_secret_key(&encryption_key),
+                TariKeyId::Imported {
+                    key: CompressedPublicKey::from_secret_key(&encryption_key),
                 }
             },
             // No claim key provided, no shared secret or encryption key needed
@@ -2297,7 +2332,7 @@ where
                     .sender_offset_public_key
                     .clone(),
             )
-            .with_script_key(KeyId::Zero)
+            .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(
                 sender_message
                     .single()

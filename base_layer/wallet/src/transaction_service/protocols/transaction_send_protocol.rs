@@ -37,9 +37,9 @@ use tari_comms_dht::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, OutputFeatures},
+        transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,

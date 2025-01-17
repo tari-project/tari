@@ -25,8 +25,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature, UncompressedSignature};
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_utilities::ByteArray;
 
 hash_domain!(
@@ -37,25 +37,32 @@ hash_domain!(
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     signature: Signature,
 }
 
 impl ValidatorNodeSignature {
-    pub fn new(public_key: PublicKey, signature: Signature) -> Self {
+    pub fn new(public_key: CompressedPublicKey, signature: Signature) -> Self {
         Self { public_key, signature }
     }
 
     pub fn sign(private_key: &PrivateKey, msg: &[u8]) -> Self {
-        let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-        let public_key = PublicKey::from_secret_key(private_key);
+        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let public_key = CompressedPublicKey::from_secret_key(private_key);
         let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
-        let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
+        let signature = UncompressedSignature::sign_raw_uniform(private_key, secret_nonce, &challenge)
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
-        Self { public_key, signature }
+        Self {
+            public_key,
+            signature: Signature::new_from_schnorr(signature),
+        }
     }
 
-    fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> [u8; 64] {
+    fn construct_challenge(
+        public_key: &CompressedPublicKey,
+        public_nonce: &CompressedPublicKey,
+        msg: &[u8],
+    ) -> [u8; 64] {
         let hasher = DomainSeparatedHasher::<Blake2b<U64>, ValidatorNodeHashDomain>::new_with_label("registration")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
@@ -64,11 +71,14 @@ impl ValidatorNodeSignature {
     }
 
     pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
-        let challenge = Self::construct_challenge(&self.public_key, self.signature.get_public_nonce(), msg);
-        self.signature.verify_raw_uniform(&self.public_key, &challenge)
+        let challenge = Self::construct_challenge(&self.public_key, self.signature.get_compressed_public_nonce(), msg);
+        match (self.signature.to_schnorr_signature(), self.public_key.to_public_key()) {
+            (Ok(sig), Ok(public_key)) => sig.verify_raw_uniform(&public_key, &challenge),
+            _ => false,
+        }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &CompressedPublicKey {
         &self.public_key
     }
 

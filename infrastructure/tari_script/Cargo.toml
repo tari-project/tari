@@ -11,7 +11,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_crypto = { version = "0.21.0" }
+tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto", rev = "42237731dd5886554b3bfe6ed22e091dce4af557" }
 tari_max_size = { path = "../../infrastructure/max_size" }
 tari_utilities = { version = "0.8" }
 

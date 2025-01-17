@@ -31,7 +31,14 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        RangeProof,
+        SignatureWithDomain,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -54,7 +61,6 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -62,14 +68,21 @@ use tari_core::{
             OutputFeatures,
             UnblindedOutput,
         },
+        transaction_key_manager::{
+            error::KeyManagerServiceError,
+            key_manager::TariKeyManager,
+            storage::database::TransactionKeyManagerBackend,
+            SecretTransactionKeyManagerInterface,
+            TariKeyId,
+            TransactionKeyManagerInitializer,
+        },
         CryptoFactories,
     },
 };
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerBranch, KeyManagerServiceError},
+    key_manager_service::{KeyDigest, KeyManagerBranch},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -162,7 +175,7 @@ where
     TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
-    pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
+    pub async fn start<TKeyManagerBackend: TransactionKeyManagerBackend + 'static>(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
@@ -563,7 +576,7 @@ where
         features: OutputFeatures,
         metadata_signature: ComAndPubSignature,
         script_private_key: &PrivateKey,
-        sender_offset_public_key: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
@@ -642,17 +655,21 @@ where
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
         signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
-        signature.verify(public_key, message)
+        if let Ok(key) = public_key.clone().to_public_key() {
+            signature.verify(&key, message.as_bytes())
+        } else {
+            false
+        }
     }
 
     /// Appraise the expected outputs and a fee
     pub async fn preview_coin_split_with_commitments_no_amount(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
@@ -665,7 +682,7 @@ where
     /// Appraise the expected outputs and a fee
     pub async fn preview_coin_join_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
@@ -677,7 +694,7 @@ where
     /// Do a coin split
     pub async fn coin_split(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         amount_per_split: MicroMinotari,
         split_count: usize,
         fee_per_gram: MicroMinotari,
@@ -706,7 +723,7 @@ where
     /// Do a coin split
     pub async fn coin_split_even(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -734,7 +751,7 @@ where
     /// Do a coin split
     pub async fn coin_split_even_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -761,7 +778,7 @@ where
 
     pub async fn coin_join(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
         payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
@@ -864,7 +881,7 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager =
-        KeyManager::<PublicKey, KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
+        TariKeyManager::<KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
     Ok(comms_key_manager.derive_key(0)?.key)
 }
 
@@ -873,7 +890,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    spend_key: &PublicKey,
+    spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
     let script = push_pubkey_script(spend_key);

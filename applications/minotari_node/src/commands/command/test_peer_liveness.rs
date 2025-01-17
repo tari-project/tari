@@ -34,7 +34,7 @@ use async_trait::async_trait;
 use chrono::Local;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::CompressedPublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
@@ -164,7 +164,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
 fn print_results_to_console(
     date_time: &str,
     responsive: PingResult,
-    public_key: &PublicKey,
+    public_key: &CompressedPublicKey,
     node_id: &NodeId,
     address: &Multiaddr,
     test_duration: Duration,
@@ -187,7 +187,7 @@ fn print_results_to_console(
 async fn ping_peer_liveness(
     mut liveness: LivenessHandle,
     node_id: NodeId,
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     tx: watch::Sender<PingResult>,
 ) {
     let mut liveness_events = liveness.get_event_stream();
@@ -224,7 +224,7 @@ async fn print_to_file(
     responsive: PingResult,
     output_directory: Option<PathBuf>,
     refresh_file: Option<bool>,
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     address: Multiaddr,
     test_duration: Duration,
 ) {

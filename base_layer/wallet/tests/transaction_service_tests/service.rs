@@ -89,7 +89,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature},
     wallet_types::{ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
@@ -121,12 +121,6 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
-        key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TransactionKeyManagerInitializer,
-            TransactionKeyManagerInterface,
-        },
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
@@ -135,6 +129,14 @@ use tari_core::{
             OutputFeatures,
             RangeProofType,
             Transaction,
+        },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::{
             proto::protocol as proto,
@@ -151,13 +153,10 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     extended_range_proof::{ExtendedRangeProofService, Statement},
-    keys::{PublicKey as PK, SecretKey as SK},
+    keys::SecretKey as SK,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
-};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_script::{inputs, push_pubkey_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
@@ -227,9 +226,9 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
+    let kms_backend = TransactionKeyManagerSqliteDatabase::init(connection, db_cipher);
     let wallet_type = Arc::new(WalletType::ProvidedKeys(ProvidedKeysWallet {
-        public_spend_key: PublicKey::from_secret_key(node_identity.secret_key()),
+        public_spend_key: CompressedPublicKey::from_secret_key(node_identity.secret_key()),
         private_spend_key: Some(node_identity.secret_key().clone()),
         view_key: SK::random(&mut OsRng),
         private_comms_key: Some(node_identity.secret_key().clone()),
@@ -246,12 +245,14 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             factories.clone(),
             Network::LocalNet.into(),
         ))
-        .add_initializer(TransactionKeyManagerInitializer::<KeyManagerSqliteDatabase<_>>::new(
-            kms_backend,
-            cipher,
-            factories.clone(),
-            wallet_type.clone(),
-        ))
+        .add_initializer(
+            TransactionKeyManagerInitializer::<TransactionKeyManagerSqliteDatabase<_>>::new(
+                kms_backend,
+                cipher,
+                factories.clone(),
+                wallet_type.clone(),
+            ),
+        )
         .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(5),
@@ -1470,7 +1471,7 @@ async fn single_transaction_burn_tari() {
         .mark_outputs_as_unspent(vec![(uo1.hash(&key_manager_handle).await.unwrap(), true)])
         .unwrap();
     let burn_value = 10000.into();
-    let (claim_private_key, claim_public_key) = PublicKey::random_keypair(&mut OsRng);
+    let (claim_private_key, claim_public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
     let (tx_id, burn_proof) = alice_ts
         .burn_tari(
             burn_value,
@@ -1505,13 +1506,13 @@ async fn single_transaction_burn_tari() {
         .finalize();
     let challenge = PrivateKey::from_uniform_bytes(&challenge_bytes).unwrap();
     assert!(burn_proof.ownership_proof.unwrap().verify(
-        &burn_proof.commitment,
+        &burn_proof.commitment.to_commitment().unwrap(),
         &challenge,
         factories.commitment.as_ref()
     ));
     let statement = RistrettoAggregatedPublicStatement {
         statements: vec![Statement {
-            commitment: burn_proof.commitment.clone(),
+            commitment: burn_proof.commitment.to_commitment().unwrap(),
             minimum_value_promise: MicroMinotari::zero().as_u64(),
         }],
     };
@@ -1526,10 +1527,13 @@ async fn single_transaction_burn_tari() {
 
     // Verify recovery of burned output
 
-    let shared_secret = CommsDHKE::new(&claim_private_key, &burn_proof.reciprocal_claim_public_key);
+    let shared_secret = CommsDHKE::new(
+        &claim_private_key,
+        &burn_proof.reciprocal_claim_public_key.to_public_key().unwrap(),
+    );
     let encryption_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
-    let recovery_key_id = KeyId::Imported {
-        key: PublicKey::from_secret_key(&encryption_key),
+    let recovery_key_id = TariKeyId::Imported {
+        key: CompressedPublicKey::from_secret_key(&encryption_key),
     };
     let mut found_burned_output = false;
     for output in completed_tx.transaction.body.outputs() {
@@ -1620,7 +1624,7 @@ async fn send_one_sided_transaction_to_other() {
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
     let random_pvt_key = PrivateKey::random(&mut OsRng);
-    let bob_view_key = PublicKey::from_secret_key(&random_pvt_key);
+    let bob_view_key = CompressedPublicKey::from_secret_key(&random_pvt_key);
     let bob_address = TariAddress::new_dual_address_with_default_features(
         bob_view_key,
         bob_node_identity.public_key().clone(),
@@ -2474,7 +2478,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let mut tx_reply = rtp.get_signed_data().unwrap().clone();
     let mut wrong_tx_id = tx_reply.clone();
     wrong_tx_id.tx_id = 2u64.into();
-    let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
+    let (_p, pub_key) = CompressedPublicKey::random_keypair(&mut OsRng);
     tx_reply.public_spend_key = pub_key;
     alice_ts_interface
         .transaction_ack_message_channel
@@ -2595,7 +2599,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .transaction_finalize_message_channel
         .send(create_dummy_message(
             finalized_transaction_message,
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            &CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         ))
         .await
         .unwrap();
@@ -2978,7 +2982,7 @@ async fn test_power_mode_updates() {
     let tx_backend = alice_ts_interface.ts_db;
 
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
+        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
         .with_signature(Signature::default())
         .build()
         .unwrap();
@@ -2990,13 +2994,13 @@ async fn test_power_mode_updates() {
         PrivateKey::random(&mut OsRng),
     );
     let source_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let completed_tx1 = CompletedTransaction {
@@ -3021,13 +3025,13 @@ async fn test_power_mode_updates() {
     };
 
     let source_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let completed_tx2 = CompletedTransaction {
@@ -3478,7 +3482,7 @@ async fn test_transaction_cancellation() {
         .transaction_cancelled_message_channel
         .send(create_dummy_message(
             proto_message,
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            &CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         ))
         .await
         .unwrap();
@@ -4650,8 +4654,8 @@ async fn test_resend_on_startup() {
 
     let tx_id = stp.get_tx_id().unwrap();
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let mut outbound_tx = OutboundTransaction {
@@ -4784,8 +4788,8 @@ async fn test_resend_on_startup() {
     )
     .await;
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let mut inbound_tx = InboundTransaction {
@@ -5180,8 +5184,8 @@ async fn test_transaction_timeout_cancellation() {
 
     let tx_id = stp.get_tx_id().unwrap();
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let outbound_tx = OutboundTransaction {
@@ -5707,7 +5711,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
     let db = alice_ts_interface.ts_db.clone();
 
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
+        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
         .with_signature(Signature::default())
         .build()
         .unwrap();
@@ -5720,13 +5724,13 @@ async fn broadcast_all_completed_transactions_on_startup() {
         PrivateKey::random(&mut OsRng),
     );
     let source_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let completed_tx1 = CompletedTransaction {
@@ -6220,7 +6224,7 @@ async fn test_completed_transactions_ordering() {
     let tx_backend = alice_ts_interface.ts_db;
 
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
+        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
         .with_signature(Signature::default())
         .build()
         .unwrap();
@@ -6232,13 +6236,13 @@ async fn test_completed_transactions_ordering() {
         PrivateKey::random(&mut OsRng),
     );
     let source_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
     let destination_address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
 

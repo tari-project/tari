@@ -28,6 +28,7 @@ use tari_comms::{
     message::MessageError,
     peer_manager::{NodeId, PeerManagerError},
 };
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
@@ -92,4 +93,6 @@ pub enum StoreAndForwardError {
     InvariantError(String),
     #[error("ConnectivityError: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("ByteArrayError: {0}")]
+    ByteArrayError(#[from] ByteArrayError),
 }

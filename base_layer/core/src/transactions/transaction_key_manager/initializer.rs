@@ -30,18 +30,21 @@
 
 use std::sync::Arc;
 
-use tari_common_types::{types::PublicKey, wallet_types::WalletType};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::storage::database::{KeyManagerBackend, KeyManagerDatabase},
-};
+use tari_common_types::wallet_types::WalletType;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
+use crate::transactions::{
+    transaction_key_manager::{
+        storage::database::{TransactionKeyManagerBackend, TransactionKeyManagerDatabase},
+        TransactionKeyManagerWrapper,
+    },
+    CryptoFactories,
+};
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey>
+where T: TransactionKeyManagerBackend
 {
     backend: Option<T>,
     master_seed: CipherSeed,
@@ -50,7 +53,7 @@ where T: KeyManagerBackend<PublicKey>
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey> + 'static
+where T: TransactionKeyManagerBackend + 'static
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new(
@@ -70,7 +73,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
 
 #[async_trait]
 impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey> + 'static
+where T: TransactionKeyManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let backend = self
@@ -80,7 +83,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
 
         let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
             self.master_seed.clone(),
-            KeyManagerDatabase::new(backend),
+            TransactionKeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),
             self.wallet_type.clone(),
         )?;

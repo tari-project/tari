@@ -22,18 +22,19 @@
 
 mod bullet_rangeproofs;
 mod fixed_hash;
-
 use blake2::Blake2b;
 pub use bullet_rangeproofs::BulletRangeProof;
 use digest::consts::{U32, U64};
 use tari_crypto::{
+    compressed_key::CompressedKey,
     hasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
-        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
+        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, CompressedPedersenCommitment},
+        CompressedRistrettoComAndPubSig,
+        CompressedRistrettoSchnorr,
         RistrettoComAndPubSig,
         RistrettoPublicKey,
-        RistrettoSchnorr,
         RistrettoSchnorrWithDomain,
         RistrettoSecretKey,
     },
@@ -45,18 +46,22 @@ pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
-pub type Signature = RistrettoSchnorr;
+pub type Signature = CompressedRistrettoSchnorr;
+pub type UncompressedSignature = RistrettoSchnorr;
 /// Define a generic signature type using a hash domain.
 pub type SignatureWithDomain<H> = RistrettoSchnorrWithDomain<H>;
 /// Define the explicit Commitment Signature implementation for the Tari base layer.
-pub type ComAndPubSignature = RistrettoComAndPubSig;
+pub type ComAndPubSignature = CompressedRistrettoComAndPubSig;
+pub type UncompressedComAndPubSignature = RistrettoComAndPubSig;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
-pub type Commitment = PedersenCommitment;
+pub type CompressedCommitment = CompressedPedersenCommitment;
+pub type UncompressedCommitment = PedersenCommitment;
 pub type CommitmentFactory = ExtendedPedersenCommitmentFactory;
 
 /// Define the explicit Public key implementation for the Tari base layer
-pub type PublicKey = RistrettoPublicKey;
+pub type CompressedPublicKey = CompressedKey<RistrettoPublicKey>;
+pub type UncompressedPublicKey = RistrettoPublicKey;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type PrivateKey = RistrettoSecretKey;
@@ -79,7 +84,11 @@ pub type RangeProofService = BulletproofsPlusService;
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
 
-use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::{
+    hash_domain,
+    hashing::DomainSeparatedHasher,
+    ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},
+};
 
 hasher!(
     Blake2b<U64>,

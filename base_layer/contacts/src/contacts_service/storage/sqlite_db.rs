@@ -233,8 +233,8 @@ mod test {
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-    use tari_common_types::types::{PrivateKey, PublicKey};
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
     use super::*;
@@ -254,7 +254,7 @@ mod test {
 
             let mut contacts = Vec::new();
             for i in 0..names.len() {
-                let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+                let pub_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
                 let address = TariAddress::new_single_address_with_interactive_only(pub_key, Network::default());
                 contacts.push(Contact::new(names[i].clone(), address, None, None, false));
                 ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();

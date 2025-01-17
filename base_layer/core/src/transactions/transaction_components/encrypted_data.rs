@@ -47,7 +47,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::{TariAddress, TARI_ADDRESS_INTERNAL_DUAL_SIZE, TARI_ADDRESS_INTERNAL_SINGLE_SIZE},
-    types::{Commitment, PrivateKey},
+    types::{CompressedCommitment, PrivateKey},
 };
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_hashing::TransactionSecureNonceKdfDomain;
@@ -591,7 +591,7 @@ impl EncryptedData {
     ///        - Consecutive calls to this function with the same inputs will produce different ciphertexts
     pub fn encrypt_data(
         encryption_key: &PrivateKey,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         value: MicroMinotari,
         mask: &PrivateKey,
         payment_id: PaymentId,
@@ -630,7 +630,7 @@ impl EncryptedData {
     ///       decryption to assert that the expected key was used
     pub fn decrypt_data(
         encryption_key: &PrivateKey,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroMinotari, PrivateKey, PaymentId), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
@@ -763,7 +763,7 @@ impl From<Error> for EncryptedDataError {
 }
 
 // Generate a ChaCha20-Poly1305 key from a private key and commitment using Blake2b
-fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedDataKey {
+fn kdf_aead(encryption_key: &PrivateKey, commitment: &CompressedCommitment) -> EncryptedDataKey {
     let mut aead_key = EncryptedDataKey::from(SafeArray::default());
     DomainSeparatedHasher::<Blake2b<U32>, TransactionSecureNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
         .chain(encryption_key.as_bytes())
@@ -894,7 +894,9 @@ mod test {
                 (654321, PrivateKey::random(&mut OsRng)),
                 (u64::MAX, PrivateKey::random(&mut OsRng)),
             ] {
-                let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+                let commitment = CompressedCommitment::from_commitment(
+                    CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)),
+                );
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =
@@ -1022,7 +1024,9 @@ mod test {
                 (654321, PrivateKey::random(&mut OsRng)),
                 (u64::MAX, PrivateKey::random(&mut OsRng)),
             ] {
-                let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
+                let commitment = CompressedCommitment::from_commitment(
+                    CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)),
+                );
                 let encryption_key = PrivateKey::random(&mut OsRng);
                 let amount = MicroMinotari::from(value);
                 let encrypted_data =

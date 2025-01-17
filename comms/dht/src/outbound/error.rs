@@ -22,7 +22,7 @@
 
 use tari_comms::message::MessageError;
 use tari_crypto::signatures::SchnorrSignatureError;
-use tari_utilities::message_format::MessageFormatError;
+use tari_utilities::{message_format::MessageFormatError, ByteArrayError};
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
@@ -61,6 +61,8 @@ pub enum DhtOutboundError {
     CipherError(String),
     #[error("Padding error: `{0}`")]
     PaddingError(String),
+    #[error("ByteArrayError: {0}")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 impl From<SchnorrSignatureError> for DhtOutboundError {

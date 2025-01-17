@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tokio::time::Instant;
@@ -37,7 +36,6 @@ use crate::{
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::TariKeyId,
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
@@ -46,6 +44,7 @@ use crate::{
             RangeProofType,
             TransactionError,
         },
+        transaction_key_manager::TariKeyId,
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -242,7 +241,7 @@ async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true).await;
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
-    let commitment_mask_key = KeyId::Managed {
+    let commitment_mask_key = TariKeyId::Managed {
         branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
         index: 42,
     };

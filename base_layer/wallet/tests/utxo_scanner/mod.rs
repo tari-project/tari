@@ -61,9 +61,9 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };

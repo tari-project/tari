@@ -41,7 +41,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::key_manager::create_memory_db_key_manager,
+    transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::mocks::MockValidator,
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};

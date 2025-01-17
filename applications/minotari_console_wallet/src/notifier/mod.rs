@@ -296,7 +296,7 @@ fn args_from_complete(tx: &CompletedTransaction, event: &str, confirmations: Opt
             let excess_sig = &kernel.excess_sig;
             (
                 kernel.excess.to_hex(),
-                excess_sig.get_public_nonce().to_hex(),
+                excess_sig.get_compressed_public_nonce().to_hex(),
                 excess_sig.get_signature().to_hex(),
             )
         },

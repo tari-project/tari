@@ -28,7 +28,6 @@ use tari_common_types::{
     types::{FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
     transaction_components::{
         encrypted_data::PaymentId,
@@ -37,9 +36,9 @@ use tari_core::transactions::{
         TransactionOutput,
         WalletOutput,
     },
+    transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_crypto::keys::SecretKey;
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
 
@@ -206,7 +205,7 @@ where
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop)? {
             // This is a nop, so we can just create a new key for the input stack.
-            let key = if let KeyId::Derived { key } = spending_key {
+            let key = if let TariKeyId::Derived { key } = spending_key {
                 TariKeyId::from_str(&key.to_string()).map_err(OutputManagerError::BuildError)?
             } else {
                 let private_key = PrivateKey::random(&mut rand::thread_rng());

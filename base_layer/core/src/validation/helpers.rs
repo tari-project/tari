@@ -580,8 +580,8 @@ mod test {
         use super::*;
         use crate::transactions::{
             aggregated_body::AggregateBody,
-            key_manager::create_memory_db_key_manager,
             transaction_components::{RangeProofType, TransactionError},
+            transaction_key_manager::create_memory_db_key_manager,
         };
 
         #[tokio::test]

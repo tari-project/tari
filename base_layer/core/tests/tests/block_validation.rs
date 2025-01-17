@@ -50,7 +50,6 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_wallet_output_with_data,
@@ -60,6 +59,7 @@ use tari_core::{
             UtxoTestParams,
         },
         transaction_components::OutputFeatures,
+        transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
     },
     txn_schema,
@@ -76,7 +76,6 @@ use tari_core::{
     },
     OutputSmt,
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
@@ -1241,9 +1240,9 @@ use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     proof_of_work::PowData,
     transactions::{
-        key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
         transaction_components::{CoinBaseExtra, Transaction, TransactionError, TransactionKernel},
+        transaction_key_manager::create_memory_db_key_manager,
     },
 };
 

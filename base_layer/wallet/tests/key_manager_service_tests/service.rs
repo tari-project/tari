@@ -19,22 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::mem::size_of;
+use std::{mem::size_of, sync::Arc};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use minotari_wallet::storage::sqlite_utilities::WalletDbConnection;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
-        AddResult,
-        KeyId,
-        KeyManagerHandle,
-        KeyManagerInterface,
+use tari_common_types::wallet_types::WalletType;
+use tari_core::transactions::{
+    transaction_key_manager::{
+        storage::{database::TransactionKeyManagerDatabase, sqlite_db::TransactionKeyManagerSqliteDatabase},
+        TariKeyId,
+        TransactionKeyManagerInterface,
+        TransactionKeyManagerWrapper,
     },
+    CryptoFactories,
 };
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager_service::AddResult};
 
 use crate::support::data::get_temp_sqlite_database_connection;
 
@@ -46,10 +46,14 @@ async fn get_key_at_test_with_encryption() {
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
+    let factory = CryptoFactories::new(64);
+    let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-    );
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        Arc::new(WalletType::default()),
+    )
+    .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
     let key_2 = key_manager.get_next_key("branch1").await.unwrap();
@@ -60,7 +64,7 @@ async fn get_key_at_test_with_encryption() {
     assert_ne!(key_2, key_3);
 
     let key_1_2 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch1".to_string(),
             index: 1,
         })
@@ -79,10 +83,15 @@ async fn key_manager_multiple_branches() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
+    let factory = CryptoFactories::new(64);
+    let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-    );
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        Arc::new(WalletType::default()),
+    )
+    .unwrap();
+
     assert_eq!(
         key_manager.add_new_branch("branch1").await.unwrap(),
         AddResult::NewEntry
@@ -103,21 +112,21 @@ async fn key_manager_multiple_branches() {
     assert_ne!(key_2, key_3);
 
     let key_1 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch1".to_string(),
             index: 1,
         })
         .await
         .unwrap();
     let key_2 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch2".to_string(),
             index: 1,
         })
         .await
         .unwrap();
     let key_3 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch3".to_string(),
             index: 1,
         })
@@ -139,10 +148,14 @@ async fn key_manager_find_index() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
+    let factory = CryptoFactories::new(64);
+    let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-    );
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        Arc::new(WalletType::default()),
+    )
+    .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
@@ -162,10 +175,14 @@ async fn key_manager_update_current_key_index_if_higher() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
+    let factory = CryptoFactories::new(64);
+    let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-    );
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        Arc::new(WalletType::default()),
+    )
+    .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
@@ -180,7 +197,7 @@ async fn key_manager_update_current_key_index_if_higher() {
         .unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
     let key_1_2 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch1".to_string(),
             index: 7,
         })
@@ -201,17 +218,21 @@ async fn key_manager_test_index() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
+    let factory = CryptoFactories::new(64);
+    let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-    );
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+        Arc::new(WalletType::default()),
+    )
+    .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     key_manager.add_new_branch("branch2").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let result = key_manager.get_next_key("branch1").await.unwrap();
     let key_2 = key_manager
-        .get_public_key_at_key_id(&KeyId::Managed {
+        .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch2".to_string(),
             index: result.key_id.managed_index().unwrap(),
         })

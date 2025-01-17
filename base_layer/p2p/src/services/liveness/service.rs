@@ -437,7 +437,6 @@ mod test {
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
         DhtProtocolVersion,
     };
-    use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};

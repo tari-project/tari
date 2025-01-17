@@ -47,7 +47,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, FixedHash, PublicKey},
+    types::{ComAndPubSignature, CompressedPublicKey, FixedHash},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -62,17 +62,21 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -2200,7 +2204,7 @@ async fn scan_for_recovery_test() {
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
-        let script_key_id = KeyId::Derived {
+        let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask_key.key_id).into(),
         };
         let public_script_key = oms
@@ -2224,7 +2228,7 @@ async fn scan_for_recovery_test() {
             script!(Nop).unwrap(),
             inputs!(public_script_key),
             script_key_id,
-            PublicKey::default(),
+            CompressedPublicKey::default(),
             ComAndPubSignature::default(),
             0,
             Covenant::new(),

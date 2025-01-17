@@ -30,7 +30,15 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        HashOutput,
+        PrivateKey,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+    },
 };
 use tari_comms::types::CommsDHKE;
 use tari_core::{
@@ -45,7 +53,6 @@ use tari_core::{
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
@@ -60,19 +67,19 @@ use tari_core::{
             WalletOutput,
             WalletOutputBuilder,
         },
+        transaction_key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
-use tari_key_manager::key_manager_service::{KeyAndId, KeyId, SerializedKeyString};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
     inputs,
     push_pubkey_script,
     script,
-    CheckSigSchnorrSignature,
+    CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
     StackItem,
@@ -535,7 +542,7 @@ where
     async fn claim_sha_atomic_swap_with_hash(
         &mut self,
         output_hash: HashOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
@@ -1244,13 +1251,13 @@ where
         &self,
         payment_id: PaymentId,
         tx_id: TxId,
-    ) -> Result<KeyAndId<PublicKey>, OutputManagerError> {
+    ) -> Result<TariKeyAndId, OutputManagerError> {
         if let PaymentId::U64(index) = payment_id {
-            let script_key_id = KeyId::Managed {
+            let script_key_id = TariKeyId::Managed {
                 branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
                 index,
             };
-            Ok(KeyAndId::<PublicKey> {
+            Ok(TariKeyAndId {
                 pub_key: self
                     .resources
                     .key_manager
@@ -1273,12 +1280,12 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        expected_commitment: PedersenCommitment,
-        mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-        script_signature_public_nonces: Vec<PublicKey>,
-        sender_offset_public_key_shares: Vec<PublicKey>,
-        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<PublicKey>,
+        expected_commitment: CompressedCommitment,
+        mut script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+        script_signature_public_nonces: Vec<CompressedPublicKey>,
+        sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+        dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
         tx_payment_id: PaymentId,
         original_maturity: u64,
@@ -1290,10 +1297,10 @@ where
             Transaction,
             MicroMinotari,
             MicroMinotari,
-            PublicKey,
-            PublicKey,
-            PublicKey,
-            PublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
         ),
         OutputManagerError,
     > {
@@ -1323,11 +1330,13 @@ where
         let (multi_sig_public_keys, threshold) = get_multi_sig_script_components(&output.script, tx_id)?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: retrieved public keys from script");
         // Create a deterministic encryption key from the sum of the public keys
-        let sum_public_keys = multi_sig_public_keys
-            .iter()
-            .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
-        let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
-        let mut aggregated_script_public_key_shares = PublicKey::default();
+        let mut sum_public_keys = UncompressedPublicKey::default();
+        for key in &multi_sig_public_keys {
+            sum_public_keys = &sum_public_keys + key.to_public_key()?;
+        }
+        let encryption_private_key =
+            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(sum_public_keys))?;
+        let mut aggregated_script_public_key_shares = UncompressedPublicKey::default();
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created deterministic encryption key");
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
         let (input, payment_id) = if let Ok((amount, commitment_mask, payment_id)) =
@@ -1348,12 +1357,13 @@ where
 
                 // the order here is important, we need to add the signatures in the same order as public keys were
                 // added to the script originally
-                for key in multi_sig_public_keys {
-                    if let Some(signature) = script_input_shares.get(&key) {
+                for key in &multi_sig_public_keys {
+                    if let Some(signature) = script_input_shares.get(key) {
                         script_signatures.push(StackItem::Signature(signature.clone()));
                         // our own key should not be aggregated yet, it will be added with the script signing
-                        if key != script_key.pub_key {
-                            aggregated_script_public_key_shares = aggregated_script_public_key_shares + key;
+                        if key != &script_key.pub_key {
+                            aggregated_script_public_key_shares =
+                                aggregated_script_public_key_shares + key.to_public_key()?;
                         }
                     }
                 }
@@ -1486,9 +1496,9 @@ where
                 )))?;
 
         let shared_secret = {
-            let mut key_sum = PublicKey::default();
+            let mut key_sum = UncompressedPublicKey::default();
             for key in &dh_shared_secret_shares {
-                key_sum = key_sum + key;
+                key_sum = key_sum + key.to_public_key()?;
             }
             let shared_secret_self = self
                 .resources
@@ -1503,7 +1513,7 @@ where
                         )))?,
                 )
                 .await?;
-            key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
+            key_sum = key_sum + &UncompressedPublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
             CommsDHKE::from_canonical_bytes(key_sum.as_bytes())?
         };
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created dh shared secret");
@@ -1519,19 +1529,25 @@ where
             .key_manager
             .get_public_key_at_key_id(&sender_offset_private_key_id_self)
             .await?;
-        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
-        let sender_offset_public_key = &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self;
+        let mut aggregated_sender_offset_public_key_shares = UncompressedPublicKey::default();
+        for key in &sender_offset_public_key_shares {
+            aggregated_sender_offset_public_key_shares =
+                aggregated_sender_offset_public_key_shares + &key.to_public_key()?;
+        }
+
+        let sender_offset_public_key =
+            &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self.to_public_key()?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.key_manager)
                 .await
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
-        let aggregated_metadata_ephemeral_public_key_shares = metadata_ephemeral_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+        let mut aggregated_metadata_ephemeral_public_key_shares = UncompressedPublicKey::default();
+        for key in &metadata_ephemeral_public_key_shares {
+            aggregated_metadata_ephemeral_public_key_shares =
+                aggregated_metadata_ephemeral_public_key_shares + &key.to_public_key()?;
+        }
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: prepared inputs for partial metadata signature");
 
         let script_spending_key = self
@@ -1559,22 +1575,22 @@ where
             )
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
-            .with_sender_offset_public_key(sender_offset_public_key.clone())
+            .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
-                &aggregated_sender_offset_public_key_shares,
-                &aggregated_metadata_ephemeral_public_key_shares,
+                &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
+                &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
-        let total_metadata_ephemeral_public_key =
-            aggregated_metadata_ephemeral_public_key_shares + output.metadata_signature.ephemeral_pubkey();
+        let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
+            &output.metadata_signature.ephemeral_pubkey().to_public_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
@@ -1594,22 +1610,24 @@ where
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: finalized partial transaction");
 
-        let aggregated_script_signature_public_nonces = script_signature_public_nonces
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+        let mut aggregated_script_signature_public_nonces = UncompressedPublicKey::default();
+        for key in &script_signature_public_nonces {
+            aggregated_script_signature_public_nonces =
+                aggregated_script_signature_public_nonces + &key.to_public_key()?;
+        }
 
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
-                &aggregated_script_signature_public_nonces,
-                &aggregated_script_public_key_shares,
+                &CompressedPublicKey::new_from_pk(aggregated_script_signature_public_nonces.clone()),
+                &CompressedPublicKey::new_from_pk(aggregated_script_public_key_shares),
                 &self.resources.key_manager,
             )
             .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: updated script input signature");
 
-        let total_script_nonce =
-            aggregated_script_signature_public_nonces + updated_input.script_signature.ephemeral_pubkey();
+        let total_script_nonce = aggregated_script_signature_public_nonces +
+            &updated_input.script_signature.ephemeral_pubkey().to_public_key()?;
         let mut tx = stp.get_transaction()?.clone();
         let mut tx_body = tx.body;
         tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
@@ -1620,20 +1638,20 @@ where
 
         // shared secret does not support debug so we manually convert this to a public key
         let shared_secret_bytes = shared_secret.as_bytes();
-        let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret_bytes)?;
+        let shared_secret_public_key = CompressedPublicKey::from_canonical_bytes(shared_secret_bytes)?;
 
         // Transaction balance log
         //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + total_offset
-        let mut utxo_sum = Commitment::default();
+        let mut utxo_sum = UncompressedCommitment::default();
         for output in tx.body.outputs() {
-            utxo_sum = &utxo_sum + &output.commitment;
+            utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
         }
         for input in tx.body.inputs() {
-            utxo_sum = &utxo_sum - input.commitment()?;
+            utxo_sum = &utxo_sum - &input.commitment()?.to_commitment()?;
         }
-        let mut kernel_sum = Commitment::default();
+        let mut kernel_sum = UncompressedCommitment::default();
         for kernel in tx.body.kernels() {
-            kernel_sum = &kernel_sum + &kernel.excess;
+            kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
         }
         let total_offset = self.resources.factories.commitment.commit_value(&tx.offset, 0);
         trace!(target: LOG_TARGET, "total_offset:               {}", total_offset.to_hex());
@@ -1646,8 +1664,8 @@ where
             amount,
             fee,
             total_script_public_key,
-            total_metadata_ephemeral_public_key,
-            total_script_nonce,
+            CompressedPublicKey::new_from_pk(total_metadata_ephemeral_public_key),
+            CompressedPublicKey::new_from_pk(total_script_nonce),
             shared_secret_public_key,
         ))
     }
@@ -1658,7 +1676,7 @@ where
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
-        expected_commitment: PedersenCommitment,
+        expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
         payment_id: PaymentId,
         maturity: u64,
@@ -1694,10 +1712,12 @@ where
             )));
         };
         // Create a deterministic encryption key from the sum of the public keys
-        let sum_public_keys = public_keys
-            .iter()
-            .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
-        let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
+        let mut sum_public_keys = UncompressedPublicKey::default();
+        for key in &public_keys {
+            sum_public_keys = &sum_public_keys + key.to_public_key()?;
+        }
+        let encryption_private_key =
+            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(sum_public_keys))?;
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
         let input = if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
@@ -1879,7 +1899,7 @@ where
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(KeyId::Zero)
+            .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
@@ -2243,7 +2263,7 @@ where
 
     pub async fn preview_coin_join_with_commitments(
         &self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
@@ -2270,7 +2290,7 @@ where
 
     pub async fn preview_coin_split_with_commitments_no_amount(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         number_of_splits: usize,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
@@ -2322,7 +2342,7 @@ where
 
     async fn create_coin_split_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         amount_per_split: Option<MicroMinotari>,
         number_of_splits: usize,
         fee_per_gram: MicroMinotari,
@@ -2799,7 +2819,7 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn create_coin_join(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
@@ -3012,7 +3032,7 @@ where
     pub async fn create_claim_sha_atomic_swap_transaction(
         &mut self,
         output: TransactionOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
         let shared_secret = self
@@ -3424,7 +3444,7 @@ pub enum UseOutput {
 fn get_multi_sig_script_components(
     script: &TariScript,
     tx_id: TxId,
-) -> Result<(Vec<PublicKey>, u8), OutputManagerError> {
+) -> Result<(Vec<CompressedPublicKey>, u8), OutputManagerError> {
     if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(m, _n, keys, _msg)) = script.as_slice().get(3) {
         Ok((keys.clone(), *m))
     } else {

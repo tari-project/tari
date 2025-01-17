@@ -35,7 +35,8 @@ mod test {
     use rand::rngs::OsRng;
     use tari_common_types::tari_address::TariAddress;
     use tari_crypto::{
-        keys::{PublicKey, SecretKey},
+        compressed_key::CompressedKey,
+        keys::SecretKey,
         ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_script::{script, slice_to_boxed_message};
@@ -63,8 +64,8 @@ mod test {
         scripts.push((script!(PushOne).unwrap(), PUSH_ONE_IDENTIFIER, "".to_string()));
 
         for pub_key in [
-            RistrettoPublicKey::default(),
-            RistrettoPublicKey::from_secret_key(&RistrettoSecretKey::random(&mut OsRng)),
+            CompressedKey::<RistrettoPublicKey>::default(),
+            CompressedKey::<RistrettoPublicKey>::from_secret_key(&RistrettoSecretKey::random(&mut OsRng)),
         ] {
             scripts.push((
                 script!(PushPubKey(Box::new(pub_key.clone()))).unwrap(),

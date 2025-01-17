@@ -417,7 +417,7 @@ mod test {
         )
         .spawn();
 
-        let dest_public_key = Box::<tari_crypto::ristretto::RistrettoPublicKey>::default();
+        let dest_public_key = Box::<CommsPublicKey>::default();
         let result = requester
             .discover_peer(
                 *dest_public_key.clone(),

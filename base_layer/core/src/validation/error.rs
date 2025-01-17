@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::HashOutput;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
@@ -134,6 +135,8 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
+    #[error("Invalid Transaction: {0}")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -184,7 +187,8 @@ impl ValidationError {
             err @ ValidationError::InvalidValidatorNodeSignature |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
-            err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
+            err @ ValidationError::CovenantTooLarge { .. } |
+            err @ ValidationError::ByteArrayError(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

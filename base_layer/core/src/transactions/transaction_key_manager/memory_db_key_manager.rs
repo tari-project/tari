@@ -26,18 +26,18 @@ use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::wallet_types::WalletType;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
-        KeyManagerServiceError,
-    },
-};
+use tari_key_manager::cipher_seed::CipherSeed;
 use zeroize::Zeroizing;
 
-use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
-
-pub type MemoryDbKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
+use crate::transactions::{
+    transaction_key_manager::{
+        error::KeyManagerServiceError,
+        storage::{database::TransactionKeyManagerDatabase, sqlite_db::TransactionKeyManagerSqliteDatabase},
+        TransactionKeyManagerWrapper,
+    },
+    CryptoFactories,
+};
+pub type MemoryDbKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {
     iter::repeat(())
@@ -57,9 +57,9 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
     let key_ga = Key::from_slice(key.as_ref());
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(size);
-    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
+    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
         Arc::new(WalletType::default()),
     )
@@ -78,9 +78,9 @@ pub fn create_memory_db_key_manager_from_seed(
     let db_cipher = XChaCha20Poly1305::new(key_ga);
     let factory = CryptoFactories::new(rangeproof_size);
 
-    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
+    TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
         factory,
         Arc::new(WalletType::default()),
     )

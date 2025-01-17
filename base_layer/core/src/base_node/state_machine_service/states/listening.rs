@@ -487,7 +487,6 @@ mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-    use tari_crypto::keys::PublicKey;
 
     use super::*;
 

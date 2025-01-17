@@ -40,12 +40,9 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{Commitment, PrivateKey, PublicKey},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey},
 };
-use tari_crypto::{
-    keys::{PublicKey as PK, SecretKey},
-    ristretto::RistrettoSecretKey,
-};
+use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 #[allow(clippy::too_many_lines)]
@@ -152,7 +149,8 @@ fn main() {
     let version = 0u8;
     let value = PrivateKey::from(123456);
     let spend_private_key = get_random_nonce();
-    let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&get_random_nonce()));
+    let commitment =
+        CompressedCommitment::from_compressed_key(CompressedPublicKey::from_secret_key(&get_random_nonce()));
     let mut script_message = [0u8; 32];
     script_message.copy_from_slice(&get_random_nonce().to_vec());
 
@@ -235,7 +233,7 @@ fn main() {
     println!("\ntest: GetDHSharedSecret");
     let index = OsRng.next_u64();
     let branch = TransactionKeyManagerBranch::OneSidedSenderOffset;
-    let public_key = PublicKey::from_secret_key(&get_random_nonce());
+    let public_key = CompressedPublicKey::from_secret_key(&get_random_nonce());
 
     match ledger_get_dh_shared_secret(account, index, branch, &public_key) {
         Ok(shared_secret) => println!("shared_secret:  {}", shared_secret.as_bytes().to_vec().to_hex()),
@@ -265,7 +263,7 @@ fn main() {
         Ok(signature) => println!(
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
-            signature.get_public_nonce().to_hex()
+            signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
             println!("\nError: {}\n", e);
@@ -284,7 +282,7 @@ fn main() {
         Ok(signature) => println!(
             "signature:      ({},{})",
             signature.get_signature().to_hex(),
-            signature.get_public_nonce().to_hex()
+            signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
             println!("\nError: {}\n", e);
