@@ -48,7 +48,7 @@ use tari_core::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -291,7 +291,10 @@ where
                     output_hash,
                     expected_commitment,
                     recipient_address,
-                    PaymentId::Open(output_hash.to_vec()),
+                    PaymentId::Open {
+                        user_data: output_hash.to_vec(),
+                        tx_type: TxType::PaymentToOther,
+                    },
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -352,6 +355,7 @@ where
                 output_features,
                 fee_per_gram,
                 lock_height,
+                payment_id,
             } => self
                 .create_pay_to_self_transaction(
                     tx_id,
@@ -360,6 +364,7 @@ where
                     *output_features,
                     fee_per_gram,
                     lock_height,
+                    payment_id,
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -448,8 +453,9 @@ where
             OutputManagerRequest::CreateCoinJoin {
                 commitments,
                 fee_per_gram,
+                payment_id,
             } => self
-                .create_coin_join(commitments, fee_per_gram)
+                .create_coin_join(commitments, fee_per_gram, payment_id)
                 .await
                 .map(OutputManagerResponse::Transaction),
 
@@ -801,7 +807,11 @@ where
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
-        let payment_id = PaymentId::Address(single_round_sender_data.sender_address.clone());
+        let payment_id = PaymentId::AddressAndData {
+            sender_address: single_round_sender_data.sender_address.clone(),
+            tx_type: TxType::PaymentToOther,
+            user_data: vec![],
+        };
         let encrypted_data = self
             .resources
             .key_manager
@@ -977,10 +987,8 @@ where
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction. Amount: {}. UTXO Selection: {}. Fee per gram: {}. ",
-            amount,
-            selection_criteria,
-            fee_per_gram,
+            "Preparing to send transaction - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, selection: {}",
+            tx_id, amount, fee_per_gram, payment_id, selection_criteria,
         );
         let features_and_scripts_byte_size = self
             .resources
@@ -1836,14 +1844,11 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = match payment_id {
-            PaymentId::Open(v) => PaymentId::AddressAndData {
-                sender_address: self.resources.interactive_tari_address.clone(),
-                user_data: v,
-            },
-            PaymentId::Empty => PaymentId::Address(self.resources.one_sided_tari_address.clone()),
-            _ => payment_id,
-        };
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.one_sided_tari_address.clone(),
+            Some(TxType::PaymentToOther),
+        );
 
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(
@@ -1907,6 +1912,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
+        payment_id: PaymentId,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         let covenant = Covenant::default();
 
@@ -1952,7 +1958,9 @@ where
             builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant).await?;
+        let (output, sender_offset_key_id) = self
+            .output_to_self(output_features, amount, covenant, payment_id)
+            .await?;
 
         builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
@@ -1975,7 +1983,7 @@ where
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
             )
-            .with_payment_id(PaymentId::open_from_str("Pay to self transaction"));
+            .with_payment_id(PaymentId::open("Pay to self transaction", TxType::PaymentToSelf));
 
         let mut stp = builder
             .build()
@@ -2405,10 +2413,13 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
-            .with_payment_id(PaymentId::open_from_str(&format!(
-                "Coin split transaction, {} into {} outputs",
-                accumulated_amount, number_of_splits
-            )))
+            .with_payment_id(PaymentId::open(
+                &format!(
+                    "Coin split transaction, {} into {} outputs",
+                    accumulated_amount, number_of_splits
+                ),
+                TxType::CoinSplit,
+            ))
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2432,7 +2443,12 @@ where
             };
 
             let (output, sender_offset_key_id) = self
-                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    PaymentId::open(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                )
                 .await?;
 
             tx_builder
@@ -2567,11 +2583,12 @@ where
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
         );
+        let payment_id = PaymentId::open(
+            &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
+            TxType::CoinSplit,
+        );
         tx_builder
-            .with_payment_id(PaymentId::open_from_str(&format!(
-                "Coin split transaction, {} into {} outputs",
-                accumulated_amount, number_of_splits
-            )))
+            .with_payment_id(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2591,7 +2608,12 @@ where
 
         for _ in 0..number_of_splits {
             let (output, sender_offset_key_id) = self
-                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    payment_id.clone(),
+                )
                 .await?;
 
             tx_builder
@@ -2688,6 +2710,7 @@ where
         output_features: OutputFeatures,
         amount: MicroMinotari,
         covenant: Covenant,
+        payment_id: PaymentId,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
@@ -2695,7 +2718,12 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.interactive_tari_address.clone(),
+            Some(TxType::PaymentToSelf),
+        );
+
         let encrypted_data = self
             .resources
             .key_manager
@@ -2762,6 +2790,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
@@ -2804,11 +2833,7 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
-            .with_payment_id(PaymentId::open_from_str(&format!(
-                "Coin join transaction, {} outputs{} into",
-                src_outputs.len(),
-                accumulated_amount
-            )))
+            .with_payment_id(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2824,7 +2849,12 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(OutputFeatures::default(), accumulated_amount, Covenant::default())
+            .output_to_self(
+                OutputFeatures::default(),
+                accumulated_amount,
+                Covenant::default(),
+                payment_id.clone(),
+            )
             .await?;
 
         tx_builder
@@ -2904,7 +2934,7 @@ where
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(PaymentId::Empty)
+            .with_payment_id(PaymentId::open("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -2998,8 +3028,8 @@ where
                     self.resources.key_manager.get_spend_key().await?.key_id,
                     output.sender_offset_public_key,
                     output.metadata_signature,
-                    // Although the technically the script does have a script lock higher than 0, this does not apply
-                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    // Although technically the script does have a script lock higher than 0, this does not apply
+                    // to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
                     output.encrypted_data,
@@ -3016,7 +3046,7 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(PaymentId::open_from_str("SHA-XTR atomic swap"))
+                    .with_payment_id(PaymentId::open("SHA-XTR atomic swap", TxType::ClaimAtomicSwap))
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3099,7 +3129,7 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(PaymentId::open_from_str("SHA-XTR atomic refund"))
+            .with_payment_id(PaymentId::open("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund))
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)

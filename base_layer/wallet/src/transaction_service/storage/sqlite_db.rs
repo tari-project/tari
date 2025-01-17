@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::{Arc, RwLock},
 };
@@ -266,67 +265,49 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 None
             },
             DbKey::PendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from(o.clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from(o.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from((i).clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from((i).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from((o).clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from((o).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from(i.clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from(i.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CancelledCompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -1192,6 +1173,7 @@ impl InboundTransactionSql {
     ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(inbound_transactions::timestamp.desc())
             .load::<InboundTransactionSql>(conn)?)
     }
 
@@ -1456,6 +1438,7 @@ impl OutboundTransactionSql {
     ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(outbound_transactions::timestamp.desc())
             .load::<OutboundTransactionSql>(conn)?)
     }
 
@@ -1726,7 +1709,9 @@ impl CompletedTransactionSql {
             query.filter(completed_transactions::cancelled.is_null())
         };
 
-        Ok(query.load::<CompletedTransactionSql>(conn)?)
+        Ok(query
+            .order_by(completed_transactions::mined_timestamp.desc())
+            .load::<CompletedTransactionSql>(conn)?)
     }
 
     pub fn index_by_status_and_cancelled(
@@ -2200,7 +2185,11 @@ mod test {
         key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+            Transaction,
+        },
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -2280,7 +2269,7 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(PaymentId::open_from_str("Yo!"))
+            .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
             .unwrap()
@@ -2315,7 +2304,7 @@ mod test {
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2334,7 +2323,7 @@ mod test {
                 fee: stp.get_fee_amount().unwrap(),
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2400,7 +2389,7 @@ mod test {
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2418,7 +2407,7 @@ mod test {
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2489,7 +2478,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2519,7 +2508,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2679,7 +2668,7 @@ mod test {
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2707,7 +2696,7 @@ mod test {
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2758,7 +2747,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2822,7 +2811,7 @@ mod test {
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2845,7 +2834,7 @@ mod test {
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2890,7 +2879,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3032,7 +3021,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_str("Yo!"),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

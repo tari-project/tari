@@ -49,7 +49,10 @@ mod test {
     };
     use tari_core::transactions::{
         tari_amount::{uT, MicroMinotari},
-        transaction_components::{encrypted_data::PaymentId, Transaction},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            Transaction,
+        },
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
@@ -319,7 +322,7 @@ mod test {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            PaymentId::open_from_str("1"),
+            PaymentId::open("1", TxType::PaymentToOther),
             Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
@@ -353,7 +356,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            PaymentId::open_from_str("2"),
+            PaymentId::open("2", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -372,7 +375,7 @@ mod test {
             23 * uT,
             stp,
             TransactionStatus::Pending,
-            PaymentId::open_from_str("3"),
+            PaymentId::open("3", TxType::PaymentToOther),
             Utc::now(),
             false,
         );
@@ -424,7 +427,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
-            PaymentId::open_from_str("6"),
+            PaymentId::open("6", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -458,7 +461,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
-            PaymentId::open_from_str("7"),
+            PaymentId::open("7", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())

@@ -404,6 +404,19 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn extract_payment_id_from_encrypted_data(
+        &self,
+        encrypted_data: &EncryptedData,
+        commitment: &Commitment,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<PaymentId, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .extract_payment_id_from_encrypted_data(encrypted_data, commitment, custom_recovery_key_id)
+            .await
+    }
+
     async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,

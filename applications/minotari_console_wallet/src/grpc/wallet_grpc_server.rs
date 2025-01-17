@@ -103,7 +103,7 @@ use tari_core::{
     transactions::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CodeTemplateRegistration,
             OutputFeatures,
             OutputType,
@@ -414,7 +414,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_str("Claiming HTLC transaction with pre-image"),
+                        PaymentId::open("Claiming HTLC transaction with pre-image", TxType::ClaimAtomicSwap),
                     )
                     .await
                 {
@@ -469,7 +469,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_str("Creating HTLC refund transaction"),
+                        PaymentId::open("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                 {
@@ -771,7 +771,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
-            for (i, (_, txn)) in transactions.iter().enumerate() {
+            for (i, txn) in transactions.iter().enumerate() {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
@@ -832,7 +832,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                PaymentId::Empty,
+                PaymentId::open("Creating coin-split transaction", TxType::CoinSplit),
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -983,13 +983,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         output = output.with_script(script![Nop].map_err(|e| Status::invalid_argument(e.to_string()))?);
+        let payment_id = PaymentId::open(
+            &format!("Template registration '{}'", template_name),
+            TxType::CodeTemplateRegistration,
+        );
 
         let (tx_id, transaction) = output_manager
             .create_send_to_self_with_output(
                 vec![output],
                 fee_per_gram.into(),
                 UtxoSelectionCriteria::default(),
-                PaymentId::open_from_str(&format!("Template registration {}", template_name)),
+                payment_id.clone(),
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -1008,7 +1012,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_address = reg_output.hash();
 
         transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), PaymentId::Empty)
+            .submit_transaction(tx_id, transaction, 0.into(), payment_id)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1088,15 +1092,17 @@ async fn handle_pending_outbound(
     transaction_service: &mut TransactionServiceHandle,
     sender: &mut Sender<Result<TransactionEventResponse, Status>>,
 ) {
-    match transaction_service.get_pending_outbound_transactions().await {
-        Ok(mut txs) => {
-            if let Some(tx) = txs.remove(&tx_id) {
+    use models::WalletTransaction::PendingOutbound;
+    match transaction_service.get_any_transaction(tx_id).await {
+        Ok(tx) => match tx {
+            Some(PendingOutbound(tx)) => {
                 let transaction_event =
-                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx)));
+                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx.clone())));
                 send_transaction_event(transaction_event, sender).await;
-            } else {
+            },
+            _ => {
                 error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
-            }
+            },
         },
         Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
     }

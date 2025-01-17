@@ -1607,6 +1607,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(data)
     }
 
+    pub async fn extract_payment_id_from_encrypted_data(
+        &self,
+        encrypted_data: &EncryptedData,
+        commitment: &Commitment,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<PaymentId, TransactionError> {
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            self.get_private_key(key_id).await?
+        } else {
+            self.get_private_view_key().await?
+        };
+        let (_, _, payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        Ok(payment_id)
+    }
+
     pub async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,

@@ -77,6 +77,7 @@ pub async fn create_test_input<
     maturity: u64,
     key_manager: &TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     coinbase_extra: Vec<u8>,
+    payment_id: Option<PaymentId>,
 ) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
@@ -88,6 +89,7 @@ pub async fn create_test_input<
                     coinbase_extra: CoinBaseExtra::try_from(coinbase_extra).unwrap(),
                     ..Default::default()
                 },
+                payment_id: payment_id.unwrap_or_default(),
                 ..Default::default()
             },
             key_manager,
@@ -169,7 +171,7 @@ impl TestParams {
         let output = WalletOutputBuilder::new(params.value, self.commitment_mask_key_id.clone())
             .with_features(params.features)
             .with_script(params.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
+            .encrypt_data_for_recovery(key_manager, None, params.payment_id)
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -218,6 +220,7 @@ pub struct UtxoTestParams {
     pub covenant: Covenant,
     pub output_version: Option<TransactionOutputVersion>,
     pub minimum_value_promise: MicroMinotari,
+    pub payment_id: PaymentId,
 }
 
 impl UtxoTestParams {
@@ -239,6 +242,7 @@ impl Default for UtxoTestParams {
             covenant: Covenant::default(),
             output_version: None,
             minimum_value_promise: MicroMinotari::zero(),
+            payment_id: Default::default(),
         }
     }
 }

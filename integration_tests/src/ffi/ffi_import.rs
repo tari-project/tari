@@ -166,6 +166,12 @@ extern "C" {
         encrypted_data_bytes: *const ByteVector,
         error_out: *mut c_int,
     ) -> *mut TariEncryptedOpenings;
+    pub fn transaction_type_from_encrypted_data(
+        encrypted_data: *const TariEncryptedOpenings,
+        commitment_bytes: *const ByteVector,
+        wallet: *mut TariWallet,
+        error_out: *mut c_int,
+    ) -> c_uint;
     pub fn encrypted_data_as_bytes(
         encrypted_data: *const TariEncryptedOpenings,
         error_out: *mut c_int,

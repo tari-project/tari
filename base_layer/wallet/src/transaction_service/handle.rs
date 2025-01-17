@@ -417,9 +417,9 @@ pub enum TransactionServiceResponse {
         template_registration: Box<CodeTemplateRegistration>,
     },
     TransactionCancelled,
-    PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
-    PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
-    CompletedTransactions(HashMap<TxId, CompletedTransaction>),
+    PendingInboundTransactions(Vec<InboundTransaction>),
+    PendingOutboundTransactions(Vec<OutboundTransaction>),
+    CompletedTransactions(Vec<CompletedTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
     BaseNodePublicKeySet,
     UtxoImported(TxId),
@@ -913,7 +913,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<Vec<InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingInboundTransactions)
@@ -926,7 +926,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<Vec<InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingInboundTransactions)
@@ -939,7 +939,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<Vec<OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingOutboundTransactions)
@@ -952,7 +952,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<Vec<OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingOutboundTransactions)
@@ -963,9 +963,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn get_completed_transactions(
-        &mut self,
-    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
+    pub async fn get_completed_transactions(&mut self) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransactions)
@@ -978,7 +976,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_completed_transactions(
         &mut self,
-    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledCompletedTransactions)

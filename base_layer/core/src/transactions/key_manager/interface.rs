@@ -189,6 +189,13 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         payment_id: PaymentId,
     ) -> Result<EncryptedData, TransactionError>;
 
+    async fn extract_payment_id_from_encrypted_data(
+        &self,
+        encrypted_data: &EncryptedData,
+        commitment: &Commitment,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<PaymentId, TransactionError>;
+
     async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,

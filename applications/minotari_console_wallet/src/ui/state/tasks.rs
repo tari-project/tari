@@ -24,7 +24,7 @@ use std::{convert::TryFrom, path::PathBuf};
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use log::{error, warn};
+use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
@@ -204,6 +204,10 @@ pub async fn send_burn_transaction_task(
     // burning minotari
     // ----------------------------------------------------------------------------
 
+    debug!(
+        target: LOG_TARGET, "Burn tari - amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, selection: {}",
+        amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+    );
     let (burn_tx_id, original_proof) = match transaction_service_handle
         .burn_tari(amount, selection_criteria, fee_per_gram, payment_id, claim_public_key)
         .await

@@ -5,7 +5,10 @@ use std::fs;
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::encrypted_data::{PaymentId, TxType},
+};
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -311,11 +314,7 @@ impl BurnTab {
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
-                                if self.payment_id_field.is_empty() {
-                                    PaymentId::Empty
-                                } else {
-                                    PaymentId::open_from_str(&self.payment_id_field)
-                                },
+                                PaymentId::open(&self.payment_id_field, TxType::Burn),
                                 tx,
                             )) {
                                 Err(e) => {

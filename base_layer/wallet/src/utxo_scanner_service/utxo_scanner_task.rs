@@ -644,8 +644,7 @@ where
                     PaymentId::AddressAndData {
                         sender_address: address,
                         ..
-                    } |
-                    PaymentId::Address(address) => address.clone(),
+                    } => address.clone(),
                     PaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
                     _ => TariAddress::default(),
                 }

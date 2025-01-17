@@ -6,8 +6,11 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{TransactionDirection, TransactionStatus},
+};
+use tari_core::transactions::transaction_components::encrypted_data::{PaymentId, TxType};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -211,22 +214,42 @@ impl TransactionsTab {
             let cancelled = tx.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
 
-            let (status, burn) = if let Some(PaymentId::TransactionInfo { burn, .. }) = tx.payment_id.clone() {
-                (
-                    match tx.status {
-                        TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
-                        TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
-                        _ => tx.status.clone(),
-                    },
-                    burn,
-                )
-            } else {
-                (tx.status.clone(), tx.burn)
+            let mut transaction_status = tx.status.clone();
+            let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
+            if let Some(
+                PaymentId::Open { tx_type, .. } |
+                PaymentId::AddressAndData { tx_type, .. } |
+                PaymentId::TransactionInfo { tx_type, .. },
+            ) = tx.payment_id.clone()
+            {
+                match tx.status {
+                    TransactionStatus::OneSidedUnconfirmed => transaction_status = TransactionStatus::MinedUnconfirmed,
+                    TransactionStatus::OneSidedConfirmed => transaction_status = TransactionStatus::MinedConfirmed,
+                    _ => {},
+                }
+                transaction_type = tx_type.clone();
             };
 
-            let address_text = match (&tx.direction, &tx.coinbase, burn) {
+            if let Some(PaymentId::Open { .. } | PaymentId::AddressAndData { .. }) = tx.payment_id.clone() {
+                if transaction_type == TxType::PaymentToSelf && tx.source_address != tx.destination_address {
+                    transaction_type = TxType::PaymentToOther;
+                }
+                if transaction_type == TxType::Burn && tx.destination_address != TariAddress::default() {
+                    transaction_type = TxType::PaymentToOther;
+                }
+            }
+
+            let address_text = match (&tx.direction, &tx.coinbase, transaction_type) {
                 (_, true, _) => "Mining reward",
-                (_, _, true) => "Burned output",
+                (_, _, TxType::Burn) => "Burned output",
+                (_, _, TxType::CoinJoin) => "Coin join",
+                (_, _, TxType::CoinSplit) => "Coin split",
+                (_, _, TxType::ImportedUtxoNoneRewindable) => "Imported output",
+                (_, _, TxType::PaymentToSelf) => "Payment to self",
+                (_, _, TxType::ValidatorNodeRegistration) => "Validator node registration",
+                (_, _, TxType::CodeTemplateRegistration) => "Code template registration",
+                (_, _, TxType::HtlcAtomicSwapRefund) => "HTLC atomic swap refund",
+                (_, _, TxType::ClaimAtomicSwap) => "Claim atomic swap",
                 (TransactionDirection::Outbound, _, _) => &app_state.get_alias(tx.destination_address.to_base58()),
                 _ => &app_state.get_alias(tx.source_address.to_base58()),
             };
@@ -273,7 +296,7 @@ impl TransactionsTab {
             } else if tx.cancelled.is_some() {
                 "Rejected".to_string()
             } else {
-                status.to_string()
+                transaction_status.to_string()
             };
             column3_items.push(ListItem::new(Span::styled(
                 status_display,

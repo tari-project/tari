@@ -109,6 +109,7 @@ pub enum OutputManagerRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
+        payment_id: PaymentId,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<WalletOutputBuilder>,
@@ -134,6 +135,7 @@ pub enum OutputManagerRequest {
     CreateCoinJoin {
         commitments: Vec<Commitment>,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     },
     FeeEstimate {
         amount: MicroMinotari,
@@ -246,6 +248,7 @@ impl fmt::Display for OutputManagerRequest {
             CreateCoinJoin {
                 commitments,
                 fee_per_gram,
+                ..
             } => write!(
                 f,
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
@@ -732,12 +735,14 @@ impl OutputManagerHandle {
         &mut self,
         commitments: Vec<Commitment>,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinJoin {
                 commitments,
                 fee_per_gram,
+                payment_id,
             })
             .await??
         {
@@ -936,6 +941,7 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
+        payment_id: PaymentId,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle
@@ -946,6 +952,7 @@ impl OutputManagerHandle {
                 output_features: Box::new(output_features),
                 fee_per_gram,
                 lock_height,
+                payment_id,
             })
             .await??
         {
