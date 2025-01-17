@@ -6261,7 +6261,7 @@ async fn test_completed_transactions_ordering() {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: DateTime::<Utc>::from_timestamp(random_timestamp + 100i64, 0),
-            payment_id: PaymentId::open_from_str("Yo!"),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         tx_backend
