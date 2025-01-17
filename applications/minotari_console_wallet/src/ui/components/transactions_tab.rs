@@ -230,8 +230,6 @@ impl TransactionsTab {
                 transaction_type = tx_type.clone();
             };
 
-            // TODO: Remove when backwards compatibility for `PaymentId::Open` and `PaymentId::AddressAndData` is no
-            // TODO: longer required.
             if let Some(PaymentId::Open { .. } | PaymentId::AddressAndData { .. }) = tx.payment_id.clone() {
                 if transaction_type == TxType::PaymentToSelf && tx.source_address != tx.destination_address {
                     transaction_type = TxType::PaymentToOther;
