@@ -47,7 +47,7 @@ service Wallet {
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
   // Returns all transactions' details
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
-  // Returns the balance
+  // Returns the balance, but uses a debouncer in the background to prevent spamming the wallet
   rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
   // Returns unspent amounts
   rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);

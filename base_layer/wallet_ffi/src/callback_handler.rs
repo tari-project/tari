@@ -324,8 +324,6 @@ where TBackend: TransactionBackend + 'static
                                     self.transaction_validation_complete_event(request_key.as_u64(), reason);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
-                                TransactionEvent::TransactionImported(_tx_id)|
                                 TransactionEvent::TransactionCompletedImmediately(_tx_id)
                                 => {
                                     self.trigger_balance_refresh().await;

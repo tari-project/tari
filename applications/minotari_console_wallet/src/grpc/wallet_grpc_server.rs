@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
+    sync::Arc,
 };
 
 use futures::{
@@ -83,7 +84,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -114,11 +115,14 @@ use tari_core::{
 };
 use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
-use tokio::{sync::broadcast, task};
+use tokio::{
+    sync::{broadcast, Mutex},
+    task,
+};
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::{convert_to_transaction_event, TransactionWrapper},
+    grpc::{convert_to_transaction_event, get_balance_debounced::GetBalanceDebounced, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
@@ -142,13 +146,19 @@ async fn send_transaction_event(
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
+    get_balance_debounced: Arc<Mutex<GetBalanceDebounced>>,
 }
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        Ok(Self { wallet, rules })
+        let get_balance = GetBalanceDebounced::new(wallet.clone());
+        Ok(Self {
+            wallet,
+            rules,
+            get_balance_debounced: Arc::new(Mutex::new(get_balance)),
+        })
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {
@@ -193,14 +203,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
         let mut connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
-        let grpc_connectivity = match status {
-            minotari_wallet::connectivity_service::OnlineStatus::Connecting => OnlineStatus::Connecting,
-            minotari_wallet::connectivity_service::OnlineStatus::Online => OnlineStatus::Online,
-            minotari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
-        };
-        Ok(Response::new(CheckConnectivityResponse {
-            status: grpc_connectivity as i32,
-        }))
+        Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
 
     async fn check_for_updates(
@@ -271,28 +274,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
-        let mut output_service = self.get_output_manager_service();
-        let balance = match output_service.get_balance().await {
-            Ok(b) => b,
-            Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
+        let start = std::time::Instant::now();
+        let balance = {
+            let mut get_balance = self.get_balance_debounced.lock().await;
+            match get_balance.get_balance().await {
+                Ok(b) => b,
+                Err(e) => return Err(Status::not_found(format!("GetBalanceDebounced error! {}", e))),
+            }
         };
-        Ok(Response::new(GetBalanceResponse {
-            available_balance: balance.available_balance.0,
-            pending_incoming_balance: balance.pending_incoming_balance.0,
-            pending_outgoing_balance: balance.pending_outgoing_balance.0,
-            timelocked_balance: balance.time_locked_balance.unwrap_or_default().0,
-        }))
+        trace!(target: LOG_TARGET, "'get_balance' completed in {:.2?}", start.elapsed());
+        Ok(Response::new(balance))
     }
 
     async fn get_unspent_amounts(
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         let unspent_amounts = match output_service.get_unspent_outputs().await {
             Ok(uo) => uo,
             Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
         };
+        trace!(target: LOG_TARGET, "'get_unspent_amounts' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
@@ -306,6 +310,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         output_service
             .revalidate_all_outputs()
@@ -316,6 +321,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .revalidate_all_transactions()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
+        trace!(target: LOG_TARGET, "'revalidate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(RevalidateResponse {}))
     }
 
@@ -323,6 +329,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         output_service
             .validate_txos()
@@ -333,6 +340,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .validate_transactions()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
+        trace!(target: LOG_TARGET, "'validate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(ValidateResponse {}))
     }
 
@@ -690,61 +698,66 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
         let (mut sender, receiver) = mpsc::channel(100);
 
-        // let event_listener = self.events_channel.clone();
-
-        // let mut shutdown_signal = self.wallet;
+        let mut shutdown_signal = self.wallet.comms.shutdown_signal();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
 
         task::spawn(async move {
             loop {
                 tokio::select! {
-                        result = transaction_service_events.recv() => {
-                            match result {
-                                Ok(msg) => {
-                                    use minotari_wallet::transaction_service::handle::TransactionEvent::*;
-                                    match (*msg).clone() {
-                                        ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
-                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
-                                        TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
-                                        TransactionCancelled(tx_id, _) => {
-                                            match transaction_service.get_any_transaction(tx_id).await{
-                                                Ok(Some(wallet_tx)) => {
-                                                    use WalletTransaction::*;
-                                                    let transaction_event = match wallet_tx {
-                                                        Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
-                                                        PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
-                                                        PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
-                                                    };
-                                                    send_transaction_event(transaction_event, &mut sender).await;
-                                                },
-                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                                                _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
-                                            }
-                                        },
-                                        TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
-                                        TransactionSendResult(tx_id, status) => {
-                                            let is_sent = status.direct_send_result || status.store_and_forward_send_result;
-                                            let event = if is_sent { SENT } else { QUEUED };
-                                            handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
-                                        },
-                                        TransactionValidationStateChanged(_t_operation_id) => {
-                                            send_transaction_event(simple_event("unknown"), &mut sender).await;
-                                        },
-                                        ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) | TransactionMinedRequestTimedOut(_) | TransactionImported(_) => {
-                                            send_transaction_event(simple_event("not_supported"), &mut sender).await;
-                                        },
-                                        // Only the above variants trigger state refresh
-                                        _ => (),
-                                    }
-                                },
-                                Err(broadcast::error::RecvError::Lagged(n)) => {
-                                    warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                    result = transaction_service_events.recv() => {
+                        match result {
+                            Ok(msg) => {
+                                use minotari_wallet::transaction_service::handle::TransactionEvent::*;
+                                match (*msg).clone() {
+                                    ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
+                                    TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
+                                    TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
+                                    TransactionCancelled(tx_id, _) => {
+                                        match transaction_service.get_any_transaction(tx_id).await{
+                                            Ok(Some(wallet_tx)) => {
+                                                use WalletTransaction::*;
+                                                let transaction_event = match wallet_tx {
+                                                    Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
+                                                    PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
+                                                    PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
+                                                };
+                                                send_transaction_event(transaction_event, &mut sender).await;
+                                            },
+                                            Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                                        }
+                                    },
+                                    TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
+                                    TransactionSendResult(tx_id, status) => {
+                                        let is_sent = status.direct_send_result || status.store_and_forward_send_result;
+                                        let event = if is_sent { SENT } else { QUEUED };
+                                        handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
+                                    },
+                                    TransactionValidationStateChanged(_t_operation_id) => {
+                                        send_transaction_event(simple_event("unknown"), &mut sender).await;
+                                    },
+                                    ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) => {
+                                        send_transaction_event(simple_event("not_supported"), &mut sender).await;
+                                    },
+                                    // Only the above variants trigger state refresh
+                                    _ => (),
                                 }
-                                Err(broadcast::error::RecvError::Closed) => {}
+                            },
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
                             }
-                }
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
                     }
+                    _ = shutdown_signal.wait() => {
+                        info!(
+                            target: LOG_TARGET,
+                            "gRPC stream_transaction_events shutting down because the shutdown signal was received"
+                        );
+                        break;
+                    },
+                }
             }
         });
         Ok(Response::new(receiver))
@@ -754,6 +767,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<GetCompletedTransactionsRequest>,
     ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
+        let start = std::time::Instant::now();
         debug!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
@@ -816,6 +830,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
             }
         });
+        trace!(target: LOG_TARGET, "'get_completed_transactions' completed in {:.2?}", start.elapsed());
 
         Ok(Response::new(receiver))
     }

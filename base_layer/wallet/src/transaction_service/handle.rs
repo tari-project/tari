@@ -456,7 +456,6 @@ impl Display for TransactionSendStatus {
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TransactionEvent {
-    MempoolBroadcastTimedOut(TxId),
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
@@ -465,7 +464,6 @@ pub enum TransactionEvent {
     TransactionCompletedImmediately(TxId),
     TransactionCancelled(TxId, TxCancellationReason),
     TransactionBroadcast(TxId),
-    TransactionImported(TxId),
     DetectedTransactionUnconfirmed {
         tx_id: TxId,
         num_confirmations: u64,
@@ -479,7 +477,6 @@ pub enum TransactionEvent {
         tx_id: TxId,
         is_valid: bool,
     },
-    TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed {
         tx_id: TxId,
         num_confirmations: u64,
@@ -494,9 +491,6 @@ pub enum TransactionEvent {
 impl fmt::Display for TransactionEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {
-                write!(f, "MempoolBroadcastTimedOut for tx:{tx_id}")
-            },
             TransactionEvent::ReceivedTransaction(tx) => {
                 write!(f, "ReceivedTransaction for {tx}")
             },
@@ -521,9 +515,6 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionBroadcast(tx) => {
                 write!(f, "TransactionBroadcast for {tx}")
             },
-            TransactionEvent::TransactionImported(tx) => {
-                write!(f, "TransactionImported for {tx}")
-            },
             TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations,
@@ -540,9 +531,6 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
                 write!(f, "TransactionMined for {tx_id}. is_valid: {is_valid}")
-            },
-            TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
-                write!(f, "TransactionMinedRequestTimedOut for {tx}")
             },
             TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
