@@ -43,10 +43,10 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
-    config::MergeMiningProxyConfig,
+    config::{MergeMiningProxyConfig, MonerodFallback},
     error::MmProxyError,
     monero_fail::{get_monerod_info, order_and_select_monerod_info, MonerodEntry},
-    proxy::{MergeMiningProxyService, MONEROD_CONNECTION_TIMEOUT, NUMBER_OF_MONEROD_SERVERS},
+    proxy::service::MergeMiningProxyService,
     Cli,
 };
 
@@ -59,47 +59,52 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
 
-    // Get reputable monerod URLs
-    let mut assigned_dynamic_fail = false;
-    if config.use_dynamic_fail_data {
-        if let Ok(entries) = get_monerod_info(
-            NUMBER_OF_MONEROD_SERVERS,
-            MONEROD_CONNECTION_TIMEOUT,
-            &config.monero_fail_url,
-        )
-        .await
-        {
-            if !entries.is_empty() {
-                let entries_len = entries.len();
-                config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
-                assigned_dynamic_fail = true;
-                debug!(
-                    target: LOG_TARGET,
-                    "Using {} vetted monerod servers from the Monero website at '{}'",
-                    entries_len, config.monero_fail_url
-                );
+    if config.monerod_fallback != MonerodFallback::StaticOnly {
+        // Get reputable monerod URLs
+        let mut assigned_dynamic_fail = false;
+        if config.use_dynamic_fail_data {
+            if let Ok(entries) = get_monerod_info(
+                NUMBER_OF_MONEROD_SERVERS,
+                config.monerod_connection_timeout,
+                &config.monero_fail_url,
+            )
+            .await
+            {
+                if !entries.is_empty() {
+                    let entries_len = entries.len();
+                    config.monerod_url =
+                        StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+                    assigned_dynamic_fail = true;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Using {} vetted monerod servers from the Monero website at '{}'",
+                        entries_len, config.monero_fail_url
+                    );
+                }
             }
         }
-    }
-    if !assigned_dynamic_fail {
-        let mut entries = Vec::new();
-        for url in config.monerod_url.clone().into_vec() {
-            entries.push(MonerodEntry {
-                url,
-                ..Default::default()
-            });
-        }
-        if let Ok(entries) =
-            order_and_select_monerod_info(NUMBER_OF_MONEROD_SERVERS, MONEROD_CONNECTION_TIMEOUT, &entries).await
-        {
-            if !entries.is_empty() {
-                let entries_len = entries.len();
-                config.monerod_url = StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
-                debug!(
-                    target: LOG_TARGET,
-                    "Using {} vetted monerod servers from the config list'",
-                    entries_len
-                );
+        if !assigned_dynamic_fail {
+            let mut entries = Vec::new();
+            for url in config.monerod_url.clone().into_vec() {
+                entries.push(MonerodEntry {
+                    url,
+                    ..Default::default()
+                });
+            }
+            if let Ok(entries) =
+                order_and_select_monerod_info(NUMBER_OF_MONEROD_SERVERS, config.monerod_connection_timeout, &entries)
+                    .await
+            {
+                if !entries.is_empty() {
+                    let entries_len = entries.len();
+                    config.monerod_url =
+                        StringList::from(entries.into_iter().map(|entry| entry.url).collect::<Vec<_>>());
+                    debug!(
+                        target: LOG_TARGET,
+                        "Using {} vetted monerod servers from the config list'",
+                        entries_len
+                    );
+                }
             }
         }
     }
@@ -265,3 +270,5 @@ async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2Pool
 
     Ok(node_conn)
 }
+
+pub(crate) const NUMBER_OF_MONEROD_SERVERS: usize = 15;

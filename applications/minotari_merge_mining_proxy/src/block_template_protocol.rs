@@ -83,7 +83,7 @@ impl<'a> BlockTemplateProtocol<'a> {
 #[allow(clippy::too_many_lines)]
 impl BlockTemplateProtocol<'_> {
     /// Create [FinalBlockTemplateData] with [MoneroMiningData].
-    pub async fn get_next_block_template(
+    pub async fn get_next_tari_block_template(
         mut self,
         monero_mining_data: MoneroMiningData,
         block_templates: &BlockTemplateRepository,

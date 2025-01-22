@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{Network, StringList},
+    configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
 use tari_common_types::tari_address::TariAddress;
@@ -94,8 +97,22 @@ pub struct MergeMiningProxyConfig {
     pub wallet_payment_address: String,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
-    /// Use p2pool to submit and get block templates
+    /// Use p2pool to submit and get block templates (default = false)
     pub p2pool_enabled: bool,
+    /// Monero fallback strategy(default = MonerodFallback::MonerodOnly)
+    pub monerod_fallback: MonerodFallback,
+    /// The timeout duration for connecting to monerod (default = 2s)
+    #[serde(with = "serializers::seconds")]
+    pub monerod_connection_timeout: Duration,
+}
+
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum MonerodFallback {
+    MonerodOnly,
+    #[default]
+    StaticWhenMonerodFails,
+    StaticOnly,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -157,6 +174,8 @@ impl Default for MergeMiningProxyConfig {
             wallet_payment_address: TariAddress::default().to_base58(),
             range_proof_type: RangeProofType::RevealedValue,
             p2pool_enabled: false,
+            monerod_fallback: Default::default(),
+            monerod_connection_timeout: Duration::from_secs(2),
         }
     }
 }
@@ -179,10 +198,11 @@ impl SubConfigPath for MergeMiningProxyConfig {
 mod test {
     use std::str::FromStr;
 
+    use serde::{Deserialize, Serialize};
     use tari_common::DefaultConfigLoader;
     use tari_comms::multiaddr::Multiaddr;
 
-    use crate::config::MergeMiningProxyConfig;
+    use crate::config::{MergeMiningProxyConfig, MonerodFallback};
 
     fn get_config(override_from: &str) -> config::Config {
         let s = r#"
@@ -240,5 +260,36 @@ mod test {
         assert_eq!(config.base_node_grpc_address, None);
         assert!(!config.monerod_use_auth);
         assert!(config.submit_to_origin);
+    }
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestConfig {
+        name: String,
+        inner_config_1: TestInnerConfig,
+        inner_config_2: TestInnerConfig,
+        inner_config_3: TestInnerConfig,
+    }
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestInnerConfig {
+        monerod: MonerodFallback,
+    }
+
+    #[test]
+    fn it_deserializes_enums() {
+        let config_str = r#"
+            name = "blockchain champion"
+            inner_config_1.monerod = "monerod_only"
+            inner_config_2.monerod = "static_when_monerod_fails"
+            inner_config_3.monerod = "static_only"
+        "#;
+        let config = toml::from_str::<TestConfig>(config_str).unwrap();
+
+        // Enums in the config
+        assert_eq!(config.inner_config_1.monerod, MonerodFallback::MonerodOnly);
+        assert_eq!(config.inner_config_2.monerod, MonerodFallback::StaticWhenMonerodFails);
+        assert_eq!(config.inner_config_3.monerod, MonerodFallback::StaticOnly);
     }
 }
