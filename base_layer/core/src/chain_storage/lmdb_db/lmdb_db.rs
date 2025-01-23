@@ -301,14 +301,10 @@ impl LMDBDatabase {
         pruning_horizon: u64,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
-        let smt_cache_period = if pruning_horizon == 0 {
+        let smt_cache_period = if pruning_horizon == 0 || prune_interval == 0 {
             SMT_CACHE_PERIOD
         } else {
-            if prune_interval == 0 {
-                SMT_CACHE_PERIOD
-            } else {
-                prune_interval / 2
-            }
+            prune_interval / 2
         };
 
         let db = Self {
