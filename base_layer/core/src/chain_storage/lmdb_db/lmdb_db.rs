@@ -304,6 +304,7 @@ impl LMDBDatabase {
         let smt_cache_period = if pruning_horizon == 0 || prune_interval == 0 {
             SMT_CACHE_PERIOD
         } else {
+            // we make sure we run this in the pruning interval, 2 is just a same number here.
             prune_interval / 2
         };
 
