@@ -188,6 +188,7 @@ pub async fn configure_and_initialize_node(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
                 app_config.base_node.storage.pruning_interval,
+                app_config.base_node.storage.pruning_horizon,
                 rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;

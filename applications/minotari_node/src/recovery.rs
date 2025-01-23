@@ -85,6 +85,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
                 &node_config.lmdb_path,
                 node_config.lmdb.clone(),
                 node_config.storage.pruning_interval,
+                node_config.storage.pruning_horizon,
                 rules.clone(),
             )
             .map_err(|e| {
@@ -97,6 +98,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
                 &temp_path,
                 node_config.lmdb.clone(),
                 node_config.storage.pruning_interval,
+                node_config.storage.pruning_horizon,
                 rules.clone(),
             )
             .map_err(|e| {

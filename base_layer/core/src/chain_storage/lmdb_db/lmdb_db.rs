@@ -163,7 +163,7 @@ const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
-const SMT_CACHE_PERIOD: u64 = 1000;
+const SMT_CACHE_PERIOD: u64 = 500;
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
@@ -174,6 +174,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
     prune_interval: u64,
+    pruning_horizon: u64,
     consensus_manager: ConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
@@ -218,7 +219,13 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, prune_interval)
+    LMDBDatabase::new(
+        &lmdb_store,
+        file_lock,
+        consensus_manager,
+        prune_interval,
+        pruning_horizon,
+    )
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -291,12 +298,17 @@ impl LMDBDatabase {
         file_lock: File,
         consensus_manager: ConsensusManager,
         prune_interval: u64,
+        pruning_horizon: u64,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
-        let smt_cache_period = if prune_interval == 0 {
+        let smt_cache_period = if pruning_horizon == 0 {
             SMT_CACHE_PERIOD
         } else {
-            prune_interval / 2
+            if prune_interval == 0 {
+                SMT_CACHE_PERIOD
+            } else {
+                prune_interval / 2
+            }
         };
 
         let db = Self {
