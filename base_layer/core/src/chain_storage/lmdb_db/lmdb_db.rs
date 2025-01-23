@@ -469,6 +469,10 @@ impl LMDBDatabase {
                     // for security we check that the best block does exist, and we check the previous value
                     // we dont want to check this if the prev block has never been set, this means a empty hash of 32
                     // bytes.
+                    debug!(target: LOG_TARGET,
+                        "Setting new best block as height: {}",
+                        height
+                    );
                     if *height > 0 {
                         let prev = fetch_best_block(&write_txn, &self.metadata_db)?;
                         if *expected_prev_best_block != prev {
@@ -1779,7 +1783,7 @@ impl LMDBDatabase {
 
         match lmdb_replace(txn, &self.utxo_smt, &k.as_u32(), smt, Some(estimated_bytes)) {
             Ok(_) => {
-                trace!(
+                debug!(
                 target: LOG_TARGET,
                     "Inserted ~{} MB with key '{}' into '{}' (size {}) in {:.2?}",
                     estimated_bytes / BYTES_PER_MB,
