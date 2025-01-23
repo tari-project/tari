@@ -25,11 +25,14 @@ use std::sync::Arc;
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerEvent, service::Balance},
-    transaction_service::handle::TransactionEvent,
-    WalletSqlite,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        service::Balance,
+    },
+    transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
 };
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;
 use tonic::Status;
 
@@ -44,13 +47,21 @@ const LOG_TARGET: &str = "wallet::ui::grpc::get_balance_debounced";
 pub struct GetBalanceDebounced {
     balance: Arc<Mutex<Balance>>,
     refresh_needed: Arc<Mutex<bool>>,
-    wallet: WalletSqlite,
+    output_manager_service: OutputManagerHandle,
+    transaction_service: TransactionServiceHandle,
+    wallet_connectivity: WalletConnectivityHandle,
+    shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
 }
 
 impl GetBalanceDebounced {
     /// Create a new GetBalanceDebounced instance.
-    pub fn new(wallet: WalletSqlite) -> Self {
+    pub fn new(
+        output_manager_service: OutputManagerHandle,
+        transaction_service: TransactionServiceHandle,
+        wallet_connectivity: WalletConnectivityHandle,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self {
         Self {
             balance: Arc::new(Mutex::new(Balance {
                 available_balance: 0.into(),
@@ -59,7 +70,10 @@ impl GetBalanceDebounced {
                 time_locked_balance: None,
             })),
             refresh_needed: Arc::new(Mutex::new(true)),
-            wallet,
+            output_manager_service,
+            transaction_service,
+            wallet_connectivity,
+            shutdown_signal,
             event_monitor_started: Arc::new(Mutex::new(false)),
         }
     }
@@ -86,7 +100,7 @@ impl GetBalanceDebounced {
             self.start_event_monitor().await;
         }
         let balance = if self.is_refresh_needed().await {
-            let mut output_manager_service = self.wallet.output_manager_service.clone();
+            let mut output_manager_service = self.output_manager_service.clone();
             let balance = match output_manager_service.get_balance().await {
                 Ok(b) => b,
                 Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
@@ -125,10 +139,10 @@ impl GetBalanceDebounced {
     }
 
     async fn monitor_events(&self) {
-        let mut shutdown_signal = self.wallet.comms.shutdown_signal();
-        let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
-        let mut base_node_changed = self.wallet.wallet_connectivity.clone().get_current_base_node_watcher();
-        let mut output_manager_service_events = self.wallet.output_manager_service.get_event_stream();
+        let mut shutdown_signal = self.shutdown_signal.clone();
+        let mut transaction_service_events = self.transaction_service.get_event_stream();
+        let mut base_node_changed = self.wallet_connectivity.clone().get_current_base_node_watcher();
+        let mut output_manager_service_events = self.output_manager_service.get_event_stream();
 
         loop {
             tokio::select! {

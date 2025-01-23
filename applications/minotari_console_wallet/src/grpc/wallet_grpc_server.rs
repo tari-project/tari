@@ -153,7 +153,12 @@ impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        let get_balance = GetBalanceDebounced::new(wallet.clone());
+        let get_balance = GetBalanceDebounced::new(
+            wallet.output_manager_service.clone(),
+            wallet.transaction_service.clone(),
+            wallet.wallet_connectivity.clone(),
+            wallet.comms.shutdown_signal(),
+        );
         Ok(Self {
             wallet,
             rules,
