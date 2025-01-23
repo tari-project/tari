@@ -1186,9 +1186,9 @@ where B: BlockchainBackend
             });
         }
 
-        debug!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
+        trace!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
         let blocks = fetch_blocks(&*db, start, end, compact)?;
-        debug!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
+        trace!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
 
         Ok(blocks)
     }

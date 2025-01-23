@@ -492,8 +492,8 @@ pub async fn generate_coinbase_with_wallet_output(
         .first()
         .ok_or(CoinbaseBuildError::BuildError("No kernel found".to_string()))?;
 
-    debug!(target: LOG_TARGET, "Coinbase kernel: {}", kernel.clone());
-    debug!(target: LOG_TARGET, "Coinbase output: {}", output.clone());
+    trace!(target: LOG_TARGET, "Coinbase kernel: {}", kernel.clone());
+    trace!(target: LOG_TARGET, "Coinbase output: {}", output.clone());
     Ok((transaction.clone(), output.clone(), kernel.clone(), wallet_output))
 }
 
