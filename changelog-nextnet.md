@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+### [1.10.1-rc.0](https://github.com/tari-project/tari/compare/v1.10.0-rc.1...v1.10.1-rc.0) (2025-01-23)
+
+
+### Features
+
+* improve grpc get_balance response ([#6755](https://github.com/tari-project/tari/issues/6755)) ([9de0906](https://github.com/tari-project/tari/commit/9de0906e79260d46def87b95be73fdaa5f15cbde))
+
+
+### Bug Fixes
+
+* the smt cache height ([#6757](https://github.com/tari-project/tari/issues/6757)) ([641c4fc](https://github.com/tari-project/tari/commit/641c4fc056cb70a2243305f6e3caa9672b3eb9ee))
+
+
 ## [1.10.0-rc.1](https://github.com/tari-project/tari/compare/v1.10.0-rc.0...v1.10.0-rc.1) (2025-01-17)
 
 ### Bug Fixes
