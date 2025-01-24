@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::Arc;
-
+use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
@@ -35,6 +35,7 @@ use minotari_wallet::{
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;
 use tonic::Status;
+use minotari_wallet::utxo_scanner_service::handle::UtxoScannerHandle;
 
 const LOG_TARGET: &str = "wallet::ui::grpc::get_balance_debounced";
 
@@ -44,22 +45,25 @@ const LOG_TARGET: &str = "wallet::ui::grpc::get_balance_debounced";
 /// balance needs to be updated. When ever a client requests the balance, it will be fetched from the backend if the
 /// flag is set and clear the flag, otherwise the cached balance will be returned.
 #[derive(Clone)]
-pub struct GetBalanceDebounced {
+pub struct WalletDebouncer {
     balance: Arc<Mutex<Balance>>,
+    scanned_height: Arc<Mutex<u64>>,
     refresh_needed: Arc<Mutex<bool>>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
     wallet_connectivity: WalletConnectivityHandle,
+    utxo_scanner_handle: UtxoScannerHandle,
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
 }
 
-impl GetBalanceDebounced {
-    /// Create a new GetBalanceDebounced instance.
+impl WalletDebouncer {
+    /// Create a new WalletDebouncer instance.
     pub fn new(
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
         wallet_connectivity: WalletConnectivityHandle,
+        utxo_scanner_handle: UtxoScannerHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -70,9 +74,11 @@ impl GetBalanceDebounced {
                 time_locked_balance: None,
             })),
             refresh_needed: Arc::new(Mutex::new(true)),
+            scanned_height: Arc::new(Mutex::new(0)),
             output_manager_service,
             transaction_service,
             wallet_connectivity,
+            utxo_scanner_handle,
             shutdown_signal,
             event_monitor_started: Arc::new(Mutex::new(false)),
         }
@@ -138,11 +144,29 @@ impl GetBalanceDebounced {
         }
     }
 
+    async fn update_scanned_height(&self, scanned_height: u64) {
+        let mut lock = self.scanned_height.lock().await;
+        if *lock != scanned_height {
+            trace!(target: LOG_TARGET, "set_scanned_height '{}'", scanned_height);
+            *lock = scanned_height;
+        }
+    }
+
+    pub async fn get_scanned_height(&mut self) -> u64 {
+        if !self.is_event_monitor_started().await {
+            self.start_event_monitor().await;
+        }
+        *self.scanned_height.lock().await
+
+    }
+
+
     async fn monitor_events(&self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut transaction_service_events = self.transaction_service.get_event_stream();
         let mut base_node_changed = self.wallet_connectivity.clone().get_current_base_node_watcher();
         let mut output_manager_service_events = self.output_manager_service.get_event_stream();
+        let mut utxo_scanner_events = self.utxo_scanner_handle.clone().get_event_receiver();
 
         loop {
             tokio::select! {
@@ -184,6 +208,29 @@ impl GetBalanceDebounced {
                         },
                         Err(e) => {
                             warn!(target: LOG_TARGET, "output_manager_service_events '{}'", e);
+                        },
+                    }
+                },
+                result = utxo_scanner_events.recv() => {
+                    match result {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::Progress {
+                                    current_height,..
+                                }=> {
+                                    self.update_scanned_height(current_height).await;
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                    ..
+                                }=> {
+                                    self.update_scanned_height(final_height).await;
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
                         },
                     }
                 },

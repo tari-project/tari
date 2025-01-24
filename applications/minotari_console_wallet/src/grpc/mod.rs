@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-mod get_balance_debounced;
+mod wallet_debouncer;
 mod wallet_grpc_server;
 
 use minotari_app_grpc::tari_rpc::TransactionEvent;

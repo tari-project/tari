@@ -51,6 +51,8 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetBalanceRequest,
     GetBalanceResponse,
+    GetStateRequest,
+    GetStateResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
@@ -122,7 +124,7 @@ use tokio::{
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::{convert_to_transaction_event, get_balance_debounced::GetBalanceDebounced, TransactionWrapper},
+    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
@@ -146,23 +148,24 @@ async fn send_transaction_event(
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
-    get_balance_debounced: Arc<Mutex<GetBalanceDebounced>>,
+    debouncer: Arc<Mutex<WalletDebouncer>>,
 }
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        let get_balance = GetBalanceDebounced::new(
+        let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
             wallet.wallet_connectivity.clone(),
+            wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
         );
         Ok(Self {
             wallet,
             rules,
-            get_balance_debounced: Arc::new(Mutex::new(get_balance)),
+            debouncer: Arc::new(Mutex::new(debouncer)),
         })
     }
 
@@ -281,14 +284,55 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
         let start = std::time::Instant::now();
         let balance = {
-            let mut get_balance = self.get_balance_debounced.lock().await;
+            let mut get_balance = self.debouncer.lock().await;
             match get_balance.get_balance().await {
                 Ok(b) => b,
-                Err(e) => return Err(Status::not_found(format!("GetBalanceDebounced error! {}", e))),
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
             }
         };
         trace!(target: LOG_TARGET, "'get_balance' completed in {:.2?}", start.elapsed());
         Ok(Response::new(balance))
+    }
+
+    async fn get_state(&self, _request: Request<GetStateRequest>) -> Result<Response<GetStateResponse>, Status> {
+        let start = std::time::Instant::now();
+        let (balance, scanned_height) = {
+            let mut debouncer = self.debouncer.lock().await;
+           let balance = match debouncer.get_balance().await {
+                Ok(b) => b,
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
+            };
+            let scanned_height = debouncer.get_scanned_height().await;
+            (Some(balance), scanned_height)
+        };
+
+
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let network = Some(tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
+        });
+
+        trace!(target: LOG_TARGET, "'get_state' completed in {:.2?}", start.elapsed());
+       Ok(Response::new(GetStateResponse {
+           scanned_height,
+                balance,
+                network,
+            }))
     }
 
     async fn get_unspent_amounts(
