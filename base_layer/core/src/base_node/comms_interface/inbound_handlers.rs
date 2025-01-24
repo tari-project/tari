@@ -273,7 +273,7 @@ where B: BlockchainBackend + 'static
                 // We need to ensure the mempool has seen the latest base node height before we can be confident the
                 // template is correct
                 while !is_mempool_synced && start.elapsed().as_millis() < MAX_MEMPOOL_TIMEOUT.into() {
-                    if best_block_header.hash() == &last_seen_hash {
+                    if best_block_header.hash() == &last_seen_hash || last_seen_hash == FixedHash::default() {
                         is_mempool_synced = true;
                     } else {
                         tokio::time::sleep(std::time::Duration::from_millis(10)).await;

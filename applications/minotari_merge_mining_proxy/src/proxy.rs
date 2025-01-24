@@ -920,14 +920,11 @@ impl InnerService {
 
         debug!(
             target: LOG_TARGET,
-            "request: {} ({})",
+            "request - method: {}, uri: {}, headers: {:?}, body: {}",
+            request.method(),
+            request.uri(),
+            request.headers(),
             String::from_utf8_lossy(&request.body().clone()[..]),
-            request
-                .headers()
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, String::from_utf8_lossy(v.as_ref())))
-                .collect::<Vec<_>>()
-                .join(","),
         );
 
         match self.proxy_request_to_monerod(request).await {
