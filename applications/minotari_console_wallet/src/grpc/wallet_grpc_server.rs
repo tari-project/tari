@@ -773,7 +773,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _request: Request<GetCompletedTransactionsRequest>,
     ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
         let start = std::time::Instant::now();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
         );
@@ -814,7 +814,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 };
                 match sender.send(Ok(response)).await {
                     Ok(_) => {
-                        debug!(
+                        trace!(
                             target: LOG_TARGET,
                             "GetAllCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
