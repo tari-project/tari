@@ -586,6 +586,7 @@ where
         let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
+        let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         tokio::spawn(async move {
             // Note: We do not want the validation task to be queued
             let mut _lock = match validation_in_progress.try_lock() {
@@ -604,60 +605,72 @@ where
                     return;
                 },
             };
-
-            let exec_fut = txo_validation.execute();
-            tokio::pin!(exec_fut);
-            loop {
-                tokio::select! {
-                    result = &mut exec_fut => {
-                        match result {
-                            Ok(id) => {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "UTXO Validation Protocol (Id: {}) completed successfully", id
-                                );
-                                return;
-                            },
-                            Err(OutputManagerProtocolError { id, error }) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
-                                );
-                                let event_payload = match error {
-                                    OutputManagerError::InconsistentBaseNodeDataError(_) |
-                                    OutputManagerError::BaseNodeChanged |
-                                    OutputManagerError::Shutdown |
-                                    OutputManagerError::RpcError(_) =>
-                                        OutputManagerEvent::TxoValidationCommunicationFailure(id),
-                                    _ => OutputManagerEvent::TxoValidationInternalFailure(id),
-                                };
-                                if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
-                                    debug!(
+            'outer: loop {
+                let local_run = txo_validation.clone();
+                let exec_fut = local_run.execute();
+                tokio::pin!(exec_fut);
+                loop {
+                    tokio::select! {
+                        result = &mut exec_fut => {
+                            match result {
+                                Ok(id) => {
+                                    info!(
                                         target: LOG_TARGET,
-                                        "Error sending event because there are no subscribers: {:?}", e
+                                        "UTXO Validation Protocol (Id: {}) completed successfully", id
                                     );
-                                }
+                                    return;
+                                },
+                                Err(OutputManagerProtocolError { id, error }) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
+                                    );
+                                    let event_payload = match error {
+                                        OutputManagerError::InconsistentBaseNodeDataError(_) |
+                                        OutputManagerError::BaseNodeChanged |
+                                        OutputManagerError::Shutdown |
+                                        OutputManagerError::RpcError(_) =>
+                                            OutputManagerEvent::TxoValidationCommunicationFailure(id),
+                                        _ => OutputManagerEvent::TxoValidationInternalFailure(id),
+                                    };
+                                    if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
+                                        debug!(
+                                            target: LOG_TARGET,
+                                            "Error sending event because there are no subscribers: {:?}", e
+                                        );
+                                    }
 
-                                return;
-                            },
-                        }
-                    },
-                    _ = shutdown.wait() => {
-                        debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
-                            is shutting down", id);
-                        return;
-                    },
-                    _ = base_node_watch.changed() => {
-                        if let Some(peer) = base_node_watch.borrow().as_ref() {
-                            if peer.get_current_peer().node_id != current_base_node {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "TXO Validation Protocol (Id: {}) cancelled because base node changed", id
-                                );
-                                return;
+                                    return;
+                                },
+                            }
+                        },
+                        _ = shutdown.wait() => {
+                            debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
+                                is shutting down", id);
+                            return;
+                        },
+                        event = base_node_service_event_stream.recv() => {
+                            if let Ok(bn_event) = event {
+                                match *bn_event{
+                                     BaseNodeEvent::NewBlockDetected(_hash, _height) => {
+                                         debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                            continue 'outer;
+                                    },
+                                    _ => {}
+                                }
                             }
                         }
-
+                        _ = base_node_watch.changed() => {
+                            if let Some(peer) = base_node_watch.borrow().as_ref() {
+                                if peer.get_current_peer().node_id != current_base_node {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
+                                    );
+                                    continue 'outer;
+                                }
+                            }
+                        }
                     }
                 }
             }
