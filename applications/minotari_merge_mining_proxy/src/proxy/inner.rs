@@ -23,6 +23,7 @@
 use std::{
     cmp,
     convert::TryInto,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -37,6 +38,7 @@ use hyper::{header::HeaderValue, Body, Request, Response, StatusCode, Uri};
 use log::error;
 use minotari_app_grpc::{tari_rpc, tari_rpc::SubmitBlockRequest};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
+use monero::Hash;
 use serde_json as json;
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
@@ -81,10 +83,19 @@ pub struct InnerService {
     pub(crate) initial_sync_achieved: Arc<AtomicBool>,
     pub(crate) current_monerod_server: Arc<RwLock<Option<String>>>,
     pub(crate) last_assigned_monerod_url: Arc<RwLock<Option<String>>>,
-    pub(crate) last_monerod_get_height: Arc<RwLock<Option<(i64, String)>>>,
+    pub(crate) monerod_cache_values: Arc<RwLock<Option<MonerodCacheValues>>>,
     pub(crate) randomx_factory: RandomXFactory,
     pub(crate) consensus_manager: ConsensusManager,
     pub(crate) wallet_payment_address: TariAddress,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MonerodCacheValues {
+    pub(crate) height: u64,
+    pub(crate) prev_hash: Hash,
+    pub(crate) timestamp: Option<u64>,
+    pub(crate) seed_height: Option<u64>,
+    pub(crate) seed_hash: Option<Hash>,
 }
 
 impl InnerService {
@@ -762,34 +773,19 @@ impl InnerService {
                 };
 
                 let hyper_json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
-                if monerod_method == MonerodMethod::GetHeight {
-                    let json = hyper_json_response.body();
-                    let mut lock = self
-                        .last_monerod_get_height
-                        .write()
-                        .expect("Write lock should not fail");
-                    *lock = Some((
-                        json["height"].as_i64().unwrap_or_default(),
-                        json["hash"].as_str().unwrap_or_default().to_string(),
-                    ));
-                }
+                self.update_monerod_cache_values(monerod_method, hyper_json_response.body())?;
                 hyper_json_response
             }
         } else if self_select_response {
             let accept_response = self_select_submit_block_monerod_response(request_id);
             convert_json_to_hyper_json_response(accept_response, StatusCode::OK, static_json_rpc_url()).await?
         } else {
-            let (height, hash) = if let Some((height, hash)) = self
-                .last_monerod_get_height
+            let cache_values = self
+                .monerod_cache_values
                 .read()
                 .expect("Read lock should not fail")
-                .clone()
-            {
-                (Some(height), Some(hash))
-            } else {
-                (None, None)
-            };
-            convert_static_monerod_response_to_hyper_response(monerod_method, request_id, height, hash)?
+                .clone();
+            convert_static_monerod_response_to_hyper_response(monerod_method, request_id, cache_values)?
         };
 
         let rpc_status = if json_response.body()["error"].is_null() {
@@ -807,6 +803,105 @@ impl InnerService {
         );
         trace!(target: LOG_TARGET, "[monerod] '{}' response '{:?}'", monerod_method, json_response);
         Ok((request, json_response))
+    }
+
+    fn update_monerod_cache_values(
+        &self,
+        monerod_method: MonerodMethod,
+        json: &json::Value,
+    ) -> Result<(), MmProxyError> {
+        let (timestamp, seed_height, seed_hash) = {
+            if let Some(cache) = self
+                .monerod_cache_values
+                .read()
+                .expect("Read lock should not fail")
+                .clone()
+            {
+                (cache.timestamp, cache.seed_height, cache.seed_hash)
+            } else {
+                (None, None, None)
+            }
+        };
+        let mut lock = self.monerod_cache_values.write().expect("Write lock should not fail");
+        match monerod_method {
+            MonerodMethod::GetHeight => {
+                *lock = Some(MonerodCacheValues {
+                    height: json["height"]
+                        .as_u64()
+                        .ok_or(MmProxyError::InvalidMonerodResponse("height".to_string()))?,
+                    prev_hash: Hash::from_str(
+                        json["hash"]
+                            .as_str()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("hash".to_string()))?,
+                    )
+                    .map_err(|e| MmProxyError::InvalidMonerodResponse(e.to_string()))?,
+                    timestamp,
+                    seed_height,
+                    seed_hash,
+                });
+            },
+            MonerodMethod::GetBlockTemplate => {
+                *lock = Some(MonerodCacheValues {
+                    height: json["result"]["height"]
+                        .as_u64()
+                        .ok_or(MmProxyError::InvalidMonerodResponse("height".to_string()))?,
+                    prev_hash: Hash::from_str(
+                        json["result"]["prev_hash"]
+                            .as_str()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("prev_hash".to_string()))?,
+                    )
+                    .map_err(|e| MmProxyError::InvalidMonerodResponse(e.to_string()))?,
+                    timestamp,
+                    seed_height: Some(
+                        json["result"]["seed_height"]
+                            .as_u64()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("seed_height".to_string()))?,
+                    ),
+                    seed_hash: Some(
+                        Hash::from_str(
+                            json["result"]["seed_hash"]
+                                .as_str()
+                                .ok_or(MmProxyError::InvalidMonerodResponse("seed_hash".to_string()))?,
+                        )
+                        .map_err(|e| MmProxyError::InvalidMonerodResponse(e.to_string()))?,
+                    ),
+                });
+            },
+            MonerodMethod::GetLastBlockHeader => {
+                *lock = Some(MonerodCacheValues {
+                    height: json["result"]["block_header"]["height"]
+                        .as_u64()
+                        .ok_or(MmProxyError::InvalidMonerodResponse("height".to_string()))?,
+                    prev_hash: Hash::from_str(
+                        json["result"]["block_header"]["prev_hash"]
+                            .as_str()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("prev_hash".to_string()))?,
+                    )
+                    .map_err(|e| MmProxyError::InvalidMonerodResponse(e.to_string()))?,
+                    timestamp: Some(
+                        json["result"]["block_header"]["timestamp"]
+                            .as_u64()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("timestamp".to_string()))?,
+                    ),
+                    seed_height: Some(
+                        json["result"]["block_header"]["seed_height"]
+                            .as_u64()
+                            .ok_or(MmProxyError::InvalidMonerodResponse("seed_height".to_string()))?,
+                    ),
+                    seed_hash: Some(
+                        Hash::from_str(
+                            json["result"]["block_header"]["seed_hash"]
+                                .as_str()
+                                .ok_or(MmProxyError::InvalidMonerodResponse("seed_hash".to_string()))?,
+                        )
+                        .map_err(|e| MmProxyError::InvalidMonerodResponse(e.to_string()))?,
+                    ),
+                });
+            },
+            _ => {},
+        }
+
+        Ok(())
     }
 
     async fn get_proxy_response(

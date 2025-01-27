@@ -73,7 +73,7 @@ impl MergeMiningProxyService {
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_url: Arc::new(RwLock::new(None)),
-                last_monerod_get_height: Arc::new(RwLock::new(None)),
+                monerod_cache_values: Arc::new(RwLock::new(None)),
                 randomx_factory,
                 consensus_manager,
                 wallet_payment_address,

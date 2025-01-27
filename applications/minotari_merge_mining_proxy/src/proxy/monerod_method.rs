@@ -39,6 +39,8 @@ pub(crate) enum MonerodMethod {
     SubmitBlock,
     GetBlockHeaderByHash,
     GetLastBlockHeader,
+    #[allow(dead_code)]
+    GetBlock,
     RpcMethodNotDefined,
 }
 
@@ -54,6 +56,7 @@ impl FromStr for MonerodMethod {
             "submit_block" | "submitblock" => Ok(MonerodMethod::SubmitBlock),
             "get_block_header_by_hash" | "getblockheaderbyhash" => Ok(MonerodMethod::GetBlockHeaderByHash),
             "get_last_block_header" | "getlastblockheader" => Ok(MonerodMethod::GetLastBlockHeader),
+            "get_block" | "getblovk" => Ok(MonerodMethod::GetLastBlockHeader),
             _ => {
                 let msg = format!("Unknown monerod rpc method: '{}'", s);
                 warn!(target: LOG_TARGET, "{}", msg);
@@ -72,6 +75,7 @@ impl Display for MonerodMethod {
             MonerodMethod::SubmitBlock => "submit_block".to_string(),
             MonerodMethod::GetBlockHeaderByHash => "get_block_header_by_hash".to_string(),
             MonerodMethod::GetLastBlockHeader => "get_last_block_header".to_string(),
+            MonerodMethod::GetBlock => "get_block".to_string(),
             MonerodMethod::RpcMethodNotDefined => "rpc_method_not_defined".to_string(),
         };
         write!(f, "{}", str)

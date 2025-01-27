@@ -4088,6 +4088,7 @@ dependencies = [
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",
  "monero",
+ "regex",
  "reqwest",
  "scraper",
  "serde",
@@ -4377,6 +4378,7 @@ dependencies = [
  "hex-literal 0.4.1",
  "sealed",
  "serde",
+ "serde-big-array",
  "thiserror 1.0.69",
  "tiny-keccak",
 ]
@@ -6238,6 +6240,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
