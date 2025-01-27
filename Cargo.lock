@@ -7173,7 +7173,7 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.21.0"
-source = "git+https://github.com/SWvheerden/tari-crypto?rev=42237731dd5886554b3bfe6ed22e091dce4af557#42237731dd5886554b3bfe6ed22e091dce4af557"
+source = "git+https://github.com/SWvheerden/tari-crypto?rev=5d6a7c4d28625b40ce0a182d2ae550b076c33798#5d6a7c4d28625b40ce0a182d2ae550b076c33798"
 dependencies = [
  "blake2",
  "borsh",
@@ -7181,7 +7181,6 @@ dependencies = [
  "digest 0.10.7",
  "log",
  "merlin",
- "once_cell",
  "rand_chacha",
  "rand_core 0.6.4",
  "serde",

@@ -27,9 +27,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-use crate::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+use crate::types::{CompressedPublicKey, PrivateKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum WalletType {

@@ -39,6 +39,10 @@ struct ByteVector;
 
 struct CompletedTransaction;
 
+/**
+ * This stores a Commitment And PublicKey Signature in compressed form, keeping it in compressed form until the point
+ * is needed, only then decompressing it back down to a Commitment And PublicKey Signature
+ */
 struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
 
 /**
@@ -166,9 +170,9 @@ typedef struct TransactionKernel TariTransactionKernel;
 /**
  * Define the explicit Public key implementation for the Tari base layer
  */
-typedef struct CompressedKey_RistrettoPublicKey PublicKey;
+typedef struct CompressedKey_RistrettoPublicKey CompressedPublicKey;
 
-typedef PublicKey TariPublicKey;
+typedef CompressedPublicKey TariPublicKey;
 
 /**
  * Define the explicit Secret key implementation for the Tari base layer.
@@ -179,6 +183,9 @@ typedef PrivateKey TariPrivateKey;
 
 typedef struct TariAddress TariWalletAddress;
 
+/**
+ * # A compressed commitment and public key (CAPK) signature implementation on Ristretto
+ */
 typedef struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey CompressedRistrettoComAndPubSig;
 
 /**
