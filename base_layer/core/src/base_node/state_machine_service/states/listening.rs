@@ -45,7 +45,6 @@ use crate::{
                 StateEvent::FatalError,
                 StateInfo,
                 SyncStatus,
-                SyncStatus::{Lagging, SyncNotPossible, UpToDate},
                 Waiting,
             },
             BaseNodeStateMachine,
@@ -74,7 +73,7 @@ impl PeerMetadata {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-/// This struct contains info that is use full for external viewing of state info
+/// This struct contains info that is useful for external viewing of state info
 pub struct ListeningInfo {
     synced: bool,
     initial_delay_connected_count: u64,
@@ -138,11 +137,8 @@ impl Listening {
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
-            log_mdc::extend(mdc.clone());
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::NetworkSilence) => {
                     debug!("NetworkSilence event received");
@@ -154,7 +150,11 @@ impl Listening {
                             0,
                             shared.config.initial_sync_peer_count,
                         )));
-                        debug!(target: LOG_TARGET, "Initial sync achieved");
+                        warn!(
+                            target: LOG_TARGET,
+                            "Initial sync achieved based on event 'NetworkSilence'; this may not be true if the entire \
+                            network in general is slow to respond to pings"
+                        );
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
@@ -193,7 +193,6 @@ impl Listening {
                         .peer_manager
                         .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
                         .await;
-                    log_mdc::extend(mdc.clone());
 
                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                     if !configured_sync_peers.is_empty() {
@@ -204,15 +203,12 @@ impl Listening {
                         }
                     };
 
-                    log_mdc::extend(mdc.clone());
-
                     let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
                         Err(e) => {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
-                    log_mdc::extend(mdc.clone());
 
                     let mut sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
@@ -283,7 +279,7 @@ impl Listening {
                         self.initial_delay_count = initial_sync_counter;
                         for peer in sync_peers {
                             let mut found = false;
-                            // lets search the list list to ensure we only have unique peers in the list with the latest
+                            // lets search the list to ensure we only have unique peers in the list with the latest
                             // up-to-date information
                             for initial_peer in &mut initial_sync_peer_list {
                                 // we compare the two peers via the comparison operator on syncpeer
@@ -331,6 +327,7 @@ impl Listening {
 
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
+        debug!(target: LOG_TARGET, "Initial sync set to 'false' (from Waiting)");
         Self {
             is_synced: false,
             initial_delay_count: 0,
@@ -340,6 +337,9 @@ impl From<Waiting> for Listening {
 
 impl From<HeaderSyncState> for Listening {
     fn from(sync: HeaderSyncState) -> Self {
+        if sync.is_synced() {
+            debug!(target: LOG_TARGET, "Initial sync achieved (from HeaderSyncState)");
+        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
@@ -349,6 +349,9 @@ impl From<HeaderSyncState> for Listening {
 
 impl From<BlockSync> for Listening {
     fn from(sync: BlockSync) -> Self {
+        if sync.is_synced() {
+            debug!(target: LOG_TARGET, "Initial sync achieved (from BlockSync)");
+        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
@@ -358,6 +361,9 @@ impl From<BlockSync> for Listening {
 
 impl From<DecideNextSync> for Listening {
     fn from(sync: DecideNextSync) -> Self {
+        if sync.is_synced() {
+            debug!(target: LOG_TARGET, "Initial sync achieved (from DecideNextSync)");
+        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
@@ -418,7 +424,7 @@ fn determine_sync_mode(
         };
 
         if !sync_able_peer {
-            return SyncNotPossible {
+            return SyncStatus::SyncNotPossible {
                 peers: vec![network.clone().into()],
             };
         }
@@ -456,7 +462,7 @@ fn determine_sync_mode(
                 .map(|l| format!("{:.2?}", l))
                 .unwrap_or_else(|| "unknown".to_string())
         );
-        Lagging {
+        SyncStatus::Lagging {
             local: local.clone(),
             network: network.claimed_chain_metadata().clone(),
             sync_peers: vec![network.clone().into()],
@@ -477,7 +483,7 @@ fn determine_sync_mode(
             network.claimed_chain_metadata().best_block_height(),
             network_tip_accum_difficulty,
         );
-        UpToDate
+        SyncStatus::UpToDate
     }
 }
 

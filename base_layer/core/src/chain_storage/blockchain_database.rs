@@ -315,9 +315,9 @@ where B: BlockchainBackend
         } else {
             // lets load the smt into memory
             let mut smt = self.smt_write_access()?;
-            warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
+            debug!(target: LOG_TARGET, "Loading SMT into memory from stored db");
             *smt = self.db_write_access()?.calculate_tip_smt()?;
-            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
+            debug!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
         if config.cleanup_orphans_at_startup {
             match self.cleanup_all_orphans() {
@@ -934,7 +934,11 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets rewind the smt
-                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via new block prepare");
+                warn!(
+                    target: LOG_TARGET,
+                    "Reloading SMT into memory from stored db via new block prepare due to '{}'",
+                    e
+                );
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -963,7 +967,7 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets reset the smt to its starting state
-                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root");
+                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -2083,7 +2087,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 );
                 ChainStorageError::AccessError("write lock on smt".into())
             })?;
-            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg");
+            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg due to '{}'", e);
             *write_smt = backend.calculate_tip_smt()?;
             return Err(e);
         }

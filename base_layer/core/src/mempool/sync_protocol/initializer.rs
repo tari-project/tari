@@ -77,10 +77,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_until_shutdown(move |handles| async move {
-            log_mdc::extend(mdc.clone());
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -89,7 +86,6 @@ impl ServiceInitializer for MempoolSyncInitializer {
             if !status_watch.borrow().state_info.is_synced() {
                 debug!(target: LOG_TARGET, "Waiting for node to do initial sync...");
                 while status_watch.changed().await.is_ok() {
-                    log_mdc::extend(mdc.clone());
                     if status_watch.borrow().state_info.is_synced() {
                         debug!(
                             target: LOG_TARGET,
@@ -103,7 +99,6 @@ impl ServiceInitializer for MempoolSyncInitializer {
                     );
                     sleep(Duration::from_secs(30)).await;
                 }
-                log_mdc::extend(mdc.clone());
             }
             let base_node_events = base_node.get_block_event_stream();
 

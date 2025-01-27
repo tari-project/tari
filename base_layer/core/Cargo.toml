@@ -68,7 +68,6 @@ hex = "0.4.2"
 integer-encoding = "3.0"
 lmdb-zero = "0.4.4"
 log = "0.4"
-log-mdc = "0.1.0"
 monero = { version = "0.21.0", features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"

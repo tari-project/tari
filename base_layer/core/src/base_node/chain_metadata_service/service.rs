@@ -40,7 +40,7 @@ use crate::{
     proto::base_node as proto,
 };
 
-const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
+const NUM_ROUNDS_NETWORK_SILENCE: u16 = 4;
 
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
@@ -159,7 +159,7 @@ impl ChainMetadataService {
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
-                // If there were no pings for awhile, we are probably alone.
+                // If there were no pings for a while, we are probably alone.
                 if *num_peers == 0 {
                     self.number_of_rounds_no_pings += 1;
                     if self.number_of_rounds_no_pings >= NUM_ROUNDS_NETWORK_SILENCE {

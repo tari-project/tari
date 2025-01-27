@@ -157,12 +157,7 @@ struct ConnectivityManagerActor {
 
 impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
-        tokio::spawn(async {
-            log_mdc::extend(mdc);
-            Self::run(self).await
-        })
+        tokio::spawn(async { Self::run(self).await })
     }
 
     pub async fn run(mut self) {
