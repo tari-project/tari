@@ -567,6 +567,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
         let current_base_node = self
             .resources
@@ -651,13 +652,10 @@ where
                         },
                         event = base_node_service_event_stream.recv() => {
                             if let Ok(bn_event) = event {
-                                match *bn_event{
-                                     BaseNodeEvent::NewBlockDetected(_hash, _height) => {
-                                         debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
-                                            continue 'outer;
-                                    },
-                                    _ => {}
-                                }
+                                if let BaseNodeEvent::NewBlockDetected(_hash, _height) = *bn_event {
+                                    debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                    continue 'outer;
+                              }
                             }
                         }
                         _ = base_node_watch.changed() => {
