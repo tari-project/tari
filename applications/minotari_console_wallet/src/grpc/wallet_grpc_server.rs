@@ -51,13 +51,13 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetBalanceRequest,
     GetBalanceResponse,
-    GetStateRequest,
-    GetStateResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
     GetIdentityRequest,
     GetIdentityResponse,
+    GetStateRequest,
+    GetStateResponse,
     GetTransactionInfoRequest,
     GetTransactionInfoResponse,
     GetUnspentAmountsResponse,
@@ -298,14 +298,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let start = std::time::Instant::now();
         let (balance, scanned_height) = {
             let mut debouncer = self.debouncer.lock().await;
-           let balance = match debouncer.get_balance().await {
+            let balance = match debouncer.get_balance().await {
                 Ok(b) => b,
                 Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
             };
             let scanned_height = debouncer.get_scanned_height().await;
             (Some(balance), scanned_height)
         };
-
 
         let status = self
             .comms()
@@ -328,11 +327,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         });
 
         trace!(target: LOG_TARGET, "'get_state' completed in {:.2?}", start.elapsed());
-       Ok(Response::new(GetStateResponse {
-           scanned_height,
-                balance,
-                network,
-            }))
+        Ok(Response::new(GetStateResponse {
+            scanned_height,
+            balance,
+            network,
+        }))
     }
 
     async fn get_unspent_amounts(

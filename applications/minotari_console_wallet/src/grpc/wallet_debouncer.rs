@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::Arc;
-use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
+
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
@@ -31,11 +31,11 @@ use minotari_wallet::{
         service::Balance,
     },
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;
 use tonic::Status;
-use minotari_wallet::utxo_scanner_service::handle::UtxoScannerHandle;
 
 const LOG_TARGET: &str = "wallet::ui::grpc::get_balance_debounced";
 
@@ -157,9 +157,7 @@ impl WalletDebouncer {
             self.start_event_monitor().await;
         }
         *self.scanned_height.lock().await
-
     }
-
 
     async fn monitor_events(&self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
