@@ -12,7 +12,7 @@ default = []
 
 [dependencies]
 tari_utilities = { version = "0.8" }
-tari_crypto = { git = "https://github.com/SWvheerden/tari-crypto", rev = "5d6a7c4d28625b40ce0a182d2ae550b076c33798" }
+tari_crypto = { version = "0.22.0" }
 thiserror = "1.0"
 borsh = "1.5"
 digest = "0.10"

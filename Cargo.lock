@@ -7172,8 +7172,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.21.0"
-source = "git+https://github.com/SWvheerden/tari-crypto?rev=5d6a7c4d28625b40ce0a182d2ae550b076c33798#5d6a7c4d28625b40ce0a182d2ae550b076c33798"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86ee9850e74d1b331d9513c79d1cd6e64ac2fe4698140cc30218e5972731f165"
 dependencies = [
  "blake2",
  "borsh",
