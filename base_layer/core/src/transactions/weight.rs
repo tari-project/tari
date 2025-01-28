@@ -88,11 +88,11 @@ impl TransactionWeight {
         let rounded_up_features_and_scripts_bytes_size =
             self.calculate_normalised_total_features_and_scripts_size(body)?;
         let output_count = body.outputs().len().saturating_sub(body.get_coinbase_outputs().len());
-        let kernel_count = if body.get_coinbase_outputs().len() > 0 {
+        let kernel_count = if body.get_coinbase_outputs().is_empty() {
             // we dont count coinbase kernels, and there is only ever an allowed max of 1 coinbase kernel
-            body.kernels().len().saturating_sub(1)
-        } else {
             body.kernels().len()
+        } else {
+            body.kernels().len().saturating_sub(1)
         };
         Ok(self.calculate(
             kernel_count,
