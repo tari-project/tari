@@ -128,8 +128,8 @@ pub enum TariAddressError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TariAddress {
-    Dual(DualAddress),
-    Single(SingleAddress),
+    Dual(Box<DualAddress>),
+    Single(Box<SingleAddress>),
 }
 
 impl TariAddress {
@@ -140,12 +140,12 @@ impl TariAddress {
         network: Network,
         features: TariAddressFeatures,
     ) -> Self {
-        TariAddress::Dual(DualAddress::new(view_key, spend_key, network, features))
+        TariAddress::Dual(Box::new(DualAddress::new(view_key, spend_key, network, features)))
     }
 
     /// Creates a new Tari Address from the provided public keys, network and features
     pub fn new_single_address(spend_key: CompressedPublicKey, network: Network, features: TariAddressFeatures) -> Self {
-        TariAddress::Single(SingleAddress::new(spend_key, network, features))
+        TariAddress::Single(Box::new(SingleAddress::new(spend_key, network, features)))
     }
 
     /// Creates a new Tari Address from the provided public keys and network while using the default features
@@ -154,12 +154,14 @@ impl TariAddress {
         spend_key: CompressedPublicKey,
         network: Network,
     ) -> Self {
-        TariAddress::Dual(DualAddress::new_with_default_features(view_key, spend_key, network))
+        TariAddress::Dual(Box::new(DualAddress::new_with_default_features(
+            view_key, spend_key, network,
+        )))
     }
 
     /// Creates a new Tari Address from the provided public keys, network and features
     pub fn new_single_address_with_interactive_only(spend_key: CompressedPublicKey, network: Network) -> Self {
-        TariAddress::Single(SingleAddress::new_with_interactive_only(spend_key, network))
+        TariAddress::Single(Box::new(SingleAddress::new_with_interactive_only(spend_key, network)))
     }
 
     pub fn combine_addresses(one: &TariAddress, two: &TariAddress) -> Result<TariAddress, TariAddressError> {
@@ -288,9 +290,9 @@ impl TariAddress {
             return Err(TariAddressError::InvalidSize);
         }
         if bytes.len() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
-            Ok(TariAddress::Single(SingleAddress::from_bytes(bytes)?))
+            Ok(TariAddress::Single(Box::new(SingleAddress::from_bytes(bytes)?)))
         } else {
-            Ok(TariAddress::Dual(DualAddress::from_bytes(bytes)?))
+            Ok(TariAddress::Dual(Box::new(DualAddress::from_bytes(bytes)?)))
         }
     }
 
@@ -372,7 +374,7 @@ impl Display for TariAddress {
 
 impl Default for TariAddress {
     fn default() -> Self {
-        Self::Dual(DualAddress::default())
+        Self::Dual(Box::default())
     }
 }
 

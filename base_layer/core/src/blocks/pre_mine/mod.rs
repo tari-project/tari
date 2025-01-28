@@ -934,7 +934,7 @@ mod test {
         Vec<Vec<CompressedPublicKey>>,
         Vec<CompressedPublicKey>,
     ) {
-        let threshold_addresses_for_index = vec![
+        let threshold_addresses_for_index = [
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
             )

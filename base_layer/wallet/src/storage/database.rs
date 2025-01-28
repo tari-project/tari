@@ -131,7 +131,7 @@ pub enum DbValue {
     WalletBirthday(String),
     LastAccessedNetwork(String),
     LastAccessedVersion(String),
-    WalletType(WalletType),
+    WalletType(Box<WalletType>),
 }
 
 #[derive(Clone)]
@@ -144,7 +144,7 @@ pub enum DbKeyValuePair {
     CommsFeatures(PeerFeatures),
     CommsIdentitySignature(Box<IdentitySignature>),
     NetworkAndVersion((String, String)),
-    WalletType(WalletType),
+    WalletType(Box<WalletType>),
 }
 
 pub enum WriteOperation {
@@ -392,7 +392,7 @@ where T: WalletBackend + 'static
     pub fn get_wallet_type(&self) -> Result<Option<WalletType>, WalletStorageError> {
         match self.db.fetch(&DbKey::WalletType) {
             Ok(None) => Ok(None),
-            Ok(Some(DbValue::WalletType(k))) => Ok(Some(k)),
+            Ok(Some(DbValue::WalletType(k))) => Ok(Some(*k)),
             Ok(Some(other)) => unexpected_result(DbKey::WalletType, other),
             Err(e) => log_error(DbKey::WalletType, e),
         }
@@ -400,7 +400,9 @@ where T: WalletBackend + 'static
 
     pub fn set_wallet_type(&self, wallet_type: WalletType) -> Result<(), WalletStorageError> {
         self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::WalletType(wallet_type)))?;
+            .write(WriteOperation::Insert(DbKeyValuePair::WalletType(Box::new(
+                wallet_type,
+            ))))?;
         Ok(())
     }
 }
