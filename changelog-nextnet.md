@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+## [1.11.0-rc.0](https://github.com/tari-project/tari/compare/v1.10.1-rc.0...v1.11.0-rc.0) (2025-01-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove coinbases from weight calculations (#6738)
+
+### Features
+
+* add wallet state ([#6763](https://github.com/tari-project/tari/issues/6763)) ([d88f7d6](https://github.com/tari-project/tari/commit/d88f7d6947256c625643237b6f60e627dff97704))
+* fix mempool out of sync ([#6761](https://github.com/tari-project/tari/issues/6761)) ([2535e87](https://github.com/tari-project/tari/commit/2535e8771df6a3d3ffa47192d1f83b4c19f43ce8))
+* remove coinbases from weight calculations ([#6738](https://github.com/tari-project/tari/issues/6738)) ([4d68ece](https://github.com/tari-project/tari/commit/4d68ece3c5de6962e508cb0220b3e704dc5d16df))
+
+
+### Bug Fixes
+
+* wallet validation ([#6765](https://github.com/tari-project/tari/issues/6765)) ([afee5ad](https://github.com/tari-project/tari/commit/afee5adcbd8608aa6d2802abfc55be36db35a4f8))
+
 
 ### [1.10.1-rc.0](https://github.com/tari-project/tari/compare/v1.10.0-rc.1...v1.10.1-rc.0) (2025-01-23)
 
