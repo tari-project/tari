@@ -302,7 +302,7 @@ where T: ContactsBackend + 'static
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
                 message.stored_at = Utc::now().timestamp() as u64;
-                match self.db.save_message(message) {
+                match self.db.save_message(*message) {
                     Ok(_) => {
                         if let Err(e) = self.deliver_message(address.clone(), ob_message).await {
                             trace!(target: LOG_TARGET, "Failed to broadcast a message {} over the network: {}", address, e);
@@ -351,7 +351,7 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::GetMessage(message_id) => {
                 let result = self.db.get_message(message_id);
-                Ok(result.map(ContactsServiceResponse::Message)?)
+                Ok(result.map(|m| ContactsServiceResponse::Message(Box::new(m)))?)
             },
         }
     }
@@ -449,7 +449,7 @@ where T: ContactsBackend + 'static
             let dispatch = MessageDispatch::try_from(msg_inner).map_err(ContactsServiceError::MessageParsingError)?;
 
             match dispatch {
-                MessageDispatch::Message(m) => self.handle_chat_message(m, source_public_key).await,
+                MessageDispatch::Message(m) => self.handle_chat_message(*m, source_public_key).await,
                 MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
                     self.handle_confirmation(dispatch.clone()).await
                 },
@@ -596,7 +596,7 @@ where T: ContactsBackend + 'static
             Ok(..) => {
                 if let Err(e) = self
                     .message_publisher
-                    .send(Arc::new(MessageDispatch::Message(our_message.clone())))
+                    .send(Arc::new(MessageDispatch::Message(Box::new(our_message.clone()))))
                 {
                     debug!(target: LOG_TARGET, "Failed to re-broadcast chat message internally: {}", e);
                 }

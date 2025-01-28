@@ -134,7 +134,7 @@ pub enum ContactsServiceRequest {
     RemoveContact(TariAddress),
     GetContacts,
     GetContactOnlineStatus(Contact),
-    SendMessage(TariAddress, Message),
+    SendMessage(TariAddress, Box<Message>),
     GetMessages(TariAddress, i64, i64),
     GetMessage(MessageId),
     SendReadConfirmation(TariAddress, Confirmation),
@@ -149,7 +149,7 @@ pub enum ContactsServiceResponse {
     Contacts(Vec<Contact>),
     OnlineStatus(ContactOnlineStatus),
     Messages(Vec<Message>),
-    Message(Message),
+    Message(Box<Message>),
     MessageSent,
     ReadConfirmationSent,
     Conversationalists(Vec<TariAddress>),
@@ -283,7 +283,7 @@ impl ContactsServiceHandle {
             .call(ContactsServiceRequest::GetMessage(message_id.clone()))
             .await??
         {
-            ContactsServiceResponse::Message(message) => Ok(message),
+            ContactsServiceResponse::Message(message) => Ok(*message),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }
@@ -293,7 +293,7 @@ impl ContactsServiceHandle {
             .request_response_service
             .call(ContactsServiceRequest::SendMessage(
                 message.receiver_address.clone(),
-                message,
+                Box::new(message),
             ))
             .await??
         {

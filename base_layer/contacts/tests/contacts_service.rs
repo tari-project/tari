@@ -175,7 +175,7 @@ pub fn test_contacts_service() {
         match contact {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-                assert_eq!(val, DbKey::Contact(address.clone()))
+                assert_eq!(*val, DbKey::Contact(address.clone()))
             },
             _ => panic!("There should be a specific error here"),
         }
@@ -183,7 +183,7 @@ pub fn test_contacts_service() {
         match result {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-                assert_eq!(val, DbKey::Contact(address))
+                assert_eq!(*val, DbKey::Contact(address))
             },
             _ => panic!("There should be a specific error here"),
         }

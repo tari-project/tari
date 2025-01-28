@@ -85,7 +85,7 @@ macro_rules! fetch {
     ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
         match $db.fetch(&key) {
-            Ok(None) => Err(ContactsServiceStorageError::ValueNotFound(key)),
+            Ok(None) => Err(ContactsServiceStorageError::ValueNotFound(Box::new(key))),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
@@ -147,7 +147,7 @@ where T: ContactsBackend + 'static
                 last_seen,
                 latency.map(|val| val as i32),
             ))))?
-            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(Box::new(DbKey::ContactId(node_id.clone()))))?;
         match result {
             DbValue::TariAddress(k) => Ok(*k),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(
@@ -160,7 +160,7 @@ where T: ContactsBackend + 'static
         let result = self
             .db
             .write(WriteOperation::Remove(DbKey::Contact(address.clone())))?
-            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(address.clone())))?;
+            .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(Box::new(DbKey::Contact(address.clone()))))?;
         match result {
             DbValue::Contact(c) => Ok(*c),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(

@@ -112,7 +112,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     if !config.stratum_mining_wallet_address.is_empty() && !config.stratum_mining_pool_address.is_empty() {
         let url = config.stratum_mining_pool_address.clone();
         let mut miner_address = config.stratum_mining_wallet_address.clone();
-        let _ = UncompressedPublicKey::from_hex(&miner_address).map_err(|_| {
+        let _unused = UncompressedPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,
                 "Miner is not configured with a valid wallet address.",
