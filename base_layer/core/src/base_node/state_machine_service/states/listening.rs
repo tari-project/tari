@@ -123,17 +123,39 @@ impl Listening {
         Default::default()
     }
 
+    fn set_synced_response<B: BlockchainBackend + 'static>(&mut self, shared: &mut BaseNodeStateMachine<B>) {
+        if !self.is_synced {
+            self.is_synced = true;
+            self.initial_delay_count = 0;
+            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                true,
+                0,
+                shared.config.initial_sync_peer_count,
+            )));
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
+        network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-            self.is_synced,
-            self.initial_delay_count,
-            shared.config.initial_sync_peer_count,
-        )));
+        if network_silence {
+            self.set_synced_response(shared);
+            warn!(
+                target: LOG_TARGET,
+                "Initial sync achieved based on event 'NetworkSilence'; this may not be true if the entire \
+                network in general is slow to respond to pings"
+            );
+        } else {
+            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                self.is_synced,
+                self.initial_delay_count,
+                shared.config.initial_sync_peer_count,
+            )));
+        }
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
@@ -141,21 +163,8 @@ impl Listening {
             let metadata_event = shared.metadata_event_stream.recv().await;
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::NetworkSilence) => {
+                    self.set_synced_response(shared);
                     debug!("NetworkSilence event received");
-                    if !self.is_synced {
-                        self.is_synced = true;
-                        self.initial_delay_count = 0;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                            true,
-                            0,
-                            shared.config.initial_sync_peer_count,
-                        )));
-                        warn!(
-                            target: LOG_TARGET,
-                            "Initial sync achieved based on event 'NetworkSilence'; this may not be true if the entire \
-                            network in general is slow to respond to pings"
-                        );
-                    }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
                     // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
@@ -251,13 +260,7 @@ impl Listening {
                     }
 
                     if !self.is_synced && sync_mode.is_up_to_date() {
-                        self.is_synced = true;
-                        self.initial_delay_count = 0;
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                            true,
-                            0,
-                            shared.config.initial_sync_peer_count,
-                        )));
+                        self.set_synced_response(shared);
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
 

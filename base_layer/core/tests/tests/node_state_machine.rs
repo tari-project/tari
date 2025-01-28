@@ -118,7 +118,8 @@ async fn test_listening_lagging() {
     );
     wait_until_online(&[&alice_node, &bob_node]).await;
 
-    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
     let bob_db = bob_node.blockchain_db;
     let mut bob_local_nci = bob_node.local_nci;
@@ -252,7 +253,8 @@ async fn test_listening_initial_fallen_behind() {
     );
 
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
-    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
     let next_event = time::timeout(Duration::from_secs(10), await_event_task)
         .await
@@ -321,7 +323,8 @@ async fn test_event_channel() {
         .expect("Could not publish metadata");
     }
     let event = state_change_event_subscriber.recv().await;
-    assert_eq!(*event.unwrap(), StateEvent::Initialized);
+    let event = event.unwrap();
+    unpack_enum!(StateEvent::Initialized(_) = &*event);
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
     unpack_enum!(StateEvent::FallenBehind(_) = &*event);

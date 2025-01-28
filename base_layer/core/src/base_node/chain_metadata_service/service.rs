@@ -40,7 +40,7 @@ use crate::{
     proto::base_node as proto,
 };
 
-const NUM_ROUNDS_NETWORK_SILENCE: u16 = 4;
+const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,

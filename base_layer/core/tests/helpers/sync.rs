@@ -383,7 +383,7 @@ pub async fn wait_for_is_peer_banned(this_node: &NodeInterfaces, peer_node_id: &
 /// Condensed format of the state machine state for display
 pub fn state_event(event: &StateEvent) -> String {
     match event {
-        StateEvent::Initialized => "Initialized".to_string(),
+        StateEvent::Initialized(_) => "Initialized".to_string(),
         StateEvent::HeadersSynchronized(_, _) => "HeadersSynchronized".to_string(),
         StateEvent::HeaderSyncFailed(_) => "HeaderSyncFailed".to_string(),
         StateEvent::ProceedToHorizonSync(_) => "ProceedToHorizonSync".to_string(),

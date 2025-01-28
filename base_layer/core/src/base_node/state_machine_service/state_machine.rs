@@ -145,9 +145,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         #[allow(clippy::enum_glob_use)]
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::Lagging};
         match (state, event) {
-            (Starting(s), Initialized) => Listening(s.into()),
+            (Starting(s), Initialized(network_silence)) => Listening(s.into(), network_silence),
             (
-                Listening(_),
+                Listening(..),
                 FallenBehind(Lagging {
                     local: local_metadata,
                     sync_peers,
@@ -163,14 +163,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             },
             (HeaderSync(s), Continue | NetworkSilence) => {
                 db.clear_disable_add_block_flag();
-                Listening(s.into())
+                Listening(s.into(), false)
             },
             (HeaderSync(s), HeadersSynchronized(..)) => DecideNextSync(s.into()),
 
             (DecideNextSync(_), ProceedToHorizonSync(peers)) => HorizonStateSync(peers.into()),
             (DecideNextSync(s), Continue) => {
                 db.clear_disable_add_block_flag();
-                Listening(s.into())
+                Listening(s.into(), false)
             },
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => {
@@ -181,14 +181,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             (DecideNextSync(_), ProceedToBlockSync(peers)) => BlockSync(peers.into()),
             (BlockSync(s), BlocksSynchronized) => {
                 db.clear_disable_add_block_flag();
-                Listening(s.into())
+                Listening(s.into(), false)
             },
             (BlockSync(s), BlockSyncFailed) => {
                 db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
 
-            (Waiting(s), Continue) => Listening(s.into()),
+            (Waiting(s), Continue) => Listening(s.into(), false),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
@@ -278,7 +278,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             DecideNextSync(s) => s.next_event(shared_state).await,
             HorizonStateSync(s) => s.next_event(shared_state).await,
             BlockSync(s) => s.next_event(shared_state).await,
-            Listening(s) => s.next_event(shared_state).await,
+            Listening(s, network_silence) => s.next_event(shared_state, *network_silence).await,
             Waiting(s) => s.next_event().await,
             Shutdown(_) => unreachable!("called get_next_state_event while in Shutdown state"),
         }
