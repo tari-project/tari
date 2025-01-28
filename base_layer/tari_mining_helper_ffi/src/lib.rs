@@ -619,44 +619,6 @@ mod tests {
     }
 
     #[test]
-    fn detect_change_in_consensus_encoding() {
-        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        {
-            let (nonce, difficulty, network) = (
-                1209310303936924941,
-                Difficulty::from_u64(1634).unwrap(),
-                Network::Esmeralda,
-            );
-            unsafe {
-                set_network_if_choice_valid(network).unwrap();
-                let mut error = -1;
-                let error_ptr = &mut error as *mut c_int;
-                let block = create_test_block();
-                let header_bytes = borsh::to_vec(&block.header).unwrap();
-                #[allow(clippy::cast_possible_truncation)]
-                let len = header_bytes.len() as u32;
-                let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-                inject_nonce(byte_vec, nonce, error_ptr);
-                assert_eq!(error, 0);
-                let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
-                if result != difficulty.as_u64() {
-                    // Use this to generate new NONCE and DIFFICULTY
-                    // Use ONLY if you know encoding has changed
-                    let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                    eprintln!("network = {network:?}");
-                    eprintln!("nonce = {:?}", nonce);
-                    eprintln!("difficulty = {:?}", difficulty);
-                    panic!(
-                        "detect_change_in_consensus_encoding has failed. This might be a change in consensus encoding \
-                         which requires an update to the pool miner code."
-                    )
-                }
-                byte_vector_destroy(byte_vec);
-            }
-        }
-    }
-
-    #[test]
     fn check_difficulty() {
         unsafe {
             let network = Network::get_current_or_user_setting_or_default();

@@ -225,7 +225,7 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
-        let incomplete = DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
@@ -233,17 +233,15 @@ impl BlockHeader {
             .chain(&self.input_mr)
             .chain(&self.output_mr)
             .chain(&self.output_smt_size)
+            .chain(&self.block_output_mr)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
             .chain(&self.validator_node_mr)
-            .chain(&self.validator_node_size);
-
-        match self.version {
-            0 => incomplete.finalize().into(),
-            _ => incomplete.chain(&self.block_output_mr).finalize().into(),
-        }
+            .chain(&self.validator_node_size)
+            .finalize()
+            .into()
     }
 
     pub fn merge_mining_hash(&self) -> FixedHash {

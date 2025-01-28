@@ -407,8 +407,6 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         }];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
@@ -474,8 +472,6 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         }];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
         consensus_constants
     }
 
@@ -488,7 +484,7 @@ impl ConsensusConstants {
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -532,13 +528,7 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         };
-        let mut consensus_constants2 = consensus_constants1.clone();
-        consensus_constants2.blockchain_version = 1;
-        consensus_constants2.effective_from_height = 16000;
-        consensus_constants2.valid_blockchain_version_range = 1..=1;
-        let consensus_constants = vec![consensus_constants1, consensus_constants2];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120, 120], &[50, 50], &[50, 50]);
+        let consensus_constants = vec![consensus_constants1];
         consensus_constants
     }
 
@@ -595,15 +585,13 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         }];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
@@ -645,19 +633,10 @@ impl ConsensusConstants {
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
+            coinbase_output_features_extra_max_length: 256,
         };
-        let mut con_2 = con_1.clone();
-        con_2.effective_from_height = 33000;
-        con_2.coinbase_output_features_extra_max_length = 256;
-        let mut con_3 = con_2.clone();
-        con_3.effective_from_height = 52000;
-        con_3.blockchain_version = 1;
-        con_3.valid_blockchain_version_range = 1..=1;
 
-        let consensus_constants = vec![con_1, con_2, con_3];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120, 120, 120], &[50, 50, 50], &[50, 50, 50]);
+        let consensus_constants = vec![con_1];
         consensus_constants
     }
 
@@ -710,8 +689,6 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         }];
-        #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[50], &[50]);
         consensus_constants
     }
 
@@ -742,70 +719,6 @@ impl ConsensusConstants {
             (OutputType::ValidatorNodeRegistration, RangeProofType::all()),
             (OutputType::CodeTemplateRegistration, RangeProofType::all()),
         ]
-    }
-}
-
-// Assert the hybrid POW constants.
-// Note: The math and constants in this function should not be changed without ample consideration that should include
-//       discussion with the Tari community, modelling and system level tests.
-// For SHA3/Monero to have a 40/60 split:
-//   > sha3x_target_time = randomx_target_time * (100 - 40) / 40
-//   > randomx_target_time = sha3x_target_time * (100 - 60) / 60
-//   > target_time = randomx_target_time * sha3x_target_time / (ramdomx_target_time + sha3x_target_time)
-#[cfg(any(test, debug_assertions))]
-fn assert_hybrid_pow_constants(
-    consensus_constants: &[ConsensusConstants],
-    target_time: &[u64],
-    randomx_split: &[u64], // RamdomX
-    sha3x_split: &[u64],
-) {
-    assert_eq!(consensus_constants.len(), target_time.len());
-    assert_eq!(consensus_constants.len(), randomx_split.len());
-    assert_eq!(consensus_constants.len(), sha3x_split.len());
-
-    for (i, constants) in consensus_constants.iter().enumerate() {
-        let sha3x_constants = constants
-            .proof_of_work
-            .get(&PowAlgorithm::Sha3x)
-            .expect("Sha3 constants not found");
-        let randomx_constants = constants
-            .proof_of_work
-            .get(&PowAlgorithm::RandomX)
-            .expect("RandomX constants not found");
-
-        // POW algorithm dependencies
-        // - Basics
-        assert!(
-            sha3x_constants.min_difficulty <= sha3x_constants.max_difficulty,
-            "SHA3X min_difficulty > max_difficulty"
-        );
-        assert!(
-            randomx_constants.min_difficulty <= randomx_constants.max_difficulty,
-            "RandomX min_difficulty > max_difficulty"
-        );
-        // - Target time (the ratios here are important to determine the SHA3/Monero split and overall block time)
-        assert_eq!(randomx_split[i] + sha3x_split[i], 100, "Split must add up to 100");
-        assert_eq!(
-            sha3x_constants.target_time * sha3x_split[i],
-            randomx_constants.target_time * (100 - sha3x_split[i]),
-            "SHA3 target times are not inversely proportional to SHA3 split"
-        );
-        assert_eq!(
-            randomx_constants.target_time * randomx_split[i],
-            sha3x_constants.target_time * (100 - randomx_split[i]),
-            "Monero target times are not inversely proportional to Monero split"
-        );
-        assert_eq!(
-            target_time[i] * (randomx_constants.target_time + sha3x_constants.target_time),
-            randomx_constants.target_time * sha3x_constants.target_time,
-            "Overall target time is not inversely proportional to target split times"
-        );
-        // General LWMA dependencies
-        assert_eq!(
-            constants.future_time_limit * 20,
-            target_time[i] * constants.difficulty_block_window,
-            "20x future_time_limit is not target_time * difficulty_block_window"
-        );
     }
 }
 
