@@ -1136,7 +1136,7 @@ mod test {
 
         let kernel_1 = tx1.body.kernels()[0].clone();
         let kernel_2 = tx2.body.kernels()[0].clone();
-        let excess = &kernel_1.excess + &kernel_2.excess;
+        let excess = &kernel_1.excess.to_commitment().unwrap() + &kernel_2.excess.to_commitment().unwrap();
 
         // lets create a new kernel with a correct signature
         let new_nonce1 = key_manager
@@ -1147,7 +1147,7 @@ mod test {
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
-        let nonce = &new_nonce1.pub_key + &new_nonce2.pub_key;
+        let nonce = &new_nonce1.pub_key.to_public_key().unwrap() + &new_nonce2.pub_key.to_public_key().unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             kernel_1.fee,
@@ -1160,35 +1160,39 @@ mod test {
             .get_partial_txo_kernel_signature(
                 &wo1.spending_key_id,
                 &new_nonce1.key_id,
-                &nonce,
-                excess.as_public_key(),
+                &CompressedPublicKey::new_from_pk(nonce.clone()),
+                &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
                 &TransactionKernelVersion::get_current_version(),
                 &kernel_message,
                 &kernel_1.features,
                 TxoStage::Output,
             )
             .await
+            .unwrap()
+            .to_schnorr_signature()
             .unwrap();
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
-                    &nonce,
-                    excess.as_public_key(),
+                    &CompressedPublicKey::new_from_pk(nonce),
+                    &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
                     &TransactionKernelVersion::get_current_version(),
                     &kernel_message,
                     &kernel_1.features,
                     TxoStage::Output,
                 )
                 .await
+                .unwrap()
+                .to_schnorr_signature()
                 .unwrap();
         let kernel = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(kernel_1.features)
             .with_lock_height(kernel_1.lock_height)
-            .with_excess(&excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
