@@ -276,6 +276,7 @@ async fn test_listening_initial_fallen_behind() {
 
 #[tokio::test]
 async fn test_event_channel() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
@@ -314,7 +315,7 @@ async fn test_event_channel() {
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    for _ in 0..5 {
+    for _ in 0..10 {
         mock.publish_chain_metadata(
             peer_chain_metadata.node_id(),
             peer_chain_metadata.claimed_chain_metadata(),
