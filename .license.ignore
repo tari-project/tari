@@ -4,6 +4,7 @@
 ./base_layer/contacts/src/schema.rs
 ./base_layer/core/src/base_node/tari_pulse_service/20326.rsa
 ./base_layer/core/src/base_node/tari_pulse_service/38696.rsa
+./base_layer/core/src/transactions/transaction_key_manager/schema.rs
 ./base_layer/key_manager/src/schema.rs
 ./base_layer/wallet/src/schema.rs
 ./docs/src/theme/book.js
