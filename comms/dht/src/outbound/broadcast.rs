@@ -491,7 +491,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             // Encrypt the message, protecting the sender identity
             OutboundEncryption::EncryptFor(recipient_public_key) => {
                 trace!(target: LOG_TARGET, "Encrypting message for {}", recipient_public_key);
-                let ristretto_recipient_public_key = recipient_public_key.to_public_key()?;
+                let ristretto_recipient_public_key = recipient_public_key
+                    .to_public_key()
+                    .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
 
                 // Perform an ephemeral ECDH exchange against the recipient public key
                 let (ephemeral_secret_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -500,7 +502,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Produce a masked sender public key using an offset mask derived from the ECDH exchange
                 let mask = crypt::generate_key_mask(&shared_ephemeral_secret)
                     .map_err(|e| DhtOutboundError::CipherError(e.to_string()))?;
-                let masked_sender_public_key = &mask * self.node_identity.public_key().to_public_key()?;
+                let masked_sender_public_key = &mask *
+                    self.node_identity
+                        .public_key()
+                        .to_public_key()
+                        .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
 
                 // Pad and encrypt the message using the masked sender public key
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
