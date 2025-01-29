@@ -143,13 +143,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         match auth {
             Authentication::None => {},
             Authentication::Password { username, password } => {
-                let username_len = username.as_bytes().len();
+                let username_len = username.len();
                 if !(1..=255).contains(&username_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "username length should between 1 to 255".to_string(),
                     ));
                 }
-                let password_len = password.as_bytes().len();
+                let password_len = password.len();
                 if !(1..=255).contains(&password_len) {
                     return Err(SocksError::InvalidAuthValues(
                         "password length should between 1 to 255".to_string(),

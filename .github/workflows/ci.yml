@@ -15,6 +15,7 @@ name: CI
 
 env:
   toolchain: stable
+  nightly_toolchain: nightly-2024-07-07
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -36,7 +37,7 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
-      - name: toolchain
+      - name: nightly_toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
@@ -69,11 +70,11 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo format
-        run: cargo fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
       - name: Install cargo-lints
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
-        run: cargo lints clippy --all-targets --all-features
+        run: cargo +nightly lints clippy --all-targets --all-features
 
   machete:
     # Checks for unused dependencies.

@@ -105,7 +105,7 @@ pub fn wallet_payment_address(
     network: Network,
 ) -> Result<TariAddress, ParseInputError> {
     // Verify config setting
-    return match TariAddress::from_str(&config_wallet_payment_address) {
+    match TariAddress::from_str(&config_wallet_payment_address) {
         Ok(address) => {
             if address == TariAddress::default() {
                 println!();

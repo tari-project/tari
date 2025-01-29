@@ -37,7 +37,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundMessageRequester},
+    outbound::{OutboundMessageRequester},
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
@@ -257,8 +257,7 @@ where
                 OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
                 "Send ping".to_string(),
             )
-            .await
-            .map_err(Into::<DhtOutboundError>::into)?;
+            .await?;
 
         Ok(nonce)
     }

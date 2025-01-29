@@ -64,7 +64,7 @@ impl PeerConnectionState {
 
     /// Return true if the underlying connection exists and is connected, otherwise false
     pub fn is_connected(&self) -> bool {
-        self.status.is_connected() && self.connection().map_or(false, |c| c.is_connected())
+        self.status.is_connected() && self.connection().is_some_and(|c| c.is_connected())
     }
 
     pub fn connection_mut(&mut self) -> Option<&mut PeerConnection> {
