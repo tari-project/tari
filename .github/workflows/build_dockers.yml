@@ -48,7 +48,7 @@ name: Build docker images
           - xmrig
 
 env:
-  toolchain_default: nightly-2024-07-07
+  toolchain_default: stable
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix

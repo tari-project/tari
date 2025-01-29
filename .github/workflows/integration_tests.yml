@@ -27,7 +27,7 @@ name: Integration tests
         type: string
 
 env:
-  toolchain: nightly-2024-07-07
+  toolchain: stable
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
