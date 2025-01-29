@@ -340,9 +340,6 @@ impl From<Waiting> for Listening {
 
 impl From<HeaderSyncState> for Listening {
     fn from(sync: HeaderSyncState) -> Self {
-        if sync.is_synced() {
-            debug!(target: LOG_TARGET, "Initial sync achieved (from HeaderSyncState)");
-        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
@@ -352,9 +349,6 @@ impl From<HeaderSyncState> for Listening {
 
 impl From<BlockSync> for Listening {
     fn from(sync: BlockSync) -> Self {
-        if sync.is_synced() {
-            debug!(target: LOG_TARGET, "Initial sync achieved (from BlockSync)");
-        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
@@ -364,9 +358,6 @@ impl From<BlockSync> for Listening {
 
 impl From<DecideNextSync> for Listening {
     fn from(sync: DecideNextSync) -> Self {
-        if sync.is_synced() {
-            debug!(target: LOG_TARGET, "Initial sync achieved (from DecideNextSync)");
-        }
         Self {
             is_synced: sync.is_synced(),
             initial_delay_count: 0,
