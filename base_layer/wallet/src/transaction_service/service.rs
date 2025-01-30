@@ -166,7 +166,6 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// recipient
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-
 pub struct TransactionService<
     TTxStream,
     TTxReplyStream,

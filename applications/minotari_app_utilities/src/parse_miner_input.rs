@@ -146,7 +146,7 @@ pub fn wallet_payment_address(
             "Wallet payment address '{}' not valid ({})",
             config_wallet_payment_address, err
         ))),
-    };
+    }
 }
 
 /// User requested quit
