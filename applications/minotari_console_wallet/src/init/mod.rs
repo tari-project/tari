@@ -478,7 +478,7 @@ pub async fn init_wallet(
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
 
-    error!(
+    info!(
         target: LOG_TARGET,
         "Wallet started in {}ms", now.elapsed().as_millis()
     );
