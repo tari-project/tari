@@ -135,8 +135,8 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
-    #[error("Invalid Transaction: {0}")]
-    ByteArrayError(#[from] ByteArrayError),
+    #[error("Invalid Serialized Public key: {0}")]
+    InvalidSerializedPublicKey(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -144,6 +144,12 @@ pub enum ValidationError {
 impl From<ChainStorageError> for ValidationError {
     fn from(err: ChainStorageError) -> Self {
         Self::FatalStorageError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for ValidationError {
+    fn from(err: ByteArrayError) -> Self {
+        Self::InvalidSerializedPublicKey(err.to_string())
     }
 }
 
@@ -188,7 +194,7 @@ impl ValidationError {
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } |
-            err @ ValidationError::ByteArrayError(_) => Some(BanReason {
+            err @ ValidationError::InvalidSerializedPublicKey(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

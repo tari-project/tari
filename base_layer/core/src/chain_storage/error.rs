@@ -145,8 +145,8 @@ pub enum ChainStorageError {
     InvalidChainMetaData(#[from] ChainMetaDataError),
     #[error("Block header error: `{0}`")]
     MrHashError(#[from] MrHashError),
-    #[error("Invalid Transaction: {0}")]
-    ByteArrayError(#[from] ByteArrayError),
+    #[error("Invalid Serialized Public key: {0}")]
+    InvalidSerializedPublicKey(String),
 }
 
 impl ChainStorageError {
@@ -167,7 +167,7 @@ impl ChainStorageError {
             err @ ChainStorageError::MismatchedMmrRoot(_) |
             err @ ChainStorageError::TransactionError(_) |
             err @ ChainStorageError::SMTError(_) |
-            err @ ChainStorageError::ByteArrayError(_) => Some(BanReason {
+            err @ ChainStorageError::InvalidSerializedPublicKey(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
@@ -203,6 +203,12 @@ impl ChainStorageError {
             _err @ ChainStorageError::OutOfRange |
             _err @ ChainStorageError::MrHashError(_) => None,
         }
+    }
+}
+
+impl From<ByteArrayError> for ChainStorageError {
+    fn from(err: ByteArrayError) -> Self {
+        Self::InvalidSerializedPublicKey(err.to_string())
     }
 }
 
