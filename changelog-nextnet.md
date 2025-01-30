@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
+
+### [1.11.1-rc.0](https://github.com/tari-project/tari/compare/v1.11.0-rc.0...v1.11.1-rc.0) (2025-01-30)
+
+
+### Features
+
+* fix mempool sync start early ([#6767](https://github.com/tari-project/tari/issues/6767)) ([2a68bdf](https://github.com/tari-project/tari/commit/2a68bdff4e68ada2ec251581e8e95576c0b9b15d))
+* keep keys in compressed form ([#6753](https://github.com/tari-project/tari/issues/6753)) ([f0fd7f1](https://github.com/tari-project/tari/commit/f0fd7f1cdcc41edfaf9df17e16ad4941985a7f4d))
+
+
+### Bug Fixes
+
+* base node database error code ([#6770](https://github.com/tari-project/tari/issues/6770)) ([2b9210d](https://github.com/tari-project/tari/commit/2b9210dd395e6935ecc725c0a547829bd5a17b08))
+* wallet migration ([#6773](https://github.com/tari-project/tari/issues/6773)) ([324d741](https://github.com/tari-project/tari/commit/324d7410515725e8431729eb748e8fe7ab7ef255))
+
 ## [1.11.0-rc.0](https://github.com/tari-project/tari/compare/v1.10.1-rc.0...v1.11.0-rc.0) (2025-01-28)
 
 
