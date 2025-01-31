@@ -7301,6 +7301,8 @@ dependencies = [
  "libtor",
  "log",
  "rand",
+ "serde",
+ "serde_json",
  "tari_common",
  "tari_p2p",
  "tempfile",

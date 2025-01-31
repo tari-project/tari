@@ -40,6 +40,8 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
+#[cfg(all(unix, feature = "libtor"))]
+use tari_libtor::temp_files::remove_libtor_temp_files;
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle};
 use tokio::{sync::watch, task};
 
@@ -119,6 +121,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         }
 
         // Wait for the liveness test to complete
+        let mut count = 0;
         loop {
             tokio::select! {
                 _ = rx.changed() => {
@@ -144,6 +147,8 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                         println!("The liveness test is complete and base node will now exit\n");
                         self.shutdown.trigger();
                         tokio::time::sleep(Duration::from_secs(1)).await;
+                        #[cfg(all(unix, feature = "libtor"))]
+                        remove_libtor_temp_files();
                         match responsive {
                             PingResult::Success => process::exit(0),
                             _ => process::exit(1),
@@ -153,7 +158,22 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                     break;
                 },
 
-                _ = tokio::time::sleep(Duration::from_secs(1)) => {},
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                    count += 1;
+                    if count >= 180 {
+                        if let Some(true) = args.exit {
+                            println!(" >> The liveness test failed to complete and base node will now exit\n");
+                            self.shutdown.trigger();
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            #[cfg(all(unix, feature = "libtor"))]
+                            remove_libtor_temp_files();
+                            process::exit(1)
+                        } else {
+                            println!(" >> The liveness test failed to completet\n");
+                            break;
+                        }
+                    }
+                },
             }
         }
 

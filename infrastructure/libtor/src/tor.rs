@@ -28,7 +28,7 @@ use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
-use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
+use tempfile::{tempdir, NamedTempFile};
 use tor_hash_passwd::EncryptedKey;
 
 const LOG_TARGET: &str = "tari_libtor";
@@ -51,8 +51,6 @@ pub struct Tor {
     #[derivative(Debug = "ignore")]
     passphrase: TorPassword,
     socks_port: u16,
-    temp_dir: Option<TempDir>,
-    temp_file: Option<TempPath>,
 }
 
 impl Default for Tor {
@@ -64,8 +62,6 @@ impl Default for Tor {
             log_level: LogLevel::Err,
             passphrase: TorPassword(None),
             socks_port: 0,
-            temp_dir: None,
-            temp_file: None,
         }
     }
 }
@@ -97,16 +93,19 @@ impl Tor {
         // data dir
         let temp = tempdir()?;
         instance.data_dir = temp.path().to_path_buf();
-        instance.temp_dir = Some(temp);
 
         // log destination
         let temp = NamedTempFile::new()?.into_temp_path();
         let file = temp.to_string_lossy().to_string();
-        instance.temp_file = Some(temp);
         instance.log_destination = file;
 
         debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
+    }
+
+    /// Returns the data directory for the Tor instance
+    pub fn data_dir(&self) -> &PathBuf {
+        &self.data_dir
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance

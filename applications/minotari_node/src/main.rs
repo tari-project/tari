@@ -78,7 +78,10 @@ use minotari_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::tor::Tor;
+use tari_libtor::{
+    temp_files::{libtor_handshake_file_name, remove_libtor_temp_files, LibTorTempDir},
+    tor::Tor,
+};
 use tari_shutdown::Shutdown;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
@@ -97,6 +100,9 @@ fn main() {
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}", exit_code as i32, err
         );
+        // Cleanup libtor tempdir before exiting
+        #[cfg(all(unix, feature = "libtor"))]
+        remove_libtor_temp_files();
         process::exit(exit_code as i32);
     }
 }
@@ -153,16 +159,44 @@ fn main_inner() -> Result<(), ExitError> {
     #[cfg(all(unix, feature = "libtor"))]
     if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
+        let data_dir = tor.data_dir().clone();
         tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
         tor.run_background();
+
         debug!(
             target: LOG_TARGET,
             "Updated Tor comms transport: {:?}", config.base_node.p2p.transport
         );
-    }
+
+        if std::fs::metadata(libtor_handshake_file_name()).is_ok() {
+            std::fs::remove_file(libtor_handshake_file_name())?;
+        }
+        let handshake_file = std::fs::File::create(libtor_handshake_file_name())?;
+        let mut handshake_file = std::io::BufWriter::new(handshake_file);
+        use std::io::Write;
+        trace!(
+            target: LOG_TARGET,
+            "using libtor tempdir handshake file '{}'", libtor_handshake_file_name().display()
+        );
+
+        let data = LibTorTempDir { path: data_dir.clone() };
+        use tari_common::exit_codes::ExitCode;
+        let json = serde_json::to_string(&data).map_err(|e| ExitError {
+            exit_code: ExitCode::ConversionError,
+            details: Some(e.to_string()),
+        })?;
+        handshake_file.write_all(json.as_bytes())?;
+
+        Some(data_dir)
+    } else {
+        None
+    };
 
     // Run the base node
     runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
+
+    #[cfg(all(unix, feature = "libtor"))]
+    remove_libtor_temp_files();
 
     Ok(())
 }
