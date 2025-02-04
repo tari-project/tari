@@ -223,7 +223,7 @@ jobs:
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_toolchain }}
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -246,17 +246,17 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-stable
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
       - name: cargo test compile
-        run: cargo test -vv --no-run --locked --all-features --release
+        run: cargo +${{ env.nightly_toolchain }} test -vv --no-run --locked --all-features --release
       - name: cargo test
-        run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+        run: cargo +${{ env.nightly_toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
         uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()
