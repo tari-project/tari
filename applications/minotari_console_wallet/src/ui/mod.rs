@@ -38,7 +38,7 @@ use std::io::{stdout, Stdout};
 
 pub use app::*;
 use crossterm::{
-    event::{KeyCode, KeyModifiers},
+    event::{KeyCode, KeyEventState, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -74,7 +74,9 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
         .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
     crossterm_loop(app)
 }
+
 /// This is the main loop of the application UI using Crossterm based events
+#[allow(clippy::too_many_lines)]
 fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {
@@ -108,25 +110,54 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
             error!(target: LOG_TARGET, "Error drawing interface. {}", e);
             ExitCode::InterfaceError
         })?;
+        let event = events.next();
         #[allow(clippy::blocks_in_conditions)]
-        match events.next().map_err(|e| {
+        match event.map_err(|e| {
             error!(target: LOG_TARGET, "Error reading input event: {}", e);
             ExitCode::InterfaceError
         })? {
-            Event::Input(event) => match (event.code, event.modifiers) {
-                (KeyCode::Char(c), KeyModifiers::CONTROL) => app.on_control_key(c),
-                (KeyCode::Char(c), _) => app.on_key(c),
-                (KeyCode::Left, _) => app.on_left(),
-                (KeyCode::Up, _) => app.on_up(),
-                (KeyCode::Right, _) => app.on_right(),
-                (KeyCode::Down, _) => app.on_down(),
-                (KeyCode::Esc, _) => app.on_esc(),
-                (KeyCode::Backspace, _) => app.on_backspace(),
-                (KeyCode::Enter, _) => app.on_key('\n'),
-                (KeyCode::Tab, _) => app.on_key('\t'),
-                (KeyCode::BackTab, _) => app.on_backtab(),
-                (KeyCode::F(10), _) => app.on_f10(),
-                _ => {},
+            Event::Input(event) => {
+                trace!(target: LOG_TARGET, "event: '{:?}' '{}' '{:?}' '{}'",
+                    event.code,
+                    event.modifiers,
+                    event.kind,
+                    match event.state {
+                        KeyEventState::KEYPAD => "KEYPAD",
+                        KeyEventState::CAPS_LOCK => "CAPS_LOCK",
+                        KeyEventState::NUM_LOCK => "NUM_LOCK",
+                        _ => "NONE",
+                    }
+                );
+                #[cfg(target_os = "windows")]
+                {
+                    use crossterm::event::KeyEventKind;
+                    let action_now = {
+                        match (event.kind, event.modifiers, event.code) {
+                            (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q' || c == 'c',
+                            (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
+                            (KeyEventKind::Release, _, _) => true,
+                            (..) => false,
+                        }
+                    };
+                }
+                #[cfg(not(target_os = "windows"))]
+                let action_now = true;
+                match (event.code, event.modifiers, action_now) {
+                    (_, _, false) => {},
+                    (KeyCode::Char(c), KeyModifiers::CONTROL, _) => app.on_control_key(c),
+                    (KeyCode::Char(c), _, _) => app.on_key(c),
+                    (KeyCode::Left, _, _) => app.on_left(),
+                    (KeyCode::Up, _, _) => app.on_up(),
+                    (KeyCode::Right, _, _) => app.on_right(),
+                    (KeyCode::Down, _, _) => app.on_down(),
+                    (KeyCode::Esc, _, _) => app.on_esc(),
+                    (KeyCode::Backspace, _, _) => app.on_backspace(),
+                    (KeyCode::Enter, _, _) => app.on_key('\n'),
+                    (KeyCode::Tab, _, _) => app.on_key('\t'),
+                    (KeyCode::BackTab, _, _) => app.on_backtab(),
+                    (KeyCode::F(10), _, _) => app.on_f10(),
+                    _ => {},
+                }
             },
             Event::Tick => {
                 app.on_tick();

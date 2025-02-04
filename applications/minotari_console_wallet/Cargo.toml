@@ -37,7 +37,7 @@ blake2 = "0.10"
 chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.14.0"
-crossterm = { version = "0.25.0" }
+crossterm = { version = "0.28" }
 digest = "0.10"
 dirs-next = "2.0"
 futures = { version = "^0.3.16", default-features = false, features = [
