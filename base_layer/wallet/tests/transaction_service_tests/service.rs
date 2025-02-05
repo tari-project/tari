@@ -82,7 +82,7 @@ use minotari_wallet::{
         TransactionServiceInitializer,
     },
     util::watch::Watch,
-    utxo_scanner_service::handle::UtxoScannerHandle,
+    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer},
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
@@ -171,7 +171,7 @@ use tokio::{
     task,
     time::sleep,
 };
-use minotari_wallet::utxo_scanner_service::initializer::UtxoScannerServiceInitializer;
+
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
@@ -272,7 +272,10 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             db.clone(),
             wallet_type,
         ))
-        .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db.clone()))
+        .add_initializer(BaseNodeServiceInitializer::new(
+            BaseNodeServiceConfig::default(),
+            db.clone(),
+        ))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
         .add_initializer(UtxoScannerServiceInitializer::<_, MemoryDbKeyManager>::new(
             db,
