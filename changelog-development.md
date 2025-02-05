@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.11.3-pre.0](https://github.com/tari-project/tari/compare/v1.11.2-pre.0...v1.11.3-pre.0) (2025-02-05)
+
+
+### Features
+
+* Fix windows ([#6788](https://github.com/tari-project/tari/issues/6788)) ([e263caa](https://github.com/tari-project/tari/commit/e263caafd95d71c9c9277d51b8906c75d43ffda3))
+
 ### [1.11.2-pre.0](https://github.com/tari-project/tari/compare/v1.11.1-pre.1...v1.11.2-pre.0) (2025-02-05)
 
 
