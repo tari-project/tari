@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
@@ -58,6 +60,9 @@ pub struct Cli {
     /// Disable the splash screen
     #[clap(long)]
     pub disable_splash_screen: bool,
+    /// Path to the libtor data directory
+    #[clap(short, long, parse(from_os_str))]
+    pub libtor_data_dir: Option<PathBuf>,
 }
 
 impl ConfigOverrideProvider for Cli {

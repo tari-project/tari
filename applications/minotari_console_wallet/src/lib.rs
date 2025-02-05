@@ -64,10 +64,7 @@ use tari_common::{
 use tari_common_types::wallet_types::WalletType;
 use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::{
-    temp_files::{libtor_handshake_file_name, remove_libtor_temp_files, LibTorTempDir},
-    tor::Tor,
-};
+use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 use tari_utilities::SafePassword;
 use tokio::runtime::Runtime;
@@ -110,6 +107,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         profile_with_tokio_console: false,
         view_private_key: None,
         spend_key: None,
+        libtor_data_dir: None,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -167,38 +165,19 @@ pub fn run_wallet_with_cli(
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
     if config.wallet.use_libtor && config.wallet.p2p.transport.is_tor() {
-        let tor = Tor::initialize()?;
-        let data_dir = tor.data_dir().clone();
+        let data_dir = if let Some(dir) = cli.libtor_data_dir.clone() {
+            dir.join("libtor").join("wallet")
+        } else {
+            cli.common.get_base_path().join("libtor").join("wallet")
+        };
+        let tor = Tor::initialize(data_dir)?;
         tor.update_comms_transport(&mut config.wallet.p2p.transport)?;
         tor.run_background();
         debug!(
             target: LOG_TARGET,
             "Updated Tor comms transport: {:?}", config.wallet.p2p.transport
         );
-
-        if std::fs::metadata(libtor_handshake_file_name()).is_ok() {
-            std::fs::remove_file(libtor_handshake_file_name())?;
-        }
-        let handshake_file = std::fs::File::create(libtor_handshake_file_name())?;
-        let mut handshake_file = std::io::BufWriter::new(handshake_file);
-        use std::io::Write;
-        trace!(
-            target: LOG_TARGET,
-            "using libtor tempdir handshake file '{}'", libtor_handshake_file_name().display()
-        );
-
-        let data = LibTorTempDir { path: data_dir.clone() };
-        use tari_common::exit_codes::ExitCode;
-        let json = serde_json::to_string(&data).map_err(|e| ExitError {
-            exit_code: ExitCode::ConversionError,
-            details: Some(e.to_string()),
-        })?;
-        handshake_file.write_all(json.as_bytes())?;
-
-        Some(data_dir)
-    } else {
-        None
-    };
+    }
 
     let on_init = matches!(boot_mode, WalletBoot::New);
     let not_recovery = recovery_seed.is_none();
@@ -291,9 +270,6 @@ pub fn run_wallet_with_cli(
     print!("\nShutting down wallet... ");
     shutdown.trigger();
     runtime.block_on(wallet.wait_until_shutdown());
-
-    #[cfg(all(unix, feature = "libtor"))]
-    remove_libtor_temp_files();
 
     println!("Done.");
 

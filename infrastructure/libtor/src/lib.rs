@@ -26,6 +26,4 @@
 #[allow(unused_extern_crates)]
 extern crate libtor;
 #[cfg(unix)]
-pub mod temp_files;
-#[cfg(unix)]
 pub mod tor;

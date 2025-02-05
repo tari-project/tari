@@ -32,8 +32,6 @@ use tari_common::{
     initialize_logging,
     load_configuration,
 };
-#[cfg(all(unix, feature = "libtor"))]
-use tari_libtor::temp_files::remove_libtor_temp_files;
 use tari_shutdown::Shutdown;
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
@@ -65,9 +63,6 @@ fn main() {
                 target: LOG_TARGET,
                 "Exiting with code ({}): {:?}: {}", exit_code as i32, exit_code, err
             );
-            // Cleanup libtor tempdir before exiting
-            #[cfg(all(unix, feature = "libtor"))]
-            remove_libtor_temp_files();
             process::exit(exit_code as i32)
         },
     }

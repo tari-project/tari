@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, io, net::TcpListener, path::PathBuf, thread};
+use std::{fmt, fs, io, net::TcpListener, path::PathBuf, thread};
 
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
@@ -28,7 +28,6 @@ use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
-use tempfile::{tempdir, NamedTempFile};
 use tor_hash_passwd::EncryptedKey;
 
 const LOG_TARGET: &str = "tari_libtor";
@@ -72,7 +71,7 @@ impl Tor {
     /// Two TCP ports will be provided by the operating system.
     /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
     /// node identity file.
-    pub fn initialize() -> Result<Tor, ExitError> {
+    pub fn initialize(data_dir: PathBuf) -> Result<Tor, ExitError> {
         debug!(target: LOG_TARGET, "Initializing libtor");
         let mut instance = Tor::default();
 
@@ -91,21 +90,39 @@ impl Tor {
         instance.passphrase = TorPassword(Some(passphrase));
 
         // data dir
-        let temp = tempdir()?;
-        instance.data_dir = temp.path().to_path_buf();
+        instance.data_dir = data_dir.join("data");
+        match fs::exists(instance.data_dir.clone()) {
+            Ok(exists) => {
+                if !exists {
+                    if let Err(e) = fs::create_dir_all(&instance.data_dir) {
+                        return Err(ExitError::new(
+                            ExitCode::InputError,
+                            format!(
+                                "Could not create libtor data directory: {} ({})",
+                                instance.data_dir.display(),
+                                e
+                            ),
+                        ));
+                    }
+                }
+            },
+            Err(e) => {
+                return Err(ExitError::new(
+                    ExitCode::InputError,
+                    format!(
+                        "Could not verify libtor data directory: {} ({})",
+                        instance.data_dir.display(),
+                        e
+                    ),
+                ));
+            },
+        }
 
         // log destination
-        let temp = NamedTempFile::new()?.into_temp_path();
-        let file = temp.to_string_lossy().to_string();
-        instance.log_destination = file;
+        instance.log_destination = data_dir.join("tor.log").as_path().to_string_lossy().to_string();
 
         debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
-    }
-
-    /// Returns the data directory for the Tor instance
-    pub fn data_dir(&self) -> &PathBuf {
-        &self.data_dir
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
