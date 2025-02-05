@@ -115,6 +115,7 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -154,6 +155,7 @@ where
         network: Network,
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
+        utxo_scanner_handle: UtxoScannerHandle,
     ) -> Result<Self, OutputManagerError> {
         let view_key = key_manager.get_view_key().await?;
         let spend_key = key_manager.get_spend_key().await?;
@@ -182,6 +184,7 @@ where
             shutdown_signal,
             one_sided_tari_address,
             interactive_tari_address,
+            utxo_scanner_handle,
         };
 
         Ok(Self {
@@ -205,6 +208,8 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
+        let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
+
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
@@ -214,6 +219,12 @@ where
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg),
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    }
+                },
+                event = utxo_scanner_events.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_utxo_scanner_service_event(msg),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
                     }
                 },
                 Some(request_context) = request_stream.next() => {
@@ -556,6 +567,23 @@ where
             .map(OutputManagerResponse::ClaimHtlcTransaction)
     }
 
+    fn handle_utxo_scanner_service_event(&mut self, event: UtxoScannerEvent) {
+        match event {
+            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
+            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
+            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
+            UtxoScannerEvent::ScanningRoundFailed { .. } => {},
+            UtxoScannerEvent::Progress { .. } => {},
+            UtxoScannerEvent::Completed { .. } => {
+                let _id = self.validate_outputs().map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                    e
+                });
+            },
+            UtxoScannerEvent::ScanningFailed => {},
+        }
+    }
+
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
@@ -566,10 +594,6 @@ where
             },
             BaseNodeEvent::NewBlockDetected(_hash, height) => {
                 self.last_seen_tip_height = Some(height);
-                let _id = self.validate_outputs().map_err(|e| {
-                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                    e
-                });
             },
         }
     }
@@ -594,7 +618,7 @@ where
         let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
-        let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
+        let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
         tokio::spawn(async move {
             // Note: We do not want the validation task to be queued
             let mut _lock = match validation_in_progress.try_lock() {
@@ -657,12 +681,10 @@ where
                                 is shutting down", id);
                             return;
                         },
-                        event = base_node_service_event_stream.recv() => {
-                            if let Ok(bn_event) = event {
-                                if let BaseNodeEvent::NewBlockDetected(_hash, _height) = *bn_event {
-                                    debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
-                                    continue 'outer;
-                              }
+                        event = utxo_scanner_service_event_stream.recv() => {
+                            if let Ok(UtxoScannerEvent::Completed{..}) = event {
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                continue 'outer;
                             }
                         }
                         _ = base_node_watch.changed() => {

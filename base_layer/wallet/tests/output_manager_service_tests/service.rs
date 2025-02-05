@@ -40,6 +40,8 @@ use minotari_wallet::{
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
+    util::watch::Watch,
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -162,6 +164,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let key_manager = create_memory_db_key_manager().unwrap();
 
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -174,6 +182,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         Network::LocalNet,
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
+        scanner_handle,
     )
     .await
     .unwrap();
@@ -226,6 +235,10 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
     let key_manager = create_memory_db_key_manager().unwrap();
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -238,6 +251,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         Network::LocalNet,
         connectivity,
         key_manager.clone(),
+        scanner_handle,
     )
     .await
     .unwrap();

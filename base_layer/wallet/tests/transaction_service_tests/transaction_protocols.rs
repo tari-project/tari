@@ -48,6 +48,7 @@ use minotari_wallet::{
         },
     },
     util::watch::Watch,
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -178,6 +179,12 @@ pub async fn setup() -> (
     let interactive_tari_address =
         TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
     let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let utxo_scanner_handle =
+        UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -197,6 +204,7 @@ pub async fn setup() -> (
         },
         shutdown_signal: shutdown.to_signal(),
         wallet_type,
+        utxo_scanner_handle,
     };
 
     (

@@ -62,6 +62,7 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
@@ -124,6 +125,7 @@ where
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
+            let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -137,6 +139,7 @@ where
                 network,
                 connectivity,
                 key_manager,
+                utxo_scanner_handle,
             )
             .await
             .expect("Could not initialize Output Manager Service")

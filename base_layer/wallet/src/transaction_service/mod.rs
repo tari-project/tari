@@ -63,6 +63,7 @@ use crate::{
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
     },
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
 pub mod config;
@@ -243,6 +244,7 @@ where
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+            let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 
             let result = TransactionService::new(
                 config,
@@ -266,6 +268,7 @@ where
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 wallet_type,
+                utxo_scanner_handle,
             )
             .await
             .expect("Could not initialize Transaction Manager Service")

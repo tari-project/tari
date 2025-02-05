@@ -81,6 +81,8 @@ use minotari_wallet::{
         },
         TransactionServiceInitializer,
     },
+    util::watch::Watch,
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
@@ -389,6 +391,12 @@ async fn setup_transaction_service_no_comms(
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
     let key_manager = create_memory_db_key_manager().unwrap();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,
@@ -401,6 +409,7 @@ async fn setup_transaction_service_no_comms(
         Network::LocalNet,
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
+        scanner_handle,
     )
     .await
     .unwrap();
@@ -421,6 +430,11 @@ async fn setup_transaction_service_no_comms(
         max_tx_query_batch_size: 2,
         ..Default::default()
     });
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let ts_service = TransactionService::new(
         test_config,
         ts_db.clone(),
@@ -443,6 +457,7 @@ async fn setup_transaction_service_no_comms(
         shutdown.to_signal(),
         base_node_service_handle,
         key_manager.get_wallet_type().await,
+        scanner_handle,
     )
     .await
     .unwrap();
