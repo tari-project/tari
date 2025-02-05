@@ -393,6 +393,7 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
+        let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
@@ -406,9 +407,15 @@ where
                 // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
-                        Ok(msg) => self.handle_base_node_service_event(msg, &mut transaction_validation_protocol_handles).await,
+                        Ok(msg) => self.handle_base_node_service_event(msg).await,
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
                     };
+                },
+                event = utxo_scanner_events.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_utxo_scanner_service_event(msg, &mut transaction_validation_protocol_handles).await,
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
+                    }
                 },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
@@ -1045,18 +1052,31 @@ where
         });
     }
 
-    async fn handle_base_node_service_event(
-        &mut self,
-        event: Arc<BaseNodeEvent>,
-        transaction_validation_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
-    ) {
+    async fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
             BaseNodeEvent::NewBlockDetected(_hash, height) => {
+                self.last_seen_tip_height = Some(height);
+            },
+        }
+    }
+
+    async fn handle_utxo_scanner_service_event(
+        &mut self,
+        event: UtxoScannerEvent,
+        transaction_validation_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) {
+        match event {
+            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
+            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
+            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
+            UtxoScannerEvent::ScanningRoundFailed { .. } => {},
+            UtxoScannerEvent::Progress { .. } => {},
+            UtxoScannerEvent::Completed { .. } => {
                 let _operation_id = self
                     .start_transaction_validation_protocol(transaction_validation_join_handles)
                     .await
@@ -1064,9 +1084,8 @@ where
                         warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
                         e
                     });
-
-                self.last_seen_tip_height = Some(height);
             },
+            UtxoScannerEvent::ScanningFailed => {},
         }
     }
 
