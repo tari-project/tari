@@ -129,17 +129,15 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
                     }
                 );
                 #[cfg(target_os = "windows")]
-                {
+                let action_now = {
                     use crossterm::event::KeyEventKind;
-                    let action_now = {
-                        match (event.kind, event.modifiers, event.code) {
-                            (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q' || c == 'c',
-                            (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
-                            (KeyEventKind::Release, _, _) => true,
-                            (..) => false,
-                        }
-                    };
-                }
+                    match (event.kind, event.modifiers, event.code) {
+                        (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q' || c == 'c',
+                        (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
+                        (KeyEventKind::Release, _, _) => true,
+                        (..) => false,
+                    }
+                };
                 #[cfg(not(target_os = "windows"))]
                 let action_now = true;
                 match (event.code, event.modifiers, action_now) {

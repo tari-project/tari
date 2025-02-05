@@ -765,6 +765,13 @@ where
                 0
             },
         };
+        trace!(
+            target: LOG_TARGET,
+            "Wallet birthday: {}, epoch time: {}, block height: {}",
+            birthday,
+            epoch_time,
+            block_height
+        );
         let header = client.get_header_by_height(block_height).await?;
         let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
         let header_hash = header.hash();
