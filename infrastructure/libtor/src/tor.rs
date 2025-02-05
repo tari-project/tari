@@ -45,7 +45,7 @@ impl fmt::Debug for TorPassword {
 pub struct Tor {
     control_port: u16,
     data_dir: PathBuf,
-    log_destination: String,
+    log_destination: PathBuf,
     log_level: LogLevel,
     #[derivative(Debug = "ignore")]
     passphrase: TorPassword,
@@ -91,35 +91,32 @@ impl Tor {
 
         // data dir
         instance.data_dir = data_dir.join("data");
-        match fs::exists(instance.data_dir.clone()) {
-            Ok(exists) => {
-                if !exists {
-                    if let Err(e) = fs::create_dir_all(&instance.data_dir) {
-                        return Err(ExitError::new(
-                            ExitCode::InputError,
-                            format!(
-                                "Could not create libtor data directory: {} ({})",
-                                instance.data_dir.display(),
-                                e
-                            ),
-                        ));
-                    }
-                }
-            },
-            Err(e) => {
-                return Err(ExitError::new(
+
+        let exists = fs::exists(instance.data_dir.clone()).map_err(|e| {
+            ExitError::new(
+                ExitCode::InputError,
+                format!(
+                    "Could not verify libtor data directory: {} ({})",
+                    instance.data_dir.display(),
+                    e
+                ),
+            )
+        })?;
+        if !exists {
+            fs::create_dir_all(&instance.data_dir).map_err(|e| {
+                ExitError::new(
                     ExitCode::InputError,
                     format!(
-                        "Could not verify libtor data directory: {} ({})",
+                        "Could not create libtor data directory: {} ({})",
                         instance.data_dir.display(),
                         e
                     ),
-                ));
-            },
+                )
+            })?;
         }
 
         // log destination
-        instance.log_destination = data_dir.join("tor.log").as_path().to_string_lossy().to_string();
+        instance.log_destination = data_dir.join("tor.log");
 
         debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
@@ -168,7 +165,7 @@ impl Tor {
             // Write the final control port to a file. This could be used to configure the node to use this port when auto is set.
             .flag(TorFlag::ControlPortWriteToFile(data_dir.join("control_port").to_string_lossy().to_string()))
             .flag(TorFlag::Hush())
-            .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination)));
+            .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination.to_string_lossy().to_string())));
 
         if socks_port == 0 {
             tor.flag(TorFlag::SocksPortAuto);

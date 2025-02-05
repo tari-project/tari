@@ -163,7 +163,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                             tokio::time::sleep(Duration::from_secs(1)).await;
                             process::exit(1)
                         } else {
-                            println!(" >> The liveness test failed to completet\n");
+                            println!(" >> The liveness test failed to complete\n");
                             break;
                         }
                     }
