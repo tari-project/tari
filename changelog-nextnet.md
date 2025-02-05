@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+### [1.11.2-rc.0](https://github.com/tari-project/tari/compare/v1.11.1-rc.1...v1.11.2-rc.0) (2025-02-05)
+
+
+### Features
+
+* add libtor exiting logic ([#6782](https://github.com/tari-project/tari/issues/6782)) ([eeee441](https://github.com/tari-project/tari/commit/eeee4416eb496ca351a4608642bee9c22529bc04))
+* add monerod fallback strategy ([#6764](https://github.com/tari-project/tari/issues/6764)) ([f5365ca](https://github.com/tari-project/tari/commit/f5365caed6b0e03559158c1556d1cf7f0b5e794a))
+* upgrade crossterm ([#6783](https://github.com/tari-project/tari/issues/6783)) ([3ad35af](https://github.com/tari-project/tari/commit/3ad35afe0355569e593eb552f2f90ff312f4e866))
+
+
+### Bug Fixes
+
+* validation trigger ([#6784](https://github.com/tari-project/tari/issues/6784)) ([2698a58](https://github.com/tari-project/tari/commit/2698a58ab0cd66b63ded602d6b0f605db5981e8c))
+
 ### [1.11.1-rc.1](https://github.com/tari-project/tari/compare/v1.11.1-rc.0...v1.11.1-rc.1) (2025-01-31)
 
 ### Bug Fixes
