@@ -266,7 +266,7 @@ where
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
-                let birthday_height_hash = match self.resources.db.get_wallet_type()? {
+                let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(_)) => {
                         let header_proto = client.get_header_by_height(0).await?;
                         let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
@@ -275,14 +275,14 @@ where
                             header_hash: header.hash(),
                         }
                     },
-                    _ => self.get_birthday_header_height_hash(&mut client).await?,
+                    _ => self.get_scanning_start_header_height_hash(&mut client).await?,
                 };
 
                 ScannedBlock {
-                    height: birthday_height_hash.height,
+                    height: scanning_start_height_hash.height,
                     num_outputs: None,
                     amount: None,
-                    header_hash: birthday_height_hash.header_hash,
+                    header_hash: scanning_start_height_hash.header_hash,
                     timestamp: Utc::now().naive_utc(),
                 }
             };
@@ -746,44 +746,46 @@ where
         peer
     }
 
-    async fn get_birthday_header_height_hash(
+    async fn get_scanning_start_header_height_hash(
         &self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
+        let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
+        let block_height_birthday = client
+            .get_height_at_time(epoch_time_birthday)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+                0
+            });
         // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
-        let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
-
-        let block_height = match client.get_height_at_time(epoch_time).await {
-            Ok(b) => b,
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Problem requesting `height_at_time` from Base Node: {}", e
-                );
+        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+        let block_height_scanning_start = client
+            .get_height_at_time(epoch_time_scanning_start)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
-            },
-        };
-        trace!(
-            target: LOG_TARGET,
-            "Wallet birthday: {}, epoch time: {}, block height: {}",
-            birthday,
-            epoch_time,
-            block_height
-        );
-        let header = client.get_header_by_height(block_height).await?;
+            });
+        let header = client.get_header_by_height(block_height_scanning_start).await?;
         let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
-        let header_hash = header.hash();
+        let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,
-            "Fresh wallet recovery/scanning starting at Block {} (Header Hash: {})",
-            block_height,
-            header_hash.to_hex(),
+            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', scanning \
+            from epoch time '{}' at block height '{}' with header hash '{}'",
+            birthday,
+            epoch_time_birthday,
+            block_height_birthday,
+            epoch_time_scanning_start,
+            block_height_scanning_start,
+            header_hash_scanning_start.to_hex(),
         );
         Ok(HeightHash {
-            height: block_height,
-            header_hash,
+            height: block_height_scanning_start,
+            header_hash: header_hash_scanning_start,
         })
     }
 }
