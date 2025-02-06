@@ -41,7 +41,7 @@ use crate::{
     common::{json_rpc, proxy},
     config::MergeMiningProxyConfig,
     error::MmProxyError,
-    proxy::{inner::InnerService, utils::parse_method_name},
+    proxy::{inner::InnerService, monerod_method::parse_monerod_rpc_method},
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::service";
@@ -63,6 +63,8 @@ impl MergeMiningProxyService {
     ) -> Result<Self, MmProxyError> {
         trace!(target: LOG_TARGET, "Config: {:?}", config);
         let consensus_manager = ConsensusManager::builder(config.network).build()?;
+        // Assign the slowest response monerod server as the last assigned monerod server
+        let last_assigned_monerod_url = config.monerod_url.last().cloned();
         Ok(Self {
             inner: InnerService {
                 config: Arc::new(config),
@@ -72,7 +74,7 @@ impl MergeMiningProxyService {
                 p2pool_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
-                last_assigned_monerod_url: Arc::new(RwLock::new(None)),
+                last_assigned_monerod_url: Arc::new(RwLock::new(last_assigned_monerod_url)),
                 monerod_cache_values: Arc::new(RwLock::new(None)),
                 randomx_factory,
                 consensus_manager,
@@ -112,11 +114,12 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                 },
             };
             let request = request.map(|_| bytes.freeze());
-            let method_name = parse_method_name(&request);
-            match inner.handle(&method_name, request).await {
+            let monerod_method = parse_monerod_rpc_method(request.method(), request.uri(), request.body());
+
+            match inner.handle(monerod_method, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", method_name, err);
+                    error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", monerod_method, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(

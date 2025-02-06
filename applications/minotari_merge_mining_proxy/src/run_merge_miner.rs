@@ -43,7 +43,7 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
-    config::{MergeMiningProxyConfig, MonerodFallback},
+    config::{MergeMiningProxyConfig, MonerodFallback, MONERO_FAIL_MAINNET_URL, TARI_MONEROD_SERVERS},
     error::MmProxyError,
     monero_fail::{get_monerod_info, order_and_select_monerod_info, MonerodEntry},
     proxy::service::MergeMiningProxyService,
@@ -67,6 +67,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
                 NUMBER_OF_MONEROD_SERVERS,
                 config.monerod_connection_timeout,
                 &config.monero_fail_url,
+                get_tari_monerod_entries(&config.monero_fail_url),
             )
             .await
             {
@@ -183,6 +184,25 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             println!();
             Err(err.into())
         },
+    }
+}
+
+pub(crate) fn get_tari_monerod_entries(monero_fail_url: &str) -> Vec<MonerodEntry> {
+    if monero_fail_url == MONERO_FAIL_MAINNET_URL {
+        TARI_MONEROD_SERVERS
+            .iter()
+            .map(|v| MonerodEntry {
+                address_type: "clear".to_string(),
+                url: v.to_string(),
+                network: "mainnet".to_string(),
+                up: true,
+                up_history: vec![true, true, true, true, true, true],
+                last_checked: "2 hours ago".to_string(),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
     }
 }
 

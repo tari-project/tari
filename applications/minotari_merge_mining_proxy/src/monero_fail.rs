@@ -65,6 +65,7 @@ pub async fn get_monerod_info(
     number_of_entries: usize,
     connection_test_timeout: Duration,
     monero_fail_url: &str,
+    tari_monerod_entries: Vec<MonerodEntry>,
 ) -> Result<Vec<MonerodEntry>, MmProxyError> {
     let document = get_monerod_html(monero_fail_url).await?;
     let table_structure = extract_table_structure(&document);
@@ -216,19 +217,25 @@ pub async fn get_monerod_info(
     });
     // Only retain non-tor and non-i2p nodes
     entries.retain(|entry| entry.address_type != *"tor" && entry.address_type != *"i2p");
-    // Give preference to nodes with the best height
-    entries.sort_by(|a, b| b.height.cmp(&a.height));
-    // Determine connection times - use slightly more nodes than requested
-    entries.truncate(number_of_entries + 10);
-
-    let entries = order_and_select_monerod_info(number_of_entries, connection_test_timeout, &entries).await?;
-
     if entries.is_empty() {
         return Err(MmProxyError::HtmlParseError(
             "No public monero servers available".to_string(),
         ));
     }
-    Ok(entries)
+    // Give preference to nodes with the best height - use slightly more nodes than requested
+    entries.sort_by(|a, b| b.height.cmp(&a.height));
+    entries.truncate(number_of_entries + 10);
+    // Insert Tari monerod entries at the beginning
+    let mut pre_ordered_entries = tari_monerod_entries;
+    pre_ordered_entries.extend(entries);
+    // Dedup entries (if the Tari monerod entries are already in the list)
+    pre_ordered_entries.sort_by(|a, b| a.url.cmp(&b.url));
+    pre_ordered_entries.dedup_by(|a, b| a.url == b.url);
+    // Determine connection times
+    let ordered_entries =
+        order_and_select_monerod_info(number_of_entries, connection_test_timeout, &pre_ordered_entries).await?;
+
+    Ok(ordered_entries)
 }
 
 pub async fn order_and_select_monerod_info(
@@ -242,13 +249,9 @@ pub async fn order_and_select_monerod_info(
             let start = std::time::Instant::now();
             if (timeout(connection_test_timeout, reqwest::get(url.clone())).await).is_ok() {
                 entry.response_time = Some(start.elapsed());
-                debug!(
-                    target: LOG_TARGET, "Response time '{:.2?}' for Monerod server at: {}",
-                    entry.response_time, url.as_str()
-                );
             } else {
                 debug!(
-                    target: LOG_TARGET, "Response time 'n/a' for Monerod server at: {}, timed out",
+                    target: LOG_TARGET, "Response for Monerod server at {}  timed out",
                     url.as_str()
                 );
             }
@@ -264,6 +267,14 @@ pub async fn order_and_select_monerod_info(
     });
     // Truncate to the requested number of entries
     entries.truncate(number_of_entries);
+    for entry in &mut entries {
+        if let Ok(url) = format!("{}/getheight", entry.url).parse::<Url>() {
+            debug!(
+                target: LOG_TARGET, "Response time '{:.2?}' for Monerod server at: {}",
+                entry.response_time, url.as_str()
+            );
+        }
+    }
     Ok(entries)
 }
 
@@ -345,6 +356,7 @@ mod test {
             order_and_select_monerod_info,
             MonerodEntry,
         },
+        run_merge_miner::get_tari_monerod_entries,
     };
 
     async fn get_monerod_info_if_online(
@@ -352,7 +364,14 @@ mod test {
         connection_test_timeout: Duration,
         monero_fail_url: &str,
     ) -> Vec<MonerodEntry> {
-        match get_monerod_info(number_of_entries, connection_test_timeout, monero_fail_url).await {
+        match get_monerod_info(
+            number_of_entries,
+            connection_test_timeout,
+            monero_fail_url,
+            get_tari_monerod_entries(monero_fail_url),
+        )
+        .await
+        {
             Ok(val) => val,
             Err(HtmlParseError(val)) => {
                 if val.contains("No public monero servers available") {

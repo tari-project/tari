@@ -58,7 +58,7 @@ use crate::{
     config::{MergeMiningProxyConfig, MonerodFallback},
     error::MmProxyError,
     proxy::{
-        monerod_method::{parse_monerod_rpc_method, MonerodMethod},
+        monerod_method::MonerodMethod,
         static_responses::{
             convert_static_monerod_response_to_hyper_response,
             self_select_submit_block_monerod_response,
@@ -608,27 +608,48 @@ impl InnerService {
         trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", server, server);
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_monerod_url(&self, request_uri: &Uri) -> Result<Option<Url>, MmProxyError> {
         if self.config.monerod_fallback == MonerodFallback::StaticOnly {
             return Ok(None);
         }
         // Return the previously qualified monerod URL if it exists
         let mut parse_error = None;
-        {
-            let lock = self
-                .current_monerod_server
-                .read()
-                .expect("Read lock should not fail")
-                .clone();
+        let mut busy_qualifying = 0;
+        let start_reading_lock_time = Instant::now();
+        loop {
+            let lock = {
+                self.current_monerod_server
+                    .read()
+                    .expect("Read lock should not fail")
+                    .clone()
+            };
             if let Some(server) = lock {
+                // Give some time for the server to be qualified
                 if server == BUSY_QUALIFYING {
-                    return Err(MmProxyError::ServersUnavailable(BUSY_QUALIFYING.to_string()));
+                    let time_lapsed = start_reading_lock_time.elapsed();
+                    if time_lapsed > self.config.monerod_connection_timeout {
+                        return Err(MmProxyError::ServersUnavailable(BUSY_QUALIFYING.to_string()));
+                    }
+                    trace!(
+                        target: LOG_TARGET,
+                        "Waiting for lock data ({} - {:.2?}), {}, {}",
+                        {busy_qualifying += 1; busy_qualifying}, time_lapsed, BUSY_QUALIFYING, request_uri.path()
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    continue;
                 }
+                // Parse the URL if qualifying is done
                 match format!("{}{}", server, request_uri.path()).parse::<Url>() {
                     Ok(url) => return Ok(Some(url)),
-                    Err(e) => parse_error = Some(e),
+                    Err(e) => {
+                        parse_error = Some(e);
+                        break;
+                    },
                 }
             }
+            // If no server is qualified, proceed with qualifying
+            break;
         }
         if let Some(e) = parse_error {
             self.clear_current_monerod_server_lock(None);
@@ -647,12 +668,13 @@ impl InnerService {
                 .clone();
             lock.unwrap_or_default()
         };
-        let pos = self
+        let mut pos = self
             .config
             .monerod_url
             .iter()
             .position(|x| x == &last_used_url)
             .unwrap_or(0);
+        pos = (pos + 1) % self.config.monerod_url.len();
         let (left, right) = self.config.monerod_url.split_at_checked(pos).ok_or_else(|| {
             self.clear_current_monerod_server_lock(None);
             MmProxyError::ConversionError("Invalid utf 8 url".to_string())
@@ -677,6 +699,17 @@ impl InnerService {
                 url.as_str(), pos + 1, self.config.monerod_url.len()
             );
             match timeout(self.config.monerod_connection_timeout, reqwest::get(url.clone())).await {
+                // For this availability check we deliberately do not provide the body of the request if it is a POST
+                // request and turns it into an invalid GET request. This is because we are only interested in the
+                // connection. A typical response of a monerod daemon upon an invalid POST request
+                // `https://<host>/json_rpc` would be:
+                //     "error": {
+                //         "code": -32600,
+                //         "message": "Invalid Request"
+                //     },
+                //     "id": 0,
+                //     "jsonrpc": "2.0"
+                // This approach is used to verify the server's availability without needing a valid request body.
                 Ok(response) => {
                     self.update_monerod_server_locks(server);
                     let data_len = match response {
@@ -723,6 +756,7 @@ impl InnerService {
         let request_id = json["id"].as_i64();
         let self_select_response = monerod_method == MonerodMethod::SubmitBlock && !self.config.submit_to_origin;
 
+        let start = Instant::now();
         let json_response = if let Some(monerod_url) = self.get_monerod_url(request.uri()).await? {
             let mut headers = request.headers().clone();
             // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
@@ -733,48 +767,49 @@ impl InnerService {
                     None => host.parse()?,
                 };
                 headers.insert("host", host);
-                debug!(
-                    target: LOG_TARGET,
-                    "Host header updated to match monerod_uri. Request headers: {:?}", headers
-                );
+                debug!(target: LOG_TARGET, "Host header updated to match monerod_uri. Request headers: {:?}", headers);
             }
             let mut builder = self
                 .http_client
                 .request(request.method().clone(), monerod_url.clone())
-                .headers(headers.clone());
+                .headers(headers.clone())
+                .timeout(self.config.monerod_connection_timeout);
 
             if self.config.monerod_use_auth {
                 // Use HTTP basic auth. This is the only reason we are using `reqwest` over the standard hyper client.
                 builder = builder.basic_auth(&self.config.monerod_username, Some(&self.config.monerod_password));
             }
 
-            debug!(
-                target: LOG_TARGET,
-                "[monerod] request: {} {}",
-                request.method(),
-                monerod_url,
-            );
+            debug!(target: LOG_TARGET, "[monerod] '{}' request: {} {}", monerod_method, request.method(), monerod_url);
 
             if self_select_response {
                 let accept_response = self_select_submit_block_monerod_response(request_id);
                 convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_url.clone()).await?
             } else {
-                let resp = match builder
-                    .body(body.clone())
-                    .send()
-                    .await
-                    .map_err(MmProxyError::MonerodRequestFailed)
+                // Send the request to the current monerod server
+                match timeout(
+                    self.config.monerod_connection_timeout,
+                    builder.body(body.clone()).send(),
+                )
+                .await
                 {
-                    Ok(val) => val,
-                    Err(e) => {
-                        debug!(target: LOG_TARGET, "[monerod] request '{}' response error '{}'", monerod_method, e);
-                        return Err(e);
+                    Ok(response) => match response.map_err(MmProxyError::MonerodRequestFailed) {
+                        Ok(val) => {
+                            let hyper_json_response = convert_reqwest_response_to_hyper_json_response(val).await?;
+                            self.update_monerod_cache_values(monerod_method, hyper_json_response.body())?;
+                            hyper_json_response
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "[monerod] '{}' request response '{}'", monerod_method, e);
+                            self.handle_monerod_error_response(monerod_method, request_id, e)?
+                        },
                     },
-                };
-
-                let hyper_json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
-                self.update_monerod_cache_values(monerod_method, hyper_json_response.body())?;
-                hyper_json_response
+                    Err(e) => {
+                        let err = MmProxyError::MonerodTimeout(e.to_string());
+                        warn!(target: LOG_TARGET, "[monerod] '{}' request response '{}'", monerod_method, err);
+                        self.handle_monerod_error_response(monerod_method, request_id, err)?
+                    },
+                }
             }
         } else if self_select_response {
             let accept_response = self_select_submit_block_monerod_response(request_id);
@@ -788,21 +823,45 @@ impl InnerService {
             convert_static_monerod_response_to_hyper_response(monerod_method, request_id, cache_values)?
         };
 
-        let rpc_status = if json_response.body()["error"].is_null() {
-            "ok"
-        } else {
-            json_response.body()["error"]["message"]
-                .as_str()
-                .unwrap_or("unknown error")
-        };
         debug!(
             target: LOG_TARGET,
-            "[monerod] response: status = {}, monerod_rpc = {}",
+            "[monerod] '{}' response status = {},{} response time: {}ms",
+            monerod_method,
             json_response.status(),
-            rpc_status
+            if json_response.body()["error"].is_null() {
+                "".to_string()
+            } else {
+                format!(" error = {},", json_response.body()["error"]["message"]
+                    .as_str()
+                    .unwrap_or("unknown error"))
+            },
+            start.elapsed().as_millis(),
         );
         trace!(target: LOG_TARGET, "[monerod] '{}' response '{:?}'", monerod_method, json_response);
         Ok((request, json_response))
+    }
+
+    fn handle_monerod_error_response(
+        &self,
+        monerod_method: MonerodMethod,
+        request_id: Option<i64>,
+        err: MmProxyError,
+    ) -> Result<Response<serde_json::Value>, MmProxyError> {
+        self.clear_current_monerod_server_lock(None);
+        if self.config.monerod_fallback == MonerodFallback::MonerodOnly {
+            Err(err)
+        } else {
+            let cache_values = self
+                .monerod_cache_values
+                .read()
+                .expect("Read lock should not fail")
+                .clone();
+            Ok(convert_static_monerod_response_to_hyper_response(
+                monerod_method,
+                request_id,
+                cache_values,
+            )?)
+        }
     }
 
     fn update_monerod_cache_values(
@@ -910,8 +969,9 @@ impl InnerService {
         monerod_resp: Response<json::Value>,
         monerod_method: MonerodMethod,
     ) -> Result<Response<Body>, MmProxyError> {
-        trace!(target: LOG_TARGET, "get_proxy_response: '{}'", monerod_method);
-        match monerod_method {
+        let start = Instant::now();
+        trace!(target: LOG_TARGET, "[get_proxy_response] '{}'", monerod_method);
+        let proxy_response = match monerod_method {
             MonerodMethod::GetHeight => self.handle_get_height(monerod_resp).await,
             MonerodMethod::GetBlockTemplate => self.handle_get_block_template(monerod_resp).await,
             MonerodMethod::SubmitBlock => {
@@ -927,65 +987,63 @@ impl InnerService {
                 // Simply return the response "as is"
                 Ok(proxy::into_body_from_response(monerod_resp))
             },
-        }
+        };
+        trace!(
+            target: LOG_TARGET,
+            "[get_proxy_response] '{}' response time: {}ms",
+            monerod_method, start.elapsed().as_millis()
+        );
+        proxy_response
     }
 
     pub(crate) async fn handle(
         self,
-        method_name: &str,
+        monerod_method: MonerodMethod,
         request: Request<Bytes>,
     ) -> Result<Response<Body>, MmProxyError> {
         let start = Instant::now();
 
         debug!(
             target: LOG_TARGET,
-            "request - method: {}, uri: {}, headers: {:?}, body: {}",
+            "[handle request] '{}' method: {}, uri: {}, headers: {:?}, body: {}",
+            monerod_method,
             request.method(),
             request.uri(),
             request.headers(),
             String::from_utf8_lossy(&request.body().clone()[..]),
         );
-        let monerod_method = parse_monerod_rpc_method(request.method(), request.uri(), request.body());
 
         match self.proxy_request_to_monerod(request, monerod_method).await {
             Ok((request, monerod_resp)) => {
                 // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
                 let monerod_status = monerod_resp.status();
                 if !monerod_status.is_success() {
-                    // we dont break on monerod returning an error code.
-                    warn!(target: LOG_TARGET, "Monerod returned an error: {}", monerod_resp.status());
-                    debug!(
-                        "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
-                        method_name,
-                        monerod_status,
-                        start.elapsed().as_millis()
+                    warn!(
+                        target: LOG_TARGET,
+                        "[handle request] '{}' monerod status: {}, response time: {}ms",
+                        monerod_method, monerod_resp.status(), start.elapsed().as_millis()
                     );
                     return Ok(monerod_resp.map(|json| json.to_string().into()));
                 }
 
                 match self.get_proxy_response(request, monerod_resp, monerod_method).await {
-                    Ok(response) => {
-                        debug!(
-                            "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
-                            method_name,
-                            monerod_status,
-                            response.status(),
-                            start.elapsed().as_millis()
-                        );
-                        Ok(response)
-                    },
+                    Ok(response) => Ok(response),
                     Err(e) => {
-                        error!(target: LOG_TARGET, "get_proxy_response: {}", e);
-                        // Monero Server encountered a problem processing the request, reset the current monerod server
-                        self.clear_current_monerod_server_lock(None);
+                        error!(
+                            target: LOG_TARGET,
+                            "[handle request] '{}' get_proxy_response error: {}, response time: {}ms",
+                            monerod_method, e, start.elapsed().as_millis()
+                        );
                         Err(e)
                     },
                 }
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "proxy_request_to_monerod: {}", e);
-                // Monero Server encountered a problem processing the request, reset the current monerod server
-                self.clear_current_monerod_server_lock(None);
+                error!(
+                    target: LOG_TARGET,
+                    "[handle request] '{}' proxy_request_to_monerod error: {}, response time: {}ms",
+                    monerod_method, e, start.elapsed().as_millis()
+                );
                 Err(e)
             },
         }
