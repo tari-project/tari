@@ -22,7 +22,6 @@
 
 use std::str::FromStr;
 
-use log::trace;
 use monero::{
     blockdata::{
         transaction,
@@ -361,7 +360,7 @@ pub(crate) fn convert_static_monerod_response_to_hyper_response(
     monerod_cache_values: Option<MonerodCacheValues>,
 ) -> Result<hyper::Response<serde_json::Value>, MmProxyError> {
     if let Some(cache_values) = monerod_cache_values.clone() {
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "[monerod] use static response for {}, req_id: {:?}, height: {:?}, prev_hash: {:?}, timestamp: {:?}, \
             seed_height: {:?}, seed_hash: {:?}",
@@ -373,7 +372,7 @@ pub(crate) fn convert_static_monerod_response_to_hyper_response(
             cache_values.seed_hash.map(hex::encode),
         );
     } else {
-        trace!(target: LOG_TARGET, "[monerod] use static response for {}, req_id: {:?}", method, req_id);
+        debug!(target: LOG_TARGET, "[monerod] use static response for {}, req_id: {:?}", method, req_id);
     }
     let static_response = get_static_monerod_response(method, req_id, monerod_cache_values)?;
 

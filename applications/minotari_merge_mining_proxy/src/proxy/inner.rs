@@ -567,9 +567,13 @@ impl InnerService {
         Ok(proxy::into_response(parts, &resp))
     }
 
-    fn clear_current_monerod_server_lock(&self, last_assigned_server: Option<&str>) {
+    fn clear_current_monerod_server_lock(&self, last_assigned_server: Option<&str>, force: bool) {
         // Current
         let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+        let current = lock.clone();
+        if !force && current.unwrap_or_default() == BUSY_QUALIFYING {
+            return;
+        }
         *lock = None;
         // Last assigned
         if let Some(server) = last_assigned_server {
@@ -643,7 +647,7 @@ impl InnerService {
                 match format!("{}{}", server, request_uri.path()).parse::<Url>() {
                     Ok(url) => return Ok(Some(url)),
                     Err(e) => {
-                        parse_error = Some(e);
+                        parse_error = Some((server, e));
                         break;
                     },
                 }
@@ -651,9 +655,13 @@ impl InnerService {
             // If no server is qualified, proceed with qualifying
             break;
         }
-        if let Some(e) = parse_error {
-            self.clear_current_monerod_server_lock(None);
-            return Err(e.into());
+        if let Some((server, err)) = parse_error {
+            return if format!("{}/getheight", server).parse::<Url>().is_ok() {
+                Err(MmProxyError::InvalidMonerodRequest(request_uri.path().to_string()))
+            } else {
+                self.clear_current_monerod_server_lock(None, true);
+                Err(err.into())
+            };
         }
 
         // Set the "busy qualifying" state
@@ -676,8 +684,8 @@ impl InnerService {
             .unwrap_or(0);
         pos = (pos + 1) % self.config.monerod_url.len();
         let (left, right) = self.config.monerod_url.split_at_checked(pos).ok_or_else(|| {
-            self.clear_current_monerod_server_lock(None);
-            MmProxyError::ConversionError("Invalid utf 8 url".to_string())
+            self.clear_current_monerod_server_lock(Some(self.config.monerod_url[0].as_str()), true);
+            MmProxyError::ConversionError("last_used_url".to_string())
         })?;
         let left = left.to_vec();
         let right = right.to_vec();
@@ -689,8 +697,13 @@ impl InnerService {
             let url = match format!("{}{}", server, request_uri.path()).parse::<Url>() {
                 Ok(val) => val,
                 Err(e) => {
-                    self.clear_current_monerod_server_lock(Some(server));
-                    return Err(e.into());
+                    return if format!("{}/getheight", server).parse::<Url>().is_ok() {
+                        self.clear_current_monerod_server_lock(Some(server), true);
+                        Err(MmProxyError::InvalidMonerodRequest(request_uri.path().to_string()))
+                    } else {
+                        self.clear_current_monerod_server_lock(Some(server), true);
+                        Err(e.into())
+                    }
                 },
             };
             let pos = self.config.monerod_url.iter().position(|x| x == server).unwrap_or(0);
@@ -729,7 +742,7 @@ impl InnerService {
                         "Monerod server unavailable (timeout in {:.2?}): {}",
                         start.elapsed(), url.as_str()
                     );
-                    self.clear_current_monerod_server_lock(Some(server));
+                    self.clear_current_monerod_server_lock(Some(server), true);
                     if self.config.monerod_fallback == MonerodFallback::StaticWhenMonerodFails {
                         return Ok(None);
                     }
@@ -738,7 +751,7 @@ impl InnerService {
         }
 
         // Clear the "busy qualifying" state
-        self.clear_current_monerod_server_lock(None);
+        self.clear_current_monerod_server_lock(None, true);
         Err(MmProxyError::ServersUnavailable(format!("{}", self.config.monerod_url)))
     }
 
@@ -847,7 +860,7 @@ impl InnerService {
         request_id: Option<i64>,
         err: MmProxyError,
     ) -> Result<Response<serde_json::Value>, MmProxyError> {
-        self.clear_current_monerod_server_lock(None);
+        self.clear_current_monerod_server_lock(None, false);
         if self.config.monerod_fallback == MonerodFallback::MonerodOnly {
             Err(err)
         } else {
