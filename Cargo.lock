@@ -4088,6 +4088,7 @@ dependencies = [
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",
  "monero",
+ "rand",
  "regex",
  "reqwest",
  "scraper",
