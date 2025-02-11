@@ -463,6 +463,7 @@ where B: BlockchainBackend + 'static
                     registration: vn.original_registration,
                     activation_epoch: vn.activation_epoch,
                     minimum_value_promise: vn.minimum_value_promise,
+                    shard_key: vn.shard_key,
                 }));
 
                 node_changes.extend(exit_validators.into_iter().map(|vn| ValidatorNodeChange::Remove {

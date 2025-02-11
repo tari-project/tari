@@ -644,11 +644,17 @@ impl TryFrom<grpc::ValidatorNodeChange> for ValidatorNodeChange {
                 let activation_epoch = VnEpoch(add.activation_epoch);
                 let registration = add.registration.ok_or("registration not provided")?.try_into()?;
                 let minimum_value_promise = MicroMinotari(add.minimum_value_promise);
+                if add.shard_key.len() != 32 {
+                    return Err(format!("shard_key length is not 32 (len:{})", add.shard_key.len()));
+                }
+                let mut shard_key = [0u8; 32];
+                shard_key.copy_from_slice(&add.shard_key);
 
                 Ok(ValidatorNodeChange::Add {
                     registration,
                     activation_epoch,
                     minimum_value_promise,
+                    shard_key,
                 })
             },
             grpc::validator_node_change::Change::Remove(remove) => {
@@ -666,11 +672,13 @@ impl From<&ValidatorNodeChange> for grpc::ValidatorNodeChange {
                 registration,
                 activation_epoch,
                 minimum_value_promise,
+                shard_key,
             } => Self {
                 change: Some(grpc::validator_node_change::Change::Add(grpc::ValidatorNodeChangeAdd {
                     activation_epoch: activation_epoch.as_u64(),
                     registration: Some(registration.into()),
                     minimum_value_promise: (*minimum_value_promise).into(),
+                    shard_key: shard_key.to_vec(),
                 })),
             },
             ValidatorNodeChange::Remove { public_key } => Self {
