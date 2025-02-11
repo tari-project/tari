@@ -503,6 +503,7 @@ message ValidatorNodeChangeAdd {
   uint64 activation_epoch = 1;
   ValidatorNodeRegistration registration = 2;
   uint64 minimum_value_promise = 3;
+  bytes shard_key = 4;
 }
 
 message ValidatorNodeChangeRemove {
