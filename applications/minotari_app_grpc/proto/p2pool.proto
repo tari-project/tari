@@ -39,9 +39,9 @@ message GetTipInfoResponse {
   uint64 node_height = 1;
   bytes node_tip_hash = 2;
   uint64 p2pool_rx_height = 3;
-  uint64 p2pool_rx_tip_hash = 4;
+  bytes p2pool_rx_tip_hash = 4;
   uint64 p2pool_sha_height = 5;
-  uint64 p2pool_sha_tip_hash = 6;
+  bytes p2pool_sha_tip_hash = 6;
 }
 
 message GetNewBlockRequest {
