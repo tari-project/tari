@@ -37,8 +37,6 @@ name: Build docker images - workflow_call/on-demand
         default: linux/amd64
 
 env:
-  LAUNCHPAD_REPO: tari-project/tari-launchpad
-  LAUNCHPAD_BRANCH: main
   DAYS_to_EXPIRE: 30
 
 permissions: {}
@@ -50,12 +48,8 @@ jobs:
       matrix: ${{ steps.set_matrix.outputs.matrix }}
 
     steps:
-      - name: checkout tari-launchpad
+      - name: checkout tari
         uses: actions/checkout@v4
-        with:
-          repository: ${{ env.LAUNCHPAD_REPO }}
-          ref: ${{ env.LAUNCHPAD_BRANCH }}
-          path: tari-launchpad
 
       - name: Set Matrix
         id: set_matrix
@@ -65,21 +59,21 @@ jobs:
           echo "Building with ${build_items}."
           if [ -z "${build_items}" ] || [ "${build_items}" = "minotari_all" ] ; then
             echo "Build all Minotari images"
-            matrix_selection=$( jq -s -c '.[]' tari-launchpad/tarisuite.json )
+            matrix_selection=$( jq -s -c '.[]' ./buildtools/docker_rig/tarisuite.json )
           elif [ "${build_items:0:9}" = "minotari_" ] ; then
             echo "Build only selected minotari images - ${build_items}"
             matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
-              | select(."image_name"==$jsonVar)]' tari-launchpad/tarisuite.json )
+              | select(."image_name"==$jsonVar)]' ./buildtools/docker_rig/tarisuite.json )
           elif [ "${build_items}" = "all" ] ; then
             echo "Build all images"
-            matrix_selection=$( jq -c '. += input' tari-launchpad/tarisuite.json tari-launchpad/3rdparty.json )
+            matrix_selection=$( jq -c '. += input' ./buildtools/docker_rig/tarisuite.json ./buildtools/docker_rig/3rdparty.json )
           elif [ "${build_items:0:8}" = "3rdparty" ] ; then
             echo "Build only 3rdparty images - ${build_items}"
-            matrix_selection=$( jq -s -c '.[]' tari-launchpad/3rdparty.json )
+            matrix_selection=$( jq -s -c '.[]' ./buildtools/docker_rig/3rdparty.json )
           else
             echo "Build only selected 3rdparty images - ${build_items}"
             matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
-              | select(."image_name"==$jsonVar)]' tari-launchpad/3rdparty.json )
+              | select(."image_name"==$jsonVar)]' ./buildtools/docker_rig/3rdparty.json )
           #  "!! Broken selection? !!"
           #  exit 1
           fi
@@ -108,21 +102,12 @@ jobs:
     steps:
       - name: checkout tari
         uses: actions/checkout@v4
-        with:
-          path: tari
-
-      - name: checkout tari-launchpad
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.LAUNCHPAD_REPO }}
-          ref: ${{ env.LAUNCHPAD_BRANCH }}
-          path: tari-launchpad
 
       - name: Declare TestNet for tags
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          source tari/buildtools/multinet_envs.sh ${{github.ref_name}}
+          source ./buildtools/multinet_envs.sh ${{github.ref_name}}
           echo ${TARI_NETWORK}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
           echo ${TARI_TARGET_NETWORK}
@@ -140,7 +125,7 @@ jobs:
           IMAGE_NAME=${{ matrix.builds.image_name }}
           if [ -z "${{ inputs.version }}" ] ; then
             echo "Get tari version"
-            TARI_SOURCE_ROOT="tari/"
+            TARI_SOURCE_ROOT="./"
             VAPP=$(awk -F ' = ' '$1 ~ /^version/ \
               { gsub(/["]/, "", $2); printf("%s",$2) }' \
               "${TARI_SOURCE_ROOT}/applications/minotari_node/Cargo.toml")
@@ -163,18 +148,16 @@ jobs:
           fi
           if [ "${IMAGE_NAME:0:9}" = "minotari_" ] ; then
             echo "Minotari builds"
-            mkdir -p tari/buildtools/docker_rig
-            cp -v tari-launchpad/docker_rig/start_tari_app.sh tari/buildtools/docker_rig/start_tari_app.sh
             echo "DOCKERFILE=tarilabs" >> $GITHUB_ENV
             echo "APP_NAME=${{ matrix.builds.app_name }}" >> $GITHUB_ENV
             echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
-            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ] ; then
+            if [ -f "./buildtools/docker_rig/${IMAGE_NAME}.Dockerfile" ] ; then
               echo "DOCKERFILE=${IMAGE_NAME}" >> $GITHUB_ENV
               SUBTAG=$(awk -v search="^ARG ${IMAGE_NAME^^}?_VERSION=" -F '=' '$0 ~ search \
                 { gsub(/["]/, "", $2); printf("%s",$2) }' \
-                "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile")
+                "./buildtools/docker_rig/${IMAGE_NAME}.Dockerfile")
               echo "Docker subtag - ${SUBTAG}"
               echo "VERSION=${SUBTAG}_${VERSION}" >> $GITHUB_ENV
               echo "DOCKER_SUBTAG=--build-arg ${IMAGE_NAME^^}_VERSION=${SUBTAG}" >> $GITHUB_ENV
@@ -226,8 +209,8 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v6
         with:
-          context: ./tari/
-          file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
+          context: .
+          file: ./buildtools/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
           platforms: ${{ inputs.platforms }}
           push: true
           provenance: false
