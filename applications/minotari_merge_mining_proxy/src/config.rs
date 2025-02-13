@@ -177,7 +177,7 @@ impl Default for MergeMiningProxyConfig {
             range_proof_type: RangeProofType::RevealedValue,
             p2pool_enabled: false,
             monerod_fallback: Default::default(),
-            monerod_connection_timeout: Duration::from_secs(2),
+            monerod_connection_timeout: Duration::from_secs(105),
         }
     }
 }

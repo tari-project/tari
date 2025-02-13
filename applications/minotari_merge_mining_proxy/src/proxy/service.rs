@@ -52,7 +52,7 @@ pub struct MergeMiningProxyService {
 }
 
 impl MergeMiningProxyService {
-    pub fn new(
+    pub fn try_create(
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
         base_node_client: BaseNodeGrpcClient,

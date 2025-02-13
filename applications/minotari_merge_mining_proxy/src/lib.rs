@@ -24,7 +24,7 @@
 minotari_app_utilities::deny_non_64_bit_archs!();
 
 mod block_template_data;
-mod block_template_protocol;
+mod block_template_manager;
 mod cli;
 pub use cli::Cli;
 mod common;

@@ -34,7 +34,7 @@ use tokio::sync::RwLock;
 use tracing::trace;
 
 use crate::{
-    block_template_protocol::{FinalBlockTemplateData, NewBlockTemplateData},
+    block_template_manager::{FinalBlockTemplateData, NewBlockTemplateData},
     error::MmProxyError,
 };
 
@@ -118,18 +118,15 @@ impl BlockTemplateRepository {
     }
 
     /// Store [FinalBlockTemplateData] at the hash value if the key does not exist.
-    pub async fn save_final_block_template_if_key_unique(
-        &self,
-        merge_mining_hash: Vec<u8>,
-        block_template: FinalBlockTemplateData,
-    ) {
+    pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
+        let merge_mining_hash = block_template.aux_chain_mr.to_vec();
         let mut b = self.blocks.write().await;
-        b.entry(merge_mining_hash.clone()).or_insert_with(|| {
-            trace!(
-                target: LOG_TARGET,
-                "Saving final block template with merge mining hash: {:?}",
-                hex::encode(&merge_mining_hash)
-            );
+        b.entry(merge_mining_hash).or_insert_with(|| {
+            // trace!(
+            //     target: LOG_TARGET,
+            //     "Saving final block template with merge mining hash: {:?}",
+            //     hex::encode(&merge_mining_hash)
+            // );
             BlockRepositoryItem::new(block_template)
         });
     }
@@ -323,7 +320,7 @@ pub mod test {
     use tari_utilities::ByteArray;
 
     use super::*;
-    use crate::block_template_protocol::AuxChainMr;
+    use crate::block_template_manager::AuxChainMr;
 
     fn create_block_template_data() -> FinalBlockTemplateData {
         let header = BlockHeader::new(100);
