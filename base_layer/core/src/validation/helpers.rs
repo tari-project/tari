@@ -60,6 +60,8 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, ValidationError> {
+    let mut timestamps: Vec<EpochTime> = timestamps.to_vec();
+    timestamps.sort();
     trace!(
         target: LOG_TARGET,
         "Calculate the median timestamp from {} timestamps",
@@ -111,6 +113,11 @@ pub fn check_header_timestamp_greater_than_median(
             block_header.timestamp,
             median_timestamp,
             block_header.hash().to_hex()
+        );
+        warn!(
+            target: LOG_TARGET,
+            "{:?}",
+            timestamps
         );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp(format!(
