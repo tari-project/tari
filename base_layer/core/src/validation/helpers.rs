@@ -114,11 +114,6 @@ pub fn check_header_timestamp_greater_than_median(
             median_timestamp,
             block_header.hash().to_hex()
         );
-        warn!(
-            target: LOG_TARGET,
-            "{:?}",
-            timestamps
-        );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp(format!(
                 "The timestamp `{}` was less than the median timestamp `{}`",
