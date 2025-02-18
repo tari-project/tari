@@ -2891,7 +2891,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     if n < MIGRATION_VERSION {
         // Add migrations here
         if n < 2 {
-        let txn = db.write_transaction()?;
+            let txn = db.write_transaction()?;
             info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
             txn.commit()?;
