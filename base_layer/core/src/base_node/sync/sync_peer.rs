@@ -25,6 +25,7 @@ use std::{
     fmt::{Display, Formatter},
     time::Duration,
 };
+
 use primitive_types::U256;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;

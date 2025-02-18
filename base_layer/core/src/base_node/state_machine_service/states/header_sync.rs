@@ -61,9 +61,8 @@ impl HeaderSyncState {
                     (None, Some(_)) => Ordering::Greater,
                     (Some(la), Some(lb)) => la.cmp(&lb),
                 }
-            }
-        }
-        );
+            },
+        });
         Self {
             sync_peers,
             is_synced: false,
