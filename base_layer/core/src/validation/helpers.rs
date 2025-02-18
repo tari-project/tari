@@ -566,7 +566,7 @@ mod test {
             assert_eq!(median_timestamp, 3.into());
 
             let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
-            assert_eq!(median_timestamp, 100.into());
+            assert_eq!(median_timestamp, 0.into());
 
             let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 2.into());
