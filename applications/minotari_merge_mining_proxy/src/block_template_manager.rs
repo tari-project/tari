@@ -158,9 +158,6 @@ impl BlockTemplateManager<'_> {
                             loop_count += 1;
                             continue;
                         }
-                        // return Err(MmProxyError::FailedToGetBlockTemplate(
-                        // "mempool not in sync".to_string(),
-                        // ));
                     }
                     val
                 },

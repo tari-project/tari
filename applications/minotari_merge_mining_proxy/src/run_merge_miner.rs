@@ -117,7 +117,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .timeout(Duration::from_secs(10))
         .user_agent(agent)
         .tcp_keepalive(Duration::from_secs(60))
-        // .pool_max_idle_per_host(25)
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
