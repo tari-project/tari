@@ -136,24 +136,8 @@ impl InnerService {
                     details: "get_tip_info failed".to_string(),
                 }
             })?;
-            let height = result
-                .get_ref()
-                .metadata
-                .as_ref()
-                .map(|meta| meta.best_block_height)
-                .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
         }
-        // if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
-        //     self.initial_sync_achieved
-        //         .store(result.get_ref().initial_sync_achieved, Ordering::SeqCst);
-        //     debug!(
-        //         target: LOG_TARGET,
-        //         "Minotari base node initial sync status change to {}",
-        //         result.get_ref().initial_sync_achieved
-        //     );
-        // }
-
-        info!(
+                info!(
             target: LOG_TARGET,
             "Monero height = #{}, Minotari base node height = #{}, P2pool height: #{}", monero_height, base_node_height, p2pool_height
         );

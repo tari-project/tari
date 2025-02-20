@@ -121,14 +121,8 @@ impl BlockTemplateRepository {
     pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
         let merge_mining_hash = block_template.aux_chain_mr.to_vec();
         let mut b = self.blocks.write().await;
-        b.entry(merge_mining_hash).or_insert_with(|| {
-            // trace!(
-            //     target: LOG_TARGET,
-            //     "Saving final block template with merge mining hash: {:?}",
-            //     hex::encode(&merge_mining_hash)
-            // );
-            BlockRepositoryItem::new(block_template)
-        });
+        b.entry(merge_mining_hash)
+            .or_insert_with(|| BlockRepositoryItem::new(block_template));
     }
 
     /// Store [NewBlockTemplate] at the hash value if the key does not exist.
@@ -359,10 +353,9 @@ pub mod test {
         let hash2 = vec![2; 32];
         let hash3 = vec![3; 32];
         let block_template = create_block_template_data();
-        btr.save_final_block_template_if_key_unique(hash1.clone(), block_template.clone())
+        btr.save_final_block_template_if_key_unique(block_template.clone())
             .await;
-        btr.save_final_block_template_if_key_unique(hash2.clone(), block_template)
-            .await;
+        btr.save_final_block_template_if_key_unique(block_template).await;
         assert!(btr.get_final_template(hash1.clone()).await.is_some());
         assert!(btr.get_final_template(hash2.clone()).await.is_some());
         assert!(btr.get_final_template(hash3.clone()).await.is_none());
