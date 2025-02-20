@@ -49,12 +49,19 @@ pub struct HeaderSyncState {
 impl HeaderSyncState {
     pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
         // Sort by latency lowest to highest
-        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
-            (None, None) => Ordering::Equal,
+        sync_peers.sort_by(|a, b| match a.claimed_difficulty().cmp(&b.claimed_difficulty()) {
+            Ordering::Less => Ordering::Less,
             // No latency goes to the end
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(la), Some(lb)) => la.cmp(&lb),
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => {
+                match (a.latency(), b.latency()) {
+                    (None, None) => Ordering::Equal,
+                    // No latency goes to the end
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (Some(la), Some(lb)) => la.cmp(&lb),
+                }
+            },
         });
         Self {
             sync_peers,

@@ -2873,12 +2873,12 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 1;
+    const MIGRATION_VERSION: u64 = 2;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
-    let n = match val {
+    let mut n = match val {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
@@ -2890,8 +2890,17 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
 
     if n < MIGRATION_VERSION {
         // Add migrations here
-        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+        if n < 2 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
+            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+            n = 2;
+        }
+
         let txn = db.write_transaction()?;
+        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
         lmdb_replace(
             &txn,
             &db.metadata_db,

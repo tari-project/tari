@@ -26,6 +26,7 @@ use std::{
     time::Duration,
 };
 
+use primitive_types::U256;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 
@@ -44,6 +45,10 @@ impl SyncPeer {
 
     pub fn claimed_chain_metadata(&self) -> &ChainMetadata {
         self.peer_metadata.claimed_chain_metadata()
+    }
+
+    pub fn claimed_difficulty(&self) -> U256 {
+        self.peer_metadata.claimed_chain_metadata().accumulated_difficulty()
     }
 
     pub fn latency(&self) -> Option<Duration> {
