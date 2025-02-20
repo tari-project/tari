@@ -159,7 +159,6 @@ impl InnerService {
 
         json["height"] = json!(reported_height as i64);
         json["hash"] = json!(&(hash).to_hex());
-        dbg!(&json);
         Ok(proxy::into_response(parts, &json))
     }
 
@@ -471,8 +470,6 @@ impl InnerService {
                 "miner_reward": block_reward + total_fees,
             }),
         );
-
-        dbg!(&monerod_resp);
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
         Ok(proxy::into_response(parts, &monerod_resp))
@@ -1068,7 +1065,6 @@ impl InnerService {
         request: Request<Bytes>,
     ) -> Result<Response<Body>, MmProxyError> {
         let start = Instant::now();
-        dbg!("Call", &monerod_method);
         debug!(
             target: LOG_TARGET,
             "[handle request] '{}' method: {}, uri: {}, headers: {:?}, body: {}",
