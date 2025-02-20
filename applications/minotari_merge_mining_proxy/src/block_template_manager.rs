@@ -133,12 +133,6 @@ impl BlockTemplateManager<'_> {
             },
         };
 
-        let height = block
-            .block
-            .as_ref()
-            .map(|b| b.header.as_ref().map(|h| h.height).unwrap_or_default())
-            .unwrap_or_default();
-
         let miner_data = block
             .miner_data
             .as_ref()
