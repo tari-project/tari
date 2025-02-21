@@ -12,6 +12,7 @@ use digest::{
 use crate::tari_crypto::commitment_factory::PedersenCommitmentFactory;
 use crate::tari_crypto::commitment_and_public_key_signature::CommitmentAndPublicKeySignature;
 use crate::tari_crypto::hashing::DomainSeparatedHasher;
+use tari_utilities::ByteArray;
 
 
 

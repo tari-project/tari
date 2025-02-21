@@ -126,3 +126,16 @@ impl PartialEq for PedersenCommitment {
 
 impl Eq for PedersenCommitment {}
 
+impl borsh::BorshDeserialize for PedersenCommitment {
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, borsh::io::Error>
+    where R: borsh::io::Read {
+        Ok(Self(RistrettoPublicKey::deserialize_reader(reader)?))
+    }
+}
+
+impl borsh::BorshSerialize for PedersenCommitment {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        self.0.serialize(writer)
+    }
+}
+

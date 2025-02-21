@@ -122,6 +122,21 @@ impl RistrettoSecretKey  {
 
 }
 
+impl borsh::BorshSerialize for RistrettoSecretKey {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.as_bytes(), writer)
+    }
+}
+
+impl borsh::BorshDeserialize for RistrettoSecretKey {
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, borsh::io::Error>
+    where R: borsh::io::Read {
+        let bytes: Zeroizing<Vec<u8>> = Zeroizing::new(borsh::BorshDeserialize::deserialize_reader(reader)?);
+        Self::from_canonical_bytes(bytes.as_slice())
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidInput, e.to_string()))
+    }
+}
+
 //-------------------------------------  Ristretto Secret Key ByteArray  ---------------------------------------------//
 
 impl ByteArray for RistrettoSecretKey {
@@ -330,7 +345,7 @@ impl RistrettoPublicKey {
     }
 
     pub(super) fn compressed(&self) -> &CompressedRistretto {
-        &self.point.compress()
+        &self.compressed
     }
 
     /// Generates a new Public key from the given secret key
@@ -350,6 +365,21 @@ impl RistrettoPublicKey {
 
     pub fn key_length() -> usize {
         Self::KEY_LEN
+    }
+}
+
+impl borsh::BorshSerialize for RistrettoPublicKey {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.as_bytes(), writer)
+    }
+}
+
+impl borsh::BorshDeserialize for RistrettoPublicKey {
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, borsh::io::Error>
+    where R: borsh::io::Read {
+        let bytes: Vec<u8> = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        Self::from_canonical_bytes(bytes.as_slice())
+            .map_err(|e| borsh::io::Error::new(borsh::io::ErrorKind::InvalidInput, e.to_string()))
     }
 }
 

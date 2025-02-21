@@ -221,17 +221,17 @@ fn get_script_signature(
         &factory,
     ) {
         Ok(sig) => Ok(sig),
-        Err(e) => {
-
+        Err(_e) => {
+            let error_string = "Invalid Challange".to_string();
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
-                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
             }
 
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
-                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .text(&format!("Signing error: {}", error_string))
                     .show(false);
             }
             Err(AppSW::ScriptSignatureFail)

@@ -10,6 +10,7 @@ use ledger_device_sdk::nbgl::NbglStatus;
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
+use tari_utilities::ByteArray;
 
 
 use crate::{
@@ -76,17 +77,17 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
 
     let signature = match RistrettoSchnorr::sign_raw_uniform(&private_key, private_nonce.clone(), &challenge_bytes) {
         Ok(sig) => sig,
-        Err(e) => {
-
+        Err(_e) => {
+            let error_string = "Invalid Challange".to_string();
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
-                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
             }
 
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
-                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .text(&format!("Signing error: {}", error_string))
                     .show(false);
             }
             return Err(AppSW::RawSchnorrSignatureFail);
@@ -139,17 +140,17 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
     let signature =
         match CheckSigSchnorrSignature::sign_with_nonce_and_message(&private_key, random_nonce, &nonce_bytes) {
             Ok(sig) => sig,
-            Err(e) => {
-
+            Err(_e) => {
+                let error_string = "Invalid Challange".to_string();
                 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
                 {
-                    SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                    SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
                 }
 
                 #[cfg(any(target_os = "stax", target_os = "flex"))]
                 {
                     NbglStatus::new()
-                        .text(&format!("Signing error: {:?}", e.to_string()))
+                        .text(&format!("Signing error: {}", error_string))
                         .show(false);
                 }
                 return Err(AppSW::SchnorrSignatureFail);
