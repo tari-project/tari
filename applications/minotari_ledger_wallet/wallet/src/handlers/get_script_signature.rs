@@ -6,21 +6,19 @@ use alloc::format;
 use blake2::Blake2b;
 use digest::consts::U64;
 use ledger_device_sdk::io::Comm;
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey,
-    ristretto::{
-        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
-        RistrettoComAndPubSig,
-        RistrettoPublicKey,
-        RistrettoSecretKey,
-    },
-};
-use tari_hashing::TransactionHashDomain;
+use crate::tari_crypto::keys::RistrettoPublicKey;
+use crate::tari_crypto::keys::RistrettoSecretKey;
+use crate::tari_crypto::commitment::PedersenCommitment;
+use crate::tari_crypto::commitment_and_public_key_signature::CommitmentAndPublicKeySignature;
+use crate::utils::TransactionHashDomain;
+use crate::tari_crypto::commitment_factory::PedersenCommitmentFactory;
+
 
 use crate::{
     alloc::string::ToString,
@@ -35,10 +33,12 @@ use crate::{
 pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 168 {
+
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Invalid data length").show(false);
@@ -79,10 +79,12 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
 pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 184 {
+
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Invalid data length").show(false);
@@ -175,15 +177,17 @@ fn get_script_signature(
     script_public_key: RistrettoPublicKey,
     commitment: PedersenCommitment,
     script_message: [u8; 32],
-) -> Result<RistrettoComAndPubSig, AppSW> {
+) -> Result<CommitmentAndPublicKeySignature, AppSW> {
     let r_a = get_random_nonce()?;
     let r_x = get_random_nonce()?;
     let r_y = get_random_nonce()?;
     if r_a == r_x || r_a == r_y || r_x == r_y {
+
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Nonces not unique").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Nonces not unique").show(false);
@@ -191,7 +195,7 @@ fn get_script_signature(
         return Err(AppSW::ScriptSignatureFail);
     }
 
-    let factory = ExtendedPedersenCommitmentFactory::default();
+    let factory = PedersenCommitmentFactory::default();
 
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&r_y);
@@ -206,7 +210,7 @@ fn get_script_signature(
         &script_message,
     );
 
-    match RistrettoComAndPubSig::sign(
+    match CommitmentAndPublicKeySignature::sign(
         &value,
         &commitment_private_key,
         &script_private_key,
@@ -218,10 +222,12 @@ fn get_script_signature(
     ) {
         Ok(sig) => Ok(sig),
         Err(e) => {
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()

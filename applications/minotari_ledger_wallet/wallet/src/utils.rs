@@ -6,22 +6,22 @@ use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
+use crate::tari_crypto::hashing::DomainSeparatedHasher;
+
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::{MessageScroller, SingleMessage};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     random::LedgerRng,
 };
+use tari_utilities::ByteArray;
+
+use crate::tari_crypto::keys::RistrettoSecretKey;
 use rand_core::RngCore;
-use tari_crypto::{
-    hashing::DomainSeparatedHasher,
-    keys::SecretKey,
-    ristretto::RistrettoSecretKey,
-    tari_utilities::ByteArray,
-};
-use tari_hashing::{KeyManagerTransactionsHashDomain, LedgerHashDomain};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -30,6 +30,14 @@ use crate::{
     KeyType,
     BIP32_COIN_TYPE,
 };
+use crate::hash_domain;
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);
 
 /// BIP32 path stored as an array of [`u32`].
 ///
@@ -203,11 +211,13 @@ pub fn derive_from_bip32_key(
         Err(e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 SingleMessage::new(&msg).show_and_wait();
                 SingleMessage::new(&e).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new().text(&msg).show(false);
@@ -223,6 +233,7 @@ pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<Ristret
     match RistrettoSecretKey::from_uniform_bytes(bytes.as_ref()) {
         Ok(val) => Ok(val),
         Err(e) => {
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!(
@@ -233,6 +244,7 @@ pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<Ristret
                 .event_loop();
                 SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -253,6 +265,7 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!(
@@ -263,6 +276,7 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
                 .event_loop();
                 SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -303,11 +317,13 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     match RistrettoSecretKey::from_uniform_bytes(&raw_bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
                 SingleMessage::new(&e.to_string()).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -319,3 +335,7 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
         },
     }
 }
+
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
+
+

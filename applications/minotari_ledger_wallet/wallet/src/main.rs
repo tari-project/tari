@@ -6,7 +6,7 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-
+mod tari_crypto;
 mod hashing;
 pub mod utils;
 
@@ -36,9 +36,11 @@ use handlers::{
     get_version::handler_get_version,
     get_view_key::handler_get_view_key,
 };
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::io::Event;
 use ledger_device_sdk::io::{ApduHeader, Comm, Reply, StatusWords};
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::{init_comm, NbglHomeAndSettings, StatusType};
 #[cfg(feature = "pending_review_screen")]
@@ -178,6 +180,7 @@ impl TryFrom<ApduHeader> for Instruction {
     }
 }
 
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 fn show_status_and_home_if_needed(
     ins: &Instruction,
@@ -207,6 +210,7 @@ extern "C" fn sample_main() {
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
         // Initialize reference to Comm instance for NBGL
@@ -219,8 +223,10 @@ extern "C" fn sample_main() {
     };
 
     loop {
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         let ins: Instruction = comm.next_command();
+
 
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         let ins = if let Event::Command(ins) = ui_menu_main(&mut comm) {
@@ -239,6 +245,7 @@ extern "C" fn sample_main() {
                 sw
             },
         };
+
 
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut home);

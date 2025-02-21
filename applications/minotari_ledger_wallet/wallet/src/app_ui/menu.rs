@@ -3,18 +3,23 @@
 
 use include_gif::include_gif;
 use ledger_device_sdk::io::Comm;
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::io::Event;
+
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::{NbglGlyph, NbglHomeAndSettings};
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::{
     bitmaps::{Glyph, BACK, CERTIFICATE, DASHBOARD_X},
     gadgets::{EventOrPageIndex, MultiPageMenu, Page},
 };
 
+
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use crate::Instruction;
+
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 fn ui_about_menu(comm: &mut Comm) -> Event<Instruction> {
@@ -30,6 +35,7 @@ fn ui_about_menu(comm: &mut Comm) -> Event<Instruction> {
         }
     }
 }
+
 
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
@@ -51,6 +57,7 @@ pub fn ui_menu_main(comm: &mut Comm) -> Event<Instruction> {
         }
     }
 }
+
 
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 pub fn ui_menu_main(_: &mut Comm) -> NbglHomeAndSettings {
