@@ -192,7 +192,6 @@ impl RistrettoSecretKey {
     const KEY_LEN: usize = 32;
     const WIDE_REDUCTION_LEN: usize = 64;
 
-
     /// Get the multiplicative inverse of a nonzero secret key
     /// If zero is passed, returns `None`; annoying, but a useful guardrail
     pub fn invert(&self) -> Option<Self> {
@@ -332,13 +331,6 @@ impl RistrettoPublicKey {
         RistrettoPublicKey::new_from_pk(pk)
     }
 
-    fn batch_mul(scalars: &[RistrettoSecretKey], points: &[Self]) -> Self {
-        let p = points.iter().map(|p| &p.point);
-        let s = scalars.iter().map(|k| &k.0);
-        let p = RistrettoPoint::multiscalar_mul(s, p);
-        RistrettoPublicKey::new_from_pk(p)
-    }
-
     pub fn key_length() -> usize {
         Self::KEY_LEN
     }
@@ -362,14 +354,10 @@ impl borsh::BorshDeserialize for RistrettoPublicKey {
 impl Zeroize for RistrettoPublicKey {
     /// Zeroizes both the point and (if it exists) the compressed point
     fn zeroize(&mut self) {
-
         self.point.zeroize();
         self.compressed.zeroize();
     }
 }
-
-/// A generator point on the Ristretto curve
-pub struct RistrettoGeneratorPoint;
 
 // Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
 impl Hashable for RistrettoPublicKey {

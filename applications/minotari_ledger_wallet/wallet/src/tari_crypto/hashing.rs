@@ -2,14 +2,7 @@ use alloc::{format, string::String};
 use core::marker::PhantomData;
 
 use blake2::{Blake2b, Blake2bVar};
-use digest::{
-    Digest,
-    FixedOutput,
-    FixedOutputReset,
-    Output,
-    OutputSizeUser,
-    Update,
-};
+use digest::{Digest, FixedOutput, FixedOutputReset, Output, OutputSizeUser, Update};
 
 use crate::hashing::DomainSeparatedHash;
 
@@ -117,7 +110,6 @@ impl<D: Digest, M: DomainSeparation> DomainSeparatedHasher<D, M> {
         let output = self.inner.finalize();
         DomainSeparatedHash::new(output)
     }
-
 }
 
 impl<D: Digest, M: DomainSeparation> PartialEq for DomainSeparatedHasher<D, M> {
@@ -149,7 +141,6 @@ impl<TInnerDigest: FixedOutput, TDomain: DomainSeparation> FixedOutput
         self.inner.finalize_into(out);
     }
 }
-
 
 // Implements Digest so that it can be used for other crates
 impl<TInnerDigest: Digest + FixedOutputReset, TDomain: DomainSeparation> Digest
