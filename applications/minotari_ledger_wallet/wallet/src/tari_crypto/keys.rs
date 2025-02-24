@@ -188,19 +188,10 @@ impl fmt::Debug for RistrettoSecretKey {
     }
 }
 
-/// A secret key that can be printed with `Debug` or `Display`.
-pub struct RevealedSecretKey<'a> {
-    secret: &'a RistrettoSecretKey,
-}
-
 impl RistrettoSecretKey {
     const KEY_LEN: usize = 32;
     const WIDE_REDUCTION_LEN: usize = 64;
 
-    /// Make a secret key printable.
-    pub fn reveal(&self) -> RevealedSecretKey<'_> {
-        RevealedSecretKey { secret: self }
-    }
 
     /// Get the multiplicative inverse of a nonzero secret key
     /// If zero is passed, returns `None`; annoying, but a useful guardrail

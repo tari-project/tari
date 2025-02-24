@@ -3,7 +3,6 @@ use core::marker::PhantomData;
 
 use blake2::{Blake2b, Blake2bVar};
 use digest::{
-    consts::{U32, U64},
     Digest,
     FixedOutput,
     FixedOutputReset,
@@ -119,10 +118,6 @@ impl<D: Digest, M: DomainSeparation> DomainSeparatedHasher<D, M> {
         DomainSeparatedHash::new(output)
     }
 
-    // pub fn digest(mut self, data: &[u8]) -> DomainSeparatedHash<D> {
-    //     self.update(data);
-    //     self.finalize()
-    // }
 }
 
 impl<D: Digest, M: DomainSeparation> PartialEq for DomainSeparatedHasher<D, M> {
@@ -132,24 +127,6 @@ impl<D: Digest, M: DomainSeparation> PartialEq for DomainSeparatedHasher<D, M> {
 }
 
 impl<D: Digest, M: DomainSeparation> Eq for DomainSeparatedHasher<D, M> {}
-//
-/// Convert a finalized hash into a fixed size buffer.
-// pub trait AsFixedBytes<const I: usize>: AsRef<[u8]> {
-//     /// A convenience function to convert a finalized hash into a fixed size buffer.
-//     fn as_fixed_bytes(&self) -> Result<[u8; I], SliceError> {
-//         let hash_vec = self.as_ref();
-//         if hash_vec.is_empty() || hash_vec.len() < I {
-//             let hash_vec_length = if hash_vec.is_empty() { 0 } else { hash_vec.len() };
-//             return Err(SliceError::CopyFromSlice {
-//                 target: I,
-//                 provided: hash_vec_length,
-//             });
-//         }
-//         let mut buffer: [u8; I] = [0; I];
-//         buffer.copy_from_slice(&hash_vec[..I]);
-//         Ok(buffer)
-//     }
-// }
 
 impl<TInnerDigest: OutputSizeUser, TDomain: DomainSeparation> OutputSizeUser
     for DomainSeparatedHasher<TInnerDigest, TDomain>
@@ -173,12 +150,6 @@ impl<TInnerDigest: FixedOutput, TDomain: DomainSeparation> FixedOutput
     }
 }
 
-// impl<D: FixedOutputReset, M: DomainSeparation> DomainSeparatedHasher<D, M> {
-//     /// Finalize and reset the hasher and return the hash result.
-//     pub fn finalize_into_reset(&mut self, out: &mut Output<Self>) {
-//         self.inner.finalize_into_reset(out);
-//     }
-// }
 
 // Implements Digest so that it can be used for other crates
 impl<TInnerDigest: Digest + FixedOutputReset, TDomain: DomainSeparation> Digest
@@ -238,19 +209,6 @@ impl<TInnerDigest: Digest + FixedOutputReset, TDomain: DomainSeparation> Digest
     }
 }
 
-//----------------------------------------       Extra marker traits      ----------------------------------------------
-
-/// A marker trait for Digest algorithms that are not susceptible to length-extension attacks.
-///
-/// Notably, the SHA-2 family does *not* have this trait.
-// pub trait LengthExtensionAttackResistant {}
-//
-// impl LengthExtensionAttackResistant for Blake2bVar {}
-//
-// impl LengthExtensionAttackResistant for Blake2b<U32> {}
-//
-// impl LengthExtensionAttackResistant for Blake2b<U64> {}
-
 //------------------------------------------------    HMAC  ------------------------------------------------------------
 /// A domain separation tag for use in MAC derivation algorithms.
 pub struct MacDomain;
@@ -287,14 +245,3 @@ macro_rules! hash_domain {
         hash_domain!($name, $domain, 1);
     };
 }
-//
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub enum SliceError {
-//     /// The requested fixed slice length exceeds the available slice length
-//     CopyFromSlice {
-//         /// The requested fixed slice length
-//         target: usize,
-//         /// The available slice length
-//         provided: usize,
-//     },
-// }
