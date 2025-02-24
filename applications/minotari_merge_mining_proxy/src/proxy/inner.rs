@@ -137,6 +137,14 @@ impl InnerService {
                     details: "get_tip_info failed".to_string(),
                 }
             })?;
+            let res = result.into_inner();
+
+            base_node_height = res.metadata.as_ref().map(|m| m.best_block_height).unwrap_or_default();
+            base_node_hash = res
+                .metadata
+                .as_ref()
+                .map(|m| m.best_block_hash.clone())
+                .unwrap_or_default();
         }
         info!(
             target: LOG_TARGET,
