@@ -95,9 +95,15 @@ pub enum CommandError {
     #[error("gRPC TLS cert error {0}")]
     GrpcTlsError(#[from] GrpcTlsError),
     #[error("Invalid signature: `{0}`")]
-    FailedSignature(#[from] SchnorrSignatureError),
+    FailedSignature(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+}
+
+impl From<SchnorrSignatureError> for CommandError {
+    fn from(err: SchnorrSignatureError) -> Self {
+        CommandError::FailedSignature(err.to_string())
+    }
 }
 
 impl From<HexError> for CommandError {

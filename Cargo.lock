@@ -2793,14 +2793,15 @@ dependencies = [
 
 [[package]]
 name = "hidapi"
-version = "1.5.0"
+version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "798154e4b6570af74899d71155fb0072d5b17e6aa12f39c8ef22c60fb8ec99e7"
+checksum = "03b876ecf37e86b359573c16c8366bc3eba52b689884a0fc42ba3f67203d2a8b"
 dependencies = [
  "cc",
+ "cfg-if",
  "libc",
  "pkg-config",
- "winapi",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -3527,20 +3528,20 @@ dependencies = [
 
 [[package]]
 name = "ledger-apdu"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe435806c197dfeaa5efcded5e623c4b8230fd28fdf1e91e7a86e40ef2acbf90"
+checksum = "c21ffd28d97c9252671ab2ebe7078c9fa860ff3c5a125039e174d25ec6872169"
 dependencies = [
  "arrayref",
  "no-std-compat",
- "snafu",
+ "snafu 0.8.5",
 ]
 
 [[package]]
 name = "ledger-transport"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1117f2143d92c157197785bf57711d7b02f2cfa101e162f8ca7900fb7f976321"
+checksum = "c2f18de77d956a030dbc5869ced47d404bbd641216ef2f9dce7ca90833ca64ff"
 dependencies = [
  "async-trait",
  "ledger-apdu",
@@ -3548,8 +3549,8 @@ dependencies = [
 
 [[package]]
 name = "ledger-transport"
-version = "0.10.0"
-source = "git+https://github.com/Zondax/ledger-rs?rev=20e2a20#20e2a2076d799d449ff6f07eb0128548b358d9bc"
+version = "0.11.0"
+source = "git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c#4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c"
 dependencies = [
  "async-trait",
  "ledger-apdu",
@@ -3557,14 +3558,14 @@ dependencies = [
 
 [[package]]
 name = "ledger-transport-hid"
-version = "0.10.0"
-source = "git+https://github.com/Zondax/ledger-rs?rev=20e2a20#20e2a2076d799d449ff6f07eb0128548b358d9bc"
+version = "0.11.0"
+source = "git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c#4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c"
 dependencies = [
  "byteorder",
  "cfg-if",
  "hex",
  "hidapi",
- "ledger-transport 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ledger-transport 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc",
  "log",
  "thiserror 1.0.69",
@@ -4049,7 +4050,7 @@ version = "1.11.5-pre.0"
 dependencies = [
  "borsh",
  "dialoguer 0.11.0",
- "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs?rev=20e2a20)",
+ "ledger-transport 0.11.0 (git+https://github.com/Zondax/ledger-rs?rev=4ed4cfdef0ae8b40e8997d849a3262bcf00c7d3c)",
  "ledger-transport-hid",
  "log",
  "minotari_ledger_wallet_common",
@@ -6519,7 +6520,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4de37ad025c587a29e8f3f5605c00f70b98715ef90b9061a815b9e59e9042d6"
 dependencies = [
  "doc-comment",
- "snafu-derive",
+ "snafu-derive 0.7.5",
+]
+
+[[package]]
+name = "snafu"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "223891c85e2a29c3fe8fb900c1fae5e69c2e42415e3177752e8718475efa5019"
+dependencies = [
+ "snafu-derive 0.8.5",
 ]
 
 [[package]]
@@ -6532,6 +6542,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03c3c6b7927ffe7ecaa769ee0e3994da3b8cafc8f444578982c83ecb161af917"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.90",
 ]
 
 [[package]]
@@ -7180,7 +7202,7 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "sha3",
- "snafu",
+ "snafu 0.7.5",
  "subtle",
  "tari_bulletproofs_plus",
  "tari_utilities",
@@ -7460,7 +7482,7 @@ dependencies = [
  "newtype-ops",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.7.5",
  "subtle",
  "zeroize",
 ]
