@@ -24,7 +24,6 @@ use subtle::ConstantTimeEq;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, Hashable};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-
 macro_rules! define_add_variants {
     (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
         impl<'b> Add<&'b $rhs> for $lhs {
@@ -372,10 +371,8 @@ impl borsh::BorshDeserialize for RistrettoPublicKey {
 impl Zeroize for RistrettoPublicKey {
     /// Zeroizes both the point and (if it exists) the compressed point
     fn zeroize(&mut self) {
-        // This destructuring is to trigger a compiler error on future updates!
-        let Self { point, compressed } = self;
 
-        point.zeroize();
+        self.point.zeroize();
         self.compressed.zeroize();
     }
 }

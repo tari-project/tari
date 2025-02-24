@@ -62,7 +62,6 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
     }
 }
 
-
 #[derive(Clone)]
 struct WriteHashWrapper<D>(D);
 

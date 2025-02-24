@@ -1,7 +1,6 @@
 // Copyright 2025. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-
 use core::{
     cmp::Ordering,
     hash::{Hash, Hasher},
@@ -23,7 +22,6 @@ use crate::{
     },
 };
 
-
 hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
 
 /// An error occurred during construction of a SchnorrSignature
@@ -32,7 +30,6 @@ hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
 pub enum SchnorrSignatureError {
     InvalidChallenge,
 }
-
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
@@ -58,7 +55,6 @@ where H: DomainSeparation
     fn calc_signature_verifier(&self) -> RistrettoPublicKey {
         RistrettoPublicKey::from_secret_key(&self.signature)
     }
-
 
     pub fn sign_raw_uniform<'a>(
         secret: &'a RistrettoSecretKey,

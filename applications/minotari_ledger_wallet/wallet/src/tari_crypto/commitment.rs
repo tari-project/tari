@@ -1,11 +1,8 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-
-
 use core::{
     cmp::Ordering,
-    convert::TryFrom,
     hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };

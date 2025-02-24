@@ -20,7 +20,6 @@ pub const TARI_H: CompressedRistretto = CompressedRistretto([
 ]);
 pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
 
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
 pub struct PedersenCommitmentFactory {
