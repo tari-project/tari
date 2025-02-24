@@ -4058,6 +4058,7 @@ dependencies = [
  "serde",
  "tari_common",
  "tari_common_types",
+ "tari_crypto",
  "tari_script",
  "tari_utilities",
  "thiserror 1.0.69",

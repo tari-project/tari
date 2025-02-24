@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
-use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
 use semver::Version;
 use tari_common::configuration::Network;
@@ -57,7 +56,7 @@ pub enum ScriptSignatureKey {
 
 /// Verify that the ledger application is working properly.
 pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
-    static VERIFIED: Lazy<Mutex<Option<Result<(), LedgerDeviceError>>>> = Lazy::new(|| Mutex::new(None));
+    static VERIFIED: LazyLock<Mutex<Option<Result<(), LedgerDeviceError>>>> = LazyLock::new(|| Mutex::new(None));
     if let Ok(mut verified) = VERIFIED.try_lock() {
         if verified.is_none() {
             match verify() {
