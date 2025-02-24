@@ -42,7 +42,7 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
-    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder, BlockTemplateRepository},
+    block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
     common::merge_mining,
     config::MergeMiningProxyConfig,
     error::MmProxyError,
@@ -225,28 +225,6 @@ impl BlockTemplateManager<'_> {
         let miner_data = miner_data.ok_or(MmProxyError::GrpcResponseMissingField("miner_data"))?;
         let template = template.ok_or(MmProxyError::GrpcResponseMissingField("new_block_template"))?;
         Ok(NewBlockTemplateData { template, miner_data })
-    }
-
-    /// Check if the height is more than the actual tip. So if still makes sense to compute block for that height.
-    async fn check_expected_tip(&mut self, height: u64) -> Result<bool, MmProxyError> {
-        let tip = self
-            .base_node_client
-            .clone()
-            .get_tip_info(grpc::Empty {})
-            .await?
-            .into_inner();
-        let tip_height = tip.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0);
-
-        if height <= tip_height {
-            warn!(
-                target: LOG_TARGET,
-                "Base node received next block (height={}) that has invalidated the block template (height={})",
-                tip_height,
-                height
-            );
-            return Ok(false);
-        }
-        Ok(true)
     }
 
     /// Get coinbase transaction for the [template](NewBlockTemplateData).

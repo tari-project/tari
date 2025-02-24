@@ -2900,7 +2900,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
         }
 
         let txn = db.write_transaction()?;
-        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+        info!(target: LOG_TARGET, "Migrated database to version {}", n);
         lmdb_replace(
             &txn,
             &db.metadata_db,

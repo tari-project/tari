@@ -114,8 +114,8 @@ impl InnerService {
 
         let monero_height = json["height"].as_u64().unwrap_or_default();
         let monero_hash: Vec<u8> = Hex::from_hex(json["hash"].as_str().unwrap_or_default()).unwrap_or_default();
-        let mut base_node_height = 0;
-        let mut base_node_hash = vec![];
+        let base_node_height;
+        let base_node_hash;
         let mut p2pool_height = 0;
         let mut p2pool_hash = vec![];
 
