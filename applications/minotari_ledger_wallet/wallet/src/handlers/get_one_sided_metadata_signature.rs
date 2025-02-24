@@ -9,20 +9,11 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
-use crate::tari_crypto::commitment_factory::PedersenCommitmentFactory;
-use crate::tari_crypto::commitment_and_public_key_signature::CommitmentAndPublicKeySignature;
-use crate::tari_crypto::hashing::DomainSeparatedHasher;
-use tari_utilities::ByteArray;
-
-
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use include_gif::include_gif;
 use ledger_device_sdk::io::Comm;
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::{Field, NbglGlyph, NbglReview, NbglStatus};
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::{
     bitmaps::{CROSSMARK, EYE, VALIDATE_14},
@@ -33,24 +24,31 @@ use minotari_ledger_wallet_common::{
     tari_dual_address_display,
     TARI_DUAL_ADDRESS_SIZE,
 };
-use crate::utils::TransactionHashDomain;
-use crate::tari_crypto::commitment::PedersenCommitment;
-use crate::utils::KeyManagerTransactionsHashDomain;
-
-use crate::tari_crypto::keys::RistrettoPublicKey;
-
+use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
-use crate::tari_crypto::keys::RistrettoSecretKey;
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_random_nonce},
+    tari_crypto::{
+        commitment::PedersenCommitment,
+        commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
+        commitment_factory::PedersenCommitmentFactory,
+        hashing::DomainSeparatedHasher,
+        keys::{RistrettoPublicKey, RistrettoSecretKey},
+    },
+    utils::{
+        derive_from_bip32_key,
+        get_key_from_canonical_bytes,
+        get_key_from_uniform_bytes,
+        get_random_nonce,
+        KeyManagerTransactionsHashDomain,
+        TransactionHashDomain,
+    },
     AppSW,
     KeyType,
     RESPONSE_VERSION,
 };
-
 
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
@@ -84,7 +82,6 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
         Ok(address) => address,
         Err(e) => {
-
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
@@ -165,7 +162,6 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
             Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?,
             Err(e) => {
-
                 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
                 {
                     SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();

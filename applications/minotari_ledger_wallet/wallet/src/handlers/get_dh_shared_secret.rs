@@ -4,18 +4,15 @@
 use core::ops::Deref;
 
 use ledger_device_sdk::io::Comm;
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
-use crate::tari_crypto::keys::RistrettoPublicKey;
-
 
 use crate::{
+    tari_crypto::keys::RistrettoPublicKey,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,
@@ -25,7 +22,6 @@ use crate::{
 pub fn handler_get_dh_shared_secret(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 56 {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();

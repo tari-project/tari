@@ -4,25 +4,21 @@
 use alloc::format;
 
 use ledger_device_sdk::io::Comm;
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_utilities::ByteArray;
 
-
 use crate::{
     alloc::string::ToString,
+    hash_domain,
+    tari_crypto::schnorr::SchnorrSignature,
     utils::{derive_from_bip32_key, get_random_nonce},
     AppSW,
     KeyType,
     RESPONSE_VERSION,
-    hash_domain,
 };
-use crate::tari_crypto::schnorr::SchnorrSignature;
-
 
 hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
 hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
@@ -31,11 +27,9 @@ hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
 pub type CheckSigSchnorrSignature = SchnorrSignature<CheckSigHashDomain>;
 pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 
-
 pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 104 {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();
@@ -105,7 +99,6 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
 pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 56 {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();

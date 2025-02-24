@@ -9,21 +9,22 @@ use core::{
     cmp::Ordering,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::{Add},
+    ops::Add,
 };
-use crate::hashing::DomainSeparatedHash;
-use crate::tari_crypto::hashing::DomainSeparation;
-
-use crate::hash_domain;
-use crate::tari_crypto::keys::RistrettoPublicKey;
-use crate::tari_crypto::keys::RistrettoSecretKey;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
 use rand_core::{CryptoRng, RngCore};
 use tari_utilities::ByteArray;
-use crate::tari_crypto::hashing::DomainSeparatedHasher;
 
+use crate::{
+    hash_domain,
+    hashing::DomainSeparatedHash,
+    tari_crypto::{
+        hashing::{DomainSeparatedHasher, DomainSeparation},
+        keys::{RistrettoPublicKey, RistrettoSecretKey},
+    },
+};
 
 // Define a default hashing domain for Schnorr signatures
 // You almost certainly want to define your own that is specific to signature context!
@@ -77,8 +78,11 @@ where H: DomainSeparation
     /// different message.
     ///
     /// If you aren't sure that you can meet these requirements, and want a simple and safe API, use [`sign`].
-    pub fn sign_raw_uniform<'a>(secret: &'a RistrettoSecretKey, nonce: RistrettoSecretKey, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
-  {
+    pub fn sign_raw_uniform<'a>(
+        secret: &'a RistrettoSecretKey,
+        nonce: RistrettoSecretKey,
+        challenge: &[u8],
+    ) -> Result<Self, SchnorrSignatureError> {
         // s = r + e.k
         let e = match RistrettoSecretKey::from_uniform_bytes(challenge) {
             Ok(e) => e,
@@ -100,8 +104,11 @@ where H: DomainSeparation
     /// different message.
     ///
     /// If you aren't sure that you can meet these requirements, and want a simple and safe API, use [`sign`].
-    pub fn sign_raw_canonical<'a>(secret: &'a RistrettoSecretKey, nonce: RistrettoSecretKey, challenge: &[u8]) -> Result<Self, SchnorrSignatureError>
- {
+    pub fn sign_raw_canonical<'a>(
+        secret: &'a RistrettoSecretKey,
+        nonce: RistrettoSecretKey,
+        challenge: &[u8],
+    ) -> Result<Self, SchnorrSignatureError> {
         // s = r + e.k
         let e = match RistrettoSecretKey::from_canonical_bytes(challenge) {
             Ok(e) => e,
@@ -171,9 +178,7 @@ where H: DomainSeparation
     /// message was signed by the secret key corresponding to the given public key, and that the challenge was
     /// constructed using the domain-separation method defined in [`construct_domain_separated_challenge`].
     pub fn verify<'a, B>(&self, public_key: &'a RistrettoPublicKey, message: B) -> bool
-    where
-        B: AsRef<[u8]>,
-    {
+    where B: AsRef<[u8]> {
         let challenge =
             Self::construct_domain_separated_challenge::<_, Blake2b<U64>>(&self.public_nonce, public_key, message);
         self.verify_raw_uniform(public_key, challenge.as_ref())
@@ -181,8 +186,7 @@ where H: DomainSeparation
 
     /// Verifies a signature against a given public key and challenge byte slice.
     /// The byte slice is converted to a scalar using wide reduction.
-    pub fn verify_raw_uniform<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool
-    {
+    pub fn verify_raw_uniform<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool {
         let e = match RistrettoSecretKey::from_uniform_bytes(challenge) {
             Ok(e) => e,
             Err(_) => return false,
@@ -192,8 +196,7 @@ where H: DomainSeparation
 
     /// Verifies a signature against a given public key and challenge byte slice.
     /// The byte slice is converted to a scalar assuming a canonical representation.
-    pub fn verify_raw_canonical<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool
-    {
+    pub fn verify_raw_canonical<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool {
         let e = match RistrettoSecretKey::from_canonical_bytes(challenge) {
             Ok(e) => e,
             Err(_) => return false,
@@ -202,8 +205,11 @@ where H: DomainSeparation
     }
 
     /// Returns true if this signature is valid for a public key and challenge scalar, otherwise false.
-    pub fn verify_challenge_scalar<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &RistrettoSecretKey) -> bool
-    {
+    pub fn verify_challenge_scalar<'a>(
+        &self,
+        public_key: &'a RistrettoPublicKey,
+        challenge: &RistrettoSecretKey,
+    ) -> bool {
         // Reject a zero key
         if public_key == &RistrettoPublicKey::default() {
             return false;
@@ -258,8 +264,7 @@ where H: DomainSeparation
     }
 }
 
-impl<H> Ord for SchnorrSignature<H>
-{
+impl<H> Ord for SchnorrSignature<H> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.public_nonce.cmp(&other.public_nonce) {
             Ordering::Equal => self.signature.as_bytes().cmp(other.signature.as_bytes()),
@@ -268,26 +273,21 @@ impl<H> Ord for SchnorrSignature<H>
     }
 }
 
-impl<H> PartialOrd for SchnorrSignature<H>
-{
+impl<H> PartialOrd for SchnorrSignature<H> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<H> Eq for SchnorrSignature<H>
-{
-}
+impl<H> Eq for SchnorrSignature<H> {}
 
-impl<H> PartialEq for SchnorrSignature<H>
-{
+impl<H> PartialEq for SchnorrSignature<H> {
     fn eq(&self, other: &Self) -> bool {
         self.public_nonce.eq(&other.public_nonce) && self.signature.eq(&other.signature)
     }
 }
 
-impl<H> Hash for SchnorrSignature<H>
-{
+impl<H> Hash for SchnorrSignature<H> {
     fn hash<T: Hasher>(&self, state: &mut T) {
         self.public_nonce.hash(state);
         self.signature.hash(state);

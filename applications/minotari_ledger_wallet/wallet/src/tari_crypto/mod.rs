@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod hashing;
-pub mod keys;
 pub mod commitment;
-pub mod schnorr;
 pub mod commitment_and_public_key_signature;
 pub mod commitment_factory;
+pub mod hashing;
+pub mod keys;
+pub mod schnorr;

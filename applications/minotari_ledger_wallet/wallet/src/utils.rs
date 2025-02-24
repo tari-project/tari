@@ -6,31 +6,26 @@ use core::ops::Deref;
 
 use blake2::Blake2b;
 use digest::{consts::U64, Digest};
-use crate::tari_crypto::hashing::DomainSeparatedHasher;
-
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::{MessageScroller, SingleMessage};
 use ledger_device_sdk::{
     ecc::{bip32_derive, make_bip32_path, CurvesId, CxError},
     random::LedgerRng,
 };
-use tari_utilities::ByteArray;
-
-use crate::tari_crypto::keys::RistrettoSecretKey;
 use rand_core::RngCore;
+use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
+    hash_domain,
+    tari_crypto::{hashing::DomainSeparatedHasher, keys::RistrettoSecretKey},
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
 };
-use crate::hash_domain;
 
 hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
 hash_domain!(
@@ -233,7 +228,6 @@ pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<Ristret
     match RistrettoSecretKey::from_uniform_bytes(bytes.as_ref()) {
         Ok(val) => Ok(val),
         Err(e) => {
-
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!(
@@ -265,7 +259,6 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
     match T::from_canonical_bytes(bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!(
@@ -317,7 +310,6 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
     match RistrettoSecretKey::from_uniform_bytes(&raw_bytes) {
         Ok(val) => Ok(val),
         Err(e) => {
-
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
@@ -337,5 +329,3 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
 }
 
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
-
-

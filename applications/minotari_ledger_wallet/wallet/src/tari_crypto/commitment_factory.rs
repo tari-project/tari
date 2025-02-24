@@ -4,16 +4,20 @@
 //! Pedersen commitment types and factories for Ristretto
 
 use curve25519_dalek::{
-    ristretto::RistrettoPoint,
+    constants::RISTRETTO_BASEPOINT_POINT,
+    ristretto::{CompressedRistretto, RistrettoPoint},
     traits::{Identity, MultiscalarMul},
 };
-use curve25519_dalek::ristretto::CompressedRistretto;
-use crate::tari_crypto::keys::RistrettoSecretKey;
-use crate::tari_crypto::commitment::PedersenCommitment;
-use crate::tari_crypto::keys::RistrettoPublicKey;
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
-pub const TARI_H: CompressedRistretto = CompressedRistretto([206, 56, 152, 65, 192, 200, 105, 138, 185, 91, 112, 36, 42, 238, 166, 72, 64, 177, 234, 197, 246, 68, 183, 208, 8, 172, 5, 135, 207, 71, 29, 112]);
+use crate::tari_crypto::{
+    commitment::PedersenCommitment,
+    keys::{RistrettoPublicKey, RistrettoSecretKey},
+};
+
+pub const TARI_H: CompressedRistretto = CompressedRistretto([
+    206, 56, 152, 65, 192, 200, 105, 138, 185, 91, 112, 36, 42, 238, 166, 72, 64, 177, 234, 197, 246, 68, 183, 208, 8,
+    172, 5, 135, 207, 71, 29, 112,
+]);
 pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
 
 /// Generates Pederson commitments `k.G + v.H` using the provided base
@@ -42,12 +46,11 @@ impl Default for PedersenCommitmentFactory {
 }
 
 impl PedersenCommitmentFactory {
-
     #[allow(non_snake_case)]
     pub fn commit(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenCommitment {
         // If we're using the default generators, speed it up using pre-computation tables
         let c = if (self.G, self.H) == (RISTRETTO_PEDERSEN_G, ristretto_pedersen_h()) {
-                RistrettoPoint::multiscalar_mul(&[v.0, k.0], &[self.H, self.G])
+            RistrettoPoint::multiscalar_mul(&[v.0, k.0], &[self.H, self.G])
         } else {
             RistrettoPoint::multiscalar_mul(&[v.0, k.0], &[self.H, self.G])
         };

@@ -5,22 +5,23 @@ use alloc::vec::Vec;
 use core::{
     cmp::Ordering,
     hash::{Hash, Hasher},
-    ops::{Add,},
+    ops::Add,
 };
-use tari_utilities::ByteArray;
-use crate::tari_crypto::commitment::PedersenCommitment;
-use crate::tari_crypto::keys::RistrettoPublicKey;
-use crate::tari_crypto::keys::RistrettoSecretKey;
-use crate::tari_crypto::schnorr::SchnorrSignature;
-use crate::tari_crypto::commitment_factory::PedersenCommitmentFactory;
 
+use tari_utilities::ByteArray;
+
+use crate::tari_crypto::{
+    commitment::PedersenCommitment,
+    commitment_factory::PedersenCommitmentFactory,
+    keys::{RistrettoPublicKey, RistrettoSecretKey},
+    schnorr::SchnorrSignature,
+};
 
 /// An error when creating a commitment signature
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommitmentAndPublicKeySignatureError {
     InvalidChallenge,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CommitmentAndPublicKeySignature {
@@ -31,10 +32,15 @@ pub struct CommitmentAndPublicKeySignature {
     pub(crate) u_y: RistrettoSecretKey,
 }
 
-impl CommitmentAndPublicKeySignature
-{
+impl CommitmentAndPublicKeySignature {
     /// Creates a new [CommitmentSignature]
-    pub fn new(ephemeral_commitment: PedersenCommitment, ephemeral_pubkey: RistrettoPublicKey, u_a: RistrettoSecretKey, u_x: RistrettoSecretKey, u_y: RistrettoSecretKey) -> Self {
+    pub fn new(
+        ephemeral_commitment: PedersenCommitment,
+        ephemeral_pubkey: RistrettoPublicKey,
+        u_a: RistrettoSecretKey,
+        u_x: RistrettoSecretKey,
+        u_y: RistrettoSecretKey,
+    ) -> Self {
         CommitmentAndPublicKeySignature {
             ephemeral_commitment,
             ephemeral_pubkey,
@@ -56,9 +62,8 @@ impl CommitmentAndPublicKeySignature
         r_x: &RistrettoSecretKey,
         r_y: &RistrettoSecretKey,
         challenge: &[u8],
-        factory:  &PedersenCommitmentFactory,
-    ) -> Result<Self, CommitmentAndPublicKeySignatureError>
-    {
+        factory: &PedersenCommitmentFactory,
+    ) -> Result<Self, CommitmentAndPublicKeySignatureError> {
         // The challenge is computed by wide reduction
         let e = match RistrettoSecretKey::from_uniform_bytes(challenge) {
             Ok(e) => e,
@@ -86,9 +91,16 @@ impl CommitmentAndPublicKeySignature
         Ok(Self::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y))
     }
 
-
     /// Get the signature tuple `(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y)`
-    pub fn complete_signature_tuple(&self) -> (&PedersenCommitment, &RistrettoPublicKey, &RistrettoSecretKey, &RistrettoSecretKey, &RistrettoSecretKey) {
+    pub fn complete_signature_tuple(
+        &self,
+    ) -> (
+        &PedersenCommitment,
+        &RistrettoPublicKey,
+        &RistrettoSecretKey,
+        &RistrettoSecretKey,
+        &RistrettoSecretKey,
+    ) {
         (
             &self.ephemeral_commitment,
             &self.ephemeral_pubkey,
@@ -135,8 +147,7 @@ impl CommitmentAndPublicKeySignature
     }
 }
 
-impl<'a, 'b> Add<&'b CommitmentAndPublicKeySignature> for &'a CommitmentAndPublicKeySignature
-{
+impl<'a, 'b> Add<&'b CommitmentAndPublicKeySignature> for &'a CommitmentAndPublicKeySignature {
     type Output = CommitmentAndPublicKeySignature;
 
     fn add(self, rhs: &'b CommitmentAndPublicKeySignature) -> CommitmentAndPublicKeySignature {
@@ -156,8 +167,7 @@ impl<'a, 'b> Add<&'b CommitmentAndPublicKeySignature> for &'a CommitmentAndPubli
     }
 }
 
-impl<'a> Add<CommitmentAndPublicKeySignature> for &'a CommitmentAndPublicKeySignature
-{
+impl<'a> Add<CommitmentAndPublicKeySignature> for &'a CommitmentAndPublicKeySignature {
     type Output = CommitmentAndPublicKeySignature;
 
     fn add(self, rhs: CommitmentAndPublicKeySignature) -> CommitmentAndPublicKeySignature {
@@ -177,8 +187,7 @@ impl<'a> Add<CommitmentAndPublicKeySignature> for &'a CommitmentAndPublicKeySign
     }
 }
 
-impl<'a, 'b> Add<&'b SchnorrSignature> for &'a CommitmentAndPublicKeySignature
-{
+impl<'a, 'b> Add<&'b SchnorrSignature> for &'a CommitmentAndPublicKeySignature {
     type Output = CommitmentAndPublicKeySignature;
 
     fn add(self, rhs: &'b SchnorrSignature) -> CommitmentAndPublicKeySignature {
@@ -198,8 +207,7 @@ impl<'a, 'b> Add<&'b SchnorrSignature> for &'a CommitmentAndPublicKeySignature
     }
 }
 
-impl<'a> Add<SchnorrSignature> for &'a CommitmentAndPublicKeySignature
-{
+impl<'a> Add<SchnorrSignature> for &'a CommitmentAndPublicKeySignature {
     type Output = CommitmentAndPublicKeySignature;
 
     fn add(self, rhs: SchnorrSignature) -> CommitmentAndPublicKeySignature {
@@ -219,8 +227,7 @@ impl<'a> Add<SchnorrSignature> for &'a CommitmentAndPublicKeySignature
     }
 }
 
-impl Default for CommitmentAndPublicKeySignature
-{
+impl Default for CommitmentAndPublicKeySignature {
     fn default() -> Self {
         CommitmentAndPublicKeySignature::new(
             PedersenCommitment::default(),
@@ -234,8 +241,7 @@ impl Default for CommitmentAndPublicKeySignature
 
 /// Provide a canonical ordering for commitment signatures. We use byte representations of all values in this order:
 /// `ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y`
-impl Ord for CommitmentAndPublicKeySignature
-{
+impl Ord for CommitmentAndPublicKeySignature {
     fn cmp(&self, other: &Self) -> Ordering {
         let mut compare = self.ephemeral_commitment().cmp(other.ephemeral_commitment());
         if compare != Ordering::Equal {
@@ -261,15 +267,13 @@ impl Ord for CommitmentAndPublicKeySignature
     }
 }
 
-impl PartialOrd for CommitmentAndPublicKeySignature
-{
+impl PartialOrd for CommitmentAndPublicKeySignature {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for CommitmentAndPublicKeySignature
-{
+impl PartialEq for CommitmentAndPublicKeySignature {
     fn eq(&self, other: &Self) -> bool {
         self.ephemeral_commitment().eq(other.ephemeral_commitment()) &&
             self.ephemeral_pubkey().eq(other.ephemeral_pubkey()) &&
@@ -279,12 +283,9 @@ impl PartialEq for CommitmentAndPublicKeySignature
     }
 }
 
-impl Eq for CommitmentAndPublicKeySignature
-{
-}
+impl Eq for CommitmentAndPublicKeySignature {}
 
-impl Hash for CommitmentAndPublicKeySignature
-{
+impl Hash for CommitmentAndPublicKeySignature {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(&self.to_vec())
     }

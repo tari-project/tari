@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
-use alloc::{string::ToString, vec::Vec};
-use alloc::format;
-
+use alloc::{format, string::ToString, vec::Vec};
 use core::{
     borrow::Borrow,
     cmp::Ordering,
@@ -12,7 +10,7 @@ use core::{
     hash::{Hash, Hasher},
     ops::{Add, Mul, Sub},
 };
-use subtle::ConstantTimeEq;
+
 use blake2::Blake2b;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
@@ -22,6 +20,7 @@ use curve25519_dalek::{
 };
 use digest::{consts::U64, Digest};
 use rand_core::{CryptoRng, RngCore};
+use subtle::ConstantTimeEq;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, Hashable};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -118,9 +117,7 @@ macro_rules! define_mul_variants {
 #[derive(Clone, Default, Zeroize, ZeroizeOnDrop)]
 pub struct RistrettoSecretKey(pub(crate) Scalar);
 
-impl RistrettoSecretKey  {
-
-}
+impl RistrettoSecretKey {}
 
 impl borsh::BorshSerialize for RistrettoSecretKey {
     fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
@@ -201,6 +198,9 @@ pub struct RevealedSecretKey<'a> {
 }
 
 impl RistrettoSecretKey {
+    const KEY_LEN: usize = 32;
+    const WIDE_REDUCTION_LEN: usize = 64;
+
     /// Make a secret key printable.
     pub fn reveal(&self) -> RevealedSecretKey<'_> {
         RevealedSecretKey { secret: self }
@@ -215,9 +215,6 @@ impl RistrettoSecretKey {
             Some(RistrettoSecretKey(self.0.invert()))
         }
     }
-
-    const KEY_LEN: usize = 32;
-    const WIDE_REDUCTION_LEN: usize = 64;
 
     /// Return a random secret key on the `ristretto255` curve using the supplied CSPRNG.
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
@@ -247,9 +244,6 @@ impl ConstantTimeEq for RistrettoPublicKey {
         self.point.ct_eq(&other.point)
     }
 }
-
-
-
 
 //----------------------------------   RistrettoSecretKey Mul / Add / Sub --------------------------------------------//
 
@@ -314,22 +308,19 @@ impl Borrow<Scalar> for &RistrettoSecretKey {
 
 //--------------------------------------------- Ristretto Public Key -------------------------------------------------//
 
-
 #[derive(Clone)]
 pub struct RistrettoPublicKey {
     point: RistrettoPoint,
     compressed: CompressedRistretto,
 }
 
-
 impl RistrettoPublicKey {
+    const KEY_LEN: usize = 32;
+
     // Private constructor
     pub(super) fn new_from_pk(pk: RistrettoPoint) -> Self {
         let compressed = pk.compress();
-        Self {
-            point: pk,
-            compressed,
-        }
+        Self { point: pk, compressed }
     }
 
     fn new_from_compressed(compressed: CompressedRistretto) -> Option<Self> {
@@ -361,8 +352,6 @@ impl RistrettoPublicKey {
         RistrettoPublicKey::new_from_pk(p)
     }
 
-    const KEY_LEN: usize = 32;
-
     pub fn key_length() -> usize {
         Self::KEY_LEN
     }
@@ -391,16 +380,11 @@ impl Zeroize for RistrettoPublicKey {
 
         point.zeroize();
         self.compressed.zeroize();
-
     }
 }
 
-
-
 /// A generator point on the Ristretto curve
 pub struct RistrettoGeneratorPoint;
-
-
 
 // Requires custom Hashable implementation for RistrettoPublicKey as CompressedRistretto doesnt implement this trait
 impl Hashable for RistrettoPublicKey {
@@ -606,6 +590,3 @@ impl From<&RistrettoPublicKey> for RistrettoPoint {
         pk.point
     }
 }
-
-
-

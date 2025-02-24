@@ -1,21 +1,18 @@
-
-use alloc::string::String;
+use alloc::{format, string::String};
+use core::marker::PhantomData;
 
 use blake2::{Blake2b, Blake2bVar};
 use digest::{
     consts::{U32, U64},
     Digest,
+    FixedOutput,
+    FixedOutputReset,
+    Output,
+    OutputSizeUser,
     Update,
 };
-use digest::OutputSizeUser;
-use digest::FixedOutput;
-use digest::Output;
-use digest::FixedOutputReset;
 
-use core::marker::PhantomData;
 use crate::hashing::DomainSeparatedHash;
-
-use alloc::format;
 
 //
 pub trait DomainSeparation {
@@ -77,14 +74,13 @@ fn byte_to_decimal_ascii_bytes(mut byte: u8) -> (usize, [u8; 3]) {
     }
     (pos, bytes)
 }
-//
 // pub struct DomainSeparatedHash<D: Digest> {
 //     output: Output<D>,
 // }
 //
 // impl<D: Digest> DomainSeparatedHash<D> {
-//     // This constructor is intentionally private. It should be impossible to create an instance of this struct without
-//     // the guarantees that the data represents a hash containing the domain separation label provided in `M`
+//     // This constructor is intentionally private. It should be impossible to create an instance of this struct
+// without     // the guarantees that the data represents a hash containing the domain separation label provided in `M`
 //     fn new(output: Output<D>) -> Self {
 //         Self { output }
 //     }
@@ -175,7 +171,7 @@ pub trait AsFixedBytes<const I: usize>: AsRef<[u8]> {
 }
 
 impl<TInnerDigest: OutputSizeUser, TDomain: DomainSeparation> OutputSizeUser
-for DomainSeparatedHasher<TInnerDigest, TDomain>
+    for DomainSeparatedHasher<TInnerDigest, TDomain>
 {
     type OutputSize = TInnerDigest::OutputSize;
 }
@@ -189,7 +185,7 @@ impl<TInnerDigest: Update, TDomain: DomainSeparation> Update for DomainSeparated
 impl<const I: usize, D: Digest> AsFixedBytes<I> for DomainSeparatedHash<D> {}
 
 impl<TInnerDigest: FixedOutput, TDomain: DomainSeparation> FixedOutput
-for DomainSeparatedHasher<TInnerDigest, TDomain>
+    for DomainSeparatedHasher<TInnerDigest, TDomain>
 {
     fn finalize_into(self, out: &mut Output<Self>) {
         self.inner.finalize_into(out);
@@ -205,7 +201,7 @@ impl<D: FixedOutputReset, M: DomainSeparation> DomainSeparatedHasher<D, M> {
 
 // Implements Digest so that it can be used for other crates
 impl<TInnerDigest: Digest + FixedOutputReset, TDomain: DomainSeparation> Digest
-for DomainSeparatedHasher<TInnerDigest, TDomain>
+    for DomainSeparatedHasher<TInnerDigest, TDomain>
 {
     fn new() -> Self {
         DomainSeparatedHasher::<TInnerDigest, TDomain>::new()
@@ -270,7 +266,6 @@ pub trait LengthExtensionAttackResistant {}
 
 impl LengthExtensionAttackResistant for Blake2bVar {}
 
-
 impl LengthExtensionAttackResistant for Blake2b<U32> {}
 
 impl LengthExtensionAttackResistant for Blake2b<U64> {}
@@ -289,7 +284,6 @@ impl DomainSeparation for MacDomain {
     }
 }
 
-//
 // pub struct Mac<D: Digest> {
 //     hmac: DomainSeparatedHash<D>,
 // }
@@ -320,16 +314,15 @@ impl DomainSeparation for MacDomain {
 //     }
 // }
 
-
 // pub trait DerivedKeyDomain: DomainSeparation {
 //     /// The associated derived secret key type
 //     type DerivedKeyType: SecretKey;
 //
-//     /// Derive a key from the input key using a suitable domain separation tag and the given application label by wide
-//     /// reduction. An error is returned if the supplied primary key isn't at least as long as the derived key.
+//     /// Derive a key from the input key using a suitable domain separation tag and the given application label by
+// wide     /// reduction. An error is returned if the supplied primary key isn't at least as long as the derived key.
 //     /// If the digest's output size is not sufficient to generate the derived key type, then an error will be thrown.
-//     fn generate<D>(primary_key: &[u8], data: &[u8], label: &'static str) -> Result<Self::DerivedKeyType, HashingError>
-//     where
+//     fn generate<D>(primary_key: &[u8], data: &[u8], label: &'static str) -> Result<Self::DerivedKeyType,
+// HashingError>     where
 //         Self: Sized,
 //         D: Digest + Update,
 //     {
@@ -375,7 +368,6 @@ macro_rules! hash_domain {
         hash_domain!($name, $domain, 1);
     };
 }
-//
 // /// Creates a domain separated hasher type and domain in one
 // #[macro_export]
 // macro_rules! hasher {
@@ -396,15 +388,14 @@ macro_rules! hash_domain {
 // }
 //
 // /// Convenience function for creating a DomainSeparatedHasher with an added label
-// pub fn create_hasher_with_label<D: Digest, HD: DomainSeparation>(label: &'static str) -> DomainSeparatedHasher<D, HD> {
-//     DomainSeparatedHasher::<D, HD>::new_with_label(label)
+// pub fn create_hasher_with_label<D: Digest, HD: DomainSeparation>(label: &'static str) -> DomainSeparatedHasher<D, HD>
+// {     DomainSeparatedHasher::<D, HD>::new_with_label(label)
 // }
 //
 // /// Convenience function for creating a DomainSeparatedHasher
 // pub fn create_hasher<D: Digest, HD: DomainSeparation>() -> DomainSeparatedHasher<D, HD> {
 //     DomainSeparatedHasher::<D, HD>::new()
 // }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SliceError {

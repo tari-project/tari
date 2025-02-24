@@ -6,12 +6,12 @@ use core::marker::PhantomData;
 
 use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
+
 use crate::tari_crypto::hashing::DomainSeparation;
 pub struct DomainSeparatedConsensusHasher<M, D> {
     hasher: DomainSeparatedBorshHasher<M, D>,
 }
 use digest::Output;
-
 
 impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default

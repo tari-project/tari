@@ -6,24 +6,27 @@ use alloc::format;
 use blake2::Blake2b;
 use digest::consts::U64;
 use ledger_device_sdk::io::Comm;
-
 #[cfg(any(target_os = "stax", target_os = "flex"))]
 use ledger_device_sdk::nbgl::NbglStatus;
-
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
-use crate::tari_crypto::keys::RistrettoPublicKey;
-use crate::tari_crypto::keys::RistrettoSecretKey;
-use crate::tari_crypto::commitment::PedersenCommitment;
-use crate::tari_crypto::commitment_and_public_key_signature::CommitmentAndPublicKeySignature;
-use crate::utils::TransactionHashDomain;
-use crate::tari_crypto::commitment_factory::PedersenCommitmentFactory;
-
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, get_random_nonce},
+    tari_crypto::{
+        commitment::PedersenCommitment,
+        commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
+        commitment_factory::PedersenCommitmentFactory,
+        keys::{RistrettoPublicKey, RistrettoSecretKey},
+    },
+    utils::{
+        alpha_hasher,
+        derive_from_bip32_key,
+        get_key_from_canonical_bytes,
+        get_random_nonce,
+        TransactionHashDomain,
+    },
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -33,7 +36,6 @@ use crate::{
 pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 168 {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();
@@ -79,7 +81,6 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
 pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     if data.len() != 184 {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Invalid data length").show_and_wait();
@@ -182,7 +183,6 @@ fn get_script_signature(
     let r_x = get_random_nonce()?;
     let r_y = get_random_nonce()?;
     if r_a == r_x || r_a == r_y || r_x == r_y {
-
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
         {
             SingleMessage::new("Nonces not unique").show_and_wait();
