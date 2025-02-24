@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2025. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! Pedersen commitment types and factories for Ristretto
@@ -20,8 +20,7 @@ pub const TARI_H: CompressedRistretto = CompressedRistretto([
 ]);
 pub const RISTRETTO_PEDERSEN_G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
 
-/// Generates Pederson commitments `k.G + v.H` using the provided base
-/// [RistrettoPoints](curve25519_dalek::ristretto::RistrettoPoint).
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(non_snake_case)]
 pub struct PedersenCommitmentFactory {
@@ -30,8 +29,6 @@ pub struct PedersenCommitmentFactory {
 }
 
 impl PedersenCommitmentFactory {
-    /// Create a new Ristretto Commitment factory with the given points as the bases. It's very cheap to create
-    /// factories, since we only hold references to the static generator points.
     #[allow(non_snake_case)]
     pub fn new(G: RistrettoPoint, H: RistrettoPoint) -> PedersenCommitmentFactory {
         PedersenCommitmentFactory { G, H }
@@ -39,7 +36,6 @@ impl PedersenCommitmentFactory {
 }
 
 impl Default for PedersenCommitmentFactory {
-    /// The default Ristretto Commitment factory uses the Base point for x25519 and its first Blake256 hash.
     fn default() -> Self {
         PedersenCommitmentFactory::new(RISTRETTO_PEDERSEN_G, ristretto_pedersen_h())
     }
@@ -48,7 +44,6 @@ impl Default for PedersenCommitmentFactory {
 impl PedersenCommitmentFactory {
     #[allow(non_snake_case)]
     pub fn commit(&self, k: &RistrettoSecretKey, v: &RistrettoSecretKey) -> PedersenCommitment {
-        // If we're using the default generators, speed it up using pre-computation tables
         let c = if (self.G, self.H) == (RISTRETTO_PEDERSEN_G, ristretto_pedersen_h()) {
             RistrettoPoint::multiscalar_mul(&[v.0, k.0], &[self.H, self.G])
         } else {

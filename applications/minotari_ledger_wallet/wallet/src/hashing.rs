@@ -1,4 +1,4 @@
-// Copyright 2024 The Tari Project
+// Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::format;
@@ -62,8 +62,7 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
     }
 }
 
-/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
-/// Do not use the DomainSeparatedHasher with this.
+
 #[derive(Clone)]
 struct WriteHashWrapper<D>(D);
 
@@ -83,8 +82,6 @@ pub struct DomainSeparatedHash<D: Digest> {
 }
 
 impl<D: Digest> DomainSeparatedHash<D> {
-    // This constructor is intentionally private. It should be impossible to create an instance of this struct without
-    // the guarantees that the data represents a hash containing the domain separation label provided in `M`
     pub fn new(output: Output<D>) -> Self {
         Self { output }
     }

@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2025. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::vec::Vec;
@@ -50,9 +50,6 @@ impl CommitmentAndPublicKeySignature {
         }
     }
 
-    /// Complete a signature using the given challenge. The challenge is provided by the caller to support the
-    /// multiparty use case. It is _very important_ that it be computed using strong Fiat-Shamir! Further, the
-    /// values `r_a, r_x, r_y` are nonces, must be sampled uniformly at random, and must never be reused.
     #[allow(clippy::too_many_arguments)]
     pub fn sign(
         a: &RistrettoSecretKey,

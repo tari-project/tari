@@ -1,9 +1,6 @@
-// Copyright 2022. The Tari Project
+// Copyright 2025. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! Schnorr Signature module
-//! This module defines generic traits for handling the digital signature operations, agnostic
-//! of the underlying elliptic curve implementation
 
 use core::{
     cmp::Ordering,
@@ -26,8 +23,7 @@ use crate::{
     },
 };
 
-// Define a default hashing domain for Schnorr signatures
-// You almost certainly want to define your own that is specific to signature context!
+
 hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
 
 /// An error occurred during construction of a SchnorrSignature
@@ -37,12 +33,7 @@ pub enum SchnorrSignatureError {
     InvalidChallenge,
 }
 
-/// # SchnorrSignature
-///
-/// Provides a Schnorr signature that is agnostic to a specific public/private key implementation.
-/// For a concrete implementation see [RistrettoSchnorr](crate::ristretto::RistrettoSchnorr).
-///
-/// More details on Schnorr signatures can be found at [TLU](https://tlu.tarilabs.com/cryptography/introduction-schnorr-signatures).
+
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
 pub struct SchnorrSignature<H = SchnorrSigChallenge> {
@@ -68,16 +59,7 @@ where H: DomainSeparation
         RistrettoPublicKey::from_secret_key(&self.signature)
     }
 
-    /// Generate a signature using a given secret key, nonce, and challenge byte slice.
-    ///
-    /// WARNING: This is intended for use cases where the challenge byte slice was generated correctly.
-    /// In particlar, it _must_ be the result of securely applying a cryptographic hash function to the correct public
-    /// key, public nonce, and input message; further, it must be of a length suitable for scalar wide reduction.
-    /// This function only checks that the byte slice is of the correct length.
-    /// The nonce _must_ also have been sampled uniformly at random and not reused with the same secret key and a
-    /// different message.
-    ///
-    /// If you aren't sure that you can meet these requirements, and want a simple and safe API, use [`sign`].
+
     pub fn sign_raw_uniform<'a>(
         secret: &'a RistrettoSecretKey,
         nonce: RistrettoSecretKey,
@@ -94,16 +76,6 @@ where H: DomainSeparation
         Ok(Self::new(public_nonce, s))
     }
 
-    /// Generate a signature using a given secret key, nonce, and challenge byte slice.
-    ///
-    /// WARNING: This is intended for use cases where the challenge byte slice was generated correctly.
-    /// In particlar, it _must_ be the result of securely applying a cryptographic hash function to the correct public
-    /// key, public nonce, and input message; further, it must be the canonical representation of a scalar.
-    /// This function only checks that the byte slice is of the correct length.
-    /// The nonce _must_ also have been sampled uniformly at random and not reused with the same secret key and a
-    /// different message.
-    ///
-    /// If you aren't sure that you can meet these requirements, and want a simple and safe API, use [`sign`].
     pub fn sign_raw_canonical<'a>(
         secret: &'a RistrettoSecretKey,
         nonce: RistrettoSecretKey,
@@ -120,10 +92,6 @@ where H: DomainSeparation
         Ok(Self::new(public_nonce, s))
     }
 
-    /// Signs a message with the given secret key.
-    ///
-    /// This method correctly binds a nonce and the public key to the signature challenge, using domain-separated
-    /// hashing. The hasher is also opinionated in the sense that Blake2b 512-bit digest is always used.
     pub fn sign<'a, B, R: RngCore + CryptoRng>(
         secret: &'a RistrettoSecretKey,
         message: B,
@@ -136,13 +104,6 @@ where H: DomainSeparation
         Self::sign_with_nonce_and_message(secret, nonce, message)
     }
 
-    /// Signs a message with the given secret key and nonce.
-    ///
-    /// This method correctly binds the nonce and the public key to the signature challenge, using domain-separated
-    /// hashing. The hasher is also opinionated in the sense that Blake2b 512-bit digest is always used.
-    ///
-    /// WARNING: The nonce _must_ also have been sampled uniformly at random and not reused with the same secret key and
-    /// a different message.
     pub fn sign_with_nonce_and_message<'a, B>(
         secret: &'a RistrettoSecretKey,
         nonce: RistrettoSecretKey,
@@ -174,9 +135,6 @@ where H: DomainSeparation
             .finalize()
     }
 
-    /// Verifies a signature created by the `sign` method. The function returns `true` if and only if the
-    /// message was signed by the secret key corresponding to the given public key, and that the challenge was
-    /// constructed using the domain-separation method defined in [`construct_domain_separated_challenge`].
     pub fn verify<'a, B>(&self, public_key: &'a RistrettoPublicKey, message: B) -> bool
     where B: AsRef<[u8]> {
         let challenge =
@@ -184,8 +142,6 @@ where H: DomainSeparation
         self.verify_raw_uniform(public_key, challenge.as_ref())
     }
 
-    /// Verifies a signature against a given public key and challenge byte slice.
-    /// The byte slice is converted to a scalar using wide reduction.
     pub fn verify_raw_uniform<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool {
         let e = match RistrettoSecretKey::from_uniform_bytes(challenge) {
             Ok(e) => e,
@@ -194,8 +150,6 @@ where H: DomainSeparation
         self.verify_challenge_scalar(public_key, &e)
     }
 
-    /// Verifies a signature against a given public key and challenge byte slice.
-    /// The byte slice is converted to a scalar assuming a canonical representation.
     pub fn verify_raw_canonical<'a>(&self, public_key: &'a RistrettoPublicKey, challenge: &[u8]) -> bool {
         let e = match RistrettoSecretKey::from_canonical_bytes(challenge) {
             Ok(e) => e,
@@ -204,7 +158,6 @@ where H: DomainSeparation
         self.verify_challenge_scalar(public_key, &e)
     }
 
-    /// Returns true if this signature is valid for a public key and challenge scalar, otherwise false.
     pub fn verify_challenge_scalar<'a>(
         &self,
         public_key: &'a RistrettoPublicKey,
@@ -221,12 +174,10 @@ where H: DomainSeparation
         lhs == rhs
     }
 
-    /// Returns a reference to the `s` signature component.
     pub fn get_signature(&self) -> &RistrettoSecretKey {
         &self.signature
     }
 
-    /// Returns a reference to the public nonce component.
     pub fn get_public_nonce(&self) -> &RistrettoPublicKey {
         &self.public_nonce
     }

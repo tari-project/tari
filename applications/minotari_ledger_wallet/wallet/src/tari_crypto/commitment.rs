@@ -1,10 +1,7 @@
-// Copyright 2019 The Tari Project
+// Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! A commitment is like a sealed envelope. You put some information inside the envelope, and then seal (commit) it.
-//! You can't change what you've said, but also, no-one knows what you've said until you're ready to open (open) the
-//! envelope and reveal its contents. Also it's a special envelope that can only be opened by a special opener that
-//! you keep safe in your drawer.
+
 
 use core::{
     cmp::Ordering,
@@ -17,17 +14,6 @@ use tari_utilities::{ByteArray, ByteArrayError};
 
 use crate::tari_crypto::keys::{RistrettoPublicKey, RistrettoSecretKey};
 
-/// There are also different types of commitments that vary in their security guarantees, but all of them are
-/// represented by binary data; so [HomomorphicCommitment](trait.HomomorphicCommitment.html) implements
-/// [ByteArray](trait.ByteArray.html).
-///
-/// The Homomorphic part means, more or less, that commitments follow some of the standard rules of
-/// arithmetic. Adding two commitments is the same as committing to the sum of their parts:
-/// $$ \begin{aligned}
-///   C_1 &= v_1.H + k_1.G \\\\
-///   C_2 &= v_2.H + k_2.G \\\\
-///   \therefore C_1 + C_2 &= (v_1 + v_2)H + (k_1 + k_2)G
-/// \end{aligned} $$
 #[derive(Debug, Clone, Default)]
 pub struct PedersenCommitment(pub(crate) RistrettoPublicKey);
 

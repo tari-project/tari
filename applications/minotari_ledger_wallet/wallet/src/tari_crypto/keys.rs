@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2025. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! The Tari-compatible implementation of Ristretto based on the curve25519-dalek implementation
@@ -24,9 +24,6 @@ use subtle::ConstantTimeEq;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError, Hashable};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-// use crate::{
-//     hashing::{DomainSeparatedHasher, DomainSeparation},
-// };
 
 macro_rules! define_add_variants {
     (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
@@ -417,10 +414,6 @@ impl fmt::Display for RistrettoPublicKey {
 }
 
 impl RistrettoPublicKey {
-    // Formats a 64 char hex string to a given width.
-    // If w >= 64, we pad the result.
-    // If 7 <= w < 64, we replace the middle of the string with "..."
-    // If w <= 6, we return the first w chars of the string
     fn fmt_case(&self, f: &mut fmt::Formatter, uppercase: bool) -> fmt::Result {
         let mut hex = self.to_hex();
         if uppercase {
@@ -485,10 +478,6 @@ impl Ord for RistrettoPublicKey {
 //---------------------------------- PublicKey ByteArray implementation  ---------------------------------------------//
 
 impl ByteArray for RistrettoPublicKey {
-    /// Create a new `RistrettoPublicKey` instance form the given byte array. The constructor returns errors under
-    /// the following circumstances:
-    /// * The byte array is not exactly 32 bytes
-    /// * The byte array does not represent a valid (compressed) point on the ristretto255 curve
     fn from_canonical_bytes(bytes: &[u8]) -> Result<RistrettoPublicKey, ByteArrayError>
     where Self: Sized {
         // Check the length here, because The Ristretto constructor panics rather than returning an error

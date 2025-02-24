@@ -74,24 +74,6 @@ fn byte_to_decimal_ascii_bytes(mut byte: u8) -> (usize, [u8; 3]) {
     }
     (pos, bytes)
 }
-// pub struct DomainSeparatedHash<D: Digest> {
-//     output: Output<D>,
-// }
-//
-// impl<D: Digest> DomainSeparatedHash<D> {
-//     // This constructor is intentionally private. It should be impossible to create an instance of this struct
-// without     // the guarantees that the data represents a hash containing the domain separation label provided in `M`
-//     fn new(output: Output<D>) -> Self {
-//         Self { output }
-//     }
-// }
-//
-// impl<D: Digest> AsRef<[u8]> for DomainSeparatedHash<D> {
-//     fn as_ref(&self) -> &[u8] {
-//         self.output.as_slice()
-//     }
-// }
-//
 #[derive(Debug, Clone, Default)]
 pub struct DomainSeparatedHasher<D, M> {
     inner: D,
@@ -284,68 +266,6 @@ impl DomainSeparation for MacDomain {
     }
 }
 
-// pub struct Mac<D: Digest> {
-//     hmac: DomainSeparatedHash<D>,
-// }
-//
-// impl<D> Mac<D>
-// where D: Digest + Update + LengthExtensionAttackResistant
-// {
-//     /// Generate a MAC with the given (length extension attack resistant) digest function, shared key, message and
-//     /// application label.
-//     pub fn generate<K, S>(key: K, msg: S, label: &'static str) -> Self
-//     where
-//         K: AsRef<[u8]>,
-//         S: AsRef<[u8]>,
-//     {
-//         let hmac = DomainSeparatedHasher::<D, MacDomain>::new_with_label(label)
-//             .chain(key.as_ref())
-//             .chain(msg.as_ref())
-//             .finalize();
-//         Self { hmac }
-//     }
-// }
-//
-// impl<D: Digest> Deref for Mac<D> {
-//     type Target = DomainSeparatedHash<D>;
-//
-//     fn deref(&self) -> &Self::Target {
-//         &self.hmac
-//     }
-// }
-
-// pub trait DerivedKeyDomain: DomainSeparation {
-//     /// The associated derived secret key type
-//     type DerivedKeyType: SecretKey;
-//
-//     /// Derive a key from the input key using a suitable domain separation tag and the given application label by
-// wide     /// reduction. An error is returned if the supplied primary key isn't at least as long as the derived key.
-//     /// If the digest's output size is not sufficient to generate the derived key type, then an error will be thrown.
-//     fn generate<D>(primary_key: &[u8], data: &[u8], label: &'static str) -> Result<Self::DerivedKeyType,
-// HashingError>     where
-//         Self: Sized,
-//         D: Digest + Update,
-//     {
-//         // Ensure the primary key is at least as long as the derived key
-//         if primary_key.len() < <Self::DerivedKeyType as SecretKey>::KEY_LEN {
-//             return Err(HashingError::InputTooShort {});
-//         }
-//
-//         // Ensure the digest length is suitable for wide reduction
-//         if <D as Digest>::output_size() != <Self::DerivedKeyType as SecretKey>::WIDE_REDUCTION_LEN {
-//             return Err(HashingError::InputTooShort {});
-//         }
-//
-//         let hash = DomainSeparatedHasher::<D, Self>::new_with_label(label)
-//             .chain(primary_key)
-//             .chain(data)
-//             .finalize();
-//         let derived_key = Self::DerivedKeyType::from_uniform_bytes(hash.as_ref())
-//             .map_err(|e| HashingError::ConversionFromBytes { reason: e.to_string() })?;
-//         Ok(derived_key)
-//     }
-// }
-
 /// Creates a DomainSeparation struct for a given domain.
 #[macro_export]
 macro_rules! hash_domain {
@@ -368,34 +288,7 @@ macro_rules! hash_domain {
         hash_domain!($name, $domain, 1);
     };
 }
-// /// Creates a domain separated hasher type and domain in one
-// #[macro_export]
-// macro_rules! hasher {
-//     ($digest:ty, $name:ident, $domain:expr, $version: expr, $mod_name:ident) => {
-//         mod $mod_name {
-//             use $crate::hash_domain;
-//
-//             hash_domain!(__HashDomain, $domain, $version);
-//         }
-//         pub type $name = $crate::hashing::DomainSeparatedHasher<$digest, $mod_name::__HashDomain>;
-//     };
-//     ($digest: ty, $name:ident, $domain:expr, $version: expr) => {
-//         hasher!($digest, $name, $domain, $version, __inner_hasher_impl);
-//     };
-//     ($digest: ty, $name:ident, $domain:expr) => {
-//         hasher!($digest, $name, $domain, 1, __inner_hasher_impl);
-//     };
-// }
-//
-// /// Convenience function for creating a DomainSeparatedHasher with an added label
-// pub fn create_hasher_with_label<D: Digest, HD: DomainSeparation>(label: &'static str) -> DomainSeparatedHasher<D, HD>
-// {     DomainSeparatedHasher::<D, HD>::new_with_label(label)
-// }
-//
-// /// Convenience function for creating a DomainSeparatedHasher
-// pub fn create_hasher<D: Digest, HD: DomainSeparation>() -> DomainSeparatedHasher<D, HD> {
-//     DomainSeparatedHasher::<D, HD>::new()
-// }
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SliceError {
