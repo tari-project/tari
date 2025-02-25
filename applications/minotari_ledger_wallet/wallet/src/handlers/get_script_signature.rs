@@ -222,7 +222,7 @@ fn get_script_signature(
     ) {
         Ok(sig) => Ok(sig),
         Err(_e) => {
-            let error_string = "Invalid Challange".to_string();
+            let error_string = "Invalid Challenge".to_string();
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
