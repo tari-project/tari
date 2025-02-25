@@ -23,7 +23,7 @@
 use std::{convert::TryInto, thread};
 
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_merge_mining_proxy::{merge_miner, Cli};
+use minotari_merge_mining_proxy::{run_merge_miner::start_merge_miner, Cli};
 use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use serde_json::{json, Value};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
@@ -139,7 +139,7 @@ impl MergeMiningProxyProcess {
                 non_interactive_mode: false,
             };
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
-            if let Err(e) = rt.block_on(merge_miner(cli)) {
+            if let Err(e) = rt.block_on(start_merge_miner(cli)) {
                 println!("Error running merge mining proxy : {:?}", e);
                 panic!("Error running merge mining proxy");
             }

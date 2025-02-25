@@ -4071,6 +4071,7 @@ version = "1.11.5-pre.0"
 dependencies = [
  "anyhow",
  "bincode",
+ "blake2",
  "borsh",
  "bytes 1.9.0",
  "chrono",
