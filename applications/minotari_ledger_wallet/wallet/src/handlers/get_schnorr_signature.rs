@@ -110,7 +110,6 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
         }
         return Err(AppSW::WrongApduLength);
     }
-
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);
     let account = u64::from_le_bytes(account_bytes);
@@ -118,14 +117,13 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
     let mut private_key_index_bytes = [0u8; 8];
     private_key_index_bytes.clone_from_slice(&data[8..16]);
     let private_key_index = u64::from_le_bytes(private_key_index_bytes);
-
     let mut private_key_type_bytes = [0u8; 8];
+
     private_key_type_bytes.clone_from_slice(&data[16..24]);
     let key_type = u64::from_le_bytes(private_key_type_bytes);
     let private_key_type = KeyType::from_branch_key(key_type)?;
 
     let private_key = derive_from_bip32_key(account, private_key_index, private_key_type)?;
-
     let mut nonce_bytes = [0u8; 32];
     nonce_bytes.clone_from_slice(&data[24..56]);
 
@@ -149,7 +147,6 @@ pub fn handler_get_script_schnorr_signature(comm: &mut Comm) -> Result<(), AppSW
                 return Err(AppSW::SchnorrSignatureFail);
             },
         };
-
     comm.append(&[RESPONSE_VERSION]); // version
     comm.append(&signature.get_public_nonce().to_vec());
     comm.append(&signature.get_signature().to_vec());

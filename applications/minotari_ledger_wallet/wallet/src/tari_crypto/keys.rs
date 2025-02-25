@@ -16,7 +16,6 @@ use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_TABLE,
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
-    traits::MultiscalarMul,
 };
 use digest::{consts::U64, Digest};
 use rand_core::{CryptoRng, RngCore};

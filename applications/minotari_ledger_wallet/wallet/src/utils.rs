@@ -156,7 +156,7 @@ fn cx_error_to_string(e: CxError) -> String {
 //       ever used in a subsequent key derivation function.
 fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut key_buffer = Zeroizing::new([0u8; 64]);
-    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), Some(&mut [])) {
+    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), None) {
         Ok(_) => {
             if key_buffer.deref() == &[0u8; 64] {
                 return Err(cx_error_to_string(CxError::InternalError));
@@ -164,7 +164,9 @@ fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
                 Ok(key_buffer)
             }
         },
-        Err(e) => return Err(cx_error_to_string(e)),
+        Err(e) => {
+            return Err(cx_error_to_string(e))
+        },
     }
 }
 
@@ -177,7 +179,6 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("raw_key")
         .chain(&raw_key_64.as_ref())
         .finalize_into(raw_key_hashed.as_mut().into());
-
     Ok(raw_key_hashed)
 }
 

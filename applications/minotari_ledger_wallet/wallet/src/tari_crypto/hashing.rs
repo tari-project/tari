@@ -1,7 +1,6 @@
 use alloc::{format, string::String};
 use core::marker::PhantomData;
 
-use blake2::{Blake2b, Blake2bVar};
 use digest::{Digest, FixedOutput, FixedOutputReset, Output, OutputSizeUser, Update};
 
 use crate::hashing::DomainSeparatedHash;
