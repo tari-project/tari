@@ -51,7 +51,7 @@ use crate::{
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
 
 /// Structure holding grpc connections.
-pub struct BlockTemplateManager<'a> {
+pub(crate) struct BlockTemplateManager<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient,
     p2pool_client: Option<ShaP2PoolGrpcClient>,
@@ -80,7 +80,6 @@ impl<'a> BlockTemplateManager<'a> {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 impl BlockTemplateManager<'_> {
     /// Create [FinalBlockTemplateData] with [MoneroMiningData].
     pub async fn get_next_tari_block_template(
@@ -330,7 +329,7 @@ fn add_monero_data(
 
 /// Private convenience container struct for new template data
 #[derive(Debug, Clone)]
-pub struct NewBlockTemplateData {
+pub(crate) struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,
 }
@@ -342,10 +341,10 @@ impl NewBlockTemplateData {
 }
 
 /// The AuxChainMerkleRoot is a 32 byte hash
-pub type AuxChainMr = MaxSizeBytes<32>;
+pub(crate) type AuxChainMr = MaxSizeBytes<32>;
 /// Final outputs for required for merge mining
 #[derive(Debug, Clone)]
-pub struct FinalBlockTemplateData {
+pub(crate) struct FinalBlockTemplateData {
     pub template: BlockTemplateData,
     pub target_difficulty: Difficulty,
     pub blockhashing_blob: String,
@@ -356,7 +355,7 @@ pub struct FinalBlockTemplateData {
 
 /// Container struct for monero mining data inputs obtained from monerod
 #[derive(Clone)]
-pub struct MoneroMiningData {
+pub(crate) struct MoneroMiningData {
     pub seed_hash: FixedByteArray,
     pub blocktemplate_blob: String,
     pub difficulty: u64,

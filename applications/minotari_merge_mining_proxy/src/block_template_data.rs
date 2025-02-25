@@ -22,7 +22,7 @@
 
 //! Provides methods for building template data and storing them with timestamps.
 
-use std::{collections::HashMap, convert::TryFrom, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 #[cfg(not(test))]
 use chrono::Duration;
@@ -33,10 +33,7 @@ use tari_core::{proof_of_work::monero_rx::FixedByteArray, AuxChainHashes};
 use tokio::sync::RwLock;
 use tracing::trace;
 
-use crate::{
-    block_template_manager::{FinalBlockTemplateData, NewBlockTemplateData},
-    error::MmProxyError,
-};
+use crate::{block_template_manager::FinalBlockTemplateData, error::MmProxyError};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 
@@ -46,33 +43,9 @@ pub(crate) struct BlockTemplateRepository {
     blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
 }
 
-/// Structure holding [NewBlockTemplate] along with a timestamp.
-#[derive(Debug, Clone)]
-pub(crate) struct TemplateRepositoryItem {
-    pub new_block_template: NewBlockTemplateData,
-    pub template_with_coinbase: grpc::NewBlockTemplate,
-    datetime: DateTime<Utc>,
-}
-
-impl TemplateRepositoryItem {
-    /// Create new [Self] with current time in UTC.
-    pub fn new(new_block_template: NewBlockTemplateData, template_with_coinbase: grpc::NewBlockTemplate) -> Self {
-        Self {
-            new_block_template,
-            template_with_coinbase,
-            datetime: Utc::now(),
-        }
-    }
-
-    /// Get the timestamp of creation.
-    pub fn datetime(&self) -> DateTime<Utc> {
-        self.datetime
-    }
-}
-
 /// Structure holding [FinalBlockTemplateData] along with a timestamp.
 #[derive(Debug, Clone)]
-pub struct BlockRepositoryItem {
+pub(crate) struct BlockRepositoryItem {
     pub data: FinalBlockTemplateData,
     datetime: DateTime<Utc>,
 }
@@ -113,17 +86,6 @@ impl BlockTemplateRepository {
             .or_insert_with(|| BlockRepositoryItem::new(block_template));
     }
 
-    /// Check if the repository contains a block template with best_previous_block_hash
-    pub async fn blocks_contains(&self, current_best_block_hash: FixedHash) -> Option<FinalBlockTemplateData> {
-        let b = self.blocks.read().await;
-        b.values()
-            .find(|item| {
-                let header = item.data.template.tari_block.header.clone().unwrap_or_default();
-                FixedHash::try_from(header.prev_hash).unwrap_or(FixedHash::default()) == current_best_block_hash
-            })
-            .map(|val| val.data.clone())
-    }
-
     /// Remove any data that is older than 20 minutes.
     pub async fn remove_outdated(&self) {
         trace!(target: LOG_TARGET, "Removing outdated final block templates");
@@ -149,7 +111,7 @@ impl BlockTemplateRepository {
 
 /// Setup values for the new block.
 #[derive(Clone, Debug)]
-pub struct BlockTemplateData {
+pub(crate) struct BlockTemplateData {
     pub monero_seed: FixedByteArray,
     pub tari_block: grpc::Block,
     pub tari_miner_data: grpc::MinerData,
@@ -164,7 +126,7 @@ impl BlockTemplateData {}
 
 /// Builder for the [BlockTemplateData]. All fields have to be set to succeed.
 #[derive(Default)]
-pub struct BlockTemplateDataBuilder {
+pub(crate) struct BlockTemplateDataBuilder {
     monero_seed: Option<FixedByteArray>,
     tari_block: Option<grpc::Block>,
     tari_miner_data: Option<grpc::MinerData>,
@@ -255,8 +217,8 @@ impl BlockTemplateDataBuilder {
 }
 
 #[cfg(test)]
-pub mod test {
-    use std::convert::TryInto;
+mod test {
+    use std::convert::{TryFrom, TryInto};
 
     use tari_core::{
         blocks::{Block, BlockHeader},
