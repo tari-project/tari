@@ -42,14 +42,13 @@ const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 
 /// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
 #[derive(Debug, Clone)]
-pub struct BlockTemplateRepository {
+pub(crate) struct BlockTemplateRepository {
     blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
-    templates: Arc<RwLock<HashMap<Vec<u8>, TemplateRepositoryItem>>>,
 }
 
 /// Structure holding [NewBlockTemplate] along with a timestamp.
 #[derive(Debug, Clone)]
-pub struct TemplateRepositoryItem {
+pub(crate) struct TemplateRepositoryItem {
     pub new_block_template: NewBlockTemplateData,
     pub template_with_coinbase: grpc::NewBlockTemplate,
     datetime: DateTime<Utc>,
@@ -97,7 +96,6 @@ impl BlockTemplateRepository {
     pub fn new() -> Self {
         Self {
             blocks: Arc::new(RwLock::new(HashMap::new())),
-            templates: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -107,40 +105,12 @@ impl BlockTemplateRepository {
         b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
     }
 
-    /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
-    pub async fn get_new_template<T: AsRef<[u8]>>(
-        &self,
-        best_block_hash: T,
-    ) -> Option<(NewBlockTemplateData, grpc::NewBlockTemplate)> {
-        let b = self.templates.read().await;
-        b.get(best_block_hash.as_ref())
-            .map(|item| (item.new_block_template.clone(), item.template_with_coinbase.clone()))
-    }
-
     /// Store [FinalBlockTemplateData] at the hash value if the key does not exist.
     pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
         let merge_mining_hash = block_template.aux_chain_mr.to_vec();
         let mut b = self.blocks.write().await;
         b.entry(merge_mining_hash)
             .or_insert_with(|| BlockRepositoryItem::new(block_template));
-    }
-
-    /// Store [NewBlockTemplate] at the hash value if the key does not exist.
-    pub async fn save_new_block_template_if_key_unique(
-        &self,
-        best_block_hash: Vec<u8>,
-        new_block_template: NewBlockTemplateData,
-        template_with_coinbase: grpc::NewBlockTemplate,
-    ) {
-        let mut b = self.templates.write().await;
-        b.entry(best_block_hash.clone()).or_insert_with(|| {
-            trace!(
-                target: LOG_TARGET,
-                "Saving new block template for best block hash: {:?}",
-                hex::encode(&best_block_hash)
-            );
-            TemplateRepositoryItem::new(new_block_template, template_with_coinbase)
-        });
     }
 
     /// Check if the repository contains a block template with best_previous_block_hash
@@ -163,13 +133,6 @@ impl BlockTemplateRepository {
         #[cfg(not(test))]
         let threshold = Utc::now() - Duration::minutes(20);
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
-        trace!(target: LOG_TARGET, "Removing outdated new block templates");
-        let mut b = self.templates.write().await;
-        #[cfg(test)]
-        let threshold = Utc::now();
-        #[cfg(not(test))]
-        let threshold = Utc::now() - Duration::minutes(20);
-        *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 
     /// Remove a particularfinla block template for hash and return the associated [BlockRepositoryItem] if any.
@@ -180,17 +143,6 @@ impl BlockTemplateRepository {
             hex::encode(hash.as_ref())
         );
         let mut b = self.blocks.write().await;
-        b.remove(hash.as_ref())
-    }
-
-    /// Remove a particular new block template for hash and return the associated [BlockRepositoryItem] if any.
-    pub async fn remove_new_block_template<T: AsRef<[u8]>>(&self, hash: T) -> Option<TemplateRepositoryItem> {
-        trace!(
-            target: LOG_TARGET,
-            "New block template removed with best block hash {:?}",
-            hex::encode(hash.as_ref())
-        );
-        let mut b = self.templates.write().await;
         b.remove(hash.as_ref())
     }
 }
@@ -349,24 +301,17 @@ pub mod test {
     #[tokio::test]
     async fn test_block_template_repository() {
         let btr = BlockTemplateRepository::new();
-        let hash1 = vec![1; 32];
-        let hash2 = vec![2; 32];
-        let hash3 = vec![3; 32];
         let block_template = create_block_template_data();
+        let hash1 = block_template.aux_chain_mr.to_vec();
         btr.save_final_block_template_if_key_unique(block_template.clone())
             .await;
-        btr.save_final_block_template_if_key_unique(block_template).await;
         assert!(btr.get_final_template(hash1.clone()).await.is_some());
-        assert!(btr.get_final_template(hash2.clone()).await.is_some());
-        assert!(btr.get_final_template(hash3.clone()).await.is_none());
         assert!(btr.remove_final_block_template(hash1.clone()).await.is_some());
         assert!(btr.get_final_template(hash1.clone()).await.is_none());
-        assert!(btr.get_final_template(hash2.clone()).await.is_some());
-        assert!(btr.get_final_template(hash3.clone()).await.is_none());
+        btr.save_final_block_template_if_key_unique(block_template).await;
+        assert!(btr.get_final_template(hash1.clone()).await.is_some());
         btr.remove_outdated().await;
         assert!(btr.get_final_template(hash1).await.is_none());
-        assert!(btr.get_final_template(hash2).await.is_none());
-        assert!(btr.get_final_template(hash3).await.is_none());
     }
 
     #[test]
