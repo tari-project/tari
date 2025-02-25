@@ -52,3 +52,6 @@ icon = "key_32x32.gif"
 icon = "key_40x40.gif"
 
 [workspace]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("stax", "flex", "nanos", "nanox", "nanosplus"))'] }
