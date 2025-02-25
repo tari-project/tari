@@ -32,4 +32,4 @@ mod config;
 mod error;
 mod monero_fail;
 mod proxy;
-mod run_merge_miner;
+pub mod run_merge_miner;
