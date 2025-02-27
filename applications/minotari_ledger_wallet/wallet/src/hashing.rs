@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
 
-use crate::tari_crypto::hashing::DomainSeparation;
+use crate::crypto::hashing::DomainSeparation;
 pub struct DomainSeparatedConsensusHasher<M, D> {
     hasher: DomainSeparatedBorshHasher<M, D>,
 }

@@ -8,7 +8,7 @@ use ledger_device_sdk::nbgl::NbglStatus;
 use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_utilities::ByteArray;
 
-use crate::{tari_crypto::keys::RistrettoPublicKey, utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION};
+use crate::{crypto::keys::RistrettoPublicKey, utils::derive_from_bip32_key, AppSW, KeyType, RESPONSE_VERSION};
 
 pub fn handler_get_public_key(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;

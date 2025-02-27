@@ -7,7 +7,7 @@
 
 extern crate alloc;
 mod hashing;
-mod tari_crypto;
+mod crypto;
 pub mod utils;
 
 mod app_ui {

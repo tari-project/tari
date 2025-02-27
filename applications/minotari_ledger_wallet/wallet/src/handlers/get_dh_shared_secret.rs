@@ -12,7 +12,7 @@ use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
 
 use crate::{
-    tari_crypto::keys::RistrettoPublicKey,
+    crypto::keys::RistrettoPublicKey,
     utils::{derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,

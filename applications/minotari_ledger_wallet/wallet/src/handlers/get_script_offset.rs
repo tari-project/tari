@@ -7,7 +7,7 @@ use ledger_device_sdk::io::Comm;
 use tari_utilities::ByteArray;
 
 use crate::{
-    tari_crypto::keys::RistrettoSecretKey,
+    crypto::keys::RistrettoSecretKey,
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,

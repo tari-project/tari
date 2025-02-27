@@ -14,7 +14,7 @@ use ledger_device_sdk::ui::gadgets::SingleMessage;
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    tari_crypto::{
+    crypto::{
         commitment::PedersenCommitment,
         commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
         commitment_factory::PedersenCommitmentFactory,

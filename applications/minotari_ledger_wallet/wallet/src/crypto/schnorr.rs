@@ -16,7 +16,7 @@ use tari_utilities::ByteArray;
 use crate::{
     hash_domain,
     hashing::DomainSeparatedHash,
-    tari_crypto::{
+    crypto::{
         hashing::{DomainSeparatedHasher, DomainSeparation},
         keys::{RistrettoPublicKey, RistrettoSecretKey},
     },

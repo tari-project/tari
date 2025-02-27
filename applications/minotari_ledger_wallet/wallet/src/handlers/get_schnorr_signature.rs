@@ -13,7 +13,7 @@ use tari_utilities::ByteArray;
 use crate::{
     alloc::string::ToString,
     hash_domain,
-    tari_crypto::schnorr::SchnorrSignature,
+    crypto::schnorr::SchnorrSignature,
     utils::{derive_from_bip32_key, get_random_nonce},
     AppSW,
     KeyType,

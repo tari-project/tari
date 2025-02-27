@@ -21,7 +21,7 @@ use zeroize::Zeroizing;
 use crate::{
     alloc::string::{String, ToString},
     hash_domain,
-    tari_crypto::{hashing::DomainSeparatedHasher, keys::RistrettoSecretKey},
+    crypto::{hashing::DomainSeparatedHasher, keys::RistrettoSecretKey},
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
