@@ -333,14 +333,12 @@ fn main() {
             println!("\nError: Ledger app is still running\n");
             return;
         },
+        Err(LedgerDeviceError::Processing(e)) => {
+            println!("\nLedger comms responded with: '{}'\n", e);
+        },
         Err(e) => {
-            if e != LedgerDeviceError::Processing(
-                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
-                    .to_string(),
-            ) {
-                println!("\nError: Unexpected response ({})\n", e);
-                return;
-            }
+            println!("\nError: Unexpected response ({})\n", e);
+            return;
         },
     }
 
@@ -352,15 +350,12 @@ fn main() {
             println!("\nError: Ledger not disconnected\n");
             return;
         },
+        Err(LedgerDeviceError::Processing(e)) => {
+            println!("\nLedger comms responded with: '{}'\n", e);
+        },
         Err(e) => {
-            if e != LedgerDeviceError::Processing(
-                "Ledger application is not the 'Minotari Wallet' application (Processing error `2 GetAppName: Native \
-                 HID transport error `Ledger device not found``)"
-                    .to_string(),
-            ) {
-                println!("\nError: Unexpected response ({})\n", e);
-                return;
-            }
+            println!("\nError: Unexpected response ({})\n", e);
+            return;
         },
     }
 
@@ -372,14 +367,12 @@ fn main() {
             println!("\nError: Ledger app should not be running\n");
             return;
         },
+        Err(LedgerDeviceError::Processing(e)) => {
+            println!("\nLedger comms responded with: '{}'\n", e);
+        },
         Err(e) => {
-            if e != LedgerDeviceError::Processing(
-                "Ledger application is not the 'Minotari Wallet' application (Ledger application not started)"
-                    .to_string(),
-            ) {
-                println!("\nError: Unexpected response ({})\n", e);
-                return;
-            }
+            println!("\nError: Unexpected response ({})\n", e);
+            return;
         },
     }
 
@@ -388,7 +381,7 @@ fn main() {
     prompt_with_message("Start the 'MinoTari Wallet' Ledger app and press Enter to continue..");
     match ledger_get_view_key(account) {
         Ok(view_key_2) => {
-            println!("view_key:       {}", view_key_2.to_hex());
+            println!("view_key:       {}\n", view_key_2.to_hex());
         },
         Err(e) => {
             println!("\nError: {}\n", e);
