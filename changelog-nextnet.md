@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+### [1.11.6-rc.0](https://github.com/tari-project/tari/compare/v1.11.5-rc.0...v1.11.6-rc.0) (2025-02-27)
+
+
+### Features
+
+* add p2pool tip info and better mmproxy template handling ([#6795](https://github.com/tari-project/tari/issues/6795)) ([b3dc63f](https://github.com/tari-project/tari/commit/b3dc63f79e7bedd19854c17e5d9809deb652e61d))
+
+
+### Bug Fixes
+
+* ledger builds ([#6817](https://github.com/tari-project/tari/issues/6817)) ([5b10f76](https://github.com/tari-project/tari/commit/5b10f76d8e3fcdcbe48a100b19e16325fc3aec84))
+
 ### [1.11.5-rc.0](https://github.com/tari-project/tari/compare/v1.11.4-rc.0...v1.11.5-rc.0) (2025-02-18)
 
 
