@@ -27,8 +27,21 @@ import "base_node.proto";
 import "block.proto";
 
 service ShaP2Pool {
+  rpc GetTipInfo(GetTipInfoRequest) returns(GetTipInfoResponse);
   rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
   rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
+}
+
+message GetTipInfoRequest {
+}
+
+message GetTipInfoResponse {
+  uint64 node_height = 1;
+  bytes node_tip_hash = 2;
+  uint64 p2pool_rx_height = 3;
+  bytes p2pool_rx_tip_hash = 4;
+  uint64 p2pool_sha_height = 5;
+  bytes p2pool_sha_tip_hash = 6;
 }
 
 message GetNewBlockRequest {

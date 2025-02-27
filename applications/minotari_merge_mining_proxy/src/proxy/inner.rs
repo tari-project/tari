@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cmp,
     convert::TryInto,
     str::FromStr,
     sync::{
@@ -32,11 +31,12 @@ use std::{
     time::Instant,
 };
 
+use blake2::{digest::Update, Blake2s256, Digest};
 use borsh::BorshSerialize;
 use bytes::Bytes;
 use hyper::{header::HeaderValue, Body, Request, Response, StatusCode, Uri};
 use log::error;
-use minotari_app_grpc::{tari_rpc, tari_rpc::SubmitBlockRequest};
+use minotari_app_grpc::tari_rpc::{self, GetTipInfoRequest, SubmitBlockRequest};
 use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrpcClient};
 use monero::Hash;
 use rand::random;
@@ -54,7 +54,7 @@ use url::Url;
 
 use crate::{
     block_template_data::BlockTemplateRepository,
-    block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
+    block_template_manager::{BlockTemplateManager, MoneroMiningData},
     common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
     config::{MergeMiningProxyConfig, MonerodFallback},
     error::MmProxyError,
@@ -112,39 +112,61 @@ impl InnerService {
             ));
         }
 
-        let mut base_node_client = self.base_node_client.clone();
-        trace!(target: LOG_TARGET, "Successful connection to base node GRPC");
+        let monero_height = json["height"].as_u64().unwrap_or_default();
+        let monero_hash: Vec<u8> = Hex::from_hex(json["hash"].as_str().unwrap_or_default()).unwrap_or_default();
+        let base_node_height;
+        let base_node_hash;
+        let mut p2pool_height = 0;
+        let mut p2pool_hash = vec![];
 
-        let result =
-            base_node_client
-                .get_tip_info(tari_rpc::Empty {})
-                .await
-                .map_err(|err| MmProxyError::GrpcRequestError {
+        if let Some(mut p2pool_client) = self.p2pool_client.clone() {
+            let p2pool_resp = p2pool_client.get_tip_info(GetTipInfoRequest {}).await?;
+            let res = p2pool_resp.into_inner();
+
+            base_node_height = res.node_height;
+            base_node_hash = res.node_tip_hash.clone();
+            p2pool_height = res.p2pool_rx_height;
+            p2pool_hash = res.p2pool_rx_tip_hash.clone();
+        } else {
+            let mut base_node_client = self.base_node_client.clone();
+            trace!(target: LOG_TARGET, "Successful connection to base node GRPC");
+
+            let result = base_node_client.get_tip_info(tari_rpc::Empty {}).await.map_err(|err| {
+                MmProxyError::GrpcRequestError {
                     status: err,
                     details: "get_tip_info failed".to_string(),
-                })?;
-        let height = result
-            .get_ref()
-            .metadata
-            .as_ref()
-            .map(|meta| meta.best_block_height)
-            .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
-        if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
-            self.initial_sync_achieved
-                .store(result.get_ref().initial_sync_achieved, Ordering::SeqCst);
-            debug!(
-                target: LOG_TARGET,
-                "Minotari base node initial sync status change to {}",
-                result.get_ref().initial_sync_achieved
-            );
-        }
+                }
+            })?;
+            let res = result.into_inner();
 
+            base_node_height = res.metadata.as_ref().map(|m| m.best_block_height).unwrap_or_default();
+            base_node_hash = res
+                .metadata
+                .as_ref()
+                .map(|m| m.best_block_hash.clone())
+                .unwrap_or_default();
+        }
         info!(
             target: LOG_TARGET,
-            "Monero height = #{}, Minotari base node height = #{}", json["height"], height
+            "Monero height = #{}, Minotari base node height = #{}, P2pool height: #{}", monero_height, base_node_height, p2pool_height
         );
 
-        json["height"] = json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
+        // Add them together. You could multiply them a factor, but xmrig will generally just check if the height or the
+        // hash is different.
+        let reported_height = p2pool_height + monero_height + base_node_height;
+
+        // As of xmrig 6.22.0, the block hash is stored separately and does not need to match the block template they
+        // are mining, but if that changes in future, you might need to return the monero hash.
+
+        let hash: Vec<u8> = Blake2s256::new()
+            .chain(&monero_hash)
+            .chain(&base_node_hash)
+            .chain(&p2pool_hash)
+            .finalize()
+            .to_vec();
+
+        json["height"] = json!(reported_height as i64);
+        json["hash"] = json!(&(hash).to_hex());
         Ok(proxy::into_response(parts, &json))
     }
 
@@ -398,14 +420,13 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol = BlockTemplateProtocol::new(
+        let new_block_manager = BlockTemplateManager::try_create(
             &mut grpc_client,
             self.p2pool_client.clone(),
             self.config.clone(),
             self.consensus_manager.clone(),
             self.wallet_payment_address.clone(),
-        )
-        .await?;
+        )?;
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;
@@ -419,9 +440,13 @@ impl InnerService {
             difficulty,
         };
 
-        let final_block_template_data = new_block_protocol
-            .get_next_tari_block_template(monero_mining_data, &self.block_templates)
+        let final_block_template_data = new_block_manager
+            .get_next_tari_block_template(monero_mining_data)
             .await?;
+
+        self.block_templates
+            .save_final_block_template_if_key_unique(final_block_template_data.clone())
+            .await;
 
         monerod_resp["result"]["blocktemplate_blob"] = final_block_template_data.blocktemplate_blob.clone().into();
         monerod_resp["result"]["blockhashing_blob"] = final_block_template_data.blockhashing_blob.clone().into();
@@ -1048,7 +1073,6 @@ impl InnerService {
         request: Request<Bytes>,
     ) -> Result<Response<Body>, MmProxyError> {
         let start = Instant::now();
-
         debug!(
             target: LOG_TARGET,
             "[handle request] '{}' method: {}, uri: {}, headers: {:?}, body: {}",

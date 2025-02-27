@@ -2878,27 +2878,27 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
 
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
-    let mut n = match val {
+    let last_migrated_version = match val {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
     info!(
         target: LOG_TARGET,
-        "Blockchain database is at v{} (required version: {})", n, MIGRATION_VERSION
+        "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
     );
     drop(txn);
 
-    if n < MIGRATION_VERSION {
+    for i in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
-        if n < 2 {
+        if i == 1 {
             let txn = db.write_transaction()?;
             info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
             txn.commit()?;
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
-            n = 2;
         }
-
+    }
+    if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;
         info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
         lmdb_replace(

@@ -115,7 +115,7 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo machete
         run: |
-          cargo install cargo-machete
+          cargo install cargo-machete@0.7.0
           cargo machete
 
   build-stable:

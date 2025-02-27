@@ -111,10 +111,12 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
+    let agent = concat!("minotari_mm_proxy/", env!("CARGO_PKG_VERSION"));
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
-        .pool_max_idle_per_host(25)
+        .user_agent(agent)
+        .tcp_keepalive(Duration::from_secs(60))
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
@@ -156,7 +158,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
-    let randomx_service = MergeMiningProxyService::new(
+    let randomx_service = MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
