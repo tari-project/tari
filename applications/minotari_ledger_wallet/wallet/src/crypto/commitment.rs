@@ -9,7 +9,7 @@ use core::{
 
 use tari_utilities::{ByteArray, ByteArrayError};
 
-use crate::tari_crypto::keys::{RistrettoPublicKey, RistrettoSecretKey};
+use crate::crypto::keys::{RistrettoPublicKey, RistrettoSecretKey};
 
 #[derive(Debug, Clone, Default)]
 pub struct PedersenCommitment(pub(crate) RistrettoPublicKey);

@@ -10,7 +10,7 @@ use core::{
 
 use tari_utilities::ByteArray;
 
-use crate::tari_crypto::{
+use crate::crypto::{
     commitment::PedersenCommitment,
     commitment_factory::PedersenCommitmentFactory,
     keys::{RistrettoPublicKey, RistrettoSecretKey},

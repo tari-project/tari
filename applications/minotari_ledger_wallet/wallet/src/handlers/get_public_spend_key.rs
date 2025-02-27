@@ -9,7 +9,7 @@ use ledger_device_sdk::ui::gadgets::SingleMessage;
 use tari_utilities::ByteArray;
 
 use crate::{
-    tari_crypto::keys::RistrettoPublicKey,
+    crypto::keys::RistrettoPublicKey,
     utils::derive_from_bip32_key,
     AppSW,
     KeyType,

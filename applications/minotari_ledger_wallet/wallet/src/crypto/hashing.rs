@@ -224,7 +224,7 @@ macro_rules! hash_domain {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name;
 
-        impl $crate::tari_crypto::hashing::DomainSeparation for $name {
+        impl $crate::crypto::hashing::DomainSeparation for $name {
             fn version() -> u8 {
                 $version
             }

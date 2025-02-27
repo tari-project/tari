@@ -9,7 +9,7 @@ use curve25519_dalek::{
     traits::{Identity, MultiscalarMul},
 };
 
-use crate::tari_crypto::{
+use crate::crypto::{
     commitment::PedersenCommitment,
     keys::{RistrettoPublicKey, RistrettoSecretKey},
 };
