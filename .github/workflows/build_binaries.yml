@@ -25,6 +25,8 @@ env:
   TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
   TS_FEATURES: "default, safe"
   TS_LIBRARIES: "minotari_mining_helper_ffi"
+  TS_DESCRIPTION: "Tari Suite"
+  TS_URL: "https://tari.com"
   # For debug builds
   # TS_BUILD: "debug"
   TS_BUILD: "release"
@@ -516,7 +518,7 @@ jobs:
           name: ${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}*.pkg*"
 
-      - name: Sign files with Trusted Signing (windows binaries)
+      - name: Sign Windows files with Trusted Signing
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -533,6 +535,8 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+          description: ${{ env.TS_DESCRIPTION }}
+          description-url: ${{ env.TS_URL }}
 
       - name: Build the Windows installer
         if: startsWith(runner.os,'Windows')
@@ -541,7 +545,7 @@ jobs:
           cd buildtools
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TS_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TS_DIST }}" "windows_inno_installer.iss"
 
-      - name: Sign files with Trusted Signing (windows installer)
+      - name: Sign Windows installer with Trusted Signing
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -558,6 +562,46 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+          description: ${{ env.TS_DESCRIPTION }}
+          description-url: ${{ env.TS_URL }}
+
+      - name: Verify Windows signing for installer
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        shell: powershell
+        run: |
+          # Get the Program Files (x86) directory dynamically
+          $programFilesX86 = [System.Environment]::GetFolderPath("ProgramFilesX86")
+          $sdkBasePath = Join-Path $programFilesX86 "Windows Kits"
+
+          # Check if Windows Kits exists
+          if (-Not (Test-Path $sdkBasePath)) {
+            Write-Error "Windows Kits folder not found at $sdkBasePath!"
+            exit 1
+          }
+
+          Write-Output "Searching for signtool.exe in: $sdkBasePath"
+
+          # Search for signtool.exe within Windows Kits fold with x64 in the path
+          $signtoolPath = Get-ChildItem -Path $sdkBasePath -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                          Where-Object { $_.FullName -match '\\x64\\' } |
+                          Select-Object -ExpandProperty FullName -First 1
+
+          if (-not $signtoolPath) {
+            Write-Error "signtool.exe not found in Windows Kits folder!"
+            exit 1
+          }
+
+          Write-Output "Found signtool.exe at: $signtoolPath"
+
+          cd buildtools\Output
+
+          & $signtoolPath verify /pa "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "!! Signature verification failed for ${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe !!"
+            exit 1
+          }
 
       - name: Windows installer Compute archive checksum
         if: startsWith(runner.os,'Windows')
