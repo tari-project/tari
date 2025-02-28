@@ -53,6 +53,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
+        BadBlock,
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
@@ -1677,6 +1678,7 @@ impl LMDBDatabase {
         #[cfg(not(test))]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 0;
 
+        debug!(target: LOG_TARGET, "New bad block - height: {}, hash: {}, reason: {}", height, hash.to_hex(), reason);
         lmdb_replace(txn, &self.bad_blocks, hash.deref(), &(height, reason), None)?;
         // Clean up bad blocks that are far from the tip
         let metadata = fetch_metadata(txn, &self.metadata_db)?;
@@ -2123,6 +2125,19 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(lmdb_fetch_matching_after(&txn, &self.kernels_db, header_hash.deref())?
             .into_iter()
             .map(|f: TransactionKernelRowData| f.kernel)
+            .collect())
+    }
+
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let bad_blocks: Vec<(FixedHash, (u64, String))> = lmdb_filter_map_values(&txn, &self.bad_blocks, Some)?;
+        Ok(bad_blocks
+            .iter()
+            .map(|(hash, (height, reason))| BadBlock {
+                hash: *hash,
+                height: *height,
+                reason: reason.clone(),
+            })
             .collect())
     }
 
@@ -2873,7 +2888,7 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 2;
+    const MIGRATION_VERSION: u64 = 3;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -2888,9 +2903,9 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     );
     drop(txn);
 
-    for i in last_migrated_version..=MIGRATION_VERSION {
+    for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
-        if i == 1 {
+        if migrate_from_version == 1 {
             let txn = db.write_transaction()?;
             info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;

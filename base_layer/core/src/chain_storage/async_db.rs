@@ -31,7 +31,7 @@ use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -236,7 +236,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> (bool, String), "bad_block_exists");
 
-    make_async_fn!(add_bad_block(hash: BlockHash, height: u64, reason: String) -> (), "add_bad_block");
+    make_async_fn!(fetch_bad_blocks() -> Vec<BadBlock>, "bad_block_exists");
 
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 

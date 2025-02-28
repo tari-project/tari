@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{
+        BadBlock,
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
@@ -548,6 +549,11 @@ where B: BlockchainBackend
     pub fn fetch_kernels_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernels_in_block(&hash)
+    }
+
+    pub fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_bad_blocks()
     }
 
     pub fn fetch_outputs_in_block_with_spend_state(
@@ -1257,14 +1263,6 @@ where B: BlockchainBackend
     pub fn bad_block_exists(&self, hash: BlockHash) -> Result<(bool, String), ChainStorageError> {
         let db = self.db_read_access()?;
         db.bad_block_exists(hash)
-    }
-
-    /// Adds a block hash to the list of bad blocks so it wont get process again.
-    pub fn add_bad_block(&self, hash: BlockHash, height: u64, reason: String) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        let mut txn = DbTransaction::new();
-        txn.insert_bad_block(hash, height, reason);
-        db.write(txn)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
