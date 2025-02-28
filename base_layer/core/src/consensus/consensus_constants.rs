@@ -642,26 +642,25 @@ impl ConsensusConstants {
 
     // These values are mainly place holder till the final decision has been made about their values.
     pub fn mainnet() -> Vec<Self> {
-        let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(150_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 240,
+            target_time: 5,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_0).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 240,
+            target_time: 5,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let con_1 = ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 720,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 1..=1,
+            coinbase_min_maturity: 360,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
-            difficulty_block_window,
+            difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
@@ -672,7 +671,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            pre_mine_value: MAINNET_PRE_MINE_VALUE,
+            pre_mine_value: PRE_MINE_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 512,
             max_extra_encrypted_data_byte_size: 256,
@@ -688,7 +687,9 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-        }];
+        };
+
+        let consensus_constants = vec![con_1];
         consensus_constants
     }
 
