@@ -1,13 +1,12 @@
 [package]
 name = "tari_metrics"
 description = "Tari metrics"
-version = "1.11.6-pre.0"
-edition = "2021"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 log = { version = "0.4.14", optional = true }
