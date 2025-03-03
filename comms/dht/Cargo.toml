@@ -1,23 +1,22 @@
 [package]
 name = "tari_comms_dht"
-version = "1.11.6-pre.0"
-authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
-repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-tari_comms = { path = "../core", features = ["rpc"], version = "1.11.6-pre.0" }
-tari_common = { path = "../../common", version = "1.11.6-pre.0" }
-tari_comms_rpc_macros = { path = "../rpc_macros", version = "1.11.6-pre.0" }
-tari_crypto = { version = "0.22.0" }
-tari_utilities = { version = "0.8" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.11.6-pre.0" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.11.6-pre.0" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.11.6-pre.0" }
+tari_comms = { workspace = true, features = ["rpc"] }
+tari_common = { workspace = true }
+tari_comms_rpc_macros = { workspace = true }
+tari_crypto = { workspace = true }
+tari_utilities = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_storage = { workspace = true }
+tari_common_sqlite = { workspace = true }
 
 anyhow = "1.0.53"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -52,7 +51,7 @@ tokio = { version = "1.36", features = ["rt", "macros"] }
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_test_utils = { workspace = true }
 
 env_logger = "0.10"
 futures-test = { version = "0.3.5" }
@@ -66,7 +65,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = { path = "../../common", version = "1.11.6-pre.0" }
+tari_common = { workspace = true }
 
 [features]
 test-mocks = []

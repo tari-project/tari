@@ -1,15 +1,14 @@
 [package]
 name = "tari_common_sqlite"
-authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
-license = "BSD-3-Clause"
-version = "1.11.6-pre.0"
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-tari_utilities = { version = "0.8" }
+tari_utilities = { workspace = true }
 
 diesel = { version = "2.2.4", features = [
     "sqlite",
@@ -25,4 +24,4 @@ thiserror = "1.0.26"
 tokio = { version = "1.36", features = ["sync", "macros", "rt"] }
 
 [dev-dependencies]
-tari_test_utils = { path = "../infrastructure/test_utils" }
+tari_test_utils = { workspace = true }
