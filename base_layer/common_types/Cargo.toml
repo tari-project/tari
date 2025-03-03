@@ -1,16 +1,19 @@
 [package]
 name = "tari_common_types"
-authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
-license = "BSD-3-Clause"
-version = "1.11.6-pre.0"
-edition = "2018"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-tari_crypto = { version = "0.22.0" }
-tari_utilities = { version = "0.8" }
-tari_common = { path = "../../common", version = "1.11.6-pre.0" }
-minotari_ledger_wallet_common = { path = "../../applications/minotari_ledger_wallet/common" }
+tari_crypto = { workspace = true }
+tari_utilities = { workspace = true }
+tari_common = { workspace = true }
+# TODO: This is mainly to reference the Branch structure. This should be moved to a crate that does not 
+# reference ledger, or at least does not have ledger in the name.
+minotari_ledger_wallet_common = { workspace = true }
 chacha20poly1305 = "0.10.1"
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = "1.5"

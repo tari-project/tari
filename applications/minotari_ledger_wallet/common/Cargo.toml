@@ -1,9 +1,10 @@
 [package]
 name = "minotari_ledger_wallet_common"
-version = "1.11.6-pre.0"
-authors = ["The Tari Development Community"]
-license = "BSD-3-Clause"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 bs58 = { version = "0.5.1", default-features = false, features = ["alloc"] }
