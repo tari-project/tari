@@ -1,22 +1,21 @@
 [package]
 name = "tari_p2p"
-version = "1.11.6-pre.0"
-authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
-repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
 readme = "README.md"
-license = "BSD-3-Clause"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-tari_comms = { path = "../../comms/core", version = "1.11.6-pre.0" }
-tari_comms_dht = { path = "../../comms/dht", version = "1.11.6-pre.0" }
-tari_common = { path = "../../common", version = "1.11.6-pre.0" }
-tari_service_framework = { path = "../service_framework", version = "1.11.6-pre.0" }
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "1.11.6-pre.0" }
-tari_storage = { path = "../../infrastructure/storage", version = "1.11.6-pre.0" }
-tari_utilities = { version = "0.8" }
+tari_comms = { workspace = true }
+tari_comms_dht = { workspace = true }
+tari_common = { workspace = true }
+tari_service_framework = { workspace = true }
+tari_shutdown = { workspace = true }
+tari_storage = { workspace = true }
+tari_utilities = { workspace = true }
 
 anyhow = "1.0.53"
 fs2 = "0.4.0"
@@ -46,7 +45,7 @@ hickory-proto = { version = "=0.25.0-alpha.2" }
 webpki-roots = "0.26.6"
 
 [dev-dependencies]
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_test_utils = { workspace = true }
 toml = "0.5.11"
 
 config = "0.14.0"
@@ -54,9 +53,7 @@ clap = "3.2"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { path = "../../common", features = [
-    "build",
-], version = "1.11.6-pre.0" }
+tari_common = { workspace = true, features = ["build"] }
 
 [features]
 test-mocks = []
