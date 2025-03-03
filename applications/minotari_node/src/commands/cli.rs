@@ -164,7 +164,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     println!(
         "{}",
         box_data(
-            format!("Copyright 2019-{}. {}", Utc::now().year(), consts::APP_AUTHOR),
+            format!("Copyright 2019-{}. {}", Utc::now().year(), "The Tari Project"),
             target_line_length
         )
     );
