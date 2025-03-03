@@ -1,6 +1,6 @@
 [workspace.package]
 version = "1.11.6-pre.0"
-edition = "2018"
+edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
@@ -57,13 +57,14 @@ tari_comms_dht = { path = "comms/dht", default-features = false }
 tari_comms_rpc_macros = { path = "comms/rpc_macros" }
 tari_contacts = { path = "base_layer/contacts" }
 tari_core = { path = "base_layer/core", default-features = false }
-tari_crypto = { version = "0.21.0" }
+tari_crypto = { version = "0.22.0" }
 tari_features = { path = "common/tari_features" }
 tari_hashing = { path = "hashing" }
 tari_key_manager = { path = "base_layer/key_manager" }
 tari_libtor = { path = "infrastructure/libtor" }
 tari_metrics = { path = "infrastructure/metrics" }
 tari_mmr = { path = "base_layer/mmr" }
+tari_max_size = { path = "infrastructure/max_size" }
 tari_p2p = { path = "base_layer/p2p" }
 tari_script = { path = "infrastructure/tari_script" }
 tari_service_framework = { path = "base_layer/service_framework" }
