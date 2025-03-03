@@ -1,21 +1,21 @@
 [package]
 name = "tari_key_manager"
-authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
-repository = "https://github.com/tari-project/tari"
-license = "BSD-3-Clause"
-version = "1.11.6-pre.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-tari_crypto = { version = "0.22.0" }
-tari_utilities = { version = "0.8" }
-tari_common_sqlite = { path = "../../common_sqlite", version = "1.11.6-pre.0" }
-tari_common_types = { path = "../../base_layer/common_types", version = "1.11.6-pre.0" }
-tari_service_framework = { path = "../service_framework", version = "1.11.6-pre.0" }
+tari_crypto = { workspace = true }
+tari_utilities = { workspace = true }
+tari_common_sqlite = { workspace = true }
+tari_common_types = { workspace = true }
+tari_service_framework = { workspace = true }
 
 async-trait = { version = "0.1.50" }
 chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
