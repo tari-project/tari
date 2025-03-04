@@ -80,7 +80,7 @@ impl DnsResolver for TorDnsResolver {
             } else {
                 addr
             };
-            common::convert_tcpip_multiaddr_to_socketaddr(&addr).map_err(Into::into)
+            common::convert_tcpip_multiaddr_to_socketaddr(&addr)
         })
     }
 }

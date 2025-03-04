@@ -109,7 +109,7 @@ pub struct SenderTransactionInitializer<KM> {
 }
 
 pub struct BuildError<KM> {
-    pub builder: SenderTransactionInitializer<KM>,
+    pub builder: Box<SenderTransactionInitializer<KM>>,
     pub message: String,
 }
 
@@ -542,7 +542,7 @@ where KM: TransactionKeyManagerInterface
 
     fn build_err<T>(self, msg: &str) -> Result<T, BuildError<KM>> {
         Err(BuildError {
-            builder: self,
+            builder: Box::new(self),
             message: msg.to_string(),
         })
     }

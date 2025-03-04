@@ -86,7 +86,6 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
                     .map(TryInto::try_into)
                     .collect::<Result<Vec<proto::core::HistoricalBlock>, _>>()?
                     .into_iter()
-                    .map(Into::into)
                     .collect();
                 Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
             },

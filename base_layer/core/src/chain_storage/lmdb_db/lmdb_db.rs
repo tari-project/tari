@@ -1641,7 +1641,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         height: u64,
     ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
-        lmdb_get(txn, &self.block_accumulated_data_db, &height).map_err(Into::into)
+        lmdb_get(txn, &self.block_accumulated_data_db, &height)
     }
 
     #[allow(clippy::ptr_arg)]
@@ -1650,7 +1650,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         header_hash: &HashOutput,
     ) -> Result<Option<u64>, ChainStorageError> {
-        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice()).map_err(Into::into)
+        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice())
     }
 
     fn fetch_header_accumulated_data_by_height(

@@ -31,7 +31,13 @@ chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.1.8"
 config = { version = "0.14.0" }
-crossterm = { version = "0.28", features = ["event-stream"] }
+crossterm = { version = "0.28.1", default-features = false, features = [
+    "event-stream",
+    "use-dev-tty",
+    # we do not need libc feature however 0.28.1 has a bug that requires it
+    # https://github.com/crossterm-rs/crossterm/issues/935
+    "libc",
+] }
 derive_more = "0.99.17"
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = [

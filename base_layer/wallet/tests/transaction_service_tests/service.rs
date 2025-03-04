@@ -497,10 +497,7 @@ fn try_decode_sender_message(bytes: Vec<u8>) -> Option<TransactionSenderMessage>
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
     let tx_sender_msg = match envelope_body.decode_part::<proto::TransactionSenderMessage>(1) {
         Err(_) => return None,
-        Ok(d) => match d {
-            None => return None,
-            Some(r) => r,
-        },
+        Ok(d) => d?,
     };
 
     match TransactionSenderMessage::try_from(tx_sender_msg) {
@@ -515,10 +512,7 @@ fn try_decode_transaction_reply_message(bytes: Vec<u8>) -> Option<RecipientSigne
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
     let tx_reply_msg = match envelope_body.decode_part::<proto::RecipientSignedMessage>(1) {
         Err(_) => return None,
-        Ok(d) => match d {
-            None => return None,
-            Some(r) => r,
-        },
+        Ok(d) => d?,
     };
 
     match RecipientSignedMessage::try_from(tx_reply_msg) {

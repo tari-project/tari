@@ -344,7 +344,7 @@ version: "3"
 
 services:
   minotari_node:
-    image: quay.io/tarilabs/minotari_node:v0.5.4
+    image: quay.io/tarilabs/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
       - ./data:/root/.tari
@@ -394,35 +394,6 @@ Synchronizing blocks: Syncing from the following peers:
 510c83279adc7cb7d7dda0aa07
 Syncing 5229/5233
 ```
-
----
-
-### Building a Docker image
-
-If you don't want to use the Docker images provided by the community, you can roll your own!
-
-First, clone the Tari repo:
-
-```bash
-git clone git@github.com:tari-project/tari.git
-```
-
-Then build the image using the dockerfile in `buildtools`. The base node dockerfile builds the application and then
-places the binary inside a small container, keeping the executable binary to a minimum:
-
-    docker build -t minotari_node:latest -f ./buildtools/base_node.Dockerfile .
-
-Test your image:
-
-    docker run --rm -ti minotari_node minotari_node --help
-
-Run the base node:
-
-    docker run -ti -v /path/to/config/dir:/root/.tari minotari_node
-
-Default Docker builds for base x86-64 CPU. Better performing builds can be created by passing build options:
-
-    docker build -t minotari_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
 
 ---
 

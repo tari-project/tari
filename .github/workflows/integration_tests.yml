@@ -27,7 +27,8 @@ name: Integration tests
         type: string
 
 env:
-  toolchain: nightly-2024-07-07
+  toolchain: stable
+  nightly_toolchain: nightly-2024-07-07
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,7 +65,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_toolchain }}
 
       - name: Install ubuntu dependencies
         shell: bash
@@ -86,19 +87,19 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
 
       - name: cargo test compile
-        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
         timeout-minutes: 90
         run: |
-          cargo test \
+          cargo +${{ env.nightly_toolchain }} test \
             --test cucumber \
             -v \
             --all-features \
@@ -146,7 +147,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt, clippy
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_toolchain }}
 
       - name: Install ubuntu dependencies
         if: ${{ env.CI_FFI == 'true' }}
@@ -167,20 +168,20 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
-        run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
+        run: cargo +${{ env.nightly_toolchain }} test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for ffi
         if: ${{ env.CI_FFI == 'true' }}
         timeout-minutes: 90
         run: |
-          cargo test \
+          cargo +${{ env.nightly_toolchain }} test \
             --test cucumber \
             -v \
             --all-features \

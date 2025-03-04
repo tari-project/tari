@@ -1366,7 +1366,7 @@ pub async fn command_runner(
                         current_recipient_address.clone(),
                         original_maturity,
                         if pre_mine_from_file.is_some() {
-                            UseOutput::AsProvided(embedded_output)
+                            UseOutput::AsProvided(Box::new(embedded_output))
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },

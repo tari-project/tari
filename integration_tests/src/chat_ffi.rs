@@ -456,6 +456,7 @@ pub struct ChatCallback {
     pub read_confirmation_received: Mutex<u64>,
 }
 
+#[allow(static_mut_refs)]
 impl ChatCallback {
     pub fn instance() -> &'static mut Self {
         unsafe {

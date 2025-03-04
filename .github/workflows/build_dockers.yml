@@ -44,11 +44,11 @@ name: Build docker images
           - minotari_sha3_miner
           - 3rdparty_all
           - tor
-          - monerod
-          - xmrig
+          #- monerod
+          #- xmrig
 
 env:
-  toolchain_default: nightly-2024-07-07
+  toolchain_default: stable
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -91,8 +91,11 @@ jobs:
           if [[ "${{ github.ref }}" =~ ^refs/heads/build-dockers-* ]] || [[ "${{ github.ref }}" =~ ^refs/heads/build-all-* ]] ; then
             echo "Branch Build - limited dual arch"
             echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
-            echo "tag_alias=latest-weekly" >> $GITHUB_OUTPUT
-            echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            echo "tag_alias=latest-testing" >> $GITHUB_OUTPUT
+            #echo "build_items=xmrig" >> $GITHUB_OUTPUT
+            #echo "build_items=3rdparty" >> $GITHUB_OUTPUT
+            #echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            echo "build_items=all" >> $GITHUB_OUTPUT
           fi
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] ; then
             echo "Manual Build - selective"
