@@ -165,6 +165,18 @@ struct TariCoinPreview {
   uint64_t fee;
 };
 
+struct TariUtxo {
+  const char *commitment;
+  uint64_t value;
+  uint64_t mined_height;
+  uint64_t mined_timestamp;
+  uint64_t lock_height;
+  uint8_t status;
+  const char *coinbase_extra;
+  const char *payment_id;
+  const char *mined_in_block;
+};
+
 typedef struct TransactionKernel TariTransactionKernel;
 
 /**
@@ -231,17 +243,6 @@ typedef struct Balance TariBalance;
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
-
-struct TariUtxo {
-  const char *commitment;
-  uint64_t value;
-  uint64_t mined_height;
-  uint64_t mined_timestamp;
-  uint64_t lock_height;
-  uint8_t status;
-  const char *coinbase_extra;
-  const char *payment_id;
-};
 
 #ifdef __cplusplus
 extern "C" {
@@ -319,7 +320,175 @@ void destroy_tari_coin_preview(struct TariCoinPreview *p);
 void string_destroy(char *ptr);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
+ * -------------------------------- TariUtxo -=------------------------------------------------ ///
+ * Get the commitment from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array (that contains the commitment). Note that it returns empty if
+ * there was an error
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_utxo_get_commitment(const struct TariUtxo *utxo,
+                               int *error_out);
+
+/**
+ * Get the value from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` -  Returns the value.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long tari_utxo_get_value(const struct TariUtxo *utxo,
+                                       int *error_out);
+
+/**
+ * Get the mined height from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` -  Returns the mined height.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long tari_utxo_get_mined_height(const struct TariUtxo *utxo,
+                                              int *error_out);
+
+/**
+ * Get the mine timestamp from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` -  Returns the mined timestamp.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long tari_utxo_get_mined_timestamp(const struct TariUtxo *utxo,
+                                                 int *error_out);
+
+/**
+ * Get the lock height from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a lock height.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` -  Returns the value.
+ *
+ * # Safety
+ * None
+ */
+unsigned long long tari_utxo_get_lock_height(const struct TariUtxo *utxo,
+                                             int *error_out);
+
+/**
+ * Get the value from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `u8` -  Returns the status:
+ *     0: Unspent
+ *     1: Spent
+ *     2: EncumberedToBeReceived
+ *     3: EncumberedToBeSpent
+ *     4: Invalid
+ *     5: CancelledInbound
+ *     6: UnspentMinedUnconfirmed
+ *     7: ShortTermEncumberedToBeReceived
+ *     8: ShortTermEncumberedToBeSpent
+ *     9: SpentMinedUnconfirmed
+ *     10: NotStored
+ *
+ * # Safety
+ * None
+ */
+uint8_t tari_utxo_get_status(const struct TariUtxo *utxo,
+                             int *error_out);
+
+/**
+ * Get the coinbase extra from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array (that contains the coinbase extra). Note that it returns empty if
+ * there was an error
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_utxo_get_coinbase_extra(const struct TariUtxo *utxo,
+                                   int *error_out);
+
+/**
+ * Get the payment id from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
+ * there was an error
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_utxo_get_payment_id(const struct TariUtxo *utxo,
+                               int *error_out);
+
+/**
+ * Get the mined in block hash from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array (that contains the mined in block hash). Note that it returns
+ * empty if there was an error
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_utxo_get_mined_in_block(const struct TariUtxo *utxo,
+                                   int *error_out);
+
+/**
  * ----------------------------------- Transaction Kernel ------------------------------------- ///
  * Gets the excess for a TariTransactionKernel
  *
