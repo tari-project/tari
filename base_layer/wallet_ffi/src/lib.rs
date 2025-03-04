@@ -4479,6 +4479,93 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
+/// Gets the mined timestamp of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_timestamp(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    match (*transaction).mined_timestamp {
+        Some(mined_timestamp) => mined_timestamp.timestamp() as c_ulonglong,
+        None => 0,
+    }
+}
+
+/// Gets the mined height of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_height(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*transaction).mined_height.unwrap_or_default()
+}
+
+/// Gets the mined in block hash of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if transaction is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *const c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if transaction.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let mined_in_block = (*transaction).mined_in_block.unwrap_or_default();
+    let result = CString::new(mined_in_block.to_hex().as_str()).expect("Commitment will not fail.");
+
+    CString::into_raw(result)
+}
+
 /// Gets the payment ID of a TariCompletedTransaction
 ///
 /// ## Arguments

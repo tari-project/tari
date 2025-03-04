@@ -2276,6 +2276,58 @@ unsigned long long completed_transaction_get_timestamp(TariCompletedTransaction 
                                                        int *error_out);
 
 /**
+ * Gets the mined timestamp of a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+ *
+ * # Safety
+ * None
+ */
+unsigned long long completed_transaction_get_mined_timestamp(TariCompletedTransaction *transaction,
+                                                             int *error_out);
+
+/**
+ * Gets the mined height of a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+ *
+ * # Safety
+ * None
+ */
+unsigned long long completed_transaction_get_mined_height(TariCompletedTransaction *transaction,
+                                                          int *error_out);
+
+/**
+ * Gets the mined in block hash of a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+ * to an empty char array if transaction is null
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+ */
+const char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transaction,
+                                                     int *error_out);
+
+/**
  * Gets the payment ID of a TariCompletedTransaction
  *
  * ## Arguments

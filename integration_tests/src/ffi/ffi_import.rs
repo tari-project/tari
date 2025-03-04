@@ -292,6 +292,18 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_timestamp(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_height(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_in_block(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> *const c_char;
     pub fn completed_transaction_get_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
