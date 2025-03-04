@@ -87,7 +87,7 @@ jobs:
           cargo machete
       - name: cargo vet
         run: |
-          cargo install cargo-vet
+          cargo install cargo-vet@0.10.0 --locked
           cargo vet
 
   build-stable:
