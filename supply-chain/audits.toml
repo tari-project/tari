@@ -6,8 +6,3 @@ who = "Coinspect"
 criteria = "safe-to-deploy"
 violation = "<=0.52.0-pre.1"
 notes = "https://www.coinspect.com/blog/tari-security-audit/"
-
-#[[audits.tari_utilities]]
-#who = "stringhandler <stringhandler@protonmail.com>"
-#criteria = "safe-to-deploy"
-#version = "0.8.0"
