@@ -138,11 +138,8 @@ impl<B: Backend> App<B> {
 
     pub fn on_control_key(&mut self, c: char) {
         trace!(target: LOG_TARGET, "on_control_key: {}", c);
-        match c {
-            'q' | 'c' => {
-                self.should_quit = true;
-            },
-            _ => (),
+        if c == 'q' {
+            self.should_quit = true;
         }
     }
 
