@@ -332,6 +332,7 @@ impl Callbacks {
         println!("wallet {:?}", self.wallet);
     }
 
+    #[allow(static_mut_refs)]
     pub fn instance() -> &'static mut Self {
         unsafe {
             START.call_once(|| {

@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, sync::Mutex};
+use std::{
+    ops::Deref,
+    sync::{LazyLock, Mutex},
+};
 
 use ledger_transport::{APDUAnswer, APDUCommand};
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use minotari_ledger_wallet_common::common_types::Instruction;
-use once_cell::sync::Lazy;
 use tari_utilities::ByteArray;
 
 use crate::error::LedgerDeviceError;
@@ -60,8 +62,8 @@ impl HidManager {
     }
 }
 
-static HID_MANAGER: Lazy<Mutex<HidManager>> =
-    Lazy::new(|| Mutex::new(HidManager::new().expect("Failed to initialize HidManager")));
+static HID_MANAGER: LazyLock<Mutex<HidManager>> =
+    LazyLock::new(|| Mutex::new(HidManager::new().expect("Failed to initialize HidManager")));
 
 pub fn get_transport() -> Result<TransportNativeHID, LedgerDeviceError> {
     let mut manager = HID_MANAGER

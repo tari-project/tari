@@ -10,22 +10,23 @@ use ledger_device_sdk::io::Comm;
 use ledger_device_sdk::nbgl::NbglStatus;
 #[cfg(not(any(target_os = "stax", target_os = "flex")))]
 use ledger_device_sdk::ui::gadgets::SingleMessage;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey,
-    ristretto::{
-        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
-        RistrettoComAndPubSig,
-        RistrettoPublicKey,
-        RistrettoSecretKey,
-    },
-};
-use tari_hashing::TransactionHashDomain;
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes, get_random_nonce},
+    crypto::{
+        commitment::PedersenCommitment,
+        commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
+        commitment_factory::PedersenCommitmentFactory,
+        keys::{RistrettoPublicKey, RistrettoSecretKey},
+    },
+    utils::{
+        alpha_hasher,
+        derive_from_bip32_key,
+        get_key_from_canonical_bytes,
+        get_random_nonce,
+        TransactionHashDomain,
+    },
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -39,6 +40,7 @@ pub fn handler_get_script_signature_managed(comm: &mut Comm) -> Result<(), AppSW
         {
             SingleMessage::new("Invalid data length").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Invalid data length").show(false);
@@ -83,6 +85,7 @@ pub fn handler_get_script_signature_derived(comm: &mut Comm) -> Result<(), AppSW
         {
             SingleMessage::new("Invalid data length").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Invalid data length").show(false);
@@ -175,7 +178,7 @@ fn get_script_signature(
     script_public_key: RistrettoPublicKey,
     commitment: PedersenCommitment,
     script_message: [u8; 32],
-) -> Result<RistrettoComAndPubSig, AppSW> {
+) -> Result<CommitmentAndPublicKeySignature, AppSW> {
     let r_a = get_random_nonce()?;
     let r_x = get_random_nonce()?;
     let r_y = get_random_nonce()?;
@@ -184,6 +187,7 @@ fn get_script_signature(
         {
             SingleMessage::new("Nonces not unique").show_and_wait();
         }
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
         {
             NbglStatus::new().text(&"Nonces not unique").show(false);
@@ -191,7 +195,7 @@ fn get_script_signature(
         return Err(AppSW::ScriptSignatureFail);
     }
 
-    let factory = ExtendedPedersenCommitmentFactory::default();
+    let factory = PedersenCommitmentFactory::default();
 
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&r_y);
@@ -206,7 +210,7 @@ fn get_script_signature(
         &script_message,
     );
 
-    match RistrettoComAndPubSig::sign(
+    match CommitmentAndPublicKeySignature::sign(
         &value,
         &commitment_private_key,
         &script_private_key,
@@ -217,15 +221,17 @@ fn get_script_signature(
         &factory,
     ) {
         Ok(sig) => Ok(sig),
-        Err(e) => {
+        Err(_e) => {
+            let error_string = "Invalid Challenge".to_string();
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
-                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
-                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .text(&format!("Signing error: {}", error_string))
                     .show(false);
             }
             Err(AppSW::ScriptSignatureFail)

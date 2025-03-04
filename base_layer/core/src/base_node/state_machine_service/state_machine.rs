@@ -105,7 +105,6 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
-
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,

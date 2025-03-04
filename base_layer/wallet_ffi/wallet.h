@@ -816,12 +816,10 @@ TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
 char *byte_to_emoji(uint8_t byte);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- *
+ * -------------------------------------------------------------------------------------------- //////
  * ------------------------------- ComAndPubSignature Signature ---------------------------------------///
  * Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
  * ByteVectors
- *
  * ## Arguments
  * `ephemeral_commitment_bytes` - The public ephemeral commitment component as a ByteVector
  * `ephemeral_pubkey_bytes` - The public ephemeral pubkey component as a ByteVector

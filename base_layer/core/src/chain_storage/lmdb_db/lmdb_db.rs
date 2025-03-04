@@ -1641,7 +1641,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         height: u64,
     ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
-        lmdb_get(txn, &self.block_accumulated_data_db, &height).map_err(Into::into)
+        lmdb_get(txn, &self.block_accumulated_data_db, &height)
     }
 
     #[allow(clippy::ptr_arg)]
@@ -1650,7 +1650,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         header_hash: &HashOutput,
     ) -> Result<Option<u64>, ChainStorageError> {
-        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice()).map_err(Into::into)
+        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice())
     }
 
     fn fetch_header_accumulated_data_by_height(
@@ -2873,25 +2873,34 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 1;
+    const MIGRATION_VERSION: u64 = 2;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
-    let n = match val {
+    let last_migrated_version = match val {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
     info!(
         target: LOG_TARGET,
-        "Blockchain database is at v{} (required version: {})", n, MIGRATION_VERSION
+        "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
     );
     drop(txn);
 
-    if n < MIGRATION_VERSION {
+    for i in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
-        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+        if i == 1 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
+            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+    }
+    if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;
+        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
         lmdb_replace(
             &txn,
             &db.metadata_db,

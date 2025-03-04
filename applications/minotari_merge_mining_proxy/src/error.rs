@@ -124,6 +124,10 @@ pub enum MmProxyError {
     MaxSizeBytesError(#[from] MaxSizeBytesError),
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("Monerod timeout: {0}")]
+    MonerodTimeout(String),
+    #[error("Monerod request could not be parsed: {0}")]
+    InvalidMonerodRequest(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

@@ -15,7 +15,7 @@ name: Build minotari_ledger_wallet
 env:
   TS_FILENAME: "minotari_ledger_wallet"
   SHARUN: "shasum --algorithm 256"
-  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:3.43.0 "
+  DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:3.51.0 "
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix

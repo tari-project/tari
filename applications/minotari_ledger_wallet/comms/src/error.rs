@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::ByteArrayError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 /// Ledger device errors.

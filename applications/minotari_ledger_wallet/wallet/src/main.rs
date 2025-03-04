@@ -6,8 +6,8 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-
 mod hashing;
+mod crypto;
 pub mod utils;
 
 mod app_ui {
@@ -207,6 +207,7 @@ extern "C" fn sample_main() {
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
         // Initialize reference to Comm instance for NBGL

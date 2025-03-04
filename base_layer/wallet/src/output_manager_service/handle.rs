@@ -297,7 +297,7 @@ pub enum OutputManagerResponse {
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     EncumberAggregateUtxo(
-        (
+        Box<(
             Transaction,
             MicroMinotari,
             MicroMinotari,
@@ -305,7 +305,7 @@ pub enum OutputManagerResponse {
             CompressedPublicKey,
             CompressedPublicKey,
             CompressedPublicKey,
-        ),
+        )>,
     ),
     SpendBackupPreMineUtxo((Transaction, MicroMinotari, MicroMinotari)),
     OutputConfirmed,
@@ -887,23 +887,26 @@ impl OutputManagerHandle {
             })
             .await??
         {
-            OutputManagerResponse::EncumberAggregateUtxo((
-                transaction,
-                amount,
-                fee,
-                total_script_key,
-                total_metadata_ephemeral_public_key,
-                total_script_nonce,
-                shared_secret,
-            )) => Ok((
-                transaction,
-                amount,
-                fee,
-                total_script_key,
-                total_metadata_ephemeral_public_key,
-                total_script_nonce,
-                shared_secret,
-            )),
+            OutputManagerResponse::EncumberAggregateUtxo(values) => {
+                let (
+                    transaction,
+                    amount,
+                    fee,
+                    total_script_key,
+                    total_metadata_ephemeral_public_key,
+                    total_script_nonce,
+                    shared_secret,
+                ) = *values;
+                Ok((
+                    transaction,
+                    amount,
+                    fee,
+                    total_script_key,
+                    total_metadata_ephemeral_public_key,
+                    total_script_nonce,
+                    shared_secret,
+                ))
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

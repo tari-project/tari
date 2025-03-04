@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use bytes::Bytes;
-use hyper::{Method, Request, Response};
+use hyper::{Request, Response};
 use minotari_app_grpc::tari_rpc;
 use reqwest::ResponseBuilderExt;
 use serde_json as json;
@@ -124,22 +124,6 @@ pub fn try_into_json_block_header(header: tari_rpc::BlockHeaderResponse) -> Resu
         "reward": reward,
         "timestamp": header.timestamp
     }))
-}
-
-/// Parse the method name from the request
-pub fn parse_method_name(request: &Request<Bytes>) -> String {
-    match *request.method() {
-        Method::GET => {
-            let mut chars = request.uri().path().chars();
-            chars.next();
-            chars.as_str().to_string()
-        },
-        Method::POST => {
-            let json = json::from_slice::<json::Value>(request.body()).unwrap_or_default();
-            str::replace(json["method"].as_str().unwrap_or_default(), "\"", "")
-        },
-        _ => "unsupported".to_string(),
-    }
 }
 
 /// Convert a request with a Bytes body to a request with a json Value body

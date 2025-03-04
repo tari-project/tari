@@ -42,7 +42,6 @@ impl CommandContext {
     /// Function process the version command
     pub fn print_version(&self) -> Result<(), Error> {
         println!("Version: {}", consts::APP_VERSION);
-        println!("Author: {}", consts::APP_AUTHOR);
 
         if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
             println!(

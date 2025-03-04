@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.11.6-pre.0](https://github.com/tari-project/tari/compare/v1.11.5-pre.0...v1.11.6-pre.0) (2025-02-27)
+
+
+### Features
+
+* add p2pool tip info and better mmproxy template handling ([#6795](https://github.com/tari-project/tari/issues/6795)) ([b3dc63f](https://github.com/tari-project/tari/commit/b3dc63f79e7bedd19854c17e5d9809deb652e61d))
+
+
+### Bug Fixes
+
+* ledger builds ([#6817](https://github.com/tari-project/tari/issues/6817)) ([5b10f76](https://github.com/tari-project/tari/commit/5b10f76d8e3fcdcbe48a100b19e16325fc3aec84))
+
+### [1.11.5-pre.0](https://github.com/tari-project/tari/compare/v1.11.4-pre.0...v1.11.5-pre.0) (2025-02-18)
+
+
+### Features
+
+* add migration to remove bad blocks ([#6803](https://github.com/tari-project/tari/issues/6803)) ([26a8fec](https://github.com/tari-project/tari/commit/26a8fecbfcc3568b2d2459c723cf23985099d857))
+
+
+### Bug Fixes
+
+* sync peer ordering ([#6802](https://github.com/tari-project/tari/issues/6802)) ([e25ac10](https://github.com/tari-project/tari/commit/e25ac10f4388113a8be2486c7047311cabe5f77c))
+* fix validation for header sync
+
 ### [1.11.3-pre.0](https://github.com/tari-project/tari/compare/v1.11.2-pre.0...v1.11.3-pre.0) (2025-02-05)
 
 
