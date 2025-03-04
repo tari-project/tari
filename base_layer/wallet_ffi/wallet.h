@@ -2346,6 +2346,31 @@ char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction
                                            int *error_out);
 
 /**
+ * Extract the transaction type from a TariCompletedTransaction
+ *
+ * ## Arguments
+ * `transaction` - The completed transaction
+ *
+ * ## Returns
+ *  `0` => `PaymentToOther`,
+ *  `1` => `PaymentToSelf`,
+ *  `2` => `Burn`,
+ *  `3` => `CoinSplit`,
+ *  `4` => `CoinJoin`,
+ *  `5` => `ValidatorNodeRegistration`,
+ *  `6` => `ClaimAtomicSwap`,
+ *  `7` => `HtlcAtomicSwapRefund`,
+ *  `8` => `CodeTemplateRegistration`,
+ *  `9` => `ImportedUtxoNoneRewindable`,
+ *  `99` => `None`
+ *
+ * # Safety
+ * None
+ */
+unsigned int completed_transaction_get_transaction_type(const TariCompletedTransaction *transaction,
+                                                        int *error_out);
+
+/**
  * This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
  *
  * ## Arguments

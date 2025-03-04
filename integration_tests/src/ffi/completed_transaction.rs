@@ -54,7 +54,6 @@ impl CompletedTransaction {
         tx_id
     }
 
-    #[allow(dead_code)]
     pub fn get_destination_tari_address(&self) -> WalletAddress {
         let ptr;
         let mut error = 0;
@@ -68,7 +67,6 @@ impl CompletedTransaction {
         WalletAddress::from_ptr(ptr)
     }
 
-    #[allow(dead_code)]
     pub fn get_source_tari_address(&self) -> WalletAddress {
         let ptr;
         let mut error = 0;
@@ -95,7 +93,6 @@ impl CompletedTransaction {
         Kernel::from_ptr(ptr)
     }
 
-    #[allow(dead_code)]
     pub fn get_amount(&self) -> u64 {
         let amount;
         let mut error = 0;
@@ -109,7 +106,6 @@ impl CompletedTransaction {
         amount
     }
 
-    #[allow(dead_code)]
     pub fn get_fee(&self) -> u64 {
         let fee;
         let mut error = 0;
@@ -123,7 +119,6 @@ impl CompletedTransaction {
         fee
     }
 
-    #[allow(dead_code)]
     pub fn get_timestamp(&self) -> u64 {
         let timestamp;
         let mut error = 0;
@@ -137,7 +132,6 @@ impl CompletedTransaction {
         timestamp
     }
 
-    #[allow(dead_code)]
     pub fn get_payment_id(&self) -> String {
         let ptr;
         let mut error = 0;
@@ -151,7 +145,19 @@ impl CompletedTransaction {
         FFIString::from_ptr(ptr).as_string()
     }
 
-    #[allow(dead_code)]
+    pub fn get_transaction_type(&self) -> u32 {
+        let transaction_type;
+        let mut error = 0;
+        unsafe {
+            transaction_type = ffi_import::completed_transaction_get_transaction_type(self.ptr, &mut error);
+            if error > 0 {
+                println!("completed_transaction_get_transaction_type error {}", error);
+                panic!("completed_transaction_get_transaction_type error");
+            }
+        }
+        transaction_type
+    }
+
     pub fn get_status(&self) -> i32 {
         let status;
         let mut error = 0;
@@ -178,8 +184,7 @@ impl CompletedTransaction {
         is_outbound
     }
 
-    #[allow(dead_code)]
-    pub fn completed_transaction_get_confirmations(&self) -> u64 {
+    pub fn get_confirmations(&self) -> u64 {
         let confirmations_cnt;
         let mut error = 0;
         unsafe {
@@ -192,7 +197,6 @@ impl CompletedTransaction {
         confirmations_cnt
     }
 
-    #[allow(dead_code)]
     pub fn get_cancellation_reason(&self) -> i32 {
         let reason;
         let mut error = 0;

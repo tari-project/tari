@@ -308,6 +308,10 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *mut c_char;
+    pub fn completed_transaction_get_transaction_type(
+        transaction: *const TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_uint;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
     pub fn completed_transaction_get_confirmations(
         tx: *mut TariCompletedTransaction,

@@ -4604,6 +4604,52 @@ pub unsafe extern "C" fn completed_transaction_get_payment_id(
     result.into_raw()
 }
 
+/// Extract the transaction type from a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The completed transaction
+///
+/// ## Returns
+///  `0` => `PaymentToOther`,
+///  `1` => `PaymentToSelf`,
+///  `2` => `Burn`,
+///  `3` => `CoinSplit`,
+///  `4` => `CoinJoin`,
+///  `5` => `ValidatorNodeRegistration`,
+///  `6` => `ClaimAtomicSwap`,
+///  `7` => `HtlcAtomicSwapRefund`,
+///  `8` => `CodeTemplateRegistration`,
+///  `9` => `ImportedUtxoNoneRewindable`,
+///  `99` => `None`
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_transaction_type(
+    transaction: *const TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut transaction_type = 99;
+
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("completed_transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        let payment_id = (*transaction).payment_id.clone();
+        if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = payment_id
+        {
+            transaction_type = c_uint::from(tx_type.as_u8());
+        }
+    }
+
+    transaction_type
+}
+
 /// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
 ///
 /// ## Arguments

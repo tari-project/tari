@@ -304,7 +304,7 @@ async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, sta
     );
 }
 
-#[then(expr = "I want to view the transaction kernels for completed transactions in ffi wallet {word}")]
+#[then(expr = "I want to view the transaction information for completed transactions in ffi wallet {word}")]
 async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let completed_transactions = ffi_wallet.get_completed_transactions();
@@ -318,6 +318,45 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
         println!("Nonce {}", kernel.get_excess_public_nonce_hex());
         assert!(!kernel.get_excess_signature_hex().is_empty());
         println!("Signature {}", kernel.get_excess_signature_hex());
+        let address = completed_transaction.get_destination_tari_address();
+        assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
+        let address = completed_transaction.get_source_tari_address();
+        assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
+        let amount = completed_transaction.get_amount();
+        assert!(amount > 0, "Amount '{}', expected > 0", amount);
+        let fee = completed_transaction.get_fee();
+        assert!(fee > 0, "Fee '{}', expected > 0", fee);
+        let timestamp = completed_transaction.get_timestamp();
+        assert!(timestamp > 0, "Timestamp '{}', expected > 0", timestamp);
+        let payment_id = completed_transaction.get_payment_id();
+        assert!(
+            !payment_id.is_empty(),
+            "Payment id '{}', expected not empty",
+            payment_id
+        );
+        let transaction_type = completed_transaction.get_transaction_type();
+        assert_ne!(
+            transaction_type,
+            99,
+            "{}",
+            format!("Transaction type '{}', expected not 99", transaction_type)
+        );
+        let status = completed_transaction.get_status();
+        assert_ne!(status, -1, "{}", format!("Status '{}', expected not -1", status));
+        let confirmations = completed_transaction.get_confirmations();
+        assert!(
+            if status == 6 { confirmations >= 1 } else { true },
+            "Confirmations '{}' (with status '{}'), expected >= 1",
+            confirmations,
+            status
+        );
+        let cancellation_reason = completed_transaction.get_cancellation_reason();
+        assert!(
+            if status == 6 { cancellation_reason == -1 } else { true },
+            "Cancellation reason '{}' (with status '{}'), expected -1",
+            cancellation_reason,
+            status
+        );
     }
 }
 
