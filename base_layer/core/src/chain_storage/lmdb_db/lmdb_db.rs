@@ -2888,7 +2888,7 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 3;
+    const MIGRATION_VERSION: u64 = 2;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
