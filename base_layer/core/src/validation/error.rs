@@ -89,7 +89,7 @@ pub enum ValidationError {
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
     IncorrectPreviousHash { expected: String, block_hash: String },
-    #[error("Bad block with hash {hash} found")]
+    #[error("Bad block with hash '{hash}' and reason '{reason}' found")]
     BadBlockFound { hash: String, reason: String },
     #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
     TariScriptExceedsMaxSize {

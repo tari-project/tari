@@ -50,11 +50,11 @@ impl CommandContext {
 
         for (i, bad_block) in bad_blocks.iter().enumerate() {
             table.add_row(row![
-                    i + 1,
-                    format!("{}", bad_block.height),
-                    format!("#{}", bad_block.hash.to_hex()),
-                    format!("{}", bad_block.reason),
-                ]);
+                i + 1,
+                format!("{}", bad_block.height),
+                format!("#{}", bad_block.hash.to_hex()),
+                format!("{}", bad_block.reason),
+            ]);
         }
         table.enable_row_count().print_stdout();
 

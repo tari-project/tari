@@ -2553,7 +2553,14 @@ impl BlockchainBackend for LMDBDatabase {
         // We do this to ensure backwards compatibility on older exising dbs that did not store a reason
         let exist = lmdb_exists(&txn, &self.bad_blocks, block_hash.deref())?;
         match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref()) {
-            Ok(Some((_height, reason))) => Ok((true, reason)),
+            Ok(Some((height, reason))) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Bad block exists at height: {}, hash: {}, reason: {}",
+                    height, block_hash, reason
+                );
+                Ok((true, reason))
+            },
             Ok(None) => Ok((false, "".to_string())),
             Err(ChainStorageError::AccessError(e)) => {
                 if exist {

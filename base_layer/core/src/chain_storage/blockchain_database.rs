@@ -1077,12 +1077,12 @@ where B: BlockchainBackend
         if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        let block_exist = db.bad_block_exists(block_hash)?;
-        if block_exist.0 {
+        let (is_bad_block, reason) = db.bad_block_exists(block_hash)?;
+        if is_bad_block {
             return Err(ChainStorageError::ValidationError {
                 source: ValidationError::BadBlockFound {
                     hash: block_hash.to_hex(),
-                    reason: block_exist.1,
+                    reason,
                 },
             });
         }

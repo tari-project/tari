@@ -37,6 +37,7 @@ mod get_network_stats;
 mod get_peer;
 mod get_state_info;
 mod header_stats;
+mod list_bad_blocks;
 mod list_banned_peers;
 mod list_connections;
 mod list_headers;
@@ -56,7 +57,6 @@ mod unban_all_peers;
 mod version;
 mod watch_command;
 mod whoami;
-mod list_bad_blocks;
 
 use std::{
     str::FromStr,
