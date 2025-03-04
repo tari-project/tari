@@ -2324,8 +2324,8 @@ unsigned long long completed_transaction_get_mined_height(TariCompletedTransacti
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-const char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transaction,
-                                                     int *error_out);
+char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transaction,
+                                               int *error_out);
 
 /**
  * Gets the payment ID of a TariCompletedTransaction

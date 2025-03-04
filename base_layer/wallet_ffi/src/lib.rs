@@ -4553,7 +4553,7 @@ pub unsafe extern "C" fn completed_transaction_get_mined_height(
 pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *const c_char {
+) -> *mut c_char {
     let result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         let mut error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
