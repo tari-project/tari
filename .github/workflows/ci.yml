@@ -74,6 +74,48 @@ jobs:
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
         run: cargo lints clippy --all-targets --all-features
+vet:
+    # Checks for unused dependencies.
+    name: vet
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        if: startsWith(runner.environment,'github-hosted')
+        uses: Swatinem/rust-cache@v2
+      - name: caching (vet)
+        if: startsWith(runner.environment,'self-hosted')
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+      - name: cargo vet
+        run: |
+          cargo install cargo-vet
+          cargo vet
 
   machete:
     # Checks for unused dependencies.
