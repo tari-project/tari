@@ -14,11 +14,14 @@ name: CI
   merge_group:
 
 env:
-  toolchain: nightly-2024-07-07
+  toolchain: stable
+  nightly_toolchain: nightly-2025-01-01
+  nightly_test_toolchain: nightly-2024-07-07
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
   CARGO_INCREMENTAL: 0
+  RUSTUP_PERMIT_COPY_RENAME: true
   PROTOC: protoc
   TERM: unknown
   ## Must be a JSon string
@@ -39,7 +42,7 @@ jobs:
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_toolchain }}
           components: clippy, rustfmt
       - name: ubuntu dependencies
         run: |
@@ -63,17 +66,21 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_toolchain }}-nightly
+      - name: rust-toolchain.toml override by renaming
+        run: mv rust-toolchain.toml rust-toolchain.toml.bak
       - name: cargo format
-        run: cargo fmt --all -- --check
+        run: cargo +${{ env.nightly_toolchain }} fmt --all -- --check
       - name: Install cargo-lints
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
-        run: cargo lints clippy --all-targets --all-features
+        run: cargo +${{ env.nightly_toolchain }} lints clippy --all-targets --all-features
+      - name: rust-toolchain.toml.bak renaming back
+        run: mv rust-toolchain.toml.bak rust-toolchain.toml
 
   machete:
     # Checks for unused dependencies.
@@ -108,11 +115,11 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
       - name: cargo machete
         run: |
           cargo install cargo-machete@0.7.0
@@ -152,8 +159,6 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
-      - name: rust-toolchain.toml override by removing
-        run: rm -f rust-toolchain.toml
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -183,7 +188,7 @@ jobs:
 
   licenses:
     name: file licenses
-    runs-on: [ubuntu-20.04]
+    runs-on: [ubuntu-latest]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -219,7 +224,7 @@ jobs:
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.toolchain }}
+          toolchain: ${{ env.nightly_test_toolchain }}
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -227,7 +232,7 @@ jobs:
       - name: Cache cargo files and outputs
         if: startsWith(runner.environment,'github-hosted')
         uses: Swatinem/rust-cache@v2
-      - name: caching (nightly)
+      - name: caching (stable)
         if: startsWith(runner.environment,'self-hosted')
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
@@ -242,17 +247,17 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_test_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.target }}
           restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_test_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.tari_target_network.network }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_test_toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.nightly_test_toolchain }}-stable
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
       - name: cargo test compile
-        run: cargo test -vv --no-run --locked --all-features --release
+        run: cargo +${{ env.nightly_test_toolchain }} test -vv --no-run --locked --all-features --release
       - name: cargo test
-        run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+        run: cargo +${{ env.nightly_test_toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
         uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()

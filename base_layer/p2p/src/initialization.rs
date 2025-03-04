@@ -482,7 +482,6 @@ impl P2pInitializer {
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into)
     }
 
     async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {

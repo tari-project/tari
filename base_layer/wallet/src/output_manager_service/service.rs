@@ -295,7 +295,7 @@ where
                     use_output,
                 )
                 .await
-                .map(OutputManagerResponse::EncumberAggregateUtxo),
+                .map(|val| (OutputManagerResponse::EncumberAggregateUtxo(Box::new(val)))),
             OutputManagerRequest::SpendBackupPreMineUtxo {
                 tx_id,
                 fee_per_gram,
@@ -1339,7 +1339,7 @@ where
                         output_hash, tx_id
                     ))
                 })?,
-            UseOutput::AsProvided(ref val) => val.clone(),
+            UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
@@ -3460,7 +3460,7 @@ pub enum UseOutput {
     /// The transaction output will be fetched from the blockchain
     FromBlockchain(HashOutput),
     /// The transaction output must be provided
-    AsProvided(TransactionOutput),
+    AsProvided(Box<TransactionOutput>),
 }
 
 fn get_multi_sig_script_components(

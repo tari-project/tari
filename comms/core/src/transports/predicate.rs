@@ -41,7 +41,7 @@ where
 #[derive(Debug, Default)]
 pub struct FalsePredicate<'a, A>(PhantomData<&'a A>);
 
-impl<'a, A> FalsePredicate<'a, A> {
+impl<A> FalsePredicate<'_, A> {
     pub fn new() -> Self {
         Self(PhantomData)
     }

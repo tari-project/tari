@@ -148,7 +148,7 @@ pub async fn run_base_node_with_cli(
     }
 
     ctx.start()
-        .map_err(|e| ExitError::new(ExitCode::DatabaseError, &format!("Could not start database.{:?}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());

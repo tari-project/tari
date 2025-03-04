@@ -141,9 +141,9 @@ pub(super) fn validate_peer_identity_message(
         .into());
     }
 
-    if user_agent.as_bytes().len() > config.max_user_agent_byte_length {
+    if user_agent.len() > config.max_user_agent_byte_length {
         return Err(PeerValidatorError::PeerIdentityUserAgentTooLong {
-            length: user_agent.as_bytes().len(),
+            length: user_agent.len(),
             max: config.max_user_agent_byte_length,
         }
         .into());

@@ -87,7 +87,7 @@ pub fn user_prompt(node_identity: &Arc<NodeIdentity>) -> anyhow::Result<Propagat
             (msg_size * num_msgs) / 1024 / 1024
         );
         let ans = or_continue!(read_line::<char>('n'));
-        if ans.to_ascii_uppercase() != 'Y' {
+        if !ans.eq_ignore_ascii_case(&'Y') {
             continue;
         }
 

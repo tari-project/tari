@@ -396,7 +396,7 @@ sample output:
 ```
 PS C:\Users\leet> cd src\tari
 PS C:\Users\leet\src\tari> cargo build --release --bin minotari_miner
-info: syncing channel updates for 'nightly-2024-07-07-x86_64-pc-windows-msvc'
+info: syncing channel updates for 'stable-x86_64-pc-windows-msvc'
 info: latest update on 2024-07-07, rust version 1.81.0-nightly (ed7e35f34 2024-07-06)
 info: downloading component 'cargo'
 info: downloading component 'clippy'

@@ -35,10 +35,7 @@ use tari_comms::{
     Minimized,
     PeerManager,
 };
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundMessageRequester},
-};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::RwLock, time, time::MissedTickBehavior};
@@ -257,8 +254,7 @@ where
                 OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
                 "Send ping".to_string(),
             )
-            .await
-            .map_err(Into::<DhtOutboundError>::into)?;
+            .await?;
 
         Ok(nonce)
     }

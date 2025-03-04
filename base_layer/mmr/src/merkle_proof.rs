@@ -259,12 +259,12 @@ impl Display for MerkleProof {
         self.path
             .iter()
             .enumerate()
-            .fold(Ok(()), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
+            .try_fold((), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
         f.write_str("Peaks:\n")?;
         self.peaks
             .iter()
             .enumerate()
-            .fold(Ok(()), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
+            .try_fold((), |_, (i, h)| f.write_str(&format!("{:3}: {}\n", i, h.to_hex())))?;
         Ok(())
     }
 }

@@ -188,7 +188,7 @@ impl BodyBytes {
 #[allow(clippy::from_over_into)]
 impl Into<Bytes> for BodyBytes {
     fn into(self) -> Bytes {
-        self.0.map(Bytes::from).unwrap_or_default()
+        self.0.unwrap_or_default()
     }
 }
 

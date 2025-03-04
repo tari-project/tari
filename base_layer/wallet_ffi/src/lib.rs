@@ -634,7 +634,6 @@ pub unsafe extern "C" fn destroy_tari_coin_preview(p: *mut TariCoinPreview) {
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
-
 /// Frees memory for a char array
 ///
 /// ## Arguments
@@ -653,9 +652,7 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Transaction Kernel ------------------------------------- ///
-
 /// Gets the excess for a TariTransactionKernel
 ///
 /// ## Arguments
@@ -776,9 +773,7 @@ pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TariTransactionKerne
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// -------------------------------- ByteVector ------------------------------------------------ ///
-
 /// Creates a ByteVector
 ///
 /// ## Arguments
@@ -899,9 +894,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// -------------------------------- Public Key ------------------------------------------------ ///
-
 /// Creates a TariPublicKey from a ByteVector
 ///
 /// ## Arguments
@@ -1102,9 +1095,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// -------------------------------- Tari Address ---------------------------------------------- ///
-
 /// Creates a TariWalletAddress from a ByteVector
 ///
 /// ## Arguments
@@ -1536,13 +1527,10 @@ pub unsafe extern "C" fn byte_to_emoji(byte: u8) -> *mut c_char {
     CString::into_raw(result)
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-///
+/// -------------------------------------------------------------------------------------------- //////
 /// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
-
 /// Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
 /// ByteVectors
-///
 /// ## Arguments
 /// `ephemeral_commitment_bytes` - The public ephemeral commitment component as a ByteVector
 /// `ephemeral_pubkey_bytes` - The public ephemeral pubkey component as a ByteVector
@@ -1681,9 +1669,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// -------------------------------- Unblinded utxo -------------------------------------------- ///
-
 /// Creates an unblinded output
 ///
 /// ## Arguments
@@ -1961,9 +1947,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- TariUnblindedOutputs ------------------------------------///
-
 /// Gets the length of TariUnblindedOutputs
 ///
 /// ## Arguments
@@ -2195,7 +2179,6 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
 }
 /// -------------------------------------------------------------------------------------------- ///
 /// -------------------------------- Private Key ----------------------------------------------- ///
-
 /// Creates a TariPrivateKey from a ByteVector
 ///
 /// ## Arguments
@@ -2342,7 +2325,6 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 
 /// -------------------------------------------------------------------------------------------- ///
 /// -------------------------------- Range Proof ----------------------------------------------- ///
-
 /// Creates a default TariRangeProof
 ///
 /// ## Arguments
@@ -2524,7 +2506,6 @@ pub unsafe extern "C" fn range_proof_destroy(proof_ptr: *mut TariRangeProof) {
 
 /// -------------------------------------------------------------------------------------------- ///
 /// --------------------------------------- Covenant --------------------------------------------///
-
 /// Creates a TariCovenant from a ByteVector containing the covenant bytes
 ///
 /// ## Arguments
@@ -2581,7 +2562,6 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 
 /// -------------------------------------------------------------------------------------------- ///
 /// --------------------------------------- EncryptedOpenings --------------------------------------------///
-
 /// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
 ///
 /// ## Arguments
@@ -2746,7 +2726,6 @@ pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncrypt
 
 /// -------------------------------------------------------------------------------------------- ///
 /// ---------------------------------- Output Features ------------------------------------------///
-
 /// Creates a TariOutputFeatures from byte values
 ///
 /// ## Arguments
@@ -2854,9 +2833,7 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Seed Words ----------------------------------------------///
-
 /// Create an empty instance of TariSeedWords
 ///
 /// ## Arguments
@@ -3265,9 +3242,7 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Contact -------------------------------------------------///
-
 /// Creates a TariContact
 ///
 /// ## Arguments
@@ -3426,9 +3401,7 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Contacts -------------------------------------------------///
-
 /// Gets the length of TariContacts
 ///
 /// ## Arguments
@@ -3513,9 +3486,7 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Contacts Liveness Data ----------------------------------///
-
 /// Gets the public_key from a TariContactsLivenessData
 ///
 /// ## Arguments
@@ -3559,7 +3530,6 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
 /// memory leak
-
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
     liveness_data: *mut TariContactsLivenessData,
@@ -3719,9 +3689,7 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
     }
 }
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///
-
 /// Gets the length of a TariCompletedTransactions
 ///
 /// ## Arguments
@@ -3811,9 +3779,7 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- OutboundTransactions ------------------------------------ ///
-
 /// Gets the length of a TariPendingOutboundTransactions
 ///
 /// ## Arguments
@@ -3904,9 +3870,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- InboundTransactions ------------------------------------- ///
-
 /// Gets the length of a TariPendingInboundTransactions
 ///
 /// ## Arguments
@@ -3996,9 +3960,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- CompletedTransaction ------------------------------------- ///
-
 /// Gets the TransactionID of a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -4510,9 +4472,7 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- OutboundTransaction ------------------------------------- ///
-
 /// Gets the TransactionId of a TariPendingOutboundTransaction
 ///
 /// ## Arguments
@@ -4746,7 +4706,6 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 /// -------------------------------------------------------------------------------------------- ///
 ///
 /// ----------------------------------- InboundTransaction ------------------------------------- ///
-
 /// Gets the TransactionId of a TariPendingInboundTransaction
 ///
 /// ## Arguments
@@ -4952,9 +4911,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Transport Send Status -----------------------------------///
-
 /// Decode the transaction send status of a TariTransactionSendStatus
 ///
 /// ## Arguments
@@ -5025,9 +4982,7 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-
 /// ----------------------------------- Transport Types -----------------------------------------///
-
 /// Creates a memory transport type
 ///
 /// ## Arguments
@@ -5312,9 +5267,7 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 }
 
 /// ---------------------------------------------------------------------------------------------///
-
 /// ----------------------------------- CommsConfig ---------------------------------------------///
-
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
 /// ## Arguments
@@ -5620,9 +5573,7 @@ pub unsafe extern "C" fn public_keys_get_at(
 }
 
 /// ---------------------------------------------------------------------------------------------- ///
-
 /// ------------------------------------- Wallet -------------------------------------------------///
-
 /// Inits logging, this function is deliberately not exposed externally in the header
 ///
 /// ## Arguments
@@ -9287,7 +9238,6 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
 }
 
 /// ------------------------------------- FeePerGramStats ------------------------------------ ///
-
 /// Get the TariFeePerGramStats from a TariWallet.
 ///
 /// ## Arguments
@@ -9423,9 +9373,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut Tar
 }
 
 /// ------------------------------------------------------------------------------------------ ///
-
 /// ------------------------------------- FeePerGramStat ------------------------------------- ///
-
 /// Get the order of TariFeePerGramStat
 ///
 /// ## Arguments
