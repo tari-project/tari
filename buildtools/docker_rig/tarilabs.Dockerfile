@@ -60,6 +60,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     sh /tari/scripts/install_ubuntu_dependencies.sh
 
+# Work around - Error: Not a git repository or CARGO_MANIFEST_DIR nested deeper than 10 from the root
+RUN git init -q
+
 RUN if [ "${BUILDARCH}" != "${TARGETARCH}" ] ; then \
       # Run script to help setup cross-compile environment
       . /tari/scripts/cross_compile_tooling.sh ; \
