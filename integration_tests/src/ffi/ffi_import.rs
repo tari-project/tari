@@ -307,7 +307,7 @@ extern "C" {
     pub fn completed_transaction_get_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
-    ) -> *const c_char;
+    ) -> *mut c_char;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
     pub fn completed_transaction_get_confirmations(
         tx: *mut TariCompletedTransaction,

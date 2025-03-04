@@ -4583,7 +4583,7 @@ pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
 pub unsafe extern "C" fn completed_transaction_get_payment_id(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *const c_char {
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let payment_id = (*transaction).payment_id.clone();

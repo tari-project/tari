@@ -2342,8 +2342,8 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-const char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction,
-                                                 int *error_out);
+char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction,
+                                           int *error_out);
 
 /**
  * This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
