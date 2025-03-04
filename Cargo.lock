@@ -4014,6 +4014,7 @@ dependencies = [
  "config",
  "console-subscriber",
  "crossterm 0.28.1",
+ "dialoguer 0.10.4",
  "digest 0.10.7",
  "dirs-next 2.0.0",
  "futures 0.3.31",

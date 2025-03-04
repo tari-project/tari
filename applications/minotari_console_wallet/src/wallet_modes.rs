@@ -169,13 +169,13 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
         matches!(
             command,
             CliCommands::PreMineSpendGetOutputStatus |
-                CliCommands::PreMineSpendSessionInfo(_) |
-                CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
-                CliCommands::PreMineSpendPartyDetails(_) |
-                CliCommands::PreMineSpendInputOutputSigs(_) |
+                CliCommands::PreMineStart(_) |
+                CliCommands::PreMineEncumber(_) |
+                CliCommands::PreMineStartParty(_) |
+                CliCommands::PreMineSigs(_) |
                 CliCommands::PreMineSpendBackupUtxo(_)
         ),
-        matches!(command, CliCommands::PreMineSpendAggregateTransaction(_)),
+        matches!(command, CliCommands::PreMineSpendTx(_)),
     )
 }
 
@@ -608,11 +608,11 @@ mod test {
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
-                CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
-                CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
-                CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
-                CliCommands::PreMineSpendInputOutputSigs(_) => pre_mine_spend_input_output_sigs = true,
-                CliCommands::PreMineSpendAggregateTransaction(_) => pre_mine_spend_aggregate_transaction = true,
+                CliCommands::PreMineStart(_) => pre_mine_spend_session_info = true,
+                CliCommands::PreMineStartParty(_) => pre_mine_spend_party_details = true,
+                CliCommands::PreMineEncumber(_) => pre_mine_spend_encumber_aggregate_utxo = true,
+                CliCommands::PreMineSigs(_) => pre_mine_spend_input_output_sigs = true,
+                CliCommands::PreMineSpendTx(_) => pre_mine_spend_aggregate_transaction = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,

@@ -11,11 +11,9 @@ license.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_crypto = { workspace = true, default-features = false, features = [
-    "borsh",
-] }
-borsh = { version = "1.5", default-features = false }
-digest = { version = "0.10", default-features = false }
+tari_crypto = { workspace = true, features = ["borsh"] }
+borsh = { version = "1.5" }
+digest = { version = "0.10" }
 
 [dev-dependencies]
 blake2 = "0.10"

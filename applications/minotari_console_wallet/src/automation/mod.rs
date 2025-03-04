@@ -51,6 +51,7 @@ struct PreMineSpendStep1SessionInfo {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct RecipientInfo {
     output_to_be_spend: usize,
+    #[serde(with = "tari_common_types::tari_address::tari_address_json_bs58")]
     recipient_address: TariAddress,
 }
 

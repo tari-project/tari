@@ -139,11 +139,11 @@ pub enum CliCommands {
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
     PreMineSpendGetOutputStatus,
-    PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
-    PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
-    PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
-    PreMineSpendInputOutputSigs(PreMineSpendInputOutputSigArgs),
-    PreMineSpendAggregateTransaction(PreMineSpendAggregateTransactionArgs),
+    PreMineStart(PreMineStartSessionArgs),
+    PreMineStartParty(PreMineSpendPartyDetailsArgs),
+    PreMineEncumber(PreMineSpendEncumberAggregateUtxoArgs),
+    PreMineSigs(PreMineSpendInputOutputSigArgs),
+    PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
@@ -190,8 +190,8 @@ pub struct BurnMinotariArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineSpendSessionInfoArgs {
-    #[clap(long)]
+pub struct PreMineStartSessionArgs {
+    #[clap(long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
     pub recipient_info: Vec<CliRecipientInfo>,
@@ -251,21 +251,19 @@ impl FromStr for CliRecipientInfo {
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
-    pub input_file: PathBuf,
+    pub input_file: Option<String>,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
-    #[clap(long)]
-    pub recipient_info: Vec<CliRecipientInfo>,
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub alias: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendEncumberAggregateUtxoArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
-    pub input_file_names: Vec<String>,
+    pub member: Vec<String>,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
     #[clap(short, long, default_value = "Spend pre-mine encumber aggregate UTXO")]
@@ -274,7 +272,7 @@ pub struct PreMineSpendEncumberAggregateUtxoArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendInputOutputSigArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
@@ -282,15 +280,15 @@ pub struct PreMineSpendInputOutputSigArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendAggregateTransactionArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
-    pub input_file_names: Vec<String>,
+    pub member: Vec<String>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendBackupUtxoArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
     pub output_index: usize,
