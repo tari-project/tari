@@ -2554,7 +2554,7 @@ impl BlockchainBackend for LMDBDatabase {
         let exist = lmdb_exists(&txn, &self.bad_blocks, block_hash.deref())?;
         match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref()) {
             Ok(Some((height, reason))) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Bad block exists at height: {}, hash: {}, reason: {}",
                     height, block_hash, reason
