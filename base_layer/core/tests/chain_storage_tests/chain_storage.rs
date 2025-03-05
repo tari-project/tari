@@ -275,6 +275,9 @@ fn test_coverage_chain_storage() {
     let mut txn = DbTransaction::new();
     txn.insert_bad_block(*block0.hash(), 0);
     store.commit(txn).unwrap();
+    let bad_blocks = txn.fetch_bad_blocks();
+    assert_eq!(bad_blocks.len(), 1);
+    assert_eq!(bad_blocks[0].0, *block0.hash());
 }
 
 #[test]

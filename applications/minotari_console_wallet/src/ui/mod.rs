@@ -105,6 +105,8 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         ExitCode::InterfaceError
     })?;
 
+    #[cfg(target_os = "windows")]
+    let (mut key_press, mut previous_code, mut previous_kind) = (None, None, None);
     loop {
         terminal.draw(|f| app.draw(f)).map_err(|e| {
             error!(target: LOG_TARGET, "Error drawing interface. {}", e);
@@ -129,21 +131,56 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
                     }
                 );
                 #[cfg(target_os = "windows")]
-                let action_now = {
+                let (action_now, change_case) = {
                     use crossterm::event::KeyEventKind;
-                    match (event.kind, event.modifiers, event.code) {
-                        (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q' || c == 'c',
-                        (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
-                        (KeyEventKind::Release, _, _) => true,
-                        (..) => false,
+                    let mut change_case = false;
+                    if let KeyEventKind::Press = event.kind {
+                        key_press = Some(event.code);
                     }
+                    let action_now = match (event.kind, event.modifiers, event.code) {
+                        (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q',
+                        (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
+                        (KeyEventKind::Press, _, _) => {
+                            previous_kind == Some(KeyEventKind::Press) && previous_code == Some(event.code)
+                        },
+                        (KeyEventKind::Release, _, _) => match event.code {
+                            // Typing with Caps lock on results in Press and Release keycodes having different
+                            // cases
+                            KeyCode::Char(cr) => {
+                                if let Some(KeyCode::Char(cp)) = key_press {
+                                    if String::from(cp).to_lowercase() == String::from(cr).to_lowercase() && cp != cr {
+                                        change_case = true;
+                                    }
+                                    String::from(cp).to_lowercase() == String::from(cr).to_lowercase()
+                                } else {
+                                    false
+                                }
+                            },
+                            _ => key_press == Some(event.code),
+                        },
+                        (..) => false,
+                    };
+                    previous_kind = Some(event.kind);
+                    previous_code = Some(event.code);
+                    (action_now, change_case)
                 };
                 #[cfg(not(target_os = "windows"))]
-                let action_now = true;
+                let (action_now, change_case) = (true, false);
                 match (event.code, event.modifiers, action_now) {
                     (_, _, false) => {},
                     (KeyCode::Char(c), KeyModifiers::CONTROL, _) => app.on_control_key(c),
-                    (KeyCode::Char(c), _, _) => app.on_key(c),
+                    (KeyCode::Char(c), _, _) => {
+                        let mut c_new = c;
+                        if change_case {
+                            if c_new.is_uppercase() {
+                                c_new = c_new.to_lowercase().next().unwrap_or(c_new);
+                            } else {
+                                c_new = c_new.to_uppercase().next().unwrap_or(c_new);
+                            }
+                            trace!(target: LOG_TARGET, "Inconsistent case detected; '{}' changed to '{}'", c, c_new);
+                        }
+                        app.on_key(c_new)
+                    },
                     (KeyCode::Left, _, _) => app.on_left(),
                     (KeyCode::Up, _, _) => app.on_up(),
                     (KeyCode::Right, _, _) => app.on_right(),
