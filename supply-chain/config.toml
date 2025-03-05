@@ -791,6 +791,10 @@ criteria = "safe-to-deploy"
 version = "0.13.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.filedescriptor]]
+version = "0.8.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.fixed-hash]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
@@ -1061,6 +1065,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ipnet]]
 version = "2.10.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.is-terminal]]
+version = "0.4.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.is_terminal_polyfill]]
@@ -1675,6 +1683,10 @@ criteria = "safe-to-deploy"
 version = "0.31.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.quickcheck]]
+version = "1.0.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.r2d2]]
 version = "0.8.10"
 criteria = "safe-to-deploy"
@@ -2127,6 +2139,10 @@ criteria = "safe-to-deploy"
 version = "1.11.6-pre.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.tari_utilities]]
+version = "0.8.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.tempfile]]
 version = "3.14.0"
 criteria = "safe-to-deploy"
@@ -2145,6 +2161,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.textwrap]]
 version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.thiserror]]
+version = "1.0.69"
+criteria = "safe-to-deploy"
+
+[[exemptions.thiserror]]
+version = "2.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.thiserror-impl]]
