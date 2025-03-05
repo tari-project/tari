@@ -1181,8 +1181,6 @@ pub async fn command_runner(
                 println!();
             },
             PreMineEncumber(args) => {
-                temp_ban_peers(&wallet, &mut peer_list).await;
-                unban_peer_manager_peers = true;
                 let session_info;
                 // Read session info
                 let mut session_id = args.session_id.clone();
