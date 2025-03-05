@@ -37,6 +37,7 @@ mod get_network_stats;
 mod get_peer;
 mod get_state_info;
 mod header_stats;
+mod list_bad_blocks;
 mod list_banned_peers;
 mod list_connections;
 mod list_headers;
@@ -131,6 +132,7 @@ pub enum Command {
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
+    ListBadBlocks(list_bad_blocks::Args),
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
@@ -227,6 +229,7 @@ impl CommandContext {
                 Command::GetDbStats(_) |
                 Command::GetStateInfo(_) |
                 Command::ListReorgs(_) |
+                Command::ListBadBlocks(_) |
                 Command::GetBlock(_) |
                 Command::ListHeaders(_) |
                 Command::HeaderStats(_) |
@@ -294,6 +297,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::ListBadBlocks(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,

@@ -324,6 +324,7 @@ pub struct TariUtxo {
     pub status: u8,
     pub coinbase_extra: *const c_char,
     pub payment_id: *const c_char,
+    pub mined_in_block: *const c_char,
 }
 
 impl From<DbWalletOutput> for TariUtxo {
@@ -357,6 +358,9 @@ impl From<DbWalletOutput> for TariUtxo {
                 .into_raw(),
             payment_id: CString::new(format!("{}", x.payment_id))
                 .expect("failed to obtain string from a payment id")
+                .into_raw(),
+            mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
+                .expect("failed to obtain hex from a hash")
                 .into_raw(),
         }
     }
@@ -651,7 +655,263 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
+/// -------------------------------- TariUtxo -=------------------------------------------------ ///
+/// Get the commitment from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the commitment). Note that it returns empty if
+/// there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_commitment(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let commitment_str = match CStr::from_ptr((*utxo).commitment).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            let mut error = LibWalletError::from(InterfaceError::PointerError("commitment".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(commitment_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
+/// Get the value from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the value.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_value(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong {
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*utxo).value
+}
+
+/// Get the mined height from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the mined height.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_mined_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong {
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*utxo).mined_height
+}
+
+/// Get the mine timestamp from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the mined timestamp.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_mined_timestamp(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong {
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*utxo).mined_timestamp
+}
+
+/// Get the lock height from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a lock height.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns the value.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_lock_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong {
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*utxo).lock_height
+}
+
+/// Get the value from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `u8` -  Returns the status:
+///     0: Unspent
+///     1: Spent
+///     2: EncumberedToBeReceived
+///     3: EncumberedToBeSpent
+///     4: Invalid
+///     5: CancelledInbound
+///     6: UnspentMinedUnconfirmed
+///     7: ShortTermEncumberedToBeReceived
+///     8: ShortTermEncumberedToBeSpent
+///     9: SpentMinedUnconfirmed
+///     10: NotStored
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_status(utxo: *const TariUtxo, error_out: *mut c_int) -> u8 {
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*utxo).status
+}
+
+/// Get the coinbase extra from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the coinbase extra). Note that it returns empty if
+/// there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+
+    let coinbase_extra_str = match CStr::from_ptr((*utxo).coinbase_extra).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            let mut error = LibWalletError::from(InterfaceError::PointerError("coinbase_extra".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(coinbase_extra_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
+/// Get the payment id from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
+/// there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+
+    let payment_id_str = match CStr::from_ptr((*utxo).payment_id).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            let mut error = LibWalletError::from(InterfaceError::PointerError("payment_id".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(payment_id_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
+/// Get the mined in block hash from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the mined in block hash). Note that it returns
+/// empty if there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_mined_in_block(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+
+    let mined_in_block_str = match CStr::from_ptr((*utxo).mined_in_block).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            let mut error = LibWalletError::from(InterfaceError::PointerError("mined_in_block".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(mined_in_block_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
 /// ----------------------------------- Transaction Kernel ------------------------------------- ///
 /// Gets the excess for a TariTransactionKernel
 ///
@@ -4219,6 +4479,93 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
+/// Gets the mined timestamp of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_timestamp(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    match (*transaction).mined_timestamp {
+        Some(mined_timestamp) => mined_timestamp.timestamp() as c_ulonglong,
+        None => 0,
+    }
+}
+
+/// Gets the mined height of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null or not mined yet
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_height(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+    (*transaction).mined_height.unwrap_or_default()
+}
+
+/// Gets the mined in block hash of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if transaction is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if transaction.is_null() {
+        let mut error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return CString::into_raw(result);
+    }
+    let mined_in_block = (*transaction).mined_in_block.unwrap_or_default();
+    let result = CString::new(mined_in_block.to_hex().as_str()).expect("Commitment will not fail.");
+
+    CString::into_raw(result)
+}
+
 /// Gets the payment ID of a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -4236,7 +4583,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
 pub unsafe extern "C" fn completed_transaction_get_payment_id(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
-) -> *const c_char {
+) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let payment_id = (*transaction).payment_id.clone();
@@ -11178,6 +11525,42 @@ mod test {
                     output.features.coinbase_extra.to_hex(),
                     CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
                 );
+
+                // Test TariUtxo accessor methods
+                let commitment = tari_utxo_get_commitment(utxo, error_ptr);
+                assert_eq!(
+                    CStr::from_ptr(commitment).to_str().unwrap(),
+                    CStr::from_ptr(utxo.commitment).to_str().unwrap()
+                );
+                string_destroy(commitment);
+                let value = tari_utxo_get_value(utxo, error_ptr);
+                assert_eq!(value, utxo.value);
+                let mined_height = tari_utxo_get_mined_height(utxo, error_ptr);
+                assert_eq!(mined_height, utxo.mined_height);
+                let mined_timestamp = tari_utxo_get_mined_timestamp(utxo, error_ptr);
+                assert_eq!(mined_timestamp, utxo.mined_timestamp);
+                let lock_height = tari_utxo_get_lock_height(utxo, error_ptr);
+                assert_eq!(lock_height, utxo.lock_height);
+                let status = tari_utxo_get_status(utxo, error_ptr);
+                assert_eq!(status, utxo.status);
+                let coinbase_extra = tari_utxo_get_coinbase_extra(utxo, error_ptr);
+                assert_eq!(
+                    CStr::from_ptr(coinbase_extra).to_str().unwrap(),
+                    CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
+                );
+                string_destroy(coinbase_extra);
+                let payment_id = tari_utxo_get_payment_id(utxo, error_ptr);
+                assert_eq!(
+                    CStr::from_ptr(payment_id).to_str().unwrap(),
+                    CStr::from_ptr(utxo.payment_id).to_str().unwrap()
+                );
+                string_destroy(payment_id);
+                let mined_in_block = tari_utxo_get_mined_in_block(utxo, error_ptr);
+                assert_eq!(
+                    CStr::from_ptr(mined_in_block).to_str().unwrap(),
+                    CStr::from_ptr(utxo.mined_in_block).to_str().unwrap()
+                );
+                string_destroy(mined_in_block);
             }
             println!();
             destroy_tari_vector(outputs);

@@ -588,18 +588,18 @@ where B: BlockchainBackend + 'static
             );
             return Ok(true);
         }
-        let block_exist = self.blockchain_db.bad_block_exists(block).await?;
-        if block_exist.0 {
+        let (is_bad_block, reason) = self.blockchain_db.bad_block_exists(block).await?;
+        if is_bad_block {
             debug!(
                 target: LOG_TARGET,
-                "Block with hash `{}` already validated as a bad block due to {}",
-                block.to_hex(), block_exist.1
+                "Block with hash `{}` already validated as a bad block due to `{}`",
+                block.to_hex(), reason
             );
             return Err(CommsInterfaceError::ChainStorageError(
                 ChainStorageError::ValidationError {
                     source: ValidationError::BadBlockFound {
                         hash: block.to_hex(),
-                        reason: block_exist.1,
+                        reason,
                     },
                 },
             ));

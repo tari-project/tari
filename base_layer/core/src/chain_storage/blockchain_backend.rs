@@ -3,7 +3,7 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 
 use super::TemplateRegistrationEntry;
@@ -79,6 +79,9 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetch all the kernels in a block
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
+
+    /// Fetch all bad blocks
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError>;
 
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
