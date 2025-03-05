@@ -105,3 +105,10 @@ hash_domain!(
 );
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;
+
+#[derive(Debug)]
+pub struct BadBlock {
+    pub hash: FixedHash,
+    pub height: u64,
+    pub reason: String,
+}

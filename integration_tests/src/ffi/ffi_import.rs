@@ -22,6 +22,7 @@
 
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 
+pub type TariUtxo = c_void;
 pub type TariTransportConfig = c_void;
 pub type TariCommsConfig = c_void;
 pub type TariSeedWords = c_void;
@@ -80,6 +81,15 @@ extern "C" {
     pub fn destroy_tari_vector(v: *mut TariVector);
     pub fn destroy_tari_coin_preview(p: *mut TariCoinPreview);
     pub fn string_destroy(ptr: *mut c_char);
+    pub fn tari_utxo_get_commitment(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_value(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_mined_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_mined_timestamp(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_lock_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_status(utxo: *const TariUtxo, error_out: *mut c_int) -> u8;
+    pub fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_mined_in_block(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
     pub fn transaction_kernel_get_excess_hex(kernel: *mut TariTransactionKernel, error_out: *mut c_int) -> *mut c_char;
     pub fn transaction_kernel_get_excess_public_nonce_hex(
         kernel: *mut TariTransactionKernel,
@@ -282,10 +292,22 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_timestamp(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_height(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_in_block(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> *mut c_char;
     pub fn completed_transaction_get_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
-    ) -> *const c_char;
+    ) -> *mut c_char;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
     pub fn completed_transaction_get_confirmations(
         tx: *mut TariCompletedTransaction,

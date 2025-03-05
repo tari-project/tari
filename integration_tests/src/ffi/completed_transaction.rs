@@ -148,7 +148,7 @@ impl CompletedTransaction {
                 panic!("completed_transaction_get_payment_id error");
             }
         }
-        FFIString::from_ptr(ptr as *mut i8).as_string()
+        FFIString::from_ptr(ptr).as_string()
     }
 
     #[allow(dead_code)]

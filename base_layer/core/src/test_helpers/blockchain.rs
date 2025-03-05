@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
@@ -272,6 +272,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_kernels_in_block(header_hash)
+    }
+
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_bad_blocks()
     }
 
     fn fetch_kernel_by_excess_sig(
