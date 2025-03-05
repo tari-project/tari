@@ -29,34 +29,6 @@ user-id = 4484
 user-login = "hsivonen"
 user-name = "Henri Sivonen"
 
-[[publisher.is-terminal]]
-version = "0.4.13"
-when = "2024-08-14"
-user-id = 6825
-user-login = "sunfishcode"
-user-name = "Dan Gohman"
-
-[[publisher.quickcheck]]
-version = "1.0.3"
-when = "2021-01-15"
-user-id = 189
-user-login = "BurntSushi"
-user-name = "Andrew Gallant"
-
-[[publisher.thiserror]]
-version = "1.0.69"
-when = "2024-11-10"
-user-id = 3618
-user-login = "dtolnay"
-user-name = "David Tolnay"
-
-[[publisher.thiserror]]
-version = "2.0.6"
-when = "2024-12-08"
-user-id = 3618
-user-login = "dtolnay"
-user-name = "David Tolnay"
-
 [[publisher.unicode-normalization]]
 version = "0.1.24"
 when = "2024-09-17"
