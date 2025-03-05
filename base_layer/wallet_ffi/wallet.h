@@ -326,7 +326,7 @@ void string_destroy(char *ptr);
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array (that contains the commitment). Note that it returns empty if
@@ -344,7 +344,7 @@ char *tari_utxo_get_commitment(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns the value.
@@ -361,7 +361,7 @@ unsigned long long tari_utxo_get_value(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns the mined height.
@@ -378,7 +378,7 @@ unsigned long long tari_utxo_get_mined_height(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns the mined timestamp.
@@ -395,7 +395,7 @@ unsigned long long tari_utxo_get_mined_timestamp(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a lock height.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns the value.
@@ -412,7 +412,7 @@ unsigned long long tari_utxo_get_lock_height(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `u8` -  Returns the status:
@@ -440,7 +440,7 @@ uint8_t tari_utxo_get_status(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array (that contains the coinbase extra). Note that it returns empty if
@@ -458,7 +458,7 @@ char *tari_utxo_get_coinbase_extra(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
@@ -476,7 +476,7 @@ char *tari_utxo_get_payment_id(const struct TariUtxo *utxo,
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array (that contains the mined in block hash). Note that it returns
@@ -493,7 +493,9 @@ char *tari_utxo_get_mined_in_block(const struct TariUtxo *utxo,
  * Gets the excess for a TariTransactionKernel
  *
  * ## Arguments
- * `x` - The pointer to a  TariTransactionKernel
+ * `kernel` - The pointer to a  TariTransactionKernel
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -509,7 +511,9 @@ char *transaction_kernel_get_excess_hex(TariTransactionKernel *kernel,
  * Gets the public nonce for a TariTransactionKernel
  *
  * ## Arguments
- * `x` - The pointer to a  TariTransactionKernel
+ * `kernel` - The pointer to a  TariTransactionKernel
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -525,7 +529,9 @@ char *transaction_kernel_get_excess_public_nonce_hex(TariTransactionKernel *kern
  * Gets the signature for a TariTransactionKernel
  *
  * ## Arguments
- * `x` - The pointer to a TariTransactionKernel
+ * `kernel` - The pointer to a TariTransactionKernel
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -560,11 +566,11 @@ void transaction_kernel_destroy(TariTransactionKernel *x);
  * `byte_array` - The pointer to the byte array
  * `element_count` - The number of elements in byte_array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
- * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * if the error_out or byte_array pointers was null or if the elements in the byte_vector don't match
  * element_count when it is created
  *
  * # Safety
@@ -595,10 +601,10 @@ void byte_vector_destroy(struct ByteVector *bytes);
  * `ptr` - The pointer to a ByteVector
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
- * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
+ * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if either ptr
  * is null or if the position is invalid
  *
  * # Safety
@@ -614,11 +620,11 @@ unsigned char byte_vector_get_at(struct ByteVector *ptr,
  * ## Arguments
  * `ptr` - The pointer to a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
- * `c_uint` - Returns the integer number of elements in the ByteVector. Note that it will be zero
- * if ptr is null
+ * `c_uint` - Returns the integer number of elements in the ByteVector. Returns a null pointer if any pointer argument
+ * is null.
  *
  * # Safety
  * None
@@ -634,11 +640,11 @@ unsigned int byte_vector_get_length(const struct ByteVector *vec,
  * ## Arguments
  * `bytes` - The pointer to a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `TariPublicKey` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
- * if there was an error with the contents of bytes
+ * `TariPublicKey` - Returns a public key. Note that it will be ptr::null_mut() if any pointer is null or
+ * if there was an error with the contents of bytes.
  *
  * # Safety
  * The ```public_key_destroy``` function must be called when finished with a TariPublicKey to prevent a memory leak
@@ -680,7 +686,7 @@ void public_keys_destroy(struct TariPublicKeys *pks);
  * ## Arguments
  * `pk` - The pointer to a TariPublicKey
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut ByteVector` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut() if pk is null
@@ -697,7 +703,7 @@ struct ByteVector *public_key_get_bytes(TariPublicKey *pk,
  * ## Arguments
  * `pk` - The pointer to a TariPublicKey
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
@@ -715,7 +721,7 @@ char *public_key_get_emoji_encoding(TariPublicKey *pk,
  * ## Arguments
  * `secret_key` - The pointer to a TariPrivateKey
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey
@@ -732,7 +738,7 @@ TariPublicKey *public_key_from_private_key(TariPrivateKey *secret_key,
  * ## Arguments
  * `key` - The pointer to a char array which is hex encoded
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
@@ -752,7 +758,7 @@ TariPublicKey *public_key_from_hex(const char *key,
  * ## Arguments
  * `bytes` - The pointer to a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
@@ -784,7 +790,7 @@ void tari_address_destroy(TariWalletAddress *address);
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut ByteVector` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut() if address is null
@@ -801,7 +807,7 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a char array which is hex encoded
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut()
@@ -819,7 +825,7 @@ TariWalletAddress *tari_address_from_base58(const char *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
@@ -837,7 +843,7 @@ char *tari_address_to_emoji_id(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
@@ -855,7 +861,7 @@ char *tari_address_network(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns 0 if any pointer argument is null.
  *
  * ## Returns
  * `u8` - Returns u8 representing the network. On failure, returns 0. This may be valid so always check the error out
@@ -872,7 +878,7 @@ uint8_t tari_address_network_u8(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `u8` - Returns u8 representing the checksum.. On failure, returns 0. This may be valid so always check the error out
@@ -889,7 +895,7 @@ uint8_t tari_address_checksum_u8(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
@@ -907,7 +913,7 @@ char *tari_address_features(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * u8` - Returns u8 representing the features. On failure, returns 0. This may be valid so always check the error out
@@ -924,7 +930,7 @@ uint8_t tari_address_features_u8(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null if there is no key present
@@ -941,7 +947,7 @@ TariPublicKey *tari_address_view_key(TariWalletAddress *address,
  * ## Arguments
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns null
@@ -958,7 +964,7 @@ TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
  * ## Arguments
  * `const *c_char` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a TariWalletAddress. Note that it returns null on error.
@@ -996,7 +1002,7 @@ char *byte_to_emoji(uint8_t byte);
  * `u_x_bytes` - The u_x signature component as a ByteVector
  * `u_y_bytes` - The u_y signature component as a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariComAndPubSignature` - Returns a ComAndPubS signature. Note that it will be ptr::null_mut() if any argument is
@@ -1045,7 +1051,7 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * `encrypted_data` - Encrypted data.
  * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * TariUnblindedOutput -  Returns the TransactionID of the generated transaction, note that it will be zero if the
@@ -1093,6 +1099,8 @@ void tari_unblinded_output_destroy(TariUnblindedOutput *output);
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
  * TariUnblindedOutput is null or the position is invalid
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * # Safety
  *  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
@@ -1107,7 +1115,7 @@ char *tari_unblinded_output_to_json(TariUnblindedOutput *output,
  * ## Arguments
  * `output_json` - The pointer to a char array which is json of the TariUnblindedOutput
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariUnblindedOutput` - Returns a pointer to a TariUnblindedOutput. Note that it returns ptr::null_mut()
@@ -1127,10 +1135,10 @@ TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_j
  * ## Arguments
  * `outputs` - The pointer to a TariUnblindedOutputs
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `c_uint` - Returns number of elements in , zero if outputs is null
+ * `c_uint` - Returns number of elements in, zero if any pointer is null.
  *
  * # Safety
  * None
@@ -1145,7 +1153,7 @@ unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
  * `outputs` - The pointer to a TariUnblindedOutputs
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
@@ -1178,7 +1186,7 @@ void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
@@ -1203,7 +1211,7 @@ struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *walle
  * `source_address` - The tari address of the source of the transaction
  * `message` - The message that the transaction will have
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
@@ -1226,7 +1234,7 @@ unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWall
  * ## Arguments
  * `bytes` - The pointer to a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey. Note that it returns ptr::null_mut()
@@ -1258,7 +1266,7 @@ void private_key_destroy(TariPrivateKey *pk);
  * ## Arguments
  * `pk` - The pointer to a TariPrivateKey
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut ByteVectror` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut()
@@ -1290,7 +1298,7 @@ TariPrivateKey *private_key_generate(void);
  * ## Arguments
  * `key` - The pointer to a char array which is hex encoded
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey. Note that it returns ptr::null_mut()
@@ -1325,7 +1333,7 @@ TariRangeProof *range_proof_default(void);
  * ## Arguments
  * `unblinded_output` - The pointer to a TariUnblindedOutput
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariRangeProof` - Returns a TariRangeProof, note that it returns ptr::null_mut()
@@ -1343,7 +1351,7 @@ TariRangeProof *range_proof_get(TariUnblindedOutput *unblinded_output,
  * ## Arguments
  * `bytes` - The pointer to a ByteVector
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariRangeProof` - Returns a pointer to a TariRangeProof. Note that it returns ptr::null_mut()
@@ -1361,7 +1369,7 @@ TariRangeProof *range_proof_from_bytes(struct ByteVector *bytes_ptr,
  * ## Arguments
  * `char_ptr` - The pointer to a char array which is hex encoded
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariRangeProof` - Returns a pointer to a TariRangeProof. Note that it returns ptr::null_mut()
@@ -1379,7 +1387,7 @@ TariRangeProof *range_proof_from_hex(const char *char_ptr,
  * ## Arguments
  * `proof` - The pointer to a TariRangeProof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut ByteVectror` - Returns a pointer to a ByteVector. Note that it returns ptr::null_mut()
@@ -1412,6 +1420,8 @@ void range_proof_destroy(TariRangeProof *proof_ptr);
  *
  * ## Arguments
  * `covenant_bytes` - The covenant bytes as a ByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
@@ -1444,6 +1454,8 @@ void covenant_destroy(TariCovenant *covenant);
  *
  * ## Arguments
  * `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariEncryptedOpenings` - Returns encrypted data. Note that it will be ptr::null_mut() if any argument is
@@ -1463,8 +1475,11 @@ TariEncryptedOpenings *encrypted_data_create_from_bytes(const struct ByteVector 
  * `encrypted_data` - The encrypted data
  * `commitment_bytes` - The public commitment component as a ByteVector
  * `wallet` - The TariWallet pointe
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns 99 if any pointer argument is null.
  *
  * ## Returns
+ * Funtion return:
  *  `0` => `PaymentToOther`,
  *  `1` => `PaymentToSelf`,
  *  `2` => `Burn`,
@@ -1476,6 +1491,8 @@ TariEncryptedOpenings *encrypted_data_create_from_bytes(const struct ByteVector 
  *  `8` => `CodeTemplateRegistration`,
  *  `9` => `ImportedUtxoNoneRewindable`,
  *  `99` => `None`
+ *
+ * `c_uint` - Returns number of elements in, zero if any pointer is null.
  *
  * # Safety
  * None
@@ -1490,6 +1507,8 @@ unsigned int transaction_type_from_encrypted_data(const TariEncryptedOpenings *e
  *
  * ## Arguments
  * `encrypted_data` - The encrypted_data as a TariEncryptedOpenings
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `ByteVector` - Returns a ByteVector containing the encrypted_data bytes. Note that it will be ptr::null_mut() if
@@ -1528,7 +1547,7 @@ void encrypted_data_destroy(TariEncryptedOpenings *encrypted_data);
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
  * `encrypted_data` - The encrypted_data component as a ByteVector. It can be null  to model a None value.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any mandatory argument is null.
  *
  * ## Returns
  * `TariOutputFeatures` - Returns an output features object. Note that it will be ptr::null_mut() if any mandatory
@@ -1582,7 +1601,7 @@ struct TariSeedWords *seed_words_create(void);
  * `cipher_bytes`: base58 encoded string pointer of the cipher bytes
  * `passphrase`: optional passphrase to decrypt the cipher bytes
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariSeedWords` - Returns an  TariSeedWords instance
@@ -1600,7 +1619,7 @@ struct TariSeedWords *seed_words_create_from_cipher(const char *cipher_bytes,
  * ## Arguments
  * `language` - The required language as a string
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariSeedWords` - Returns the TariSeedWords instance containing the entire mnemonic wordlist for the
@@ -1619,10 +1638,10 @@ struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char 
  * ## Arguments
  * `seed_words` - The pointer to a TariSeedWords
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `c_uint` - Returns number of elements in seed_words, zero if seed_words is null
+ * `c_uint` - Returns number of elements in seed_words, zero if any pointer is null.
  *
  * # Safety
  * None
@@ -1636,12 +1655,12 @@ unsigned int seed_words_get_length(const struct TariSeedWords *seed_words,
  * ## Arguments
  * `seed_words` - The pointer to a TariSeedWords
  * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
  * TariSeedWords collection is null or the position is invalid
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -1657,7 +1676,7 @@ char *seed_words_get_at(struct TariSeedWords *seed_words,
  * `seed_words` - The pointer to a TariSeedWords
  * `word` - Word to add
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns an error code if any pointer argument is null.
  *
  * ## Returns
  * 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
@@ -1700,7 +1719,7 @@ void seed_words_destroy(struct TariSeedWords *seed_words);
  * `alias` - The pointer to a char array
  * `address` - The pointer to a TariWalletAddress
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
@@ -1720,7 +1739,7 @@ TariContact *contact_create(const char *alias,
  * ## Arguments
  * `contact` - The pointer to a TariContact
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns an error if the pointer is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
@@ -1738,7 +1757,7 @@ char *contact_get_alias(TariContact *contact,
  * ## Arguments
  * `contact` - The pointer to a TariContact
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if the pointer is null.
  *
  * ## Returns
  * `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
@@ -1756,7 +1775,7 @@ bool contact_get_favourite(TariContact *contact,
  * ## Arguments
  * `contact` - The pointer to a TariContact
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if contact is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns
@@ -1790,10 +1809,10 @@ void contact_destroy(TariContact *contact);
  * ## Arguments
  * `contacts` - The pointer to a TariContacts
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `c_uint` - Returns number of elements in , zero if contacts is null
+ * `c_uint` - Returns number of elements in the contacts, zero if any pointer is null.
  *
  * # Safety
  * None
@@ -1808,7 +1827,7 @@ unsigned int contacts_get_length(struct TariContacts *contacts,
  * `contacts` - The pointer to a TariContacts
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
@@ -1843,7 +1862,7 @@ void contacts_destroy(struct TariContacts *contacts);
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut() if
@@ -1862,11 +1881,11 @@ TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *livene
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
- * value of '0' if it is None. Note that it also returns '0' if liveness_data is null.
+ * value of '0' if it is None. Note that it also returns '0' if any pointer is null.
  *
  * # Safety
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
@@ -1881,7 +1900,7 @@ unsigned int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns an error if the pointer is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
@@ -1900,7 +1919,7 @@ char *liveness_data_get_last_seen(TariContactsLivenessData *liveness_data,
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the status which corresponds to:
@@ -1924,7 +1943,7 @@ int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
  * ## Arguments
  * `liveness_data` - The pointer to a TariContactsLivenessData
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the status which corresponds to:
@@ -1965,11 +1984,11 @@ void liveness_data_destroy(TariContactsLivenessData *liveness_data);
  * ## Arguments
  * `transactions` - The pointer to a TariCompletedTransactions
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_uint` - Returns the number of elements in a TariCompletedTransactions, note that it will be
- * zero if transactions is null
+ * zero if any pointer is null.
  *
  * # Safety
  * None
@@ -1984,7 +2003,7 @@ unsigned int completed_transactions_get_length(struct TariCompletedTransactions 
  * `transactions` - The pointer to a TariCompletedTransactions
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction,
@@ -2020,11 +2039,11 @@ void completed_transactions_destroy(struct TariCompletedTransactions *transactio
  * ## Arguments
  * `transactions` - The pointer to a TariPendingOutboundTransactions
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `c_uint` - Returns the number of elements in a TariPendingOutboundTransactions, note that it will be
- * zero if transactions is null
+ * zero if any pointer is null.
  *
  * # Safety
  * None
@@ -2039,7 +2058,7 @@ unsigned int pending_outbound_transactions_get_length(struct TariPendingOutbound
  * `transactions` - The pointer to a TariPendingOutboundTransactions
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingOutboundTransaction,
@@ -2075,11 +2094,11 @@ void pending_outbound_transactions_destroy(struct TariPendingOutboundTransaction
  * ## Arguments
  * `transactions` - The pointer to a TariPendingInboundTransactions
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_uint` - Returns the number of elements in a TariPendingInboundTransactions, note that
- * it will be zero if transactions is null
+ * it will be zero if ant pointer is null
  *
  * # Safety
  * None
@@ -2094,7 +2113,7 @@ unsigned int pending_inbound_transactions_get_length(struct TariPendingInboundTr
  * `transactions` - The pointer to a TariPendingInboundTransactions
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingInboundTransaction,
@@ -2130,7 +2149,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
@@ -2147,7 +2166,7 @@ unsigned long long completed_transaction_get_transaction_id(TariCompletedTransac
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns the destination TariWalletAddress, note that it will be
@@ -2165,7 +2184,7 @@ TariWalletAddress *completed_transaction_get_destination_tari_address(TariComple
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariTransactionKernel` - Returns the transaction kernel, note that it will be
@@ -2185,7 +2204,7 @@ TariTransactionKernel *completed_transaction_get_transaction_kernel(TariComplete
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns the source TariWalletAddress, note that it will be
@@ -2203,7 +2222,7 @@ TariWalletAddress *completed_transaction_get_source_tari_address(TariCompletedTr
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the status which corresponds to:
@@ -2230,7 +2249,7 @@ int completed_transaction_get_status(TariCompletedTransaction *transaction,
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
@@ -2247,7 +2266,7 @@ unsigned long long completed_transaction_get_amount(TariCompletedTransaction *tr
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
@@ -2264,7 +2283,7 @@ unsigned long long completed_transaction_get_fee(TariCompletedTransaction *trans
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
@@ -2333,7 +2352,7 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -2350,6 +2369,8 @@ char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction
  *
  * ## Arguments
  * `transaction` - The completed transaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns 99 if any pointer argument is null.
  *
  * ## Returns
  *  `0` => `PaymentToOther`,
@@ -2376,7 +2397,7 @@ unsigned int completed_transaction_get_transaction_type(const TariCompletedTrans
  * ## Arguments
  * `tx` - The TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Returns if the transaction was originally sent from the wallet
@@ -2393,7 +2414,7 @@ bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
  * ## Arguments
  * `tx` - The TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
@@ -2410,7 +2431,7 @@ unsigned long long completed_transaction_get_confirmations(TariCompletedTransact
  * ## Arguments
  * `tx` - The TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the reason for cancellation which corresponds to:
@@ -2436,6 +2457,8 @@ int completed_transaction_get_cancellation_reason(TariCompletedTransaction *tx,
  *
  * ## Arguments
  * `tx` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
@@ -2454,7 +2477,7 @@ char *tari_completed_transaction_to_json(TariCompletedTransaction *tx,
  * ## Arguments
  * `tx_json` - The pointer to a char array which is json of the TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns
@@ -2488,7 +2511,7 @@ void completed_transaction_destroy(TariCompletedTransaction *transaction);
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the TransactionID, note that it will be zero if transaction is null
@@ -2505,7 +2528,7 @@ unsigned long long pending_outbound_transaction_get_transaction_id(TariPendingOu
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns the destination TariWalletAddress, note that it will be
@@ -2523,7 +2546,7 @@ TariWalletAddress *pending_outbound_transaction_get_destination_tari_address(Tar
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
@@ -2540,7 +2563,7 @@ unsigned long long pending_outbound_transaction_get_amount(TariPendingOutboundTr
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the fee, note that it will be zero if transaction is null
@@ -2557,7 +2580,7 @@ unsigned long long pending_outbound_transaction_get_fee(TariPendingOutboundTrans
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
@@ -2574,7 +2597,7 @@ unsigned long long pending_outbound_transaction_get_timestamp(TariPendingOutboun
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -2593,7 +2616,7 @@ const char *pending_outbound_transaction_get_payment_id(TariPendingOutboundTrans
  * ## Arguments
  * `transaction` - The pointer to a TariPendingOutboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the status which corresponds to:
@@ -2635,7 +2658,7 @@ void pending_outbound_transaction_destroy(TariPendingOutboundTransaction *transa
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the TransactonId, note that it will be zero if transaction is null
@@ -2652,7 +2675,7 @@ unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInb
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - Returns a pointer to the source TariWalletAddress, note that it will be
@@ -2671,7 +2694,7 @@ TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendi
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the amount, note that it will be zero if transaction is null
@@ -2688,7 +2711,7 @@ unsigned long long pending_inbound_transaction_get_amount(TariPendingInboundTran
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the timestamp, note that it will be zero if transaction is null
@@ -2705,7 +2728,7 @@ unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundT
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
@@ -2724,7 +2747,7 @@ const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransac
  * ## Arguments
  * `transaction` - The pointer to a TariPendingInboundTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_int` - Returns the status which corresponds to:
@@ -2765,7 +2788,7 @@ void pending_inbound_transaction_destroy(TariPendingInboundTransaction *transact
  * ## Arguments
  * `status` - The pointer to a TariTransactionSendStatus
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer is null.
  *
  * ## Returns
  * `c_uint` - Returns
@@ -2818,7 +2841,7 @@ TariTransportConfig *transport_memory_create(void);
  * ## Arguments
  * `listener_address` - The pointer to a char array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
@@ -2841,7 +2864,7 @@ TariTransportConfig *transport_tcp_create(const char *listener_address,
  * the tor proxy if tcp is available, if not it has no effect
  * `socks_password` - The pointer to a char array containing the socks password, can be null
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
@@ -2864,7 +2887,7 @@ TariTransportConfig *transport_tor_create(const char *control_server_address,
  * ## Arguments
  * `transport` - Pointer to a TariTransportConfig
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer is null.
  *
  * ## Returns
  * `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
@@ -2919,7 +2942,7 @@ void transport_config_destroy(TariTransportConfig *transport);
  * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
  * `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
@@ -2957,7 +2980,7 @@ void comms_config_destroy(TariCommsConfig *wc);
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
@@ -2976,11 +2999,14 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
  *
  * ## Returns
  * `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * # Safety
  * None
  */
-unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys, int *error_out);
+unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys,
+                                    int *error_out);
 
 /**
  * Gets a ByteVector at position in a EmojiSet
@@ -2989,7 +3015,7 @@ unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys, in
  * `public_keys` - The pointer to a TariPublicKeys
  * `position` - The integer position
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
@@ -3098,8 +3124,9 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * }
  * `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
  * that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
- * `error_out` - Pointer to an int which will be modified
- * to an error code should one occur, may not be null. Functions as an out parameter.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
  * ## Returns
  * `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
  * if config is null, a wallet error was encountered or if the runtime could not be created
@@ -3167,7 +3194,8 @@ struct TariWallet *wallet_create(void *context,
  * ## Arguments
  * `config` - The TariCommsConfig pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
  * ## Returns
  * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
  *
@@ -3183,7 +3211,8 @@ char *wallet_get_last_version(TariCommsConfig *config,
  * ## Arguments
  * `config` - The TariCommsConfig pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
  * ## Returns
  * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
  *
@@ -3199,7 +3228,8 @@ char *wallet_get_last_network(TariCommsConfig *config,
  * ## Arguments
  * `wallet` - The TariWallet pointer.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
  * ## Returns
  * `*mut Balance` - Returns the pointer to the TariBalance or null if error occurs
  *
@@ -3220,7 +3250,7 @@ TariBalance *wallet_get_balance(struct TariWallet *wallet,
  * * `dust_threshold` - A value filtering threshold. Outputs whose values are <= `dust_threshold` are not listed in the
  *   result.
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
@@ -3245,7 +3275,7 @@ struct TariVector *wallet_get_utxos(struct TariWallet *wallet,
  * ## Arguments
  * * `wallet` - The TariWallet pointer,
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
@@ -3283,7 +3313,7 @@ struct TariVector *wallet_get_all_utxos(struct TariWallet *wallet,
  * * `number_of_splits` - The number of times to split the amount
  * * `fee_per_gram` - The transaction fee
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - Returns the transaction id.
@@ -3307,7 +3337,7 @@ uint64_t wallet_coin_split(struct TariWallet *wallet,
  *   (see `Commitment::to_hex()`)
  * * `fee_per_gram` - The transaction fee
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `TariVector` - Returns the transaction id.
@@ -3329,7 +3359,7 @@ uint64_t wallet_coin_join(struct TariWallet *wallet,
  *   (see `Commitment::to_hex()`)
  * * `fee_per_gram` - The transaction fee
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCoinPreview` - A struct with expected output values and the fee.
@@ -3352,7 +3382,7 @@ struct TariCoinPreview *wallet_preview_coin_join(struct TariWallet *wallet,
  * * `number_of_splits` - The number of times to split the amount
  * * `fee_per_gram` - The transaction fee
  * * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
- *   Functions as an out parameter.
+ *   Functions as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCoinPreview` - A struct with expected output values and the fee.
@@ -3373,7 +3403,8 @@ struct TariCoinPreview *wallet_preview_coin_split(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer.
  * `msg` - The message pointer.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
  * ## Returns
  * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
  * public nonce, seperated by a pipe character. Empty if an error occured.
@@ -3395,7 +3426,7 @@ char *wallet_sign_message(struct TariWallet *wallet,
  * signature and public nonce seperated by a pipe character.
  * `msg` - The pointer to the msg the signature will be checked against.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  * ## Returns
  * `bool` - Returns if the signature is valid or not, will be false if an error occurs.
  *
@@ -3416,7 +3447,7 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
  * `public_key` - The TariPublicKey pointer
  * `address` - The pointer to a char array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Returns if successful or not
@@ -3435,7 +3466,7 @@ bool wallet_set_base_node_peer(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `TariPublicKeys` - Returns a list of all known public keys
@@ -3454,7 +3485,7 @@ struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer
  * `contact` - The TariContact pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Returns if successful or not
@@ -3473,7 +3504,7 @@ bool wallet_upsert_contact(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer
  * `tx` - The TariPendingInboundTransaction pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Returns if successful or not
@@ -3491,7 +3522,7 @@ bool wallet_remove_contact(struct TariWallet *wallet,
  * ## Arguments
  * `balance` - The TariBalance pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - The available balance, 0 if wallet is null
@@ -3508,7 +3539,7 @@ unsigned long long balance_get_available(TariBalance *balance,
  * ## Arguments
  * `balance` - The TariBalance pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - The time locked balance, 0 if wallet is null
@@ -3525,7 +3556,7 @@ unsigned long long balance_get_time_locked(TariBalance *balance,
  * ## Arguments
  * `balance` - The TariBalance pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - The pending incoming, 0 if wallet is null
@@ -3542,7 +3573,7 @@ unsigned long long balance_get_pending_incoming(TariBalance *balance,
  * ## Arguments
  * `balance` - The TariBalance pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` - The pending outgoing balance, 0 if wallet is null
@@ -3579,7 +3610,7 @@ void balance_destroy(TariBalance *balance);
  * `fee_per_gram` - The transaction fee
  * `message` - The pointer to a char array
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
@@ -3604,7 +3635,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * `destination` - The TariWalletAddress pointer of the peer
  * `fee_per_gram` - The transaction fee
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `unsigned long long` - Returns 0 if unsuccessful or the TxId of the sent transaction if successful
@@ -3629,7 +3660,7 @@ unsigned long long scrape_wallet(struct TariWallet *wallet,
  * `num_kernels` - The number of transaction kernels
  * `num_outputs` - The number of outputs
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a u0 if any pointer argument is null.
  *
  * ## Returns
  * `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotari if successful
@@ -3651,7 +3682,7 @@ unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `unsigned long long` - Returns the number of confirmations required
@@ -3669,7 +3700,7 @@ unsigned long long wallet_get_num_confirmations_required(struct TariWallet *wall
  * `wallet` - The TariWallet pointer
  * `num` - The number of confirmations to require
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns if any pointer argument is null.
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -3687,7 +3718,7 @@ void wallet_set_num_confirmations_required(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
@@ -3705,7 +3736,7 @@ struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -3726,7 +3757,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingInboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -3747,7 +3778,7 @@ struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(s
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingOutboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -3767,7 +3798,7 @@ struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
@@ -3787,7 +3818,7 @@ struct TariCompletedTransactions *wallet_get_cancelled_transactions(struct TariW
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -3808,7 +3839,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingInboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -3829,7 +3860,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariPendingOutboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -3851,7 +3882,7 @@ TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(st
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
@@ -3871,7 +3902,7 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - returns the address, note that ptr::null_mut() is returned
@@ -3889,7 +3920,7 @@ TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariWalletAddress` - returns the address, note that ptr::null_mut() is returned
@@ -3908,7 +3939,7 @@ TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - returns whether the transaction could be cancelled
@@ -3927,7 +3958,7 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
@@ -3945,7 +3976,7 @@ unsigned long long wallet_start_txo_validation(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a 0 if any pointer argument is null.
  *
  * ## Returns
  * `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
@@ -3964,7 +3995,7 @@ unsigned long long wallet_start_transaction_validation(struct TariWallet *wallet
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` -  Returns a boolean value indicating if the launch was success or not.
@@ -3981,7 +4012,7 @@ bool wallet_restart_transaction_broadcast(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut TariSeedWords` - A collection of the seed words
@@ -4000,7 +4031,7 @@ struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns if any pointer argument is null.
  * # Safety
  * None
  */
@@ -4013,7 +4044,7 @@ void wallet_set_low_power_mode(struct TariWallet *wallet,
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns if any pointer argument is null.
  * # Safety
  * None
  */
@@ -4028,7 +4059,7 @@ void wallet_set_normal_power_mode(struct TariWallet *wallet,
  * `key` - The pointer to a Utf8 string representing the Key
  * `value` - The pointer to a Utf8 string representing the Value ot be stored
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
@@ -4049,7 +4080,7 @@ bool wallet_set_key_value(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer.
  * `key` - The pointer to a Utf8 string representing the Key
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `*mut c_char` - Returns a pointer to a char array of the Value string. Note that it returns an null pointer if an
@@ -4069,7 +4100,7 @@ char *wallet_get_value(struct TariWallet *wallet,
  * `wallet` - The TariWallet pointer.
  * `key` - The pointer to a Utf8 string representing the Key
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
+ * as an out parameter. Returns false if any pointer argument is null.
  *
  * ## Returns
  * `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
@@ -4209,11 +4240,14 @@ struct EmojiSet *get_emoji_set(void);
  *
  * ## Returns
  * `c_int` - Pointer to the created EmojiSet.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * # Safety
  * None
  */
-unsigned int emoji_set_get_length(const struct EmojiSet *emoji_set, int *error_out);
+unsigned int emoji_set_get_length(const struct EmojiSet *emoji_set,
+                                  int *error_out);
 
 /**
  * Gets a ByteVector at position in a EmojiSet
@@ -4306,7 +4340,7 @@ TariFeePerGramStats *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
  * ## Arguments
  * `fee_per_gram_stats` - The pointer to a TariFeePerGramStats
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
  * `c_uint` - length of stats in TariFeePerGramStats

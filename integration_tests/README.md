@@ -25,7 +25,7 @@ In its simplest form you can run the tests from the project route with `cargo +n
   # Runs all critical tests base node tests
   cargo +nightly test --release --test cucumber -- --tags "@critical AND @base-node"
 
-  # Runs all critical tests, but not @long-running and not @tbroken
+  # Runs all critical tests, but not @long-running and not @broken
   cargo +nightly test --release --test cucumber -- --tags "@critical and not @long-running and not @broken"
 
   # You can also use the short option -t

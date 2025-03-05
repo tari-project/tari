@@ -28,4 +28,5 @@ pub enum SeedWordPushResult {
     InvalidSeedPhrase,
     InvalidObject,
     NoLanguageMatch,
+    InvalidErrorPointer,
 }

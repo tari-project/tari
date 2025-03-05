@@ -336,13 +336,12 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
         );
         let transaction_type = completed_transaction.get_transaction_type();
         assert_ne!(
-            transaction_type,
-            99,
-            "{}",
-            format!("Transaction type '{}', expected not 99", transaction_type)
+            transaction_type, 99,
+            "Transaction type '{}', expected not 99",
+            transaction_type
         );
         let status = completed_transaction.get_status();
-        assert_ne!(status, -1, "{}", format!("Status '{}', expected not -1", status));
+        assert_ne!(status, -1, "Status '{}', expected not -1", status);
         let confirmations = completed_transaction.get_confirmations();
         assert!(
             if status == 6 { confirmations >= 1 } else { true },
