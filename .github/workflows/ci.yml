@@ -33,8 +33,8 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
 
 jobs:
-  clippy:
-    name: clippy
+  ci:
+    name: ci
     runs-on: [ubuntu-latest]
     steps:
       - name: checkout
@@ -81,49 +81,14 @@ jobs:
         run: cargo +${{ env.nightly_toolchain }} lints clippy --all-targets --all-features
       - name: rust-toolchain.toml.bak renaming back
         run: mv rust-toolchain.toml.bak rust-toolchain.toml
-
-  machete:
-    # Checks for unused dependencies.
-    name: machete
-    runs-on: [ubuntu-latest]
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
-      - name: ubuntu dependencies
-        run: |
-          sudo apt-get update
-          sudo bash scripts/install_ubuntu_dependencies.sh
-      - name: Cache cargo files and outputs
-        if: startsWith(runner.environment,'github-hosted')
-        uses: Swatinem/rust-cache@v2
-      - name: caching (machete)
-        if: startsWith(runner.environment,'self-hosted')
-        # Don't use rust-cache.
-        # Rust-cache disables a key feature of actions/cache: restoreKeys.
-        # Without restore keys, we lose the ability to get partial matches on caches, and end
-        # up with too many cache misses.
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/CACHEDIR.TAG
-            ~/.cargo/git
-            target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
-          restore-keys: |
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
-            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
       - name: cargo machete
         run: |
           cargo install cargo-machete@0.7.0
           cargo machete
+      - name: cargo vet
+        run: |
+          cargo install cargo-vet@0.10.0 --locked
+          cargo vet
 
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
