@@ -2945,8 +2945,7 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
     let lines_count = pre_mine_contents.lines().count();
     for line in pre_mine_contents.lines() {
         if counter < lines_count {
-            let utxo: Option<TransactionOutput> =
-                serde_json::from_str(line).ok();
+            let utxo: Option<TransactionOutput> = serde_json::from_str(line).ok();
             if let Some(utxo) = utxo {
                 utxos.push(utxo);
             }

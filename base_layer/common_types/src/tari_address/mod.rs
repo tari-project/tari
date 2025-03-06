@@ -402,23 +402,17 @@ pub mod tari_address_json_bs58 {
     /// Serializes a [`TariAddress`] from a base58 string or a binary array.
     pub fn deserialize<'de, D>(de: D) -> Result<TariAddress, D::Error>
     where D: Deserializer<'de> {
-        let visitor = HexVisitor::default();
+        let visitor = Base58Visitor::default();
         if de.is_human_readable() {
             de.deserialize_string(visitor)
         } else {
             de.deserialize_bytes(visitor)
         }
     }
+    #[derive(Default)]
+    struct Base58Visitor {}
 
-    struct HexVisitor {}
-
-    impl Default for HexVisitor {
-        fn default() -> Self {
-            Self {}
-        }
-    }
-
-    impl<'de> Visitor<'de> for HexVisitor {
+    impl<'de> Visitor<'de> for Base58Visitor {
         type Value = TariAddress;
 
         fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {

@@ -551,8 +551,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     );
                     let signature =
                         MessageSignature::new_signed(self.node_identity.secret_key().clone(), &binding_hash).to_proto();
-                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze())) // this includes the signer
-                                                                                         // public key
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze()))
+                // this includes the signer
+                // public key
                 } else {
                     Ok((None, None, body.freeze()))
                 }
