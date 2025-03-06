@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.11.7-pre.0](https://github.com/tari-project/tari/compare/v1.11.6-pre.0...v1.11.7-pre.0) (2025-03-06)
+
+### Features
+
+* add get bad blocks command to base node console ([#6827](https://github.com/tari-project/tari/issues/6827)) ([8a09ec8](https://github.com/tari-project/tari/commit/8a09ec8406827510ba3a4ea50387dec8979f17b7))
+* add tari_utxo ffi de-structure methods ([#6836](https://github.com/tari-project/tari/issues/6836)) ([fec8e1e](https://github.com/tari-project/tari/commit/fec8e1e969ec97cd6d548afb327428d82c3bef14))
+* add wallet ffi get transaction type from completed transaction ([#6843](https://github.com/tari-project/tari/issues/6843)) ([ccb361e](https://github.com/tari-project/tari/commit/ccb361e929aedaae4661ddb27bbe6a551c219f8a))
+* fix ctrl-v trailing v ([#6835](https://github.com/tari-project/tari/issues/6835)) ([2da7358](https://github.com/tari-project/tari/commit/2da735867372fea7e390299cb6a3ee81e53121b0))
+
+
+### Bug Fixes
+
+* fix rust analyser bug ([#6840](https://github.com/tari-project/tari/issues/6840)) ([e7bc458](https://github.com/tari-project/tari/commit/e7bc458b147f396618607ad1be565d85885756bb))
+* macos standard console redirection bug ([#6820](https://github.com/tari-project/tari/issues/6820)) ([673908b](https://github.com/tari-project/tari/commit/673908ba1387a7deb213f1e06e9f3f2ead41679e))
+
 ### [1.11.6-pre.0](https://github.com/tari-project/tari/compare/v1.11.5-pre.0...v1.11.6-pre.0) (2025-02-27)
 
 
