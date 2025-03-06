@@ -416,7 +416,7 @@ pub mod tari_address_json_bs58 {
         type Value = TariAddress;
 
         fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-            fmt.write_str("Expecting a binary array or hex string")
+            fmt.write_str("Expecting a binary array or Base58 string")
         }
 
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
