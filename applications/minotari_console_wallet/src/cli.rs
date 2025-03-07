@@ -61,15 +61,15 @@ pub struct Cli {
     pub recovery: bool,
     /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
     /// separated. e.g. --seed-words "seed1 seed2 ..."
-    #[clap(long, alias = "seed-words", env = "MINOTARI_WALLET_SEED_WORDS", hide_env_values = true)]
-    pub seed_words: Option<SeedWords>,
-    /// Supply the optional file name to save the wallet seed words into
     #[clap(
         long,
         alias = "seed-words",
         env = "MINOTARI_WALLET_SEED_WORDS",
         hide_env_values = true
     )]
+    pub seed_words: Option<SeedWords>,
+    /// Supply the optional file name to save the wallet seed words into
+    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
     pub seed_words_file_name: Option<PathBuf>,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive")]
