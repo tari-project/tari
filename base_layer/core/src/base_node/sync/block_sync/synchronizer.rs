@@ -434,7 +434,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         if metadata_after_sync.accumulated_difficulty() < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
             return Err(BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(format!(
                 "Their claim - height: {}, accumulated difficulty: {}. Our status after block sync - height: {}, \
-                accumulated difficulty: {}",
+                 accumulated difficulty: {}",
                 sync_peer.claimed_chain_metadata().best_block_height(),
                 sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                 metadata_after_sync.best_block_height(),
