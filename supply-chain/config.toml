@@ -356,7 +356,7 @@ version = "0.24.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.cc]]
-version = "1.2.3"
+version = "1.2.16"
 criteria = "safe-to-deploy"
 
 [[exemptions.cfb-mode]]
@@ -1069,7 +1069,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.is-terminal]]
 version = "0.4.13"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.is_terminal_polyfill]]
 version = "1.70.1"
@@ -1685,7 +1685,7 @@ criteria = "safe-to-deploy"
 
 [[exemptions.quickcheck]]
 version = "1.0.3"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.r2d2]]
 version = "0.8.10"
@@ -1760,7 +1760,7 @@ version = "0.4.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.ring]]
-version = "0.17.8"
+version = "0.17.13"
 criteria = "safe-to-deploy"
 
 [[exemptions.ripemd]]
