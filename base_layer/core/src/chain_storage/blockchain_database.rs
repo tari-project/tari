@@ -102,7 +102,7 @@ use crate::{
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
     output_mr_hash_from_smt,
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
@@ -1150,7 +1150,7 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
 
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block, &self.consensus_manager, self.smt())?;
+        insert_best_block(&mut txn, block, self.smt())?;
         db.write(txn)
     }
 
@@ -1304,7 +1304,6 @@ where B: BlockchainBackend
             &self.config,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
-            &self.consensus_manager,
             self.smt(),
         )?;
         Ok(())
@@ -1662,7 +1661,6 @@ fn add_block<T: BlockchainBackend>(
 fn insert_best_block(
     txn: &mut DbTransaction,
     block: Arc<ChainBlock>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
@@ -1672,16 +1670,6 @@ fn insert_best_block(
         block.header().height,
         block_hash,
     );
-    if block.header().pow_algo() == PowAlgorithm::RandomX {
-        let monero_header =
-            MoneroPowData::from_header(block.header(), consensus).map_err(|e| ChainStorageError::InvalidArguments {
-                func: "insert_best_block",
-                arg: "block",
-                message: format!("block contained invalid or malformed monero PoW data: {}", e),
-            })?;
-        txn.insert_monero_seed_height(monero_header.randomx_key.to_vec(), block.height());
-    }
-
     let height = block.height();
     let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
@@ -2030,14 +2018,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(
-        db,
-        config,
-        block_validator,
-        chain_strength_comparer,
-        consensus_manager,
-        smt,
-    );
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer, smt);
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -2056,7 +2037,6 @@ fn reorganize_chain<T: BlockchainBackend>(
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let removed_blocks = rewind_to_hash(backend, fork_hash, smt.clone())?;
@@ -2095,11 +2075,11 @@ fn reorganize_chain<T: BlockchainBackend>(
             backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus, smt.clone())?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, smt.clone())?;
             return Err(e.into());
         }
 
-        if let Err(e) = insert_best_block(&mut txn, block.clone(), consensus, smt.clone()) {
+        if let Err(e) = insert_best_block(&mut txn, block.clone(), smt.clone()) {
             let mut write_smt = smt.write().map_err(|e| {
                 error!(
                     target: LOG_TARGET,
@@ -2120,7 +2100,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus, smt)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, smt)?;
             return Err(e);
         }
     }
@@ -2133,7 +2113,6 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
@@ -2191,7 +2170,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, consensus, smt)?;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, smt)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -2243,7 +2222,6 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<(), ChainStorageError> {
     let invalid_chain = rewind_to_hash(db, to_hash, smt.clone())?;
@@ -2260,7 +2238,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block, consensus, smt.clone())?;
+        insert_best_block(&mut txn, block, smt.clone())?;
     }
     db.write(txn)?;
     Ok(())
