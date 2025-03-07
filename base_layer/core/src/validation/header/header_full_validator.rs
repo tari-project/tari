@@ -42,7 +42,7 @@ use crate::{
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
 
 // 999785e3bb6a43189c7236de7c9720df27d56f6b9724cd22f5115a097d3f770e and
-// 39d1449e85bf2e3eb6986b05d7991ce1823cb3e1769f11cdc0c07192f344b408 is are bad blocks on NEXTNET that bypassed
+// 39d1449e85bf2e3eb6986b05d7991ce1823cb3e1769f11cdc0c07192f344b408 are bad blocks on NEXTNET that bypassed
 // validation due to a bug in saving Monero seeds. The block uses a randomX  VM key of
 // 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4, this key was used between height 2729 and 843 which
 // is about what you would expect from the Monero consensus. These blocks (26320 and 26440) reuses this key, which is a
