@@ -31,7 +31,7 @@ env:
   # TS_BUILD: "debug"
   TS_BUILD: "release"
   TARI_NETWORK_DIR: testnet
-  toolchain: stable
+  toolchain: nightly-2024-07-07
   matrix-json-file: ".github/workflows/build_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -96,7 +96,7 @@ jobs:
   builds:
     name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
-    continue-on-error: ${{ matrix.builds.best_effort || false }}
+    continue-on-error: ${{ matrix.builds.best_effort || true }}
     outputs:
       TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
       TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}

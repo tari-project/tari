@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 # Changelog
 
+## [1.12.0-rc.0](https://github.com/tari-project/tari/compare/v1.11.7-rc.0...v1.12.0-rc.0) (2025-03-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* monero seed validation (#6850)
+
+### Bug Fixes
+
+* monero seed validation ([#6850](https://github.com/tari-project/tari/issues/6850)) ([a102b11](https://github.com/tari-project/tari/commit/a102b115e8a41b792b161b649768144d28b313b6))
+* 
 ### [1.11.7-rc.0](https://github.com/tari-project/tari/compare/v1.11.6-rc.0...v1.11.7-rc.0) (2025-03-06)
 
 ### Features
