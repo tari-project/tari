@@ -65,7 +65,7 @@ use tari_common_types::{
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
-    hex::{to_hex, Hex},
+    hex::{from_hex, to_hex, Hex},
     ByteArray,
 };
 
@@ -2911,7 +2911,7 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 3;
+    const MIGRATION_VERSION: u64 = 4;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -2941,6 +2941,15 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
             txn.commit()?;
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+        if migrate_from_version == 3 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
+            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
+                .expect("should be valid hex");
+            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &843, None)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
         }
     }
     if last_migrated_version != MIGRATION_VERSION {
