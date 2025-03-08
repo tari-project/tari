@@ -2911,7 +2911,7 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 4;
+    const MIGRATION_VERSION: u64 = 5;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -2948,6 +2948,17 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
                 .expect("should be valid hex");
             lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &843, None)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
+        }
+        if migrate_from_version == 4 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "re-adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
+            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
+                .expect("should be valid hex");
+            let _not_used = lmdb_delete(&txn, &db.monero_seed_height_db, &vm_key, "seed heights");
+            let height: u64 = 843;
+            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &height, None)?;
             txn.commit()?;
             info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
         }
