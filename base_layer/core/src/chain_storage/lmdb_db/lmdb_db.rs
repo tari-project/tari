@@ -2900,7 +2900,6 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
         }
         if migrate_from_version == 4 {
-            let txn = db.write_transaction()?;
             info!(target: LOG_TARGET, "Clearing bad blocks list missed in migration v3");
             clear_bad_blocks = true;
         }
