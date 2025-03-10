@@ -48,9 +48,7 @@ tonic = "0.12.3"
 tracing = "0.1"
 url = "2.1.1"
 scraper = "0.19.0"
-toml = "0.8.19"
 rand = "0.8"
-regex = "1.11.1"
 blake2 = "0.10"
 
 [build-dependencies]
