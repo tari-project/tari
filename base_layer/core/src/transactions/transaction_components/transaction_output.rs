@@ -34,14 +34,8 @@ use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    ComAndPubSignature,
-    CommitmentFactory,
-    CompressedCommitment,
-    CompressedPublicKey,
-    FixedHash,
-    PrivateKey,
-    RangeProof,
-    RangeProofService,
+    ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey,
+    RangeProof, RangeProofService,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -63,13 +57,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionError,
-            TransactionInput,
-            WalletOutput,
+            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInput, WalletOutput,
         },
     },
 };
@@ -235,7 +223,7 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+    pub(crate) fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
                 Ok(_) => Ok(()),
@@ -276,18 +264,8 @@ impl TransactionOutput {
                 ),
             });
         }
-        // Let's first verify that the metadata signature is valid.
-        // Note: If normal code paths are followed, this is checked elsewhere already, but it is theoretically possible
-        //       to meddle with the metadata signature after it has been verified and before it is used here, so we
-        //       check it again. It is also a very cheap test in comparison to a range proof verification
-        let e_bytes = match self.verify_metadata_signature_internal() {
-            Ok(val) => val,
-            Err(e) => {
-                return Err(RangeProofError::InvalidRangeProof {
-                    reason: format!("{}", e),
-                });
-            },
-        };
+        // NOTE: The metadata signature must also be verified elsewhere
+        let e_bytes = self.get_metadata_signature_challenge();
         // Now we can perform the balance proof
         let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
@@ -304,8 +282,8 @@ impl TransactionOutput {
         }
     }
 
-    fn verify_metadata_signature_internal(&self) -> Result<[u8; 64], TransactionError> {
-        let challenge = TransactionOutput::build_metadata_signature_challenge(
+    fn get_metadata_signature_challenge(&self) -> [u8; 64] {
+        TransactionOutput::build_metadata_signature_challenge(
             &self.version,
             &self.script,
             &self.features,
@@ -316,7 +294,11 @@ impl TransactionOutput {
             &self.covenant,
             &self.encrypted_data,
             self.minimum_value_promise,
-        );
+        )
+    }
+
+    fn verify_metadata_signature_internal(&self) -> Result<[u8; 64], TransactionError> {
+        let challenge = self.get_metadata_signature_challenge();
 
         if !self.metadata_signature.to_capk_signature()?.verify_challenge(
             &self.commitment.to_commitment()?,
@@ -502,10 +484,10 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self.features.get_serialized_size()?
+            + self.script.get_serialized_size()?
+            + self.covenant.get_serialized_size()?
+            + self.encrypted_data.get_payment_id_size())
     }
 }
 
@@ -560,7 +542,7 @@ impl Ord for TransactionOutput {
 }
 
 /// Performs batched range proof verification for an arbitrary number of outputs
-pub fn batch_verify_range_proofs(
+pub(crate) fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
@@ -799,9 +781,12 @@ mod test {
         assert!(output.verify_metadata_signature().is_err());
         match output.revealed_value_range_proof_check() {
             Ok(_) => panic!("Should not have passed check"),
-            Err(e) => assert_eq!(e, RangeProofError::InvalidRangeProof {
-                reason: "Signature is invalid: Metadata signature not valid!".to_string()
-            }),
+            Err(e) => assert_eq!(
+                e,
+                RangeProofError::InvalidRangeProof {
+                    reason: "Signature is invalid: Metadata signature not valid!".to_string()
+                }
+            ),
         }
     }
 
