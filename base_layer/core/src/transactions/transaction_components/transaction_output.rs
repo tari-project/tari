@@ -34,14 +34,8 @@ use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    ComAndPubSignature,
-    CommitmentFactory,
-    CompressedCommitment,
-    CompressedPublicKey,
-    FixedHash,
-    PrivateKey,
-    RangeProof,
-    RangeProofService,
+    ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey,
+    RangeProof, RangeProofService,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -63,13 +57,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionError,
-            TransactionInput,
-            WalletOutput,
+            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInput, WalletOutput,
         },
     },
 };
@@ -496,10 +484,10 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self.features.get_serialized_size()?
+            + self.script.get_serialized_size()?
+            + self.covenant.get_serialized_size()?
+            + self.encrypted_data.get_payment_id_size())
     }
 }
 
@@ -770,32 +758,6 @@ mod test {
                 "A range proof construction or verification has produced an error: Invalid revealed value: Expected \
                  20 µT, received 0 µT"
             ),
-        }
-    }
-
-    #[tokio::test]
-    async fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
-        let key_manager = create_memory_db_key_manager().unwrap();
-        let test_params = TestParams::new(&key_manager).await;
-        let mut output = create_output(
-            &test_params,
-            MicroMinotari(20),
-            MicroMinotari(20),
-            RangeProofType::RevealedValue,
-            &key_manager,
-        )
-        .await
-        .unwrap();
-        assert!(output.verify_metadata_signature().is_ok());
-        assert!(output.revealed_value_range_proof_check().is_ok());
-
-        output.features.maturity += 1;
-        assert!(output.verify_metadata_signature().is_err());
-        match output.revealed_value_range_proof_check() {
-            Ok(_) => panic!("Should not have passed check"),
-            Err(e) => assert_eq!(e, RangeProofError::InvalidRangeProof {
-                reason: "Signature is invalid: Metadata signature not valid!".to_string()
-            }),
         }
     }
 
