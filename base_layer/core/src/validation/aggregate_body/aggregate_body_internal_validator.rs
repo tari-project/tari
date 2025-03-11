@@ -149,7 +149,6 @@ pub fn validate_individual_output(
     output: &TransactionOutput,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-
     check_permitted_output_types(consensus_constants, output)?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;

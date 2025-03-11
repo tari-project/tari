@@ -600,8 +600,6 @@ pub(crate) fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::errors::RangeProofError;
-
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroMinotari,

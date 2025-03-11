@@ -59,12 +59,14 @@ use crate::{
         TransactionKernel,
         TransactionOutput,
     },
-    validation::{FinalHorizonStateValidation},
+    validation::{
+        aggregate_body::validate_individual_output,
+        helpers::validate_output_version,
+        FinalHorizonStateValidation,
+    },
     OutputSmt,
     PrunedKernelMmr,
 };
-use crate::validation::aggregate_body::validate_individual_output;
-use crate::validation::helpers::validate_output_version;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
