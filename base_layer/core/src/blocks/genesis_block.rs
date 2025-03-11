@@ -188,12 +188,6 @@ fn get_stagenet_genesis_block_raw() -> Block {
 pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
-    // TODO: Fix this hack with the next nextnet reset!!
-    block.header.input_mr =
-        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
-    block.header.block_output_mr =
-        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
-
     // Add pre-mine utxos - enable/disable as required
     let add_pre_mine_utxos = false;
     if add_pre_mine_utxos {
@@ -230,7 +224,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("28 Jan 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -375,10 +369,6 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_esmeralda_genesis_block_raw();
 
-    // TODO: Fix this hack with the next esme reset!!
-    block.header.block_output_mr =
-        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
-
     // Add pre-mine utxos - enable/disable as required
     let add_pre_mine_utxos = true;
     if add_pre_mine_utxos {
@@ -399,6 +389,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+        block.header.block_output_mr =
+            FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -415,7 +407,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("28 Jan 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -744,48 +736,28 @@ mod test {
             block.header().output_mr.to_vec().to_hex(),
         );
 
-        // TODO: Fix this hack with the next nextnet/esme release reset!!
-        if network == Network::NextNet || network == Network::Esmeralda {
-            assert_eq!(
-                FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
-                    .unwrap()
-                    .to_vec()
-                    .to_hex(),
-                block.header().block_output_mr.to_vec().to_hex(),
-            );
-        } else {
-            let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
-            let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
-            assert_eq!(
-                AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
-                    .unwrap()
-                    .to_vec()
-                    .to_hex(),
-                block.header().block_output_mr.to_vec().to_hex(),
-            );
-            assert_eq!(
-                block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
-                    .unwrap()
-                    .to_vec()
-                    .to_hex(),
-                block.header().block_output_mr.to_vec().to_hex(),
-            );
-        }
-        if network == Network::NextNet {
-            // TODO: Fix this hack with the next nextnet reset!!
-            assert_eq!(
-                FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
-                    .unwrap()
-                    .to_vec()
-                    .to_hex(),
-                block.header().input_mr.to_vec().to_hex(),
-            );
-        } else {
-            assert_eq!(
-                input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
-                block.header().input_mr.to_vec().to_hex(),
-            );
-        }
+        let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
+        let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+        assert_eq!(
+            AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+                .unwrap()
+                .to_vec()
+                .to_hex(),
+            block.header().block_output_mr.to_vec().to_hex(),
+        );
+        assert_eq!(
+            block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+                .unwrap()
+                .to_vec()
+                .to_hex(),
+            block.header().block_output_mr.to_vec().to_hex(),
+        );
+
+        assert_eq!(
+            input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
+            block.header().input_mr.to_vec().to_hex(),
+        );
+
         assert_eq!(
             calculate_validator_node_mr(&vn_nodes).to_vec().to_hex(),
             block.header().validator_node_mr.to_vec().to_hex()
