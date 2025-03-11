@@ -59,10 +59,12 @@ use crate::{
         TransactionKernel,
         TransactionOutput,
     },
-    validation::{helpers, FinalHorizonStateValidation},
+    validation::{FinalHorizonStateValidation},
     OutputSmt,
     PrunedKernelMmr,
 };
+use crate::validation::aggregate_body::validate_individual_output;
+use crate::validation::helpers::validate_output_version;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
@@ -663,7 +665,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             utxo_counter,
                             self.num_outputs,
                         );
-                        helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
+                        validate_output_version(&constants, &output)?;
+                        validate_individual_output(&output, &constants)?;
 
                         batch_verify_range_proofs(&self.prover, &[&output])?;
                         let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
