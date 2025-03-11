@@ -34,14 +34,8 @@ use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    ComAndPubSignature,
-    CommitmentFactory,
-    CompressedCommitment,
-    CompressedPublicKey,
-    FixedHash,
-    PrivateKey,
-    RangeProof,
-    RangeProofService,
+    ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey,
+    RangeProof, RangeProofService,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -63,13 +57,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionError,
-            TransactionInput,
-            WalletOutput,
+            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInput, WalletOutput,
         },
     },
 };
@@ -496,10 +484,10 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self.features.get_serialized_size()?
+            + self.script.get_serialized_size()?
+            + self.covenant.get_serialized_size()?
+            + self.encrypted_data.get_payment_id_size())
     }
 }
 
@@ -600,8 +588,6 @@ pub(crate) fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::errors::RangeProofError;
-
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroMinotari,
