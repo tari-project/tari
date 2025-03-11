@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.13.0-rc.0](https://github.com/tari-project/tari/compare/v1.12.2-rc.0...v1.13.0-rc.0) (2025-03-11)
+
+
+### Features
+
+* remove static moneroD response ([#6867](https://github.com/tari-project/tari/issues/6867)) ([cb2ea5b](https://github.com/tari-project/tari/commit/cb2ea5bf489adb99616c7c64c5327c810eed6077))
+
+
+### Bug Fixes
+
+*  prune mode validation ([#6873](https://github.com/tari-project/tari/issues/6873)) ([d9a686d](https://github.com/tari-project/tari/commit/d9a686d0d884f5d2908bb60190535375b86fee21))
+* fix vulnerability in mio 0.7 ([#6857](https://github.com/tari-project/tari/issues/6857)) ([48e7bca](https://github.com/tari-project/tari/commit/48e7bcab60c42302d5e90a72ea8877c7bead9a5b)), closes [#6181](https://github.com/tari-project/tari/issues/6181)
+
 ## [1.12.2-rc.0](https://github.com/tari-project/tari/compare/v1.12.0-rc.1...v1.12.1-rc.2) (2025-03-07)
 
 ### Bug Fixes
