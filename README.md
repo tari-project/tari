@@ -38,7 +38,7 @@ cargo install cargo-nextest
 Then run the tests with:
 
 ```bash
-cargo ci-test
+cargo +nightly ci-test
 ```
 
 
@@ -132,11 +132,6 @@ brew update
 brew install coreutils tor openssl \
   cmake make libtool autoconf automake protobuf
 ```
-
-#### (macOS M1 chipset)
-
-If RandomX unit tests are failing, please update the Mac to ensure it's running at least `Darwin Kernel Version 22.3.0`.
-
 
 #### (Ubuntu 18.04, including WSL-2 on Windows)
 
@@ -275,22 +270,10 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-start the Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
-`~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
+start the Tor service `%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` if running on Windows. 
+Tor is included in the binary if running on Linux or Mac. 
 
-To run from any directory of your choice, where the executable is visible in the path (first-time use):
-
-    minotari_node --init
-    minotari_node
-
-    minotari_console_wallet --init
-
-    minotari_merge_mining_proxy
-
-    minotari_miner --init
-
-Consecutive runs:
+Running+:
 
     minotari_node
 
@@ -301,24 +284,13 @@ Consecutive runs:
     minotari_miner
 
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
-flag if you want to run in debug mode (first time use):
+flag if you want to run in debug mode:
 
-    cargo run --bin minotari_node --release --  --init
     cargo run --bin minotari_node --release
 
     cargo run --bin minotari_merge_mining_proxy --release
-
-    cargo run --bin minotari_console_wallet --release --  --init
-
-    cargo run --bin minotari_miner --release
-
-On consecutive runs:
-
-    cargo run --bin minotari_node --release
 
     cargo run --bin minotari_console_wallet --release
-
-    cargo run --bin minotari_merge_mining_proxy --release
 
     cargo run --bin minotari_miner --release
 
@@ -401,8 +373,8 @@ Syncing 5229/5233
 
 The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
 Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
-standalone and pooled SHA3 mining have been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
-This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
+standalone and pooled SHA3 mining have been apportioned to approximately 50% and with Monero merged mining to approximately 50%.
+This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 50/50 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
 approximately 120 seconds. Each mining algorithm makes use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
 the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
@@ -461,10 +433,6 @@ grpc_enabled = true
 grpc_base_node_address = "127.0.0.1:18142"
 ```
 
-For MiningCore:
-
-See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
-
 For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
 
 - For SHA3 Mining:
@@ -495,19 +463,6 @@ For the Minotari Miner there are some additional settings under section **`miner
 #validate_tip_timeout_sec=30
 ```
 
-For pooled SHA3 mining:
-
-```
-[miner]
-# Number of mining threads
-# Default: number of logical CPU cores
-#num_mining_threads=8
-
-# Stratum Mode configuration
-# mining_pool_address = "miningcore.tari.com:3052"
-# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
-# mining_worker_name = "worker1"
-```
 
 Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration.
 `mining_worker_name` is an optional configuration field allowing you to name your worker.
@@ -517,12 +472,11 @@ Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values t
 - For SHA3 mining:
   Tor and the required Tari applications must be started and preferably in this order:
 
-  - Tor:
+  - Tor(windows only):
 
-    - Linux/OSX: Execute `start_tor.sh`.
     - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
-    - Tari Base Node:
+  - Tari Base Node:
 
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
@@ -554,36 +508,6 @@ and performing mining:
   witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2,
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
 ```
-
-- For pooled SHA3 Mining:
-
-  - Pool Operators:
-    Tor and the required Minotari applications must be started in this order:
-
-    - Tor:
-
-      - Linux/OSX: Execute `start_tor.sh`.
-      - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
-
-    - Minotari Base Node:
-
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-        `start_minotari_node` shortcut in the Tari installation folder.
-
-    - Minotari Wallet:
-
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
-        `start_tari_console_wallet` shortcut in the Tari installation folder.
-
-    - MiningCore
-
-  - Miners:
-    - Minotari Miner:
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Miner` menu item
-        or `start_tari_miner` shortcut in the Tari installation folder.
 
 ### Tari merge mining
 
@@ -823,9 +747,7 @@ activity for that address. The configuration file used for this exercise is show
 
 Tor and the required Minotari applications must be started, preferably in this order:
 
-- Tor:
-
-  - Linux/OSX: Execute `start_tor.sh`.
+- Tor(windows only):
   - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
 - Tari Base Node:
