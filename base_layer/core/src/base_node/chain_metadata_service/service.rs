@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, sync::Arc, thread::sleep};
 
 use log::*;
 use prost::Message;
@@ -77,6 +77,9 @@ impl ChainMetadataService {
         let mut liveness_event_stream = self.liveness.get_event_stream();
         let mut block_event_stream = self.base_node.get_block_event_stream();
 
+        // just wait till the base node can create the chain metadata. This is to suppresses a warning about it not
+        // being found. If this passes before the base node has created the chain metadata, the warning will be logged.
+        sleep(std::time::Duration::from_secs(2));
         log_if_error!(
             target: LOG_TARGET,
             "Error when updating liveness chain metadata: '{}'",

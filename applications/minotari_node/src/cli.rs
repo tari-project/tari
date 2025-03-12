@@ -61,7 +61,7 @@ pub struct Cli {
     #[clap(long)]
     pub disable_splash_screen: bool,
     /// Path to the libtor data directory
-    #[clap(short, long, parse(from_os_str))]
+    #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
 }
 
