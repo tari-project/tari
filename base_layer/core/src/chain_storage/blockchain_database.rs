@@ -940,8 +940,8 @@ where B: BlockchainBackend
         let median_timestamp = calc_median_timestamp(&timestamps)?;
         // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
         // to increase the timestamp to be greater than the median timestamp otherwise the block wont be accepted by
-        // nodes
-        if median_timestamp > header.timestamp {
+        // nodes, they cannot increase it by more than the FTL so there is an upperbound here
+        while median_timestamp >= header.timestamp {
             header.timestamp = median_timestamp
                 .checked_add(EpochTime::from(1))
                 .ok_or(ChainStorageError::UnexpectedResult("Timestamp overflowed".to_string()))?;
