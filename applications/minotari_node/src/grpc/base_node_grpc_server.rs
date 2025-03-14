@@ -992,6 +992,26 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(meta.best_block_height().saturating_add(1))
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(meta.best_block_height().saturating_add(1))
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         // let validate the coinbase amounts;
         let reward = u128::from(
@@ -1217,6 +1237,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 )
             })?;
         let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(block_template.header.height)
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         let mut handler = self.node_service.clone();
 
