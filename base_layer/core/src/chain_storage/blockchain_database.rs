@@ -39,13 +39,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature,
         UncompressedCommitment,
     },
 };
@@ -60,63 +54,33 @@ use super::TemplateRegistrationEntry;
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock,
+        ChainHeader, HistoricalBlock, NewBlockTemplate, UpdateBlockAccumulatedData,
     },
     chain_storage::{
         consts::{
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         utxo_mined_info::OutputMinedInfo,
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, DbBasicStats, DbTotalSizeStats, HorizonData, InputMinedInfo, MmrTree,
+        Optional, OrNotFound, Reorg, TargetDifficulties,
     },
     common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
+        chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr, output_mr_hash_from_smt,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
-        helpers::calc_median_timestamp,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        helpers::calc_median_timestamp, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    ValidatorNodeBMT,
+    OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -227,7 +191,8 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -238,7 +203,7 @@ where B: BlockchainBackend
         difficulty_calculator: DifficultyCalculator,
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
-        debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
+        trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
@@ -303,10 +268,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -2670,20 +2638,14 @@ mod test {
     use crate::{
         block_specs,
         consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
+            chain_strength_comparer::strongest_chain, consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
         },
         proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
-                update_block_and_smt,
-                TempDatabase,
+                create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_test_blockchain_db, update_block_and_smt, TempDatabase,
             },
             BlockSpecs,
         },
@@ -2753,12 +2715,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ])
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            )
             .await;
             // Create reorg chain
             // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
@@ -2880,15 +2840,18 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ])
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            )
             .await;
 
             // Fork 1 (with 3 blocks)
@@ -3310,12 +3273,10 @@ mod test {
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
         let mut smt = db.smt_read_access().unwrap().clone();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3403,12 +3364,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3729,11 +3688,14 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()

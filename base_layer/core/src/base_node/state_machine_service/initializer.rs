@@ -56,7 +56,8 @@ pub struct BaseNodeStateMachineInitializer<B> {
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     pub fn new(
         db: AsyncBlockchainDb<B>,
@@ -79,10 +80,11 @@ where B: BlockchainBackend + 'static
 
 #[async_trait]
 impl<B> ServiceInitializer for BaseNodeStateMachineInitializer<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing Base Node State Machine Service");
+        trace!(target: LOG_TARGET, "Initializing Base Node State Machine Service");
         let (state_event_publisher, _) = broadcast::channel(500);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 

@@ -31,9 +31,7 @@ use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, Com
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
-        state_machine_service::states::StatusInfo,
-        tari_pulse_service::TariPulseHandle,
-        LocalNodeCommsInterface,
+        state_machine_service::states::StatusInfo, tari_pulse_service::TariPulseHandle, LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
@@ -216,7 +214,7 @@ async fn build_node_context(
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
-    debug!(
+    trace!(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
@@ -269,7 +267,7 @@ async fn build_node_context(
     );
 
     //---------------------------------- Base Node  --------------------------------------------//
-    debug!(target: LOG_TARGET, "Creating base node state machine.");
+    trace!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
         app_config: &app_config,

@@ -146,7 +146,7 @@ impl TariPulseService {
                                 passed
                             },
                             Err(err) => {
-                                warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {:?}", err);
+                                warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {}", err);
                                 skip_ticks = min(skip_ticks + 1, 30 * 60 / self.config.check_interval.as_secs());
                                 skipped_ticks = 0;
                                 continue;
@@ -198,10 +198,11 @@ impl TariPulseService {
             .await
             .and_then(|header| match header {
                 Some(header) => Ok((header.height(), header.hash().to_hex())),
-                None => {
-                    error!(target: LOG_TARGET, "Header not found for height: {}", block_height);
-                    Err(CommsInterfaceError::InternalError("Header not found".to_string()))
-                },
+                None => Err(CommsInterfaceError::InternalError(format!(
+                    "Header not found for block height {}",
+                    block_height
+                ))
+                .into()),
             })?;
 
         Ok(historical_block)

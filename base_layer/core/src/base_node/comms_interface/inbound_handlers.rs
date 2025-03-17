@@ -35,24 +35,15 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+        error::CommsInterfaceError, local_interface::BlockEventSender, FetchMempoolTransactionsResponse,
+        NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
+        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, Difficulty, PowAlgorithm, PowError,
     },
     transactions::aggregated_body::AggregateBody,
     validation::{helpers, ValidationError},
@@ -93,7 +84,8 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
@@ -1017,7 +1009,7 @@ where B: BlockchainBackend + 'static
             constants.min_pow_difficulty(pow_algo),
             constants.max_pow_difficulty(pow_algo),
         );
-        debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
+        trace!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
     }
 

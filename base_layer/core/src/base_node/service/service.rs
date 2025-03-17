@@ -52,8 +52,7 @@ use crate::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
         state_machine_service::states::StateInfo,
-        BaseNodeStateMachineConfig,
-        StateMachineHandle,
+        BaseNodeStateMachineConfig, StateMachineHandle,
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
@@ -103,7 +102,8 @@ pub(super) struct BaseNodeService<B> {
 }
 
 impl<B> BaseNodeService<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     pub fn new(
         outbound_message_service: OutboundMessageRequester,
@@ -383,7 +383,7 @@ where B: BlockchainBackend + 'static
             let (request, reply_tx) = request_context.split();
             let res = inbound_nch.handle_request(request).await;
             if let Err(ref e) = res {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "BaseNodeService failed to handle local request {:?}", e
                 );
