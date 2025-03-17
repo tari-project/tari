@@ -33,7 +33,7 @@ use hickory_client::{
     rr::{DNSClass, Name, RData, Record, RecordType},
     tcp::TcpClientStream,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_p2p::Network;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
