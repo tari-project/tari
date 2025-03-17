@@ -27,32 +27,23 @@ use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
-        base_node_client::BaseNodeClient,
-        pow_algo::PowAlgos,
-        sha_p2_pool_client::ShaP2PoolClient,
-        Block,
-        GetNewBlockRequest,
-        PowAlgo,
-        SubmitBlockRequest,
-        SubmitBlockResponse,
+        base_node_client::BaseNodeClient, pow_algo::PowAlgos, sha_p2_pool_client::ShaP2PoolClient, Block,
+        GetNewBlockRequest, PowAlgo, SubmitBlockRequest, SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
     },
     tls::protocol_string,
 };
 use minotari_app_utilities::parse_miner_input::{
-    base_node_socket_address,
-    verify_base_node_grpc_mining_responses,
-    wallet_payment_address,
-    BaseNodeGrpcClient,
-    ShaP2PoolGrpcClient,
+    prompt_for_base_node_address, prompt_for_p2pool_address, verify_base_node_grpc_mining_responses,
+    wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient,
 };
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
-    load_configuration,
-    DefaultConfigLoader,
+    load_configuration, DefaultConfigLoader,
 };
 use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
+    base_node,
     blocks::BlockHeader,
     consensus::ConsensusManager,
     transactions::{
@@ -279,15 +270,15 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
 }
 
 async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient, MinerError> {
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
+    let base_node_addr;
+    if let Some(ref a) = config.base_node_grpc_address {
+        base_node_addr = a.clone();
+    } else {
+        base_node_addr = prompt_for_p2pool_address()?;
+    }
 
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
@@ -314,15 +305,15 @@ async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient,
 }
 
 async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
+    let base_node_addr;
+    if let Some(ref a) = config.base_node_grpc_address {
+        base_node_addr = a.clone();
+    } else {
+        base_node_addr = prompt_for_base_node_address(config.network)?;
+    }
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))

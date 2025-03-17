@@ -61,9 +61,9 @@ pub struct MergeMiningProxyConfig {
     /// If authentication is being used for curl
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
-    pub base_node_grpc_address: Option<Multiaddr>,
+    pub base_node_grpc_address: Option<String>,
     /// P2Pool node's gRPC address
-    pub p2pool_node_grpc_address: Option<Multiaddr>,
+    pub p2pool_node_grpc_address: Option<String>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation

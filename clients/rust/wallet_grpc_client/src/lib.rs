@@ -46,7 +46,7 @@ pub struct WalletGrpcClient<TTransport> {
 
 impl WalletGrpcClient<tonic::transport::Channel> {
     pub async fn connect(addr: &str) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::from_str(addr)?.connect().await?;
+        let channel = Endpoint::new(addr.to_string())?.connect().await?;
         Ok(Self {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
@@ -56,7 +56,7 @@ impl WalletGrpcClient<tonic::transport::Channel> {
     }
 
     pub async fn connect_with_auth(addr: &str, auth_config: &GrpcAuthentication) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::from_str(addr)?.connect().await?;
+        let channel = Endpoint::new(addr.to_string())?.connect().await?;
         Ok(Self {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
