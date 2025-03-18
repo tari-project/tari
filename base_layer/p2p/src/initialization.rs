@@ -48,25 +48,16 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        NodeNetworkInfo,
-        ProtocolId,
+        NodeNetworkInfo, ProtocolId,
     },
     tor,
     tor::{HiddenServiceControllerError, TorIdentity},
     transports::{
-        predicate::FalsePredicate,
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
+        predicate::FalsePredicate, HiddenServiceTransport, MemoryTransport, SocksConfig, SocksTransport,
         TcpWithTorTransport,
     },
     utils::cidr::parse_cidrs,
-    CommsBuilder,
-    CommsBuilderError,
-    CommsNode,
-    PeerManager,
-    UnspawnedCommsNode,
+    CommsBuilder, CommsBuilderError, CommsNode, PeerManager, UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -85,9 +76,7 @@ use crate::{
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig,
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
+    TransportConfig, MAJOR_NETWORK_VERSION, MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -517,7 +506,7 @@ impl P2pInitializer {
             // Log and ignore errors
             .filter_map(|(result, addr)| match result {
                 Ok(peers) => {
-                    debug!(
+                    info!(
                         target: LOG_TARGET,
                         "Found {} peer(s) from `{}` in {:.0?}",
                         peers.len(),
@@ -580,7 +569,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing P2P");
+        info!(target: LOG_TARGET, "Initializing P2P");
         let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 

@@ -32,28 +32,18 @@ use tokio::{
 use super::{CommsBuilderError, CommsShutdown};
 use crate::{
     connection_manager::{
-        ConnectionManager,
-        ConnectionManagerEvent,
-        ConnectionManagerRequest,
-        ConnectionManagerRequester,
-        SelfLivenessCheck,
-        SelfLivenessStatus,
+        ConnectionManager, ConnectionManagerEvent, ConnectionManagerRequest, ConnectionManagerRequester,
+        SelfLivenessCheck, SelfLivenessStatus,
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerManager},
     protocol::{
-        ProtocolExtension,
-        ProtocolExtensionContext,
-        ProtocolExtensions,
-        ProtocolId,
-        ProtocolNotificationTx,
-        Protocols,
+        ProtocolExtension, ProtocolExtensionContext, ProtocolExtensions, ProtocolId, ProtocolNotificationTx, Protocols,
     },
     tor,
     transports::Transport,
-    CommsBuilder,
-    Substream,
+    CommsBuilder, Substream,
 };
 
 const LOG_TARGET: &str = "comms::node";
@@ -197,7 +187,7 @@ impl UnspawnedCommsNode {
         connectivity_manager.spawn();
         connection_manager.spawn();
 
-        debug!(target: LOG_TARGET, "Hello from comms!");
+        trace!(target: LOG_TARGET, "Hello from comms!");
         info!(
             target: LOG_TARGET,
             "Your node's public key is '{}'",
