@@ -457,7 +457,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
 
         let mut connectivity = self.comms.connectivity();
-        let peer_manager = self.comms.peer_manager();
         let connected_peers = connectivity
             .get_active_connections()
             .await
