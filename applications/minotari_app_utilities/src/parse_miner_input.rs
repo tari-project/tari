@@ -26,7 +26,10 @@ use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
-        base_node_client::BaseNodeClient, sha_p2_pool_client::ShaP2PoolClient, Block, NewBlockTemplate,
+        base_node_client::BaseNodeClient,
+        sha_p2_pool_client::ShaP2PoolClient,
+        Block,
+        NewBlockTemplate,
         NewBlockTemplateRequest,
     },
 };

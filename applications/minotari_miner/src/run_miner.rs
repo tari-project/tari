@@ -27,19 +27,30 @@ use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
-        base_node_client::BaseNodeClient, pow_algo::PowAlgos, sha_p2_pool_client::ShaP2PoolClient, Block,
-        GetNewBlockRequest, PowAlgo, SubmitBlockRequest, SubmitBlockResponse,
+        base_node_client::BaseNodeClient,
+        pow_algo::PowAlgos,
+        sha_p2_pool_client::ShaP2PoolClient,
+        Block,
+        GetNewBlockRequest,
+        PowAlgo,
+        SubmitBlockRequest,
+        SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
     },
     tls::protocol_string,
 };
 use minotari_app_utilities::parse_miner_input::{
-    prompt_for_base_node_address, prompt_for_p2pool_address, verify_base_node_grpc_mining_responses,
-    wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient,
+    prompt_for_base_node_address,
+    prompt_for_p2pool_address,
+    verify_base_node_grpc_mining_responses,
+    wallet_payment_address,
+    BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
 };
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
-    load_configuration, DefaultConfigLoader,
+    load_configuration,
+    DefaultConfigLoader,
 };
 use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
