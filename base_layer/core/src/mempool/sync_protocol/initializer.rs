@@ -35,7 +35,8 @@ use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
-        Mempool, MempoolServiceConfig,
+        Mempool,
+        MempoolServiceConfig,
     },
 };
 

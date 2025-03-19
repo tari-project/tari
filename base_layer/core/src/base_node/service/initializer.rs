@@ -33,7 +33,11 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    async_trait, reply_channel, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext,
+    async_trait,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
 };
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
@@ -42,7 +46,8 @@ use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         service::service::{BaseNodeService, BaseNodeStreams},
-        BaseNodeStateMachineConfig, StateMachineHandle,
+        BaseNodeStateMachineConfig,
+        StateMachineHandle,
     },
     blocks::NewBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
@@ -68,8 +73,7 @@ pub struct BaseNodeServiceInitializer<T> {
 }
 
 impl<T> BaseNodeServiceInitializer<T>
-where
-    T: BlockchainBackend,
+where T: BlockchainBackend
 {
     /// Create a new BaseNodeServiceInitializer from the inbound message subscriber.
     pub fn new(
@@ -149,8 +153,7 @@ fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, Extrac
 
 #[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
-where
-    T: BlockchainBackend + 'static,
+where T: BlockchainBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "Initializing Base Node Service");

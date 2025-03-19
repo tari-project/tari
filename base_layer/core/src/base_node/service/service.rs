@@ -52,7 +52,8 @@ use crate::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
         state_machine_service::states::StateInfo,
-        BaseNodeStateMachineConfig, StateMachineHandle,
+        BaseNodeStateMachineConfig,
+        StateMachineHandle,
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
@@ -102,8 +103,7 @@ pub(super) struct BaseNodeService<B> {
 }
 
 impl<B> BaseNodeService<B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     pub fn new(
         outbound_message_service: OutboundMessageRequester,

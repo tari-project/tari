@@ -119,9 +119,9 @@ impl ChainMetadataService {
     /// Handle BlockEvents
     async fn handle_block_event(&mut self, event: &BlockEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
-            BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok(_))
-            | BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { .. })
-            | BlockEvent::BlockSyncComplete(_, _) => {
+            BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok(_)) |
+            BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { .. }) |
+            BlockEvent::BlockSyncComplete(_, _) => {
                 self.update_liveness_chain_metadata().await?;
             },
             _ => {},
@@ -222,7 +222,8 @@ mod test {
     use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
-        LivenessRequest, Metadata,
+        LivenessRequest,
+        Metadata,
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
