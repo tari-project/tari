@@ -456,6 +456,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
 
+        let mut connectivity = self.comms.connectivity();
+        let peer_manager = self.comms.peer_manager();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
+
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
@@ -464,6 +471,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             reward,
             sha3x_estimated_hash_rate,
             randomx_estimated_hash_rate,
+            num_connections: connected_peers.len() as u64,
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))
