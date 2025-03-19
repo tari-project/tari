@@ -150,10 +150,8 @@ impl MinerConfig {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
 
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MinerConfig;
 

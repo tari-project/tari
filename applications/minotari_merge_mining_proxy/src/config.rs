@@ -198,11 +198,9 @@ impl SubConfigPath for MergeMiningProxyConfig {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
 
     use serde::{Deserialize, Serialize};
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::{MergeMiningProxyConfig, MonerodFallback};
 
@@ -215,12 +213,12 @@ mod test {
             [config_a.merge_mining_proxy]
               monerod_url = [ "http://network.a.org" ]
               monerod_password = "password_igor"
-              base_node_grpc_address = "/dns4/base_node_a/tcp/8080"
+              base_node_grpc_address = "http://base_node_a:8080"
             [config_b.merge_mining_proxy]
               submit_to_origin = false
               monerod_url = [ "http://network.b.org" ]
               monerod_password = "password_stagenet"
-              base_node_grpc_address = "/dns4/base_node_b/tcp/8080"
+              base_node_grpc_address = "http://base_node_b:8080"
             "#;
 
         config::Config::builder()
@@ -241,7 +239,7 @@ mod test {
         assert_eq!(config.monerod_password.as_str(), "password_stagenet");
         assert_eq!(
             config.base_node_grpc_address,
-            Some(Multiaddr::from_str("/dns4/base_node_b/tcp/8080").unwrap())
+            Some("http://base_node_b:8080".to_string())
         );
 
         let cfg = get_config("config_a");
@@ -252,7 +250,7 @@ mod test {
         assert_eq!(config.monerod_password.as_str(), "password_igor");
         assert_eq!(
             config.base_node_grpc_address,
-            Some(Multiaddr::from_str("/dns4/base_node_a/tcp/8080").unwrap())
+            Some("http://base_node_a:8080".to_string())
         );
     }
 
