@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, str::FromStr, sync::Arc, thread, time::Instant};
+use std::{convert::TryFrom, sync::Arc, thread, time::Instant};
 
 use futures::stream::StreamExt;
 use log::*;
@@ -37,7 +37,6 @@ use minotari_app_grpc::{
         SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
     },
-    tls::protocol_string,
 };
 use minotari_app_utilities::parse_miner_input::{
     prompt_for_base_node_address,
@@ -54,7 +53,6 @@ use tari_common::{
 };
 use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
-    base_node,
     blocks::BlockHeader,
     consensus::ConsensusManager,
     transactions::{

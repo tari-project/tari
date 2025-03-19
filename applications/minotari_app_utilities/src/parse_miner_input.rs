@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, str::FromStr};
+use std::str::FromStr;
 
 use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
@@ -38,9 +38,12 @@ use tari_common::configuration::{
     Network,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use thiserror::Error;
-use tonic::{codegen::InterceptedService, transport::Channel, Code};
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Channel, Uri},
+    Code,
+};
 
 /// Error parsing input
 #[derive(Debug, Error)]
@@ -62,6 +65,10 @@ pub fn prompt_for_base_node_address(network: Network) -> Result<String, ParseInp
             .interact()
             .unwrap();
         process_quit(&address);
+        if Uri::from_str(&address).is_err() {
+            println!("  Error - base node address '{}' not valid", address);
+            continue;
+        }
         // Remove leading and trailing whitespace
         address = address.trim().to_string();
         return Ok(address);
@@ -76,6 +83,10 @@ pub fn prompt_for_p2pool_address() -> Result<String, ParseInputError> {
             .interact()
             .unwrap();
         process_quit(&address);
+        if Uri::from_str(&address).is_err() {
+            println!("  Error - p2pool address '{}' not valid", address);
+            continue;
+        }
         // Remove leading and trailing whitespace
         address = address.trim().to_string();
         return Ok(address);

@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::Infallible, str::FromStr};
+use std::convert::Infallible;
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_app_grpc::{tari_rpc::sha_p2_pool_client::ShaP2PoolClient, tls::protocol_string};
+use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
