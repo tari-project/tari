@@ -201,8 +201,7 @@ impl TariPulseService {
                 None => Err(CommsInterfaceError::InternalError(format!(
                     "Header not found for block height {}",
                     block_height
-                ))
-                .into()),
+                ))),
             })?;
 
         Ok(historical_block)
