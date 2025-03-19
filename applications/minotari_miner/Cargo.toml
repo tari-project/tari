@@ -60,4 +60,5 @@ config = "0.14.0"
 ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
     "log4rs",
+    "prost",
 ]
