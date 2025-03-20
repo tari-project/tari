@@ -645,21 +645,21 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(150_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 240,
+            target_time: 5,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_0).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 240,
+            target_time: 5,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 720,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 1..=1,
+            coinbase_min_maturity: 360,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 127_795,

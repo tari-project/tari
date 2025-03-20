@@ -286,14 +286,9 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 
 fn get_mainnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
-    let not_before_proof = b"I am the standin mainnet genesis block, \
-        \
-       I am not the real mainnet block \
-        \
-        I am only a standin \
-        \
-       Do not take me for the real one. I am only a placeholder for the real one";
+    let genesis_timestamp = DateTime::parse_from_rfc2822("20 Mar 2025 08:00:00 +0200").expect("parse may not fail");
+    let not_before_proof: Vec<u8> =
+        from_hex("b1af2e243a168eecafabf1f418a7cd12e820c6d8f3acc0caca14a403cdf0145e").unwrap();
     if not_before_proof.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
