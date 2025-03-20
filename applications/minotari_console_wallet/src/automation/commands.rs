@@ -1037,6 +1037,7 @@ pub async fn command_runner(
                     break;
                 }
                 let mut input_file_path = args.input_file.clone();
+
                 while input_file_path.is_none() {
                     eprintln!("\nError: Missing input file path!\n");
                     input_file_path = Some(
@@ -1047,7 +1048,10 @@ pub async fn command_runner(
                     );
                 }
 
-                let file_path = PathBuf::from(input_file_path.unwrap());
+                let file_path = match input_file_path {
+                    Some(path) => PathBuf::from(path),
+                    None => PathBuf::from("step_1_session_info.json"),
+                };
 
                 // Read session info
                 let session_info = read_session_info::<PreMineSpendStep1SessionInfo>(file_path.clone())?;
