@@ -235,7 +235,7 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+    pub(crate) fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
                 Ok(_) => Ok(()),
@@ -276,18 +276,8 @@ impl TransactionOutput {
                 ),
             });
         }
-        // Let's first verify that the metadata signature is valid.
-        // Note: If normal code paths are followed, this is checked elsewhere already, but it is theoretically possible
-        //       to meddle with the metadata signature after it has been verified and before it is used here, so we
-        //       check it again. It is also a very cheap test in comparison to a range proof verification
-        let e_bytes = match self.verify_metadata_signature_internal() {
-            Ok(val) => val,
-            Err(e) => {
-                return Err(RangeProofError::InvalidRangeProof {
-                    reason: format!("{}", e),
-                });
-            },
-        };
+        // NOTE: The metadata signature must also be verified elsewhere
+        let e_bytes = self.get_metadata_signature_challenge();
         // Now we can perform the balance proof
         let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
@@ -304,8 +294,8 @@ impl TransactionOutput {
         }
     }
 
-    fn verify_metadata_signature_internal(&self) -> Result<[u8; 64], TransactionError> {
-        let challenge = TransactionOutput::build_metadata_signature_challenge(
+    fn get_metadata_signature_challenge(&self) -> [u8; 64] {
+        TransactionOutput::build_metadata_signature_challenge(
             &self.version,
             &self.script,
             &self.features,
@@ -316,7 +306,11 @@ impl TransactionOutput {
             &self.covenant,
             &self.encrypted_data,
             self.minimum_value_promise,
-        );
+        )
+    }
+
+    fn verify_metadata_signature_internal(&self) -> Result<[u8; 64], TransactionError> {
+        let challenge = self.get_metadata_signature_challenge();
 
         if !self.metadata_signature.to_capk_signature()?.verify_challenge(
             &self.commitment.to_commitment()?,
@@ -560,7 +554,7 @@ impl Ord for TransactionOutput {
 }
 
 /// Performs batched range proof verification for an arbitrary number of outputs
-pub fn batch_verify_range_proofs(
+pub(crate) fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
@@ -606,8 +600,6 @@ pub fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::errors::RangeProofError;
-
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         tari_amount::MicroMinotari,
@@ -776,32 +768,6 @@ mod test {
                 "A range proof construction or verification has produced an error: Invalid revealed value: Expected \
                  20 µT, received 0 µT"
             ),
-        }
-    }
-
-    #[tokio::test]
-    async fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
-        let key_manager = create_memory_db_key_manager().unwrap();
-        let test_params = TestParams::new(&key_manager).await;
-        let mut output = create_output(
-            &test_params,
-            MicroMinotari(20),
-            MicroMinotari(20),
-            RangeProofType::RevealedValue,
-            &key_manager,
-        )
-        .await
-        .unwrap();
-        assert!(output.verify_metadata_signature().is_ok());
-        assert!(output.revealed_value_range_proof_check().is_ok());
-
-        output.features.maturity += 1;
-        assert!(output.verify_metadata_signature().is_err());
-        match output.revealed_value_range_proof_check() {
-            Ok(_) => panic!("Should not have passed check"),
-            Err(e) => assert_eq!(e, RangeProofError::InvalidRangeProof {
-                reason: "Signature is invalid: Metadata signature not valid!".to_string()
-            }),
         }
     }
 

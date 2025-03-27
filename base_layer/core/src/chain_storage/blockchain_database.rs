@@ -238,7 +238,7 @@ where B: BlockchainBackend
         difficulty_calculator: DifficultyCalculator,
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
-        debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
+        trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,

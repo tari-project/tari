@@ -540,5 +540,8 @@ message GetNetworkStateResponse {
     uint64 sha3x_estimated_hash_rate = 6;
     // estimate randomx hash rate
     uint64 randomx_estimated_hash_rate = 7;
+    // number of connections
+    uint64 num_connections = 8;
+
 }
 

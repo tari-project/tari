@@ -456,6 +456,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
 
+        let mut connectivity = self.comms.connectivity();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
+
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
@@ -464,6 +470,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             reward,
             sha3x_estimated_hash_rate,
             randomx_estimated_hash_rate,
+            num_connections: connected_peers.len() as u64,
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))
@@ -992,6 +999,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(meta.best_block_height().saturating_add(1))
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         // let validate the coinbase amounts;
         let reward = u128::from(
@@ -1217,6 +1234,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 )
             })?;
         let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(block_template.header.height)
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         let mut handler = self.node_service.clone();
 

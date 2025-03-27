@@ -21,6 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod aggregate_body_internal_validator;
-pub use aggregate_body_internal_validator::AggregateBodyInternalConsistencyValidator;
+pub use aggregate_body_internal_validator::{validate_individual_output, AggregateBodyInternalConsistencyValidator};
 mod aggregate_body_chain_validator;
 pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;

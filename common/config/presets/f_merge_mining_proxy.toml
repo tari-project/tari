@@ -116,9 +116,5 @@
 # Use p2pool to submit and get block templates (default = false)
 #p2pool_enabled = false,
 
-# Monero fallback strategy - ["monerod_only", "static_when_monerod_fails" or "static_only"]
-# (default = "static_when_monerod_fails")
-#monerod_fallback = "static_when_monerod_fails"
-
 # The timeout duration for connecting to monerod (default = 2s)
 #monerod_connection_timeout = 2

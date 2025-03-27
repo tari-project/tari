@@ -36,7 +36,7 @@ pub struct ChainMetadataServiceInitializer;
 #[async_trait]
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing Chain Metadata Service");
+        trace!(target: LOG_TARGET, "Initializing Chain Metadata Service");
         let (publisher, _) = broadcast::channel(20);
 
         let handle = ChainMetadataHandle::new(publisher.clone());
@@ -50,7 +50,7 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
             ChainMetadataService::new(liveness, base_node, connectivity, publisher).run()
         });
 
-        debug!(target: LOG_TARGET, "Chain Metadata Service initialized");
+        trace!(target: LOG_TARGET, "Chain Metadata Service initialized");
         Ok(())
     }
 }

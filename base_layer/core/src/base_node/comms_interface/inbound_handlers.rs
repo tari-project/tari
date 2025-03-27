@@ -1017,7 +1017,7 @@ where B: BlockchainBackend + 'static
             constants.min_pow_difficulty(pow_algo),
             constants.max_pow_difficulty(pow_algo),
         );
-        debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
+        trace!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
     }
 

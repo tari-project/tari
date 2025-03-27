@@ -517,7 +517,7 @@ impl P2pInitializer {
             // Log and ignore errors
             .filter_map(|(result, addr)| match result {
                 Ok(peers) => {
-                    debug!(
+                    info!(
                         target: LOG_TARGET,
                         "Found {} peer(s) from `{}` in {:.0?}",
                         peers.len(),
@@ -580,7 +580,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing P2P");
+        info!(target: LOG_TARGET, "Initializing P2P");
         let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 

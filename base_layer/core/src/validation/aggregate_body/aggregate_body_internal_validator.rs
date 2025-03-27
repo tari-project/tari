@@ -117,12 +117,7 @@ impl AggregateBodyInternalConsistencyValidator {
         validate_versions(body, constants)?;
 
         for output in body.outputs() {
-            check_permitted_output_types(constants, output)?;
-            check_script_size(output, constants.max_script_byte_size())?;
-            check_encrypted_data_byte_size(output, constants.max_extra_encrypted_data_byte_size())?;
-            check_covenant_length(&output.covenant, constants.max_covenant_length())?;
-            check_permitted_range_proof_types(constants, output)?;
-            check_validator_node_registration_utxo(constants, output)?;
+            validate_individual_output(output, constants)?;
         }
 
         check_weight(body, height, constants)?;
@@ -139,7 +134,6 @@ impl AggregateBodyInternalConsistencyValidator {
         if !self.bypass_range_proof_verification {
             validate_range_proofs(body, &self.factories.range_proof)?;
         }
-        verify_metadata_signatures(body)?;
 
         let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
         validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
@@ -149,6 +143,21 @@ impl AggregateBodyInternalConsistencyValidator {
 
         Ok(())
     }
+}
+
+pub fn validate_individual_output(
+    output: &TransactionOutput,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    check_permitted_output_types(consensus_constants, output)?;
+    check_script_size(output, consensus_constants.max_script_byte_size())?;
+    check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
+    check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
+    check_permitted_range_proof_types(consensus_constants, output)?;
+    check_validator_node_registration_utxo(consensus_constants, output)?;
+    output.verify_metadata_signature()?;
+
+    Ok(())
 }
 
 /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
@@ -273,14 +282,6 @@ fn validate_range_proofs(
     trace!(target: LOG_TARGET, "Checking range proofs");
     let outputs = body.outputs().iter().collect::<Vec<_>>();
     batch_verify_range_proofs(range_proof_service, &outputs)?;
-    Ok(())
-}
-
-fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
-    trace!(target: LOG_TARGET, "Checking sender signatures");
-    for o in body.outputs() {
-        o.verify_metadata_signature()?;
-    }
     Ok(())
 }
 
