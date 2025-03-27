@@ -204,10 +204,9 @@ mod test {
             let new_peer = generate_peer(Some(1000), Some(pow));
             peers.push(new_peer);
 
-            // Sort the list; because difficulty is identical, it should sort by latency
+            // Sort the list;
             peers.sort();
 
-            // Confirm that the sorted latency is correct: numerical ordering, then `None`
             assert_eq!(
                 peers[0].peer_metadata.claimed_chain_metadata().accumulated_difficulty(),
                 1000.into()
