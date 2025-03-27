@@ -27,8 +27,12 @@ use hyper::{service::make_service_fn, Server};
 use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
-    prompt_for_base_node_address, prompt_for_p2pool_address, verify_base_node_grpc_mining_responses,
-    wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient,
+    prompt_for_base_node_address,
+    prompt_for_p2pool_address,
+    verify_base_node_grpc_mining_responses,
+    wallet_payment_address,
+    BaseNodeGrpcClient,
+    ShaP2PoolGrpcClient,
 };
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
@@ -201,15 +205,12 @@ pub(crate) fn get_tari_monerod_entries(monero_fail_url: &str) -> Vec<MonerodEntr
 }
 
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
-    if let Err(e) = verify_base_node_grpc_mining_responses(
-        node_conn,
-        grpc::NewBlockTemplateRequest {
-            algo: Some(grpc::PowAlgo {
-                pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
-            }),
-            max_weight: 0,
-        },
-    )
+    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, grpc::NewBlockTemplateRequest {
+        algo: Some(grpc::PowAlgo {
+            pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+        }),
+        max_weight: 0,
+    })
     .await
     {
         return Err(MmProxyError::BaseNodeNotResponding(e));
