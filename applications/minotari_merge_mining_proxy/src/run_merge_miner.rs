@@ -259,7 +259,7 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 }
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
-    let base_node_addr;
+    let p2pool_node_addr;
     if let Some(ref a) = config.p2pool_node_grpc_address {
         base_node_addr = a.clone();
     } else {

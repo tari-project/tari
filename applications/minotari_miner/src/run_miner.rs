@@ -279,7 +279,7 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
 }
 
 async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient, MinerError> {
-    let base_node_addr;
+    let p2pool_node_addr;
     if let Some(ref a) = config.base_node_grpc_address {
         base_node_addr = a.clone();
     } else {
