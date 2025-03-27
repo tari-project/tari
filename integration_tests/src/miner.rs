@@ -23,7 +23,11 @@
 use std::{convert::TryFrom, time::Duration};
 
 use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo,
+    pow_algo::PowAlgos,
+    Block,
+    NewBlockTemplate,
+    NewBlockTemplateRequest,
+    PowAlgo,
     TransactionOutput as GrpcTransactionOutput,
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
