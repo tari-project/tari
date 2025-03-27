@@ -106,11 +106,11 @@ impl Eq for SyncPeer {}
 
 impl Ord for SyncPeer {
     fn cmp(&self, other: &Self) -> Ordering {
-        let mut result = self
+        let mut result = other
             .peer_metadata
             .claimed_chain_metadata()
             .accumulated_difficulty()
-            .cmp(&other.peer_metadata.claimed_chain_metadata().accumulated_difficulty());
+            .cmp(&self.peer_metadata.claimed_chain_metadata().accumulated_difficulty());
         if result == Ordering::Equal {
             match (self.latency(), other.latency()) {
                 (None, None) => result = Ordering::Equal,
@@ -147,14 +147,18 @@ mod test {
         use super::*;
 
         // Helper function to generate a peer with a given latency
-        fn generate_peer(latency: Option<usize>) -> SyncPeer {
+        fn generate_peer(latency: Option<usize>, accumulated_difficulty: Option<U256>) -> SyncPeer {
             let sk = CommsSecretKey::random(&mut OsRng);
             let pk = CommsPublicKey::from_secret_key(&sk);
             let node_id = NodeId::from_key(&pk);
             let latency_option = latency.map(|latency| Duration::from_millis(latency as u64));
+            let peer_accumulated_difficulty = match accumulated_difficulty {
+                Some(v) => v,
+                None => 1.into(),
+            };
             PeerChainMetadata::new(
                 node_id,
-                ChainMetadata::new(0, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap(),
+                ChainMetadata::new(0, FixedHash::zero(), 0, 0, peer_accumulated_difficulty, 0).unwrap(),
                 latency_option,
             )
             .into()
@@ -166,13 +170,13 @@ mod test {
 
             // Generate a list of peers with latency, adding duplicates
             let mut peers = (0..2 * DISTINCT_LATENCY)
-                .map(|latency| generate_peer(Some(latency % DISTINCT_LATENCY)))
+                .map(|latency| generate_peer(Some(latency % DISTINCT_LATENCY), None))
                 .collect::<Vec<SyncPeer>>();
 
             // Add peers with no latency in a few places
-            peers.insert(0, generate_peer(None));
-            peers.insert(DISTINCT_LATENCY, generate_peer(None));
-            peers.push(generate_peer(None));
+            peers.insert(0, generate_peer(None, None));
+            peers.insert(DISTINCT_LATENCY, generate_peer(None, None));
+            peers.push(generate_peer(None, None));
 
             // Sort the list; because difficulty is identical, it should sort by latency
             peers.sort();
@@ -184,6 +188,38 @@ mod test {
             for _ in 0..3 {
                 assert_eq!(peers.pop().unwrap().latency(), None);
             }
+        }
+
+        #[test]
+        fn it_sorts_by_pow() {
+            let mut peers = Vec::new();
+
+            let mut pow = U256::from(1);
+            let new_peer = generate_peer(Some(1), Some(pow));
+            peers.push(new_peer);
+            pow = U256::from(100);
+            let new_peer = generate_peer(Some(100), Some(pow));
+            peers.push(new_peer);
+            pow = U256::from(1000);
+            let new_peer = generate_peer(Some(1000), Some(pow));
+            peers.push(new_peer);
+
+            // Sort the list; because difficulty is identical, it should sort by latency
+            peers.sort();
+
+            // Confirm that the sorted latency is correct: numerical ordering, then `None`
+            assert_eq!(
+                peers[0].peer_metadata.claimed_chain_metadata().accumulated_difficulty(),
+                1000.into()
+            );
+            assert_eq!(
+                peers[1].peer_metadata.claimed_chain_metadata().accumulated_difficulty(),
+                100.into()
+            );
+            assert_eq!(
+                peers[2].peer_metadata.claimed_chain_metadata().accumulated_difficulty(),
+                1.into()
+            );
         }
     }
 }
