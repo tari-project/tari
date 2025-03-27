@@ -25,3 +25,5 @@ pub mod blocks;
 pub mod data_cache;
 pub mod hash_rate;
 pub mod helpers;
+
+pub(crate) const GRPC_TIMEOUT: u64 = 2000; // 2 second(s)
