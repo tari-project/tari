@@ -189,26 +189,59 @@ pub enum PaymentId {
     },
 }
 
+enum PTag {
+    Empty = 0,
+    U64 = 1,
+    U256 = 2,
+    Open = 3,
+    AddressAndData = 4,
+    TransactionInfo = 5,
+}
+
+impl PTag {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => PTag::Empty,
+            1 => PTag::U64,
+            2 => PTag::U256,
+            3 => PTag::Open,
+            4 => PTag::AddressAndData,
+            _ => PTag::TransactionInfo,
+        }
+    }
+}
+
 impl PaymentId {
     const SIZE_META_DATA: usize = 10;
     const SIZE_VALUE_AND_META_DATA: usize = SIZE_VALUE + PaymentId::SIZE_META_DATA;
 
+    fn to_tag(&self) -> Vec<u8> {
+        match self {
+            PaymentId::Empty => vec![],
+            PaymentId::U64(_) => vec![PTag::U64 as u8],
+            PaymentId::U256(_) => vec![PTag::U256 as u8],
+            PaymentId::Open { .. } => vec![PTag::Open as u8],
+            PaymentId::AddressAndData { .. } => vec![PTag::AddressAndData as u8],
+            PaymentId::TransactionInfo { .. } => vec![PTag::TransactionInfo as u8],
+        }
+    }
+
     pub fn get_size(&self) -> usize {
         match self {
             PaymentId::Empty => 0,
-            PaymentId::U64(_) => SIZE_VALUE,
-            PaymentId::U256(_) => SIZE_U256,
-            PaymentId::Open { user_data, .. } => user_data.len() + 1,
+            PaymentId::U64(_) => 1 + SIZE_VALUE,
+            PaymentId::U256(_) => 1 + SIZE_U256,
+            PaymentId::Open { user_data, .. } => 1 + user_data.len() + 1,
             PaymentId::AddressAndData {
                 sender_address,
                 user_data,
                 ..
-            } => sender_address.get_size() + user_data.len() + 1,
+            } => 1 + sender_address.get_size() + user_data.len() + 1,
             PaymentId::TransactionInfo {
                 recipient_address,
                 user_data,
                 ..
-            } => recipient_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + user_data.len(),
+            } => 1 + recipient_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + user_data.len(),
         }
     }
 
@@ -349,14 +382,21 @@ impl PaymentId {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => Vec::new(),
-            PaymentId::U64(v) => (*v).to_le_bytes().to_vec(),
+            PaymentId::U64(v) => {
+                let mut bytes = self.to_tag();
+                bytes.extend_from_slice(&(*v).to_le_bytes());
+                bytes
+            },
             PaymentId::U256(v) => {
-                let mut bytes = vec![0; 32];
-                v.to_little_endian(&mut bytes);
+                let mut bytes = self.to_tag();
+                let mut value = vec![0; 32];
+                v.to_little_endian(&mut value);
+                bytes.extend_from_slice(&value);
                 bytes
             },
             PaymentId::Open { user_data, tx_type } => {
-                let mut bytes = tx_type.as_bytes();
+                let mut bytes = self.to_tag();
+                bytes.extend_from_slice(&tx_type.as_bytes());
                 bytes.extend_from_slice(user_data);
                 bytes
             },
@@ -365,7 +405,8 @@ impl PaymentId {
                 user_data,
                 tx_type,
             } => {
-                let mut bytes = sender_address.to_vec();
+                let mut bytes = self.to_tag();
+                bytes.extend_from_slice(&sender_address.to_vec());
                 bytes.extend_from_slice(&tx_type.as_bytes());
                 bytes.extend_from_slice(user_data);
                 bytes
@@ -376,7 +417,8 @@ impl PaymentId {
                 user_data,
                 ..
             } => {
-                let mut bytes = amount.as_u64().to_le_bytes().to_vec();
+                let mut bytes = self.to_tag();
+                bytes.extend_from_slice(&amount.as_u64().to_le_bytes());
                 bytes.extend_from_slice(&self.pack_meta_data());
                 bytes.extend_from_slice(&recipient_address.to_vec());
                 bytes.extend_from_slice(user_data);
@@ -387,31 +429,25 @@ impl PaymentId {
 
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        match bytes.len() {
-            0 => PaymentId::Empty,
-            SIZE_VALUE => {
+        let p_tag = if bytes.is_empty() {
+            PTag::Empty
+        } else {
+            PTag::from_u8(bytes[0])
+        };
+        let bytes = if bytes.len() > 1 { &bytes[1..] } else { &[] };
+        match (p_tag, bytes.len()) {
+            (PTag::Empty, 0) => return PaymentId::Empty,
+            (PTag::U64, SIZE_VALUE) => {
                 let bytes: [u8; SIZE_VALUE] = bytes.try_into().expect("Cannot fail, as we already test the length");
                 let v = u64::from_le_bytes(bytes);
-                PaymentId::U64(v)
+                return PaymentId::U64(v);
             },
-            SIZE_U256 => {
+            (PTag::U256, SIZE_U256) => {
                 let v = U256::from_little_endian(bytes);
-                PaymentId::U256(v)
+                return PaymentId::U256(v);
             },
-            len if len <= TARI_ADDRESS_INTERNAL_SINGLE_SIZE => {
-                // data
-                PaymentId::Open {
-                    user_data: if bytes.len() > 1 {
-                        bytes[1..].to_vec()
-                    } else {
-                        Vec::new()
-                    },
-                    tx_type: TxType::from_u8(bytes[0]),
-                }
-            },
-            _ => {
-                // PaymentId::AddressAndData
-                if bytes.len() > TARI_ADDRESS_INTERNAL_DUAL_SIZE {
+            (PTag::AddressAndData, len) => {
+                if len > TARI_ADDRESS_INTERNAL_DUAL_SIZE {
                     // Dual + data
                     if let Ok(sender_address) = TariAddress::from_bytes(&bytes[0..TARI_ADDRESS_INTERNAL_DUAL_SIZE]) {
                         return PaymentId::AddressAndData {
@@ -421,7 +457,7 @@ impl PaymentId {
                         };
                     }
                 }
-                if bytes.len() > TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
+                if len > TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
                     // Single + data
                     if let Ok(sender_address) = TariAddress::from_bytes(&bytes[0..TARI_ADDRESS_INTERNAL_SINGLE_SIZE]) {
                         return PaymentId::AddressAndData {
@@ -431,7 +467,8 @@ impl PaymentId {
                         };
                     }
                 }
-                // PaymentId::TransactionInfo
+            },
+            (PTag::TransactionInfo, len) if len > PaymentId::SIZE_VALUE_AND_META_DATA => {
                 let mut amount_bytes = [0u8; SIZE_VALUE];
                 amount_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
                 let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
@@ -453,7 +490,7 @@ impl PaymentId {
                         user_data: Vec::new(),
                     };
                 }
-                if bytes.len() > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE {
+                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE {
                     if let Ok(recipient_address) = TariAddress::from_bytes(
                         &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
                             PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE],
@@ -473,7 +510,7 @@ impl PaymentId {
                         };
                     }
                 }
-                if bytes.len() > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
+                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
                     if let Ok(recipient_address) = TariAddress::from_bytes(
                         &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
                             PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE],
@@ -493,16 +530,16 @@ impl PaymentId {
                         };
                     }
                 }
-                // Single
-                PaymentId::Open {
-                    user_data: if bytes.len() > 1 {
-                        bytes[1..].to_vec()
-                    } else {
-                        Vec::new()
-                    },
-                    tx_type: TxType::from_u8(bytes[0]),
-                }
             },
+            (_, _) => {},
+        }
+        PaymentId::Open {
+            user_data: if bytes.len() > 1 {
+                bytes[1..].to_vec()
+            } else {
+                Vec::new()
+            },
+            tx_type: TxType::from_u8(bytes[0]),
         }
     }
 
@@ -782,6 +819,64 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_payment_id_parsing_confusion() {
+        // We need to create a PaymentId::Open that, when serialized, will produce bytes that
+        // will be parsed as PaymentId::TransactionInfo.
+        // Create a valid TariAddress to use for our test
+        let fake_recipient = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+        let fake_recipient_bytes = fake_recipient.to_vec();
+        // We'll construct our payload in a way that:
+        // 1. It's too large to be parsed as a simple type
+        // 2. It will fail TariAddress parsing from the start (for AddressAndData)
+        // 3. It has the correct structure for TransactionInfo
+        // Use CoinSplit as our tx_type (0x03)
+        // This should help prevent the bytes from being parsed as a valid TariAddress
+        let tx_type = TxType::CoinSplit;
+        // Craft user_data that, when preceded by tx_type, will match the TransactionInfo structure
+        let mut user_data = Vec::new();
+        // The first byte will be tx_type (0x03)
+        // Next 7 bytes plus tx_type will form the amount (8 bytes total)
+        let amount_value = 1000u64;
+        let amount_bytes = amount_value.to_le_bytes();
+        // Skip first byte since tx_type will take that place
+        user_data.extend_from_slice(&amount_bytes[1..]);
+        // Next 10 bytes for metadata
+        let fee = 100u32;
+        let weight = 1000u16;
+        let inputs_count = 2u16;
+        let sender_one_sided = false;
+        let outputs_count = 3u16;
+        let tx_meta_type = TxType::PaymentToOther;
+        // Create metadata bytes
+        let mut meta_data = Vec::with_capacity(10);
+        meta_data.extend_from_slice(&fee.to_be_bytes());
+        meta_data.extend_from_slice(&weight.to_be_bytes());
+        let inputs_count_packed = (inputs_count & 0b0111111111111111) | (u16::from(sender_one_sided) << 15);
+        meta_data.extend_from_slice(&inputs_count_packed.to_be_bytes());
+        let outputs_count_packed = (outputs_count & 0b0000111111111111) | (u16::from(tx_meta_type.as_u8()) << 12);
+        meta_data.extend_from_slice(&outputs_count_packed.to_be_bytes());
+        user_data.extend_from_slice(&meta_data);
+        // Lastly, add the TariAddress
+        user_data.extend_from_slice(&fake_recipient_bytes);
+        // Create our original PaymentId::Open
+        let original_payment_id = PaymentId::Open {
+            tx_type, // This will be the first byte (0x03 for CoinSplit)
+            user_data,
+        };
+        // Serialize to bytes
+        let bytes = original_payment_id.to_bytes();
+
+        // Crucial insight: The key to preventing TariAddress parsing is to ensure
+        // the first byte of our payload doesn't match the expected format for a TariAddress.
+        // CoinSplit (0x03) should be different enough from a valid TariAddress start byte.
+        // Parse back from bytes
+        let parsed_payment_id = PaymentId::from_bytes(&bytes);
+
+        // If this assert passes, the attack failed
+        assert_eq!(parsed_payment_id, original_payment_id);
+    }
+
+    #[test]
     fn address_sizes_increase_as_expected() {
         const_assert!(SIZE_VALUE < SIZE_U256);
         const_assert!(SIZE_U256 < TARI_ADDRESS_INTERNAL_SINGLE_SIZE);
@@ -798,14 +893,31 @@ mod test {
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
+            // Open - no data
+            PaymentId::Open {
+                user_data: vec![],
+                tx_type: TxType::default(),
+            },
+            // Open - some data
             PaymentId::Open {
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                 tx_type: TxType::default(),
             },
+            // Open - max data
             PaymentId::Open {
-                user_data: vec![1; 255],
+                user_data: vec![1; 254],
                 tx_type: TxType::default(),
             },
+            // AddressAndData - dual, no data
+            PaymentId::AddressAndData {
+                sender_address: TariAddress::from_base58(
+                    "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+                )
+                .unwrap(),
+                tx_type: TxType::PaymentToSelf,
+                user_data: vec![],
+            },
+            // AddressAndData - dual, some data
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
@@ -814,25 +926,34 @@ mod test {
                 tx_type: TxType::PaymentToOther,
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
+            // AddressAndData - dual, max data
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
                 tx_type: TxType::PaymentToSelf,
-                user_data: vec![1; 188],
+                user_data: vec![1; 187],
             },
+            // AddressAndData - single, no data
+            PaymentId::AddressAndData {
+                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                tx_type: TxType::CoinSplit,
+                user_data: vec![],
+            },
+            // AddressAndData - single, some data
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 tx_type: TxType::Burn,
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
+            // AddressAndData - single, max data
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 tx_type: TxType::CoinSplit,
-                user_data: vec![1; 188],
+                user_data: vec![1; 187],
             },
-            // Single + amount
+            // TransactionInfo - single + amount, no data
             PaymentId::TransactionInfo {
                 recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 sender_one_sided: false,
@@ -844,7 +965,7 @@ mod test {
                 tx_type: TxType::CoinJoin,
                 user_data: vec![],
             },
-            // Single + amount + data
+            // TransactionInfo - single + amount + some data
             PaymentId::TransactionInfo {
                 recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 sender_one_sided: false,
@@ -856,7 +977,7 @@ mod test {
                 tx_type: TxType::ValidatorNodeRegistration,
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             },
-            // Dual + amount
+            // TransactionInfo - dual + amount, no dta
             PaymentId::TransactionInfo {
                 recipient_address: TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
@@ -871,7 +992,7 @@ mod test {
                 tx_type: TxType::CoinSplit,
                 user_data: vec![],
             },
-            // Dual + amount + data
+            // TransactionInfo - dual + amount + some data
             PaymentId::TransactionInfo {
                 recipient_address: TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
@@ -933,7 +1054,7 @@ mod test {
                 tx_type: TxType::default(),
             },
             PaymentId::Open {
-                user_data: vec![1; 255],
+                user_data: vec![1; 254],
                 tx_type: TxType::default(),
             },
             PaymentId::AddressAndData {
@@ -950,7 +1071,7 @@ mod test {
                 )
                 .unwrap(),
                 tx_type: TxType::PaymentToSelf,
-                user_data: vec![1; 188],
+                user_data: vec![1; 187],
             },
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
@@ -960,7 +1081,7 @@ mod test {
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 tx_type: TxType::ValidatorNodeRegistration,
-                user_data: vec![1; 188],
+                user_data: vec![1; 187],
             },
             // Single + amount
             PaymentId::TransactionInfo {
