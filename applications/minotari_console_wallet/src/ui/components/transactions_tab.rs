@@ -335,7 +335,7 @@ impl TransactionsTab {
         let constraints = [Constraint::Length(1); 13];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
-        let excess_sig = Span::styled("Excess sig(nonce, sig):", Style::default().fg(Color::Magenta));
+        let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
