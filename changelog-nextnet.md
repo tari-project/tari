@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.13.1-rc.0](https://github.com/tari-project/tari/compare/v1.13.0-rc.0...v1.13.1-rc.0) (2025-03-31)
+
+
+### Features
+
+* add num connections to network state ([#6884](https://github.com/tari-project/tari/issues/6884)) ([aa7e286](https://github.com/tari-project/tari/commit/aa7e286d8825e6e46b4adf06753ed2a107bd41c8))
+* check coinbase count ([#6880](https://github.com/tari-project/tari/issues/6880)) ([66edc2c](https://github.com/tari-project/tari/commit/66edc2c1f3156e8f9e09dda8a8e42ecb184fcacc))
+
+
+### Bug Fixes
+
+*  libtor cli option ([#6877](https://github.com/tari-project/tari/issues/6877)) ([d28c94c](https://github.com/tari-project/tari/commit/d28c94c836ba32b161c4a20b5fa9f831ded3c48a))
+* excess sig order in the tx tab ([#6897](https://github.com/tari-project/tari/issues/6897)) ([56b9711](https://github.com/tari-project/tari/commit/56b9711197317188954be79c6e06d604c81ecdd2))
+* peer order ([#6894](https://github.com/tari-project/tari/issues/6894)) ([f7fe98e](https://github.com/tari-project/tari/commit/f7fe98e728f49f2f9a0c110625254916d644e7a4))
+* startup arg ([#6889](https://github.com/tari-project/tari/issues/6889)) ([a7cdcd7](https://github.com/tari-project/tari/commit/a7cdcd77a27cfed878501509afdf9ba66fe30fae))
+* use plain string for grpc address ([#6881](https://github.com/tari-project/tari/issues/6881)) ([61eda04](https://github.com/tari-project/tari/commit/61eda049cdd8a437cd673897816e8d4628a6fa31))
+
+
 ## [1.13.0-rc.0](https://github.com/tari-project/tari/compare/v1.12.2-rc.0...v1.13.0-rc.0) (2025-03-11)
 
 
