@@ -1252,7 +1252,6 @@ impl LMDBDatabase {
         smt: Arc<RwLock<OutputSmt>>,
         allow_smt_change: Arc<AtomicBool>,
     ) -> Result<(), ChainStorageError> {
-        let can_we_change_smt = allow_smt_change.load(Ordering::SeqCst);
         let mut output_smt = smt.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -1260,6 +1259,7 @@ impl LMDBDatabase {
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
+        let can_we_change_smt = allow_smt_change.load(Ordering::SeqCst);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to insert block at height {} while next block already exists",
