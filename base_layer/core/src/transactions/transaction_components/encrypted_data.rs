@@ -201,12 +201,12 @@ enum PTag {
 impl PTag {
     fn from_u8(value: u8) -> Self {
         match value {
-            0 => PTag::Empty,
             1 => PTag::U64,
             2 => PTag::U256,
             3 => PTag::Open,
             4 => PTag::AddressAndData,
-            _ => PTag::TransactionInfo,
+            5 => PTag::TransactionInfo,
+            _ => PTag::Empty,
         }
     }
 }
