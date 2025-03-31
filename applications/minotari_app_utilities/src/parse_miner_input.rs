@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, str::FromStr};
+use std::str::FromStr;
 
 use dialoguer::Input as InputPrompt;
 use minotari_app_grpc::{
@@ -38,9 +38,12 @@ use tari_common::configuration::{
     Network,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use thiserror::Error;
-use tonic::{codegen::InterceptedService, transport::Channel, Code};
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Channel, Uri},
+    Code,
+};
 
 /// Error parsing input
 #[derive(Debug, Error)]
@@ -51,51 +54,42 @@ pub enum ParseInputError {
     BaseNodeSocketAddress(String),
 }
 
-/// Read base_node_socket_address arg or prompt for input
-pub fn base_node_socket_address(
-    base_node_grpc_address: Option<Multiaddr>,
-    network: Network,
-) -> Result<SocketAddr, ParseInputError> {
-    match base_node_grpc_address {
-        Some(address) => {
-            println!("Base node gRPC address: '{}'", address);
-            match multiaddr_to_socketaddr(&address) {
-                Ok(val) => Ok(val),
-                Err(e) => Err(ParseInputError::BaseNodeSocketAddress(format!(
-                    "Error - base node socket address '{}' not valid ({:?})",
-                    address, e
-                ))),
-            }
-        },
-        None => {
-            println!();
-            // Get it on the command line
-            loop {
-                let mut address = InputPrompt::<String>::new()
-                    .with_prompt("Please enter 'base-node-grpc-address' ('quit' or 'exit' to quit) ")
-                    .default(format!(
-                        "/ip4/127.0.0.1/tcp/{}",
-                        grpc_default_port(ApplicationType::BaseNode, network)
-                    ))
-                    .interact()
-                    .unwrap();
-                process_quit(&address);
-                // Remove leading and trailing whitespace
-                address = address.trim().to_string();
-                let base_node_multi_address: Result<Multiaddr, String> =
-                    address.parse().map_err(|e| format!("{:?}", e));
-                match base_node_multi_address {
-                    Ok(val) => match multiaddr_to_socketaddr(&val) {
-                        Ok(val) => {
-                            println!();
-                            return Ok(val);
-                        },
-                        Err(e) => println!("  Error - base node socket address '{}' not valid ({:?})", val, e),
-                    },
-                    Err(e) => println!("  Error - base node gRPC address '{}' not valid ({:?})", address, e),
-                }
-            }
-        },
+pub fn prompt_for_base_node_address(network: Network) -> Result<String, ParseInputError> {
+    loop {
+        let mut address = InputPrompt::<String>::new()
+            .with_prompt("Please enter 'base-node-grpc-address' ('quit' or 'exit' to quit) ")
+            .default(format!(
+                "http://127.0.0.1:{}",
+                grpc_default_port(ApplicationType::BaseNode, network)
+            ))
+            .interact()
+            .unwrap();
+        process_quit(&address);
+        if Uri::from_str(&address).is_err() {
+            println!("  Error - base node address '{}' not valid", address);
+            continue;
+        }
+        // Remove leading and trailing whitespace
+        address = address.trim().to_string();
+        return Ok(address);
+    }
+}
+
+pub fn prompt_for_p2pool_address() -> Result<String, ParseInputError> {
+    loop {
+        let mut address = InputPrompt::<String>::new()
+            .with_prompt("Please enter 'p2pool-grpc-address' ('quit' or 'exit' to quit) ")
+            .default(format!("http://127.0.0.1:{}", 18145))
+            .interact()
+            .unwrap();
+        process_quit(&address);
+        if Uri::from_str(&address).is_err() {
+            println!("  Error - p2pool address '{}' not valid", address);
+            continue;
+        }
+        // Remove leading and trailing whitespace
+        address = address.trim().to_string();
+        return Ok(address);
     }
 }
 

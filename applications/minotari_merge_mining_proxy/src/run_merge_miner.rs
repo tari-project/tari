@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::Infallible, str::FromStr};
+use std::convert::Infallible;
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_app_grpc::{tari_rpc::sha_p2_pool_client::ShaP2PoolClient, tls::protocol_string};
+use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
-    base_node_socket_address,
+    prompt_for_base_node_address,
+    prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
     BaseNodeGrpcClient,
@@ -218,15 +219,15 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
 }
 
 async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
+    let base_node_addr;
+    if let Some(ref a) = config.base_node_grpc_address {
+        base_node_addr = a.clone();
+    } else {
+        base_node_addr = prompt_for_base_node_address(config.network)?;
+    };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
@@ -253,16 +254,14 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 }
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
-    // TODO: Merge this code in the sha miner
-    let socketaddr = base_node_socket_address(config.p2pool_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
-
-    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let p2pool_node_addr;
+    if let Some(ref a) = config.p2pool_node_grpc_address {
+        p2pool_node_addr = a.clone();
+    } else {
+        p2pool_node_addr = prompt_for_p2pool_address()?;
+    };
+    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", p2pool_node_addr);
+    let mut endpoint = Endpoint::new(p2pool_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))

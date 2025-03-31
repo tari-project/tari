@@ -121,7 +121,7 @@ impl MinerProcess {
                 config_property_overrides: vec![
                     (
                         "miner.base_node_grpc_address".to_string(),
-                        format!("/ip4/127.0.0.1/tcp/{}", node),
+                        format!("http://127.0.0.1:{}", node),
                     ),
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),

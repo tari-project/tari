@@ -33,11 +33,11 @@ appenders:
         count: 50
         pattern: "{{log_dir}}/log/proxy/proxy.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m} //{f}:{L}{n}"
 
 # root (to proxy)
 root:
-  level: debug
+  level: info
   appenders:
     - stdout
     - proxy

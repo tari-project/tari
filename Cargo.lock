@@ -4150,7 +4150,6 @@ dependencies = [
  "serde_json",
  "tari_common",
  "tari_common_types",
- "tari_comms",
  "tari_core",
  "tari_max_size",
  "tari_utilities",
@@ -7900,6 +7899,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "webpki-roots",
 ]
 
 [[package]]
