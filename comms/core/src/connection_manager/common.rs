@@ -51,11 +51,28 @@ pub struct ValidatedPeerIdentityExchange {
     pub metadata: PeerIdentityMetadata,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Contains information about a peer connection that can be displayed for debugging purposes.
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct PeerConnectionInfo {
-    pub public_key: Option<CommsPublicKey>,
-    pub features: Option<PeerFeatures>,
-    pub user_agent: Option<String>,
+    /// The public key of the connected peer, if available
+    public_key: Option<CommsPublicKey>,
+    /// The node id of the connected peer, if available
+    node_if: Option<NodeId>,
+    /// The features supported by the peer, if available
+    features: Option<PeerFeatures>,
+    /// The user agent string of the peer, if available
+    user_agent: Option<String>,
+}
+
+impl PeerConnectionInfo {
+    pub fn new(public_key: Option<CommsPublicKey>, features: Option<PeerFeatures>, user_agent: Option<String>) -> Self {
+        Self {
+            public_key: public_key.clone(),
+            node_if: public_key.as_ref().map(NodeId::from_public_key),
+            features,
+            user_agent,
+        }
+    }
 }
 
 impl Display for PeerConnectionInfo {
@@ -64,7 +81,7 @@ impl Display for PeerConnectionInfo {
             f,
             "PeerConnectionInfo(public_key: {}, node_id: {}, features: {}, user_agent: {})",
             self.public_key.as_ref().unwrap_or(&CommsPublicKey::default()).to_hex(),
-            NodeId::from_public_key(self.public_key.as_ref().unwrap_or(&CommsPublicKey::default())),
+            self.node_if.as_ref().unwrap_or(&NodeId::default()),
             self.features.unwrap_or_default(),
             self.user_agent.as_deref().unwrap_or_default()
         )

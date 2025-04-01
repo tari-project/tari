@@ -467,11 +467,11 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: Some(authenticated_public_key.clone()),
-            features: Some(peer_identity.claim.features),
-            user_agent: Some(peer_identity.metadata.user_agent.clone()),
-        };
+        let peer_connection_info = PeerConnectionInfo::new(
+            Some(authenticated_public_key.clone()),
+            Some(peer_identity.claim.features),
+            Some(peer_identity.metadata.user_agent.clone()),
+        );
         let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 

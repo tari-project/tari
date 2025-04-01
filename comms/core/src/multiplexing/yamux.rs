@@ -392,12 +392,7 @@ mod test {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: None,
-            features: None,
-            user_agent: None,
-        };
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, peer_connection_info.clone())?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let mut dialer_control = dialer.get_yamux_control();
 
         tokio::spawn(async move {
@@ -407,7 +402,8 @@ mod test {
             substream.shutdown().await.unwrap();
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, peer_connection_info)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         let mut substream = listener
             .incoming
             .next()
@@ -426,13 +422,8 @@ mod test {
         const NUM_SUBSTREAMS: usize = 10;
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: None,
-            features: None,
-            user_agent: None,
-        };
         let dialer =
-            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, peer_connection_info.clone()).unwrap();
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
 
         let substreams_out = tokio::spawn(async move {
@@ -447,7 +438,7 @@ mod test {
         });
 
         let mut listener =
-            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, peer_connection_info).unwrap();
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
 
         let substreams_in = collect_stream!(
             &mut listener.incoming,
@@ -470,12 +461,7 @@ mod test {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: None,
-            features: None,
-            user_agent: None,
-        };
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, peer_connection_info.clone())?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let mut dialer_control = dialer.get_yamux_control();
 
         tokio::spawn(async move {
@@ -489,7 +475,8 @@ mod test {
             assert_eq!(buf, b"");
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, peer_connection_info)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         let mut substream = listener.incoming.next().await.unwrap();
 
         let mut buf = vec![0; msg.len()];
@@ -515,23 +502,18 @@ mod test {
         let barrier = Arc::new(Barrier::new(2));
         let b = barrier.clone();
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: None,
-            features: None,
-            user_agent: None,
-        };
-        let peer_connection_info_clone = peer_connection_info.clone();
         tokio::spawn(async move {
             // Drop immediately
             let incoming =
-                Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, peer_connection_info_clone)
+                Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())
                     .unwrap()
                     .into_incoming();
             drop(incoming);
             b.wait().await;
         });
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, peer_connection_info).unwrap();
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
         let mut substream = dialer_control.open_stream().await.unwrap();
         barrier.wait().await;
@@ -551,12 +533,7 @@ mod test {
 
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let peer_connection_info = PeerConnectionInfo {
-            public_key: None,
-            features: None,
-            user_agent: None,
-        };
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, peer_connection_info.clone())?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let substream_counter = dialer.substream_counter();
         let mut dialer_control = dialer.get_yamux_control();
 
@@ -576,7 +553,8 @@ mod test {
             assert_eq!(buf, vec![0xAAu8; MSG_LEN]);
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, peer_connection_info)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         assert_eq!(listener.substream_count(), 0);
         let mut substream = listener.incoming.next().await.unwrap();
         assert_eq!(listener.substream_count(), 1);

@@ -39,13 +39,9 @@ pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket
 
 pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
     let (addr, socket_out, socket_in) = build_connected_sockets().await;
-    let peer_connection_info = PeerConnectionInfo {
-        public_key: None,
-        features: None,
-        user_agent: None,
-    };
     let muxer_out =
-        Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound, peer_connection_info.clone()).unwrap();
-    let muxer_in = Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound, peer_connection_info).unwrap();
+        Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+    let muxer_in =
+        Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
     (addr, muxer_out, muxer_in)
 }
