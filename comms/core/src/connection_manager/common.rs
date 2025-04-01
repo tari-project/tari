@@ -63,10 +63,10 @@ impl Display for PeerConnectionInfo {
         write!(
             f,
             "PeerConnectionInfo(public_key: {}, node_id: {}, features: {}, user_agent: {})",
-            self.public_key.clone().unwrap_or_default().to_hex(),
-            NodeId::from_public_key(&self.public_key.clone().unwrap_or_default()),
+            self.public_key.as_ref().unwrap_or(&CommsPublicKey::default()).to_hex(),
+            NodeId::from_public_key(self.public_key.as_ref().unwrap_or(&CommsPublicKey::default())),
             self.features.unwrap_or_default(),
-            self.user_agent.clone().unwrap_or_default()
+            self.user_agent.as_deref().unwrap_or_default()
         )
     }
 }
