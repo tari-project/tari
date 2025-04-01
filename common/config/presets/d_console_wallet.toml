@@ -331,8 +331,8 @@ connectivity.minimum_desired_tcpv4_node_ratio = 0.0
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
 # A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
-# more "aggressive" strategy is employed. Default: 50
-network_discovery.min_desired_peers = 16
+# more "aggressive" strategy is employed. Default: 12
+network_discovery.min_desired_peers = 12
 # The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
 #network_discovery.idle_period = 1_800 # 30 * 60
 #  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less

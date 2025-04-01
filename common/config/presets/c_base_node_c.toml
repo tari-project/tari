@@ -228,8 +228,8 @@ database_url = "data/base_node/dht.db"
 #num_neighbouring_nodes = 8
 # Number of random peers to include. Default: 4
 #num_random_nodes = 4
-# Connections above the configured number of neighbouring and random nodes will be removed (default: false)
-#minimize_connections = false
+# Connections above the configured number of neighbouring and random nodes will be removed (default: true)
+#minimize_connections = true
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
 # Send to this many peers when using the propagate strategy. Default: 4
@@ -289,8 +289,8 @@ database_url = "data/base_node/dht.db"
 # True to enable network discovery, false to disable it. Default: true
 #network_discovery.enabled = true
 # A threshold for the minimum number of peers this node should ideally be aware of. If below this threshold a
-# more "aggressive" strategy is employed. Default: 50
-#network_discovery.min_desired_peers = 50
+# more "aggressive" strategy is employed. Default: 12
+#network_discovery.min_desired_peers = 12
 # The period to wait once the number of rounds given by `idle_after_num_rounds` has completed. Default: 30 mins
 #network_discovery.idle_period = 1_800 # 30 * 60
 #  The minimum number of network discovery rounds to perform before idling (going to sleep). If there are less

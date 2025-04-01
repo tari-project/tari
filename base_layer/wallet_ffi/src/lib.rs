@@ -5951,7 +5951,7 @@ pub unsafe extern "C" fn comms_config_create(
                         ..Default::default()
                     },
                     network_discovery: NetworkDiscoveryConfig {
-                        min_desired_peers: 16,
+                        min_desired_peers: 12,
                         initial_peer_sync_delay: Some(Duration::from_secs(25)),
                         ..Default::default()
                     },

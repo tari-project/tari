@@ -63,7 +63,7 @@ impl Default for NetworkDiscoveryConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            min_desired_peers: 50,
+            min_desired_peers: 12,
             idle_period: Duration::from_secs(30 * 60),
             idle_after_num_rounds: 10,
             on_failure_idle_period: Duration::from_secs(5),

@@ -178,7 +178,7 @@ impl Default for DhtConfig {
             protocol_version: DhtProtocolVersion::latest(),
             num_neighbouring_nodes: 8,
             num_random_nodes: 4,
-            minimize_connections: false,
+            minimize_connections: true,
             propagation_factor: 20,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
