@@ -22,10 +22,12 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    fmt::{Display, Formatter},
     time::Duration,
 };
 
 use log::*;
+use tari_utilities::hex::Hex;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
@@ -47,6 +49,26 @@ const LOG_TARGET: &str = "comms::connection_manager::common";
 pub struct ValidatedPeerIdentityExchange {
     pub claim: PeerIdentityClaim,
     pub metadata: PeerIdentityMetadata,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PeerConnectionInfo {
+    pub public_key: Option<CommsPublicKey>,
+    pub features: Option<PeerFeatures>,
+    pub user_agent: Option<String>,
+}
+
+impl Display for PeerConnectionInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "PeerConnectionInfo(public_key: {}, node_id: {}, features: {}, user_agent: {})",
+            self.public_key.clone().unwrap_or_default().to_hex(),
+            NodeId::from_public_key(&self.public_key.clone().unwrap_or_default()),
+            self.features.unwrap_or_default(),
+            self.user_agent.clone().unwrap_or_default()
+        )
+    }
 }
 
 impl ValidatedPeerIdentityExchange {
