@@ -960,6 +960,22 @@ impl LMDBDatabase {
             "kernel_mmr_size_index",
         )?;
 
+        let monero_seed: Option<Vec<u8>> = lmdb_get(txn, &self.monero_seed_height_index_db, &height)?;
+        if let Some(seed) = monero_seed{
+            lmdb_delete(
+                txn,
+                &self.monero_seed_height_index_db,
+                &height,
+                "monero_seed_height_index_db",
+            )?;
+            lmdb_delete(
+                txn,
+                &self.monero_seed_height_db,
+                &seed,
+                "monero_seed_height_db",
+            )?;
+        }
+
         Ok(())
     }
 
@@ -1548,12 +1564,12 @@ impl LMDBDatabase {
                 lmdb_delete(
                     write_txn,
                     &self.monero_seed_height_index_db,
-                    current_height,
+                    &current_height,
                     "monero_seed_height_index_db",
                 )?;
             },
             None => {
-                lmdb_insert(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
+                lmdb_insert(write_txn, &self.monero_seed_height_db, seed, &height, "monero_seed_height_db")?;
             },
         }
         lmdb_insert(
@@ -3004,17 +3020,17 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 let txn = db.write_transaction()?;
                 let heights: Vec<u64> = lmdb_filter_map_values(&txn, &db.monero_seed_height_db, Some)?;
                 let mut seeds = Vec::new();
-                for height in heights{
-                    let header = lmdb_get::<_, BlockHeader>(txn, &db.headers_db, &height)?.ok_or_else(|| {
+                for height in &heights{
+                    let header = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)?.ok_or_else(|| {
                         ChainStorageError::ValueNotFound {
                             entity: "Header",
                             field: "height",
                             value: height.to_string(),
                         }
                     })?;
-                    let mut pow_bytes = header.pow.pow_data.to_vec();
+                    let pow_bytes = header.pow.pow_data.to_vec();
                     let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
-                    let seed = pow_data.randomx_key;
+                    let seed = pow_data.randomx_key.to_vec();
                     seeds.push(seed);
                 }
                 for (i, seed) in seeds.iter().enumerate(){
