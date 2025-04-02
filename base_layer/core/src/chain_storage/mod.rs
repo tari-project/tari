@@ -39,15 +39,8 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    calculate_mmr_roots,
-    calculate_validator_node_mr,
-    fetch_header,
-    fetch_headers,
-    fetch_target_difficulty_for_next_block,
-    BlockchainDatabase,
-    BlockchainDatabaseConfig,
-    MmrRoots,
-    Validators,
+    calculate_mmr_roots, calculate_validator_node_mr, fetch_header, fetch_headers,
+    fetch_target_difficulty_for_next_block, BlockchainDatabase, BlockchainDatabaseConfig, MmrRoots, Validators,
 };
 
 mod blockchain_backend;
@@ -83,10 +76,8 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{HashOutput, PublicKey},
-};
+use tari_common_types::types::CompressedPublicKey;
+use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
@@ -101,8 +92,8 @@ pub struct ChainTipData {
 
 #[derive(Debug, Clone)]
 pub struct ValidatorNodeRegistrationInfo {
-    pub public_key: PublicKey,
-    pub sidechain_id: Option<PublicKey>,
+    pub public_key: CompressedPublicKey,
+    pub sidechain_id: Option<CompressedPublicKey>,
     pub shard_key: [u8; 32],
     pub activation_epoch: VnEpoch,
     pub original_registration: ValidatorNodeRegistration,

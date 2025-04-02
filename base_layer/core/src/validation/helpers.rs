@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use log::*;
-use tari_common_types::types::{FixedHash, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, FixedHash};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 use tari_sidechain::SidechainProofValidationError;
@@ -35,19 +35,11 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
-        randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        AchievedTargetDifficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
+        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, AchievedTargetDifficulty, Difficulty,
+        PowAlgorithm, PowError,
     },
     transactions::transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        EncryptedData,
-        TransactionInput,
-        TransactionKernel,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL, EncryptedData, TransactionInput, TransactionKernel,
         TransactionOutput,
     },
     validation::ValidationError,
@@ -280,7 +272,7 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
 
     if db.validator_node_exists(sidechain_features.sidechain_public_key(), height, vn_reg.public_key())? {
         return Err(ValidationError::ValidatorNodeAlreadyRegistered {
-            public_key: vn_reg.public_key().clone(),
+            public_key: vn_reg.public_key().to_string(),
         });
     }
 
@@ -323,7 +315,7 @@ pub fn check_eviction_proof<B: BlockchainBackend>(
         shard_group,
     )? {
         return Err(ValidationError::SidechainEvictionProofValidatorNotFound {
-            validator_pk: validator_pk.clone(),
+            validator_pk: validator_pk.to_string(),
         });
     }
 
@@ -333,7 +325,7 @@ pub fn check_eviction_proof<B: BlockchainBackend>(
 
     let sidechain_pk = sidechain_features.sidechain_public_key();
 
-    let check_vn = |public_key: &PublicKey| {
+    let check_vn = |public_key: &CompressedPublicKey| {
         let is_active = db
             .validator_node_is_active_for_shard_group(sidechain_pk, tip_epoch, public_key, shard_group)
             .map_err(SidechainProofValidationError::internal_error)?;

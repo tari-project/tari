@@ -28,6 +28,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+use super::tasks::send_one_sided_to_stealth_address_transaction;
+use crate::{
+    notifier::Notifier,
+    ui::{
+        state::{
+            debouncer::BalanceEnquiryDebouncer,
+            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
+            wallet_event_monitor::WalletEventMonitor,
+        },
+        ui_burnt_proof::UiBurntProof,
+        ui_contact::UiContact,
+        ui_error::UiError,
+    },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    wallet_modes::PeerConfig,
+};
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
@@ -40,11 +56,11 @@ use minotari_wallet::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig,
-    WalletSqlite,
+    WalletConfig, WalletSqlite,
 };
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
+use tari_common_types::types::PrivateKey;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -62,9 +78,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         encrypted_data::{PaymentId, TxType},
-        OutputFeatures,
-        TemplateType,
-        TransactionError,
+        OutputFeatures, TemplateType, TransactionError,
     },
     weight::TransactionWeight,
 };
@@ -73,23 +87,6 @@ use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast, watch, RwLock},
     task,
-};
-
-use super::tasks::send_one_sided_to_stealth_address_transaction;
-use crate::{
-    notifier::Notifier,
-    ui::{
-        state::{
-            debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
-            wallet_event_monitor::WalletEventMonitor,
-        },
-        ui_burnt_proof::UiBurntProof,
-        ui_contact::UiContact,
-        ui_error::UiError,
-    },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
@@ -214,8 +211,8 @@ impl AppState {
     }
 
     pub async fn check_connectivity(&mut self) {
-        if self.get_custom_base_node().is_none() &&
-            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
+        if self.get_custom_base_node().is_none()
+            && self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
@@ -389,13 +386,9 @@ impl AppState {
             },
         };
 
-        let sidechain_deploy_key = match sidechain_deployment_key {
-            None => None,
-            Some(sidechain_id) => match PrivateKey::from_hex(sidechain_id.as_str()) {
-                Ok(s) => Some(s),
-                Err(_) => return Err(UiError::PublicKeyParseError),
-            },
-        };
+        let sidechain_deploy_key = sidechain_deployment_key
+            .map(|sidechain_id| PrivateKey::from_hex(sidechain_id.as_str()).map_err(|_| UiError::PublicKeyParseError))
+            .transpose()?;
 
         send_burn_transaction_task(
             burn_proof_filepath,
@@ -425,7 +418,7 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
-        sidechain_id_key: Option<&RistrettoSecretKey>,
+        sidechain_id_key: Option<&PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -1223,9 +1216,9 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        } else if let PaymentId::Open { tx_type, .. }
+        | PaymentId::AddressAndData { tx_type, .. }
+        | PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
         {
             tx_type == TxType::Burn
         } else {

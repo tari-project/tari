@@ -119,12 +119,12 @@ pub struct FetchMempoolTransactionsResponse {
 #[derive(Debug, Clone)]
 pub enum ValidatorNodeChange {
     Add {
-        registration: ValidatorNodeRegistration,
+        registration: Box<ValidatorNodeRegistration>,
         activation_epoch: VnEpoch,
         minimum_value_promise: MicroMinotari,
         shard_key: [u8; 32],
     },
     Remove {
-        public_key: PublicKey,
+        public_key: CompressedPublicKey,
     },
 }

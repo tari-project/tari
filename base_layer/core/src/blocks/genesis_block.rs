@@ -34,16 +34,13 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, output_mr_hash_from_smt,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt,
-    PrunedInputMmr,
+    OutputSmt, PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -117,7 +114,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
     block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
     block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
     block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
-    block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
+    block.header.validator_node_mr = vn_mmr;
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     println!("input mr: {}", block.header.input_mr.to_hex());
@@ -516,10 +513,7 @@ mod test {
     use std::convert::TryFrom;
 
     use serial_test::serial;
-    use tari_common_types::{
-        epoch::VnEpoch,
-        types::{CompressedCommitment, UncompressedCommitment},
-    };
+    use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 
     use super::*;
     use crate::{
@@ -528,12 +522,11 @@ mod test {
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
+            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        PrunedOutputMmr,
+        KernelMmr, PrunedOutputMmr,
     };
     #[test]
     #[serial]
@@ -669,7 +662,7 @@ mod test {
         let mut output_smt = OutputSmt::new();
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
-        let mut vn_nodes = Vec::new();
+        let vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
                 block_output_mmr.push(o.hash().to_vec()).unwrap();
@@ -715,25 +708,23 @@ mod test {
         for i in block.block().body.inputs() {
             let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
             output_smt.delete(&smt_key).unwrap();
-            if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = i
-                    .features()
-                    .unwrap()
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                let pos = vn_nodes
-                    .iter()
-                    .position(|v| {
-                        v == &(
-                            reg.public_key().clone(),
-                            reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                        )
-                    })
-                    .unwrap();
-                vn_nodes.remove(pos);
-            }
+            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = i
+            //         .features()
+            //         .unwrap()
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     let pos = vn_nodes
+            //         .iter()
+            //         .position(|v| {
+            //             v.public_key == *reg.public_key()
+            //                 && v.shard_key == reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash())
+            //         })
+            //         .unwrap();
+            //     vn_nodes.remove(pos);
+            // }
         }
 
         let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());

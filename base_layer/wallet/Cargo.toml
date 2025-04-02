@@ -25,6 +25,7 @@ tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
 tari_service_framework = { workspace = true }
+tari_sidechain = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 

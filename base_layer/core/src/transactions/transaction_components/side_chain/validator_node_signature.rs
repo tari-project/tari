@@ -23,12 +23,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    epoch::VnEpoch,
-};
-use tari_crypto::keys::PublicKey as PublicKeyT;
-use tari_hashing::layer2::validator_registration_hasher;
+use tari_common_types::epoch::VnEpoch;
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature, UncompressedSignature};
+use tari_hashing::layer2::validator_registration_hasher;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {

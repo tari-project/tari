@@ -20,13 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// CompressedPublicKey in BTreeSet results in a mutable key type, however there link is not applicable
+#![allow(clippy::mutable_key_type)]
+
 use std::{collections::BTreeSet, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
 use log::debug;
 use serde::de::DeserializeOwned;
-use tari_common_types::{epoch::VnEpoch, };
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
+use tari_common_types::epoch::VnEpoch;
+use tari_common_types::types::CompressedPublicKey;
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -36,8 +39,7 @@ use crate::chain_storage::{
         cursors::{FromKeyBytes, LmdbReadCursor},
         lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
     },
-    ChainStorageError,
-    ValidatorNodeEntry,
+    ChainStorageError, ValidatorNodeEntry,
 };
 
 const LOG_TARGET: &str = "c::cs::lmdb_db::validator_node_store";
@@ -93,7 +95,11 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         Ok(())
     }
 
-    pub fn delete(&self, sidechain_pk: Option<&CompressedPublicKey>, public_key: &CompressedPublicKey) -> Result<(), ChainStorageError> {
+    pub fn delete(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
+    ) -> Result<(), ChainStorageError> {
         let key = create_vn_key(sidechain_pk, public_key);
         let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
@@ -673,7 +679,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     }
 }
 
-fn create_vn_key(sidechain_pk: Option<&CompressedPublicKey>, public_key: &CompressedPublicKey) -> ValidatorNodeStoreKey {
+fn create_vn_key(
+    sidechain_pk: Option<&CompressedPublicKey>,
+    public_key: &CompressedPublicKey,
+) -> ValidatorNodeStoreKey {
     create_vn_key_raw(sid_as_slice(sidechain_pk), public_key.as_bytes())
 }
 fn create_vn_key_raw(sidechain_pk: &[u8], public_key: &[u8]) -> ValidatorNodeStoreKey {
@@ -681,7 +690,11 @@ fn create_vn_key_raw(sidechain_pk: &[u8], public_key: &[u8]) -> ValidatorNodeSto
         .expect("create_key: Composite key length is incorrect")
 }
 
-fn create_exit_queue_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch, public_key: &CompressedPublicKey) -> ExitQueueKey {
+fn create_exit_queue_key(
+    sidechain_pk: Option<&CompressedPublicKey>,
+    epoch: VnEpoch,
+    public_key: &CompressedPublicKey,
+) -> ExitQueueKey {
     ExitQueueKey::try_from_parts(&[
         sid_as_slice(sidechain_pk),
         epoch.to_be_bytes().as_slice(),
@@ -720,7 +733,7 @@ fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use lmdb_zero::db;
-    use tari_common_types::types::Commitment;
+    use tari_common_types::types::CompressedCommitment;
     use tari_test_utils::unpack_enum;
 
     use super::*;
@@ -1011,7 +1024,7 @@ mod tests {
                     activation_epoch: VnEpoch(210),
                     registration_epoch: VnEpoch(210),
                     public_key: nodes2[1].public_key.clone(),
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                     sidechain_public_key: None,
                     minimum_value_promise: Default::default(),
                 })

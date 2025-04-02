@@ -33,7 +33,7 @@ impl<'a> BitIterator<'a> {
     }
 }
 
-impl<'a> Iterator for BitIterator<'a> {
+impl Iterator for BitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -45,10 +45,10 @@ impl<'a> Iterator for BitIterator<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for BitIterator<'a> {
+impl DoubleEndedIterator for BitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.pos.next_back().map(|x| self.get_bit(x))
     }
 }
 
-impl<'a> ExactSizeIterator for BitIterator<'a> {}
+impl ExactSizeIterator for BitIterator<'_> {}

@@ -33,7 +33,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
-    types::{FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -42,23 +41,14 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
+            encrypted_data::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
             TransactionOutput,
         },
     },
 };
-use tari_max_size::{MaxSizeBytes, MaxSizeString};
-use tari_script::CompressedCheckSigSchnorrSignature;
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
 use tari_max_size::MaxSizeString;
-use tari_script::CheckSigSchnorrSignature;
+use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
-use tari_utilities::hex::Hex;
 use tari_sidechain::EvictionProof;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
@@ -69,11 +59,7 @@ use crate::{
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
     },
     OperationId,
@@ -161,7 +147,7 @@ pub enum TransactionServiceRequest {
         amount: MicroMinotari,
         proof: EvictionProof,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
         sidechain_deployment_key: Option<PrivateKey>,
     },
     SendOneSidedTransaction {
@@ -407,7 +393,7 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 proof,
                 fee_per_gram,
-                message,
+                payment_id,
                 ..
             } => {
                 write!(
@@ -416,7 +402,7 @@ impl fmt::Display for TransactionServiceRequest {
                     amount,
                     proof.node_to_evict(),
                     fee_per_gram,
-                    message,
+                    payment_id
                 )
             },
         }
@@ -684,7 +670,7 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
         validator_node_signature: Signature,
-        validator_node_claim_public_key: PublicKey,
+        validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
@@ -748,7 +734,7 @@ impl TransactionServiceHandle {
         proof: EvictionProof,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -756,7 +742,7 @@ impl TransactionServiceHandle {
                 amount,
                 proof,
                 fee_per_gram,
-                message,
+                payment_id,
                 sidechain_deployment_key,
             })
             .await??

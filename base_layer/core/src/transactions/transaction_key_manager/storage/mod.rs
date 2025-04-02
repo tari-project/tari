@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:applications/minotari_app_grpc/proto/p2pool.proto
-// Copyright 2024. The Tari Project
-========
 // Copyright 2022. The Tari Project
->>>>>>>> development:base_layer/core/src/transactions/transaction_key_manager/storage/mod.rs
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,35 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-<<<<<<<< HEAD:applications/minotari_app_grpc/proto/p2pool.proto
-package tari.rpc;
-
-import "base_node.proto";
-import "block.proto";
-
-service ShaP2Pool {
-  rpc GetNewBlock(GetNewBlockRequest) returns(GetNewBlockResponse);
-  rpc SubmitBlock(SubmitBlockRequest) returns(tari.rpc.SubmitBlockResponse);
-}
-
-message GetNewBlockRequest {
-  tari.rpc.PowAlgo pow = 1;
-  string coinbase_extra = 2;
-  string wallet_payment_address = 3;
-}
-
-message GetNewBlockResponse {
-  tari.rpc.GetNewBlockResult block = 1;
-  uint64 target_difficulty = 2;
-}
-
-message SubmitBlockRequest {
-  tari.rpc.Block block = 1;
-  string wallet_payment_address = 2;
-}
-========
 pub mod database;
 pub mod sqlite_db;
->>>>>>>> development:base_layer/core/src/transactions/transaction_key_manager/storage/mod.rs

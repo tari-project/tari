@@ -37,18 +37,18 @@ use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
-    claim_public_key: PublicKey,
+    claim_public_key: CompressedPublicKey,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature, claim_public_key: PublicKey) -> Self {
+    pub fn new(signature: ValidatorNodeSignature, claim_public_key: CompressedPublicKey) -> Self {
         Self {
             signature,
             claim_public_key,
         }
     }
 
-    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&PublicKey>, epoch: VnEpoch) -> bool {
+    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> bool {
         self.signature
             .is_valid_signature_for(sidechain_pk, &self.claim_public_key, epoch)
     }
@@ -76,7 +76,7 @@ impl ValidatorNodeRegistration {
         self.signature.public_key()
     }
 
-    pub fn claim_public_key(&self) -> &PublicKey {
+    pub fn claim_public_key(&self) -> &CompressedPublicKey {
         &self.claim_public_key
     }
 
@@ -108,14 +108,14 @@ fn generate_shard_key(public_key: &CompressedPublicKey, entropy: &[u8; 32]) -> [
 mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
-    use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::test_helpers::new_public_key;
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
-        let claim_public_key = PublicKey::from_secret_key(&sk);
+        let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
 
         ValidatorNodeRegistration::new(
             ValidatorNodeSignature::sign(&sk, None, &claim_public_key, VnEpoch(1)),

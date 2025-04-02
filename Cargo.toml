@@ -49,7 +49,6 @@ resolver = "2"
 
 
 [workspace.dependencies]
-tari_jellyfish = { path = "infrastructure/jellyfish" }
 tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
 tari_common = { path = "common" }
 tari_common_sqlite = { path = "common_sqlite" }
@@ -62,6 +61,7 @@ tari_core = { path = "base_layer/core", default-features = false }
 tari_crypto = { version = "0.22.0" }
 tari_features = { path = "common/tari_features" }
 tari_hashing = { path = "hashing" }
+tari_jellyfish = { path = "infrastructure/jellyfish" }
 tari_key_manager = { path = "base_layer/key_manager" }
 tari_libtor = { path = "infrastructure/libtor" }
 tari_metrics = { path = "infrastructure/metrics" }
@@ -71,6 +71,7 @@ tari_p2p = { path = "base_layer/p2p" }
 tari_script = { path = "infrastructure/tari_script" }
 tari_service_framework = { path = "base_layer/service_framework" }
 tari_shutdown = { path = "infrastructure/shutdown" }
+tari_sidechain = { path = "base_layer/sidechain" }
 tari_storage = { path = "infrastructure/storage" }
 tari_test_utils = { path = "infrastructure/test_utils" }
 tari_utilities = { version = "0.8" }

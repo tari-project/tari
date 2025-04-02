@@ -23,14 +23,13 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_crypto::{keys::PublicKey as _, ristretto::RistrettoSchnorr};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
+use tari_crypto::ristretto::CompressedRistrettoSchnorr;
+use tari_crypto::ristretto::RistrettoSchnorr;
 use tari_sidechain::EvictionProof;
 
 use crate::transactions::transaction_components::{
-    side_chain::confidential_output::ConfidentialOutputData,
-    CodeTemplateRegistration,
-    ValidatorNodeRegistration,
+    side_chain::confidential_output::ConfidentialOutputData, CodeTemplateRegistration, ValidatorNodeRegistration,
 };
 
 // NOTE: tari_mining_helper_ffi makes use of borsh encoding (not serde/bincode), therefore we need to
@@ -64,7 +63,7 @@ impl SideChainFeature {
         self.sidechain_id.as_ref()
     }
 
-    pub fn sidechain_public_key(&self) -> Option<&PublicKey> {
+    pub fn sidechain_public_key(&self) -> Option<&CompressedPublicKey> {
         self.sidechain_id.as_ref().map(|id| id.public_key())
     }
 
@@ -107,19 +106,19 @@ pub enum SideChainFeatureData {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct SideChainId {
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     knowledge_proof: Signature,
 }
 
 impl SideChainId {
-    pub fn new(public_key: PublicKey, knowledge_proof: Signature) -> Self {
+    pub fn new(public_key: CompressedPublicKey, knowledge_proof: Signature) -> Self {
         Self {
             public_key,
             knowledge_proof,
         }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &CompressedPublicKey {
         &self.public_key
     }
 
@@ -128,15 +127,25 @@ impl SideChainId {
     }
 
     pub fn sign<T: AsRef<[u8]>>(private_key: &PrivateKey, message: T) -> Self {
-        let public_key = PublicKey::from_secret_key(private_key);
+        let public_key = CompressedPublicKey::from_secret_key(private_key);
         Self {
             public_key,
-            knowledge_proof: RistrettoSchnorr::sign(private_key, message, &mut OsRng)
-                .expect("RistrettoSchnorr::sign is completely infallible"),
+            knowledge_proof: CompressedRistrettoSchnorr::new_from_schnorr(
+                RistrettoSchnorr::sign(private_key, message, &mut OsRng)
+                    .expect("RistrettoSchnorr::sign is completely infallible"),
+            ),
         }
     }
 
     pub fn is_valid<T: AsRef<[u8]>>(&self, message: T) -> bool {
-        self.knowledge_proof.verify(&self.public_key, message)
+        let Ok(signature) = self.knowledge_proof.to_schnorr_signature() else {
+            return false;
+        };
+
+        let Ok(public_key) = self.public_key.to_public_key() else {
+            return false;
+        };
+
+        signature.verify(&public_key, message)
     }
 }

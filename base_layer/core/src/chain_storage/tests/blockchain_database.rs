@@ -30,9 +30,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block,
-        default_coinbase_entities,
-        BlockSpec,
+        create_block, default_coinbase_entities, BlockSpec,
     },
     transactions::{
         tari_amount::T,
@@ -587,9 +585,8 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::types::CompressedPublicKey;
     use tari_common_types::epoch::VnEpoch;
-    use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+    use tari_common_types::types::CompressedPublicKey;
     use tari_mmr::sparse_merkle_tree::SparseMerkleTree;
 
     use super::*;
@@ -657,8 +654,8 @@ mod validator_node_merkle_root {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
-        let (sk, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
-        let (sidechain_private, sidechain_public) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
         let features =
             OutputFeatures::for_validator_node_registration(signature, public_key.clone(), Some(&sidechain_private));

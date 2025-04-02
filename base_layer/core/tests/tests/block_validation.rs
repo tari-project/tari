@@ -35,28 +35,20 @@ use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{
-        consensus_constants::PowAlgorithmConstants,
-        emission::Emission,
-        ConsensusConstantsBuilder,
-        ConsensusManager,
+        consensus_constants::PowAlgorithmConstants, emission::Emission, ConsensusConstantsBuilder, ConsensusManager,
     },
     proof_of_work::{
         monero_rx,
         monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
-        Difficulty,
-        PowAlgorithm,
+        Difficulty, PowAlgorithm,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
-            create_wallet_output_with_data,
-            schema_to_transaction,
-            spend_utxos,
-            TestParams,
-            UtxoTestParams,
+            create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams,
         },
         transaction_components::OutputFeatures,
         transaction_key_manager::TransactionKeyManagerInterface,
@@ -67,12 +59,8 @@ use tari_core::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
-        BlockBodyValidator,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        BlockBodyValidator, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
     OutputSmt,
 };
@@ -85,10 +73,7 @@ use tokio::time::Instant;
 use crate::{
     helpers::{
         block_builders::{
-            chain_block_with_coinbase,
-            chain_block_with_new_coinbase,
-            create_coinbase,
-            create_genesis_block_with_utxos,
+            chain_block_with_coinbase, chain_block_with_new_coinbase, create_coinbase, create_genesis_block_with_utxos,
             find_header_with_achieved_difficulty,
         },
         test_blockchain::TestBlockchain,
@@ -96,6 +81,7 @@ use crate::{
     tests::assert_block_add_result_added,
 };
 
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_monero_blocks() {
     // Create temporary test folder
@@ -107,16 +93,22 @@ async fn test_monero_blocks() {
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 300,
-        })
-        .add_proof_of_work(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 200,
-        })
+        .add_proof_of_work(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 300,
+            },
+        )
+        .add_proof_of_work(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 200,
+            },
+        )
         .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network)
@@ -151,9 +143,14 @@ async fn test_monero_blocks() {
     let mut block_3_broken = block_3.clone();
     add_monero_test_data(&mut block_3_broken, seed1);
     match db.add_block(Arc::new(block_3_broken)) {
-        Err(ChainStorageError::ValidationError {
-            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
-        }) => (),
+        Err(ChainStorageError::ValidationError { source })
+            if matches!(
+                &*source,
+                ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash)
+            ) =>
+        {
+            // Ok
+        },
         Err(e) => {
             panic!("Failed due to other error:{:?}", e);
         },
@@ -166,9 +163,11 @@ async fn test_monero_blocks() {
     let mut extra_bytes_block_3 = block_3.clone();
     add_bad_monero_data(&mut extra_bytes_block_3, seed2);
     match db.add_block(Arc::new(extra_bytes_block_3)) {
-        Err(ChainStorageError::ValidationError {
-            source: ValidationError::MergeMineError(_),
-        }) => (),
+        Err(ChainStorageError::ValidationError { source })
+            if matches!(&*source, ValidationError::MergeMineError(_)) =>
+        {
+            // Ok
+        },
         Err(e) => {
             panic!("Failed due to other error:{:?}", e);
         },
@@ -185,9 +184,14 @@ async fn test_monero_blocks() {
     assert_ne!(hash1, hash2);
     assert!(verify_header(&block_3.header, &gen_hash, &cm).is_ok());
     match db.add_block(Arc::new(block_3.clone())) {
-        Err(ChainStorageError::ValidationError {
-            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
-        }) => (),
+        Err(ChainStorageError::ValidationError { source })
+            if matches!(
+                &*source,
+                ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce)
+            ) =>
+        {
+            // ok
+        },
         Err(e) => {
             panic!("Failed due to other error:{:?}", e);
         },
@@ -288,9 +292,10 @@ async fn inputs_are_not_malleable() {
     malicious_test_params.commitment_mask_key_id = spent_output.spending_key_id;
     let modified_so = blockchain
         .key_manager
-        .get_script_offset(&vec![spent_output.script_key_id.clone()], &vec![malicious_test_params
-            .script_key_id
-            .clone()])
+        .get_script_offset(
+            &vec![spent_output.script_key_id.clone()],
+            &vec![malicious_test_params.script_key_id.clone()],
+        )
         .await
         .unwrap();
     // so is calculated as ks-ko
@@ -926,8 +931,8 @@ async fn test_block_sync_body_validator() {
         new_block
             .body
             .calculate_weight(consensus_constants.transaction_weight_params())
-            .expect("Failed to calculate weight") >
-            400,
+            .expect("Failed to calculate weight")
+            > 400,
         "If this is not more than 400, then the next line should fail"
     );
     let err = {

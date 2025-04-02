@@ -22,13 +22,16 @@
 
 use std::convert::TryFrom;
 
-use tari_crypto::{hashing::DomainSeparation, signatures::SchnorrSignature};
-use tari_common_types::types::{CompressedPublicKey, PrivateKey,};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+use tari_crypto::hashing::DomainSeparation;
+use tari_crypto::signatures::CompressedSchnorrSignature;
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl<H: DomainSeparation> TryFrom<grpc::Signature> for SchnorrSignature<CompressedPublicKey, PrivateKey, H> {
+impl<H: DomainSeparation> TryFrom<grpc::Signature>
+    for CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>
+{
     type Error = String;
 
     fn try_from(sig: grpc::Signature) -> Result<Self, Self::Error> {
@@ -38,16 +41,16 @@ impl<H: DomainSeparation> TryFrom<grpc::Signature> for SchnorrSignature<Compress
         Ok(Self::new(public_nonce, signature))
     }
 }
-impl<H: DomainSeparation> From<&SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for grpc::Signature {
-    fn from(sig: &SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<&CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: &CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
             public_nonce: sig.get_compressed_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
         }
     }
 }
-impl<H: DomainSeparation> From<SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for grpc::Signature {
-    fn from(sig: SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
             public_nonce: sig.get_compressed_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),

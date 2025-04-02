@@ -3,11 +3,12 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{CompressedPublicKey, UncompressedPublicKey};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{FixedHash, PrivateKey, PublicKey},
+    types::{FixedHash, PrivateKey},
 };
-use tari_crypto::signatures::SchnorrSignature;
+use tari_crypto::signatures::CompressedSchnorrSignature;
 use tari_hashing::{
     layer2::{block_hasher, vote_signature_hasher},
     ValidatorNodeHashDomain,
@@ -21,8 +22,9 @@ use crate::{
     validations::{check_command_inclusion_proof, check_proof_elements},
 };
 
-pub type ValidatorBlockSignature = SchnorrSignature<PublicKey, PrivateKey, ValidatorNodeHashDomain>;
-pub type CheckVnFunc<'a> = dyn Fn(&PublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
+pub type ValidatorBlockSignature =
+    CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
+pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum CommandCommitProof<C> {
@@ -179,7 +181,7 @@ pub struct SidechainBlockHeader {
     pub height: u64,
     pub epoch: u64,
     pub shard_group: ShardGroup,
-    pub proposed_by: PublicKey,
+    pub proposed_by: CompressedPublicKey,
     pub total_leader_fee: u64,
     pub state_merkle_root: FixedHash,
     pub command_merkle_root: FixedHash,
@@ -256,18 +258,26 @@ pub enum QuorumDecision {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorQcSignature {
-    pub public_key: PublicKey,
+    pub public_key: CompressedPublicKey,
     pub signature: ValidatorBlockSignature,
 }
 
 impl ValidatorQcSignature {
     #[must_use]
     pub fn verify(&self, block_id: &FixedHash, decision: QuorumDecision) -> bool {
+        let Ok(public_key) = self.public_key.to_public_key() else {
+            return false;
+        };
+
+        let Ok(signature) = self.signature.to_schnorr_signature() else {
+            return false;
+        };
+
         let message = vote_signature_hasher().chain(block_id).chain(&decision).finalize();
-        self.signature.verify(&self.public_key, message)
+        signature.verify(&public_key, message)
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &CompressedPublicKey {
         &self.public_key
     }
 

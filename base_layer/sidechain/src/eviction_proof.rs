@@ -1,11 +1,6 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Serialize};
-use tari_common_types::{epoch::VnEpoch, types::PublicKey};
-use tari_utilities::ByteArray;
-
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
@@ -13,6 +8,11 @@ use crate::{
     shard_group::ShardGroup,
     CheckVnFunc,
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
+use tari_common_types::epoch::VnEpoch;
+use tari_common_types::types::CompressedPublicKey;
+use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct EvictionProof {
@@ -36,7 +36,7 @@ impl EvictionProof {
         self.proof.shard_group()
     }
 
-    pub fn node_to_evict(&self) -> &PublicKey {
+    pub fn node_to_evict(&self) -> &CompressedPublicKey {
         self.proof.command().node_to_evict()
     }
 
@@ -55,15 +55,15 @@ impl EvictionProof {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct EvictNodeAtom {
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
 }
 
 impl EvictNodeAtom {
-    pub fn new(public_key: PublicKey) -> Self {
+    pub fn new(public_key: CompressedPublicKey) -> Self {
         Self { public_key }
     }
 
-    pub fn node_to_evict(&self) -> &PublicKey {
+    pub fn node_to_evict(&self) -> &CompressedPublicKey {
         &self.public_key
     }
 }

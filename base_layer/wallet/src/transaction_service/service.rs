@@ -27,87 +27,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
-use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
-use log::*;
-use rand::rngs::OsRng;
-use sha2::Sha256;
-use tari_common::configuration::Network;
-use tari_common_types::{
-    burnt_proof::BurntProof,
-    key_branches::TransactionKeyManagerBranch,
-    tari_address::{TariAddress, TariAddressFeatures},
-    epoch::VnEpoch,
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{
-        ComAndPubSignature,
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        HashOutput,
-        PrivateKey,
-        Signature,
-        UncompressedPublicKey,
-    },
-    wallet_types::WalletType,
-};
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{
-    consensus::ConsensusManager,
-    covenants::Covenant,
-    mempool::FeePerGramStat,
-    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            BuildInfo,
-            CodeTemplateRegistration,
-            KernelFeatures,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
-            TransactionOutput,
-            ValidatorNodeSignature,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
-            TransactionMetadata,
-        },
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-    },
-};
-use tari_crypto::{
-    keys::{PublicKey as pkt, SecretKey},
-    tari_utilities::ByteArray,
-};
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_p2p::domain_message::DomainMessage;
-use tari_script::{
-    push_pubkey_script,
-    script,
-    CompressedCheckSigSchnorrSignature,
-    ExecutionStack,
-    ScriptContext,
-    TariScript,
-};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
-use tari_sidechain::EvictionProof;
-use tokio::{
-    sync::{mpsc, mpsc::Sender, oneshot, Mutex},
-    task::JoinHandle,
-};
-use tari_common_types::types::FixedHash;
-use tari_max_size::MaxSizeString;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -122,10 +41,7 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{
-            FeePerGramStatsResponse,
-            TransactionEvent,
-            TransactionEventSender,
-            TransactionServiceRequest,
+            FeePerGramStatsResponse, TransactionEvent, TransactionEventSender, TransactionServiceRequest,
             TransactionServiceResponse,
         },
         protocols::{
@@ -138,8 +54,7 @@ use crate::{
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             models::{
-                CompletedTransaction,
-                TxCancellationReason,
+                CompletedTransaction, TxCancellationReason,
                 WalletTransaction::{Completed, PendingInbound, PendingOutbound},
             },
         },
@@ -157,6 +72,65 @@ use crate::{
         RECOVERY_KEY,
     },
     OperationId,
+};
+use chrono::{DateTime, Utc};
+use digest::Digest;
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use log::*;
+use rand::rngs::OsRng;
+use sha2::Sha256;
+use tari_common::configuration::Network;
+use tari_common_types::types::FixedHash;
+use tari_common_types::{
+    burnt_proof::BurntProof,
+    epoch::VnEpoch,
+    key_branches::TransactionKeyManagerBranch,
+    tari_address::{TariAddress, TariAddressFeatures},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    types::{
+        ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey,
+        Signature, UncompressedPublicKey,
+    },
+    wallet_types::WalletType,
+};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_core::{
+    consensus::ConsensusManager,
+    covenants::Covenant,
+    mempool::FeePerGramStat,
+    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            BuildInfo, CodeTemplateRegistration, KernelFeatures, OutputFeatures, TemplateType, Transaction,
+            TransactionOutput, ValidatorNodeSignature, WalletOutputBuilder,
+        },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+        transaction_protocol::{
+            proto::protocol as proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage,
+            TransactionMetadata,
+        },
+        CryptoFactories, ReceiverTransactionProtocol,
+    },
+};
+use tari_crypto::{
+    keys::{PublicKey as pkt, SecretKey},
+    tari_utilities::ByteArray,
+};
+use tari_max_size::MaxSizeString;
+use tari_p2p::domain_message::DomainMessage;
+use tari_script::{
+    push_pubkey_script, script, CompressedCheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript,
+};
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_shutdown::ShutdownSignal;
+use tari_sidechain::EvictionProof;
+use tokio::{
+    sync::{mpsc, mpsc::Sender, oneshot, Mutex},
+    task::JoinHandle,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -849,10 +823,14 @@ where
                 fee_per_gram,
                 sidechain_deployment_key,
             } => {
+                let payment_id = PaymentId::Open {
+                    user_data: format!("Template Registration: {}", template_name).into_bytes(),
+                    tx_type: TxType::CodeTemplateRegistration,
+                };
                 let (tx_id, template_address) = self
                     .register_code_template(
                         fee_per_gram,
-                        template_name.to_string(),
+                        template_name,
                         template_version,
                         template_type,
                         build_info,
@@ -860,10 +838,7 @@ where
                         binary_url,
                         sidechain_deployment_key,
                         UtxoSelectionCriteria::default(),
-                        PaymentId::open(
-                            &format!("Template Registration: {}", template_name),
-                            TxType::CodeTemplateRegistration,
-                        ),
+                        payment_id,
                         transaction_broadcast_join_handles,
                     )
                     .await?;
@@ -876,7 +851,7 @@ where
                 amount,
                 proof,
                 fee_per_gram,
-                message,
+                payment_id,
                 sidechain_deployment_key,
             } => {
                 let rp = reply_channel.take().expect("Cannot be missing");
@@ -886,7 +861,7 @@ where
                     sidechain_deployment_key,
                     UtxoSelectionCriteria::default(),
                     fee_per_gram,
-                    message,
+                    payment_id,
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
                     rp,
@@ -1177,8 +1152,8 @@ where
             .transaction_key_manager_service
             .get_comms_key()
             .await?
-            .pub_key ==
-            destination.comms_public_key()
+            .pub_key
+            == destination.comms_public_key()
         {
             debug!(
                 target: LOG_TARGET,
@@ -1439,8 +1414,8 @@ where
             ComAndPubSignature::new_from_capk_signature(
                 &transaction.transaction.body.outputs()[0]
                     .metadata_signature
-                    .to_capk_signature()? +
-                    &total_meta_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()?
+                    + &total_meta_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated metadata_signature");
@@ -1450,8 +1425,8 @@ where
             ComAndPubSignature::new_from_capk_signature(
                 &transaction.transaction.body.inputs()[0]
                     .script_signature
-                    .to_capk_signature()? +
-                    &total_script_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()?
+                    + &total_script_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated script_signature");
@@ -1468,8 +1443,8 @@ where
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
-            input_keys = input_keys +
-                input
+            input_keys = input_keys
+                + input
                     .run_and_verify_script(&factory, Some(context))
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?
                     .to_public_key()?;
@@ -1781,8 +1756,8 @@ where
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
                 self.resources.interactive_tari_address.clone(),
-                if dest_address == self.resources.one_sided_tari_address ||
-                    dest_address == self.resources.interactive_tari_address
+                if dest_address == self.resources.one_sided_tari_address
+                    || dest_address == self.resources.interactive_tari_address
                 {
                     Some(TxType::PaymentToSelf)
                 } else {
@@ -2491,13 +2466,16 @@ where
         .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
 
-        Ok((tx_id, BurntProof {
-            // Key used to claim the burn on L2
-            reciprocal_claim_public_key: commitment_mask_key.pub_key,
-            commitment,
-            ownership_proof,
-            range_proof,
-        }))
+        Ok((
+            tx_id,
+            BurntProof {
+                // Key used to claim the burn on L2
+                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                commitment,
+                ownership_proof,
+                range_proof,
+            },
+        ))
     }
 
     async fn register_validator_node(
@@ -2505,7 +2483,7 @@ where
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
-        validator_node_claim_public_key: PublicKey,
+        validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
@@ -2519,7 +2497,9 @@ where
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
         let signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
-        let sidechain_pk = sidechain_deployment_key.as_ref().map(PublicKey::from_secret_key);
+        let sidechain_pk = sidechain_deployment_key
+            .as_ref()
+            .map(CompressedPublicKey::from_secret_key);
         if !signature.is_valid_signature_for(sidechain_pk.as_ref(), &validator_node_claim_public_key, VnEpoch(0)) {
             return Err(TransactionServiceError::InvalidValidatorNodeSignature);
         }
@@ -2582,7 +2562,7 @@ where
     async fn register_code_template(
         &mut self,
         fee_per_gram: MicroMinotari,
-        template_name: String,
+        template_name: MaxSizeString<32>,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
@@ -2590,7 +2570,7 @@ where
         binary_url: MaxSizeString<255>,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
-        message: String,
+        payment_id: PaymentId,
 
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2606,7 +2586,7 @@ where
             .transaction_key_manager_service
             .get_public_key_at_key_id(&author_key_id)
             .await?;
-        let (nonce_secret, nonce_pub) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (nonce_secret, nonce_pub) = CompressedPublicKey::random_keypair(&mut OsRng);
         let nonce_id = self
             .resources
             .transaction_key_manager_service
@@ -2615,11 +2595,7 @@ where
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
             author_signature: Signature::default(),
-            template_name: template_name
-                .try_into()
-                .map_err(|_| TransactionServiceError::InvalidDataError {
-                    field: "template_name".to_string(),
-                })?,
+            template_name,
             template_version,
             template_type,
             build_info,
@@ -2644,7 +2620,15 @@ where
         let (fee, transaction) = self
             .resources
             .output_manager_service
-            .create_pay_to_self_transaction(tx_id, 0.into(), selection_criteria, output_features, fee_per_gram, None)
+            .create_pay_to_self_transaction(
+                tx_id,
+                0.into(),
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                None,
+                payment_id.clone(),
+            )
             .await?;
         let template_output = transaction
             .body
@@ -2664,7 +2648,7 @@ where
             transaction,
             fee,
             0.into(),
-            message,
+            payment_id,
         )
         .await?;
         Ok((tx_id, template_address))
@@ -3140,8 +3124,8 @@ where
                 return Ok(());
             }
 
-            if self.finalized_transaction_senders.contains_key(&data.tx_id) ||
-                self.receiver_transaction_cancellation_senders.contains_key(&data.tx_id)
+            if self.finalized_transaction_senders.contains_key(&data.tx_id)
+                || self.receiver_transaction_cancellation_senders.contains_key(&data.tx_id)
             {
                 trace!(
                     target: LOG_TARGET,
@@ -3317,13 +3301,13 @@ where
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(TariAddress::default());
                                             },
-                                            TxType::PaymentToSelf |
-                                            TxType::CoinSplit |
-                                            TxType::CoinJoin |
-                                            TxType::ValidatorNodeRegistration |
-                                            TxType::CodeTemplateRegistration |
-                                            TxType::ClaimAtomicSwap |
-                                            TxType::HtlcAtomicSwapRefund => {
+                                            TxType::PaymentToSelf
+                                            | TxType::CoinSplit
+                                            | TxType::CoinJoin
+                                            | TxType::ValidatorNodeRegistration
+                                            | TxType::CodeTemplateRegistration
+                                            | TxType::ClaimAtomicSwap
+                                            | TxType::HtlcAtomicSwapRefund => {
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(own_address.clone());
                                             },
@@ -3625,10 +3609,10 @@ where
                 );
                 let reason = match error {
                     TransactionServiceError::TransactionValidationInProgress => 1,
-                    TransactionServiceError::ProtobufConversionError(_) |
-                    TransactionServiceError::RpcError(_) |
-                    TransactionServiceError::InvalidMessageError(_) |
-                    TransactionServiceError::BaseNodeChanged { .. } => 3,
+                    TransactionServiceError::ProtobufConversionError(_)
+                    | TransactionServiceError::RpcError(_)
+                    | TransactionServiceError::InvalidMessageError(_)
+                    | TransactionServiceError::BaseNodeChanged { .. } => 3,
                     _ => 2,
                 };
                 let _size = self
@@ -3668,10 +3652,10 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
-        if !(completed_tx.status == TransactionStatus::Completed ||
-            completed_tx.status == TransactionStatus::Broadcast ||
-            completed_tx.status == TransactionStatus::MinedUnconfirmed) ||
-            completed_tx.transaction.body.kernels().is_empty()
+        if !(completed_tx.status == TransactionStatus::Completed
+            || completed_tx.status == TransactionStatus::Broadcast
+            || completed_tx.status == TransactionStatus::MinedUnconfirmed)
+            || completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
@@ -3816,26 +3800,26 @@ where
             (
                 match tx_type {
                     TxType::PaymentToOther | TxType::Burn => TransactionDirection::Outbound,
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::ImportedUtxoNoneRewindable => TransactionDirection::Inbound,
+                    TxType::PaymentToSelf
+                    | TxType::CoinSplit
+                    | TxType::CoinJoin
+                    | TxType::ValidatorNodeRegistration
+                    | TxType::CodeTemplateRegistration
+                    | TxType::ClaimAtomicSwap
+                    | TxType::HtlcAtomicSwapRefund
+                    | TxType::ImportedUtxoNoneRewindable => TransactionDirection::Inbound,
                 },
                 amount,
                 match tx_type {
                     TxType::PaymentToOther | TxType::ImportedUtxoNoneRewindable => recipient_address.clone(),
                     TxType::Burn => TariAddress::default(),
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund => self.resources.one_sided_tari_address.clone(),
+                    TxType::PaymentToSelf
+                    | TxType::CoinSplit
+                    | TxType::CoinJoin
+                    | TxType::ValidatorNodeRegistration
+                    | TxType::CodeTemplateRegistration
+                    | TxType::ClaimAtomicSwap
+                    | TxType::HtlcAtomicSwapRefund => self.resources.one_sided_tari_address.clone(),
                 },
             )
         } else {
@@ -3995,8 +3979,8 @@ where
                 sending_method
             )));
         }
-        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
-            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        if sending_method.contains(TariAddressFeatures::create_interactive_only())
+            && matches!(*self.resources.wallet_type, WalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),

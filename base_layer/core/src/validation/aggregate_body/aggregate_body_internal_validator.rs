@@ -22,51 +22,37 @@
 
 use std::{collections::HashSet, convert::TryInto};
 
-use log::{trace, warn};
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService},
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_script::ScriptContext;
-use tari_utilities::hex::Hex;
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelSum,
-            SideChainFeature,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
+            transaction_output::batch_verify_range_proofs, KernelSum, SideChainFeature, TransactionError,
+            TransactionInput, TransactionKernel, TransactionOutput,
         },
         CryptoFactories,
     },
     validation::{
         helpers::{
-            check_covenant_length,
-            check_permitted_output_types,
-            check_permitted_range_proof_types,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
-            is_all_unique_and_sorted,
-            validate_input_version,
-            validate_kernel_version,
-            validate_output_version,
+            check_covenant_length, check_permitted_output_types, check_permitted_range_proof_types,
+            check_tari_encrypted_data_byte_size, check_tari_script_byte_size, is_all_unique_and_sorted,
+            validate_input_version, validate_kernel_version, validate_output_version,
         },
         ValidationError,
     },
 };
+use log::{trace, warn};
+use tari_common_types::types::{
+    CompressedCommitment, CompressedPublicKey, UncompressedCommitment, UncompressedPublicKey,
+};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CommitmentFactory, HashOutput, PrivateKey, RangeProofService},
+};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_script::ScriptContext;
+use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";
 
@@ -147,12 +133,18 @@ impl AggregateBodyInternalConsistencyValidator {
 
 fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
     if let Some(template_reg) = sidechain_feature.code_template_registration() {
-        let message = template_reg.create_signature_message(template_reg.author_signature.get_public_nonce());
-
-        if !template_reg
+        let message =
+            template_reg.create_signature_message(template_reg.author_signature.get_compressed_public_nonce());
+        let signature = template_reg
             .author_signature
-            .verify_raw_uniform(&template_reg.author_public_key, &message)
-        {
+            .to_schnorr_signature()
+            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+        let author_public_key = template_reg
+            .author_public_key
+            .to_public_key()
+            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+
+        if !signature.verify_raw_uniform(&author_public_key, &message) {
             return Err(ValidationError::TemplateAuthorSignatureNotValid);
         }
     }
@@ -190,20 +182,6 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
 /// Verify that the TariScript is not larger than the max size
 fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
-        warn!(
-            target: LOG_TARGET,
-            "output ({}) script size exceeded max size {:?}.", output, e
-        );
-        e
-    })
-}
-
-/// Verify that the TariScript is not larger than the max size
-fn check_encrypted_data_byte_size(
-    output: &TransactionOutput,
-    max_encrypted_data_size: usize,
-) -> Result<(), ValidationError> {
-    check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
             "output ({}) script size exceeded max size {:?}.", output, e
@@ -611,10 +589,11 @@ mod test {
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
-            kernel1.clone(),
-            kernel2.clone(),
-        ]);
+        let mut body = AggregateBody::new(
+            Vec::new(),
+            vec![output1.clone(), output2.clone()],
+            vec![kernel1.clone(), kernel2.clone()],
+        );
         assert!(check_total_burned(&body).is_ok());
         // lets add an extra kernel
         body.add_kernels([kernel3]);

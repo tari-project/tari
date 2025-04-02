@@ -208,7 +208,7 @@ pub(super) struct SectionIter<'a, const SECTIONS: usize> {
     slice: &'a [u8],
 }
 
-impl<'a, const SECTIONS: usize> SectionIter<'a, SECTIONS> {
+impl<const SECTIONS: usize> SectionIter<'_, SECTIONS> {
     /// Returns the next 8 bytes as a u64.
     ///
     /// # Panics

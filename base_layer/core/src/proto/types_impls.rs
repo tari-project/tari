@@ -22,9 +22,10 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{ComAndPubSignature, HashOutput, PrivateKey};
+use tari_common_types::types::{ComAndPubSignature, HashOutput, PrivateKey, UncompressedPublicKey};
 use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
-use tari_crypto::{hashing::DomainSeparation, signatures::SchnorrSignature};
+use tari_crypto::hashing::DomainSeparation;
+use tari_crypto::signatures::CompressedSchnorrSignature;
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;
@@ -49,7 +50,9 @@ impl From<CompressedCommitment> for proto::Commitment {
 
 //---------------------------------- Signature --------------------------------------------//
 
-impl<H: DomainSeparation> TryFrom<proto::Signature> for SchnorrSignature<CompressedPublicKey, PrivateKey, H> {
+impl<H: DomainSeparation> TryFrom<proto::Signature>
+    for CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>
+{
     type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
@@ -60,20 +63,18 @@ impl<H: DomainSeparation> TryFrom<proto::Signature> for SchnorrSignature<Compres
     }
 }
 
-impl<H: DomainSeparation> From<&SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for proto::Signature {
-    fn from(sig: &SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<&CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: &CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
         }
     }
 }
-impl<H: DomainSeparation> From<SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for proto::Signature {
-    fn from(sig: SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
-        Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
-            signature: sig.get_signature().to_vec(),
-        }
+
+impl<H: DomainSeparation> From<CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
+        (&sig).into()
     }
 }
 

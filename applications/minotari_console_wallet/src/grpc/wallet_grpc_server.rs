@@ -26,67 +26,28 @@ use std::{
     sync::Arc,
 };
 
+use crate::{
+    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
+};
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    GetAddressResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetStateRequest,
-    GetStateResponse,
-    GetTemplateRegistrationFeeResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest,
+    GetBalanceResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest,
+    GetIdentityRequest, GetIdentityResponse, GetStateRequest, GetStateResponse, GetTransactionInfoRequest,
+    GetTransactionInfoResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse, ImportUtxosRequest,
+    ImportUtxosResponse, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, RevalidateRequest,
+    RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse,
+    SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse, TransactionDirection, TransactionEvent,
+    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
+    TransferResponse, TransferResult, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -98,6 +59,7 @@ use minotari_wallet::{
     },
     WalletSqlite,
 };
+use tari_common_types::types::PrivateKey;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
@@ -107,14 +69,10 @@ use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
+        tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
+            OutputFeatures, UnblindedOutput,
         },
     },
 };
@@ -125,11 +83,6 @@ use tokio::{
     task,
 };
 use tonic::{Request, Response, Status};
-
-use crate::{
-    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
-};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
@@ -1102,8 +1055,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
-        let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
-            .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
+        let validator_node_claim_public_key =
+            CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
+                .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
         let sidechain_key = if request.sidechain_deployment_key.is_empty() {
             None
@@ -1144,6 +1098,55 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_eviction_proof(
+        &self,
+        request: Request<SubmitValidatorEvictionProofRequest>,
+    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+
+        let sidechain_key = Some(request.sidechain_deployment_key)
+            .filter(|k| !k.is_empty())
+            .map(|k| PrivateKey::from_canonical_bytes(&k))
+            .transpose()
+            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
+
+        let proof = request
+            .proof
+            .map(TryInto::try_into)
+            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Failed to convert proof: {}", e);
+                Status::invalid_argument(format!("Invalid proof: {e}"))
+            })?;
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_eviction_proof(
+                constants.validator_node_registration_min_deposit_amount(),
+                proof,
+                request.fee_per_gram.into(),
+                sidechain_key,
+                PaymentId::Open {
+                    user_data: request.message.into_bytes(),
+                    tx_type: TxType::PaymentToSelf,
+                },
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))

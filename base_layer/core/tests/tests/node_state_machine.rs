@@ -22,6 +22,13 @@
 
 use std::time::Duration;
 
+use crate::helpers::{
+    block_builders::{append_block, chain_block, create_genesis_block},
+    chain_metadata::MockChainMetadata,
+    nodes::{
+        create_network_with_multiple_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder,
+    },
+};
 use blake2::{Blake2b, Digest};
 use digest::consts::U32;
 use tari_common::configuration::Network;
@@ -31,8 +38,7 @@ use tari_core::{
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::{
             states::{Listening, StateEvent, StatusInfo, SyncStatus::Lagging},
-            BaseNodeStateMachine,
-            BaseNodeStateMachineConfig,
+            BaseNodeStateMachine, BaseNodeStateMachineConfig,
         },
         SyncValidators,
     },
@@ -46,24 +52,13 @@ use tari_core::{
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
+use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, watch},
-    task,
-    time,
+    task, time,
     time::sleep,
-};
-
-use crate::helpers::{
-    block_builders::{append_block, chain_block, create_genesis_block},
-    chain_metadata::MockChainMetadata,
-    nodes::{
-        create_network_with_multiple_base_nodes_with_config,
-        random_node_identity,
-        wait_until_online,
-        BaseNodeBuilder,
-    },
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

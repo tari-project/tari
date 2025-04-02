@@ -35,25 +35,15 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        comms_response::ValidatorNodeChange,
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+        comms_response::ValidatorNodeChange, error::CommsInterfaceError, local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse, NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
+        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, Difficulty, PowAlgorithm, PowError,
     },
     transactions::aggregated_body::AggregateBody,
     validation::{helpers, ValidationError},
@@ -94,7 +84,8 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
@@ -477,7 +468,7 @@ where B: BlockchainBackend + 'static
                 let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
 
                 node_changes.extend(added_validators.into_iter().map(|vn| ValidatorNodeChange::Add {
-                    registration: vn.original_registration,
+                    registration: vn.original_registration.into(),
                     activation_epoch: vn.activation_epoch,
                     minimum_value_promise: vn.minimum_value_promise,
                     shard_key: vn.shard_key,
@@ -636,7 +627,8 @@ where B: BlockchainBackend + 'static
                     source: ValidationError::BadBlockFound {
                         hash: block.to_hex(),
                         reason,
-                    },
+                    }
+                    .into(),
                 },
             ));
         }

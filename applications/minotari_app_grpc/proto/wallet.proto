@@ -83,8 +83,6 @@ service Wallet {
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
-  // Get calculated fees for a `CreateTemplateRegistrationRequest`
-  rpc GetTemplateRegistrationFee(CreateTemplateRegistrationRequest) returns (GetTemplateRegistrationFeeResponse);
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
 }
 

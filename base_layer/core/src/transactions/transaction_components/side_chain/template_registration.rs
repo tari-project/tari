@@ -24,7 +24,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, CompressedPublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
 use tari_hashing::TransactionHashDomain;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
@@ -59,7 +59,7 @@ impl CodeTemplateRegistration {
     }
 
     pub fn sidechain_id_message(&self) -> [u8; 64] {
-        self.create_signature_message(self.author_signature.get_public_nonce())
+        self.create_signature_message(self.author_signature.get_compressed_public_nonce())
     }
 }
 
