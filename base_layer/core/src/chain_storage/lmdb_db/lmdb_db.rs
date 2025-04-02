@@ -34,6 +34,7 @@ use std::{
     },
     time::Instant,
 };
+
 use borsh::BorshDeserialize;
 use fs2::FileExt;
 use lmdb_zero::{
@@ -962,19 +963,14 @@ impl LMDBDatabase {
         )?;
 
         let monero_seed: Option<Vec<u8>> = lmdb_get(txn, &self.monero_seed_height_index_db, &height)?;
-        if let Some(seed) = monero_seed{
+        if let Some(seed) = monero_seed {
             lmdb_delete(
                 txn,
                 &self.monero_seed_height_index_db,
                 &height,
                 "monero_seed_height_index_db",
             )?;
-            lmdb_delete(
-                txn,
-                &self.monero_seed_height_db,
-                &seed,
-                "monero_seed_height_db",
-            )?;
+            lmdb_delete(txn, &self.monero_seed_height_db, &seed, "monero_seed_height_db")?;
         }
 
         Ok(())
@@ -1570,7 +1566,13 @@ impl LMDBDatabase {
                 )?;
             },
             None => {
-                lmdb_insert(write_txn, &self.monero_seed_height_db, seed, &height, "monero_seed_height_db")?;
+                lmdb_insert(
+                    write_txn,
+                    &self.monero_seed_height_db,
+                    seed,
+                    &height,
+                    "monero_seed_height_db",
+                )?;
             },
         }
         lmdb_insert(
@@ -3007,7 +3009,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
         }
-        if migrate_from_version == 5{
+        if migrate_from_version == 5 {
             // lets clear the list of bad blocks
             {
                 let txn = db.write_transaction()?;
@@ -3021,7 +3023,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 let txn = db.write_transaction()?;
                 let heights: Vec<u64> = lmdb_filter_map_values(&txn, &db.monero_seed_height_db, Some)?;
                 let mut seeds = Vec::new();
-                for height in &heights{
+                for height in &heights {
                     let header = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)?.ok_or_else(|| {
                         ChainStorageError::ValueNotFound {
                             entity: "Header",
@@ -3034,7 +3036,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                     let seed = pow_data.randomx_key.to_vec();
                     seeds.push(seed);
                 }
-                for (i, seed) in seeds.iter().enumerate(){
+                for (i, seed) in seeds.iter().enumerate() {
                     let txn = db.write_transaction()?;
                     lmdb_insert(
                         &txn,
