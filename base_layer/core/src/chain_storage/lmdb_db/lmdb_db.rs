@@ -218,6 +218,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
+        .add_database(LMDB_DB_MONERO_SEED_HEIGHT_INDEX, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
