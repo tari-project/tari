@@ -3001,12 +3001,9 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
                 .expect("should be valid hex");
             let _not_used = lmdb_delete(&txn, &db.monero_seed_height_db, &vm_key, "seed heights");
-            let height: u64 = 843;
-            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &height, None)?;
             info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
             txn.commit()?;
-            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
         }
         if migrate_from_version == 5 {
