@@ -2983,20 +2983,25 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 for (db_seed, height) in &heights {
                     let mut delete = false;
                     if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)? {
-                        let pow_bytes = header.pow.pow_data.to_vec();
-                        let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
-                        let seed = pow_data.randomx_key.to_vec();
-                        // seeds.push(seed);
-                        if seed != *db_seed {
+                        if header.pow_algo() != PowAlgorithm::RandomX {
                             // delete
                             delete = true;
-                            final_table.retain(|(s, _)| s != db_seed);
                         } else {
-                            seeds.push(seed);
+                            let pow_bytes = header.pow.pow_data.to_vec();
+                            let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
+                            let seed = pow_data.randomx_key.to_vec();
+                            // seeds.push(seed);
+                            if seed != *db_seed {
+                                // delete
+                                delete = true;
+                            } else {
+                                seeds.push(seed);
+                            }
                         }
                     }
                     if delete {
                         lmdb_delete(&txn, &db.monero_seed_height_db, db_seed, "monero_seed_height_db")?;
+                        final_table.retain(|(s, _)| s != db_seed);
                     }
                 }
                 for (seed, height) in final_table {
