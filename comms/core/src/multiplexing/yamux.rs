@@ -30,10 +30,10 @@ use tokio::{
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing::{debug, error, warn};
 // Reexport
-use yamux::Mode;
+use yamux::{ConnectionError, FrameDecodeError, Mode};
 
 use crate::{
-    connection_manager::ConnectionDirection,
+    connection_manager::{ConnectionDirection, PeerConnectionInfo},
     multiplexing::YamuxControlError,
     stream_id,
     stream_id::StreamId,
@@ -50,8 +50,14 @@ pub struct Yamux {
 
 impl Yamux {
     /// Upgrade the underlying socket to use yamux
-    pub fn upgrade_connection<TSocket>(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self>
-    where TSocket: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static {
+    pub fn upgrade_connection<TSocket>(
+        socket: TSocket,
+        direction: ConnectionDirection,
+        peer_connection_info: PeerConnectionInfo,
+    ) -> io::Result<Self>
+    where
+        TSocket: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
+    {
         let mode = match direction {
             ConnectionDirection::Inbound => Mode::Server,
             ConnectionDirection::Outbound => Mode::Client,
@@ -61,7 +67,8 @@ impl Yamux {
 
         let substream_counter = AtomicRefCounter::new();
         let connection = yamux::Connection::new(socket.compat(), config, mode);
-        let (control, incoming) = Self::spawn_incoming_stream_worker(connection, substream_counter.clone());
+        let (control, incoming) =
+            Self::spawn_incoming_stream_worker(connection, substream_counter.clone(), peer_connection_info);
 
         Ok(Self {
             control,
@@ -75,13 +82,14 @@ impl Yamux {
     fn spawn_incoming_stream_worker<TSocket>(
         connection: yamux::Connection<TSocket>,
         counter: AtomicRefCounter,
+        peer_connection_info: PeerConnectionInfo,
     ) -> (Control, IncomingSubstreams)
     where
         TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 'static,
     {
         let (incoming_tx, incoming_rx) = mpsc::channel(10);
         let (request_tx, request_rx) = mpsc::channel(1);
-        let incoming = YamuxWorker::new(incoming_tx, request_rx, counter.clone());
+        let incoming = YamuxWorker::new(incoming_tx, request_rx, counter.clone(), peer_connection_info);
         let control = Control::new(request_tx);
         tokio::spawn(incoming.run(connection));
         (control, IncomingSubstreams::new(incoming_rx, counter))
@@ -234,6 +242,7 @@ struct YamuxWorker<TSocket> {
     request_rx: mpsc::Receiver<YamuxRequest>,
     counter: AtomicRefCounter,
     _phantom: PhantomData<TSocket>,
+    peer_connection_info: PeerConnectionInfo,
 }
 
 impl<TSocket> YamuxWorker<TSocket>
@@ -243,12 +252,14 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         incoming_substreams: mpsc::Sender<yamux::Stream>,
         request_rx: mpsc::Receiver<YamuxRequest>,
         counter: AtomicRefCounter,
+        peer_connection_info: PeerConnectionInfo,
     ) -> Self {
         Self {
             incoming_substreams,
             request_rx,
             counter,
             _phantom: PhantomData,
+            peer_connection_info,
         }
     }
 
@@ -260,9 +271,10 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                 _ = self.incoming_substreams.closed() => {
                     debug!(
                         target: LOG_TARGET,
-                        "{} Incoming peer substream task is stopping because the internal stream sender channel was \
+                        "{} Incoming peer ({}) substream task is stopping because the internal stream sender channel was \
                          closed",
-                        self.counter.get()
+                        self.counter.get(),
+                        self.peer_connection_info,
                     );
                     // Ignore: we already log the error variant in Self::close
                     let _ignore = Self::close(&mut connection).await;
@@ -271,7 +283,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
 
                 Some(request) = self.request_rx.recv() => {
                     if let Err(err) = self.handle_request(&mut connection, request).await {
-                        error!(target: LOG_TARGET, "Error handling request: {err}");
+                        error!(target: LOG_TARGET, "Error handling request from {}: {err}", self.peer_connection_info);
                         break;
                     }
                 },
@@ -282,8 +294,10 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                             if self.incoming_substreams.send(stream).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "{} Incoming peer substream task is stopping because the internal stream sender channel was closed",
-                                    self.counter.get()
+                                    "{} Incoming peer ({}) substream task is stopping because the internal stream \
+                                    sender channel was closed",
+                                    self.counter.get(),
+                                    self.peer_connection_info,
                                 );
                                 break;
                             }
@@ -291,18 +305,50 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                         None =>{
                             debug!(
                                 target: LOG_TARGET,
-                                "{} Incoming peer substream ended.",
-                                self.counter.get()
+                                "{} Incoming peer ({}) substream ended.",
+                                self.counter.get(),
+                                self.peer_connection_info,
                             );
                             break;
                         }
                         Some(Err(err)) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "{} Incoming peer substream task received an error because '{}'",
-                                self.counter.get(),
-                                err
-                            );
+                            match err {
+                                ConnectionError::Io(ref io_err) if
+                                    io_err.kind() == io::ErrorKind::ConnectionReset ||
+                                    io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                                {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream closed by the remote host '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                                ConnectionError::Decode(FrameDecodeError::Io(ref io_err)) if
+                                    io_err.kind() == io::ErrorKind::ConnectionReset ||
+                                    io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                                {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream closed by the remote host '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                                _ => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream task received an error because '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                            }
+                            // Ignore: we already log the error variant in Self::close
+                            let _ignore = Self::close(&mut connection).await;
                             break;
                         },
                     }
@@ -346,8 +392,18 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
 
     async fn close(connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {
         if let Err(err) = poll_fn(|cx| connection.poll_close(cx)).await {
-            error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
-            return Err(err);
+            match err {
+                ConnectionError::Io(ref io_err)
+                    if io_err.kind() == io::ErrorKind::ConnectionReset ||
+                        io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                {
+                    debug!(target: LOG_TARGET, "Substream closed by the remote host '{}'", err);
+                },
+                _ => {
+                    error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
+                    return Err(err);
+                },
+            }
         }
         debug!(target: LOG_TARGET, "Yamux connection has closed");
         Ok(())
@@ -365,14 +421,18 @@ mod test {
     };
     use tokio_stream::StreamExt;
 
-    use crate::{connection_manager::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
+    use crate::{
+        connection_manager::{ConnectionDirection, PeerConnectionInfo},
+        memsocket::MemorySocket,
+        multiplexing::yamux::Yamux,
+    };
 
     #[tokio::test]
     async fn open_substream() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let mut dialer_control = dialer.get_yamux_control();
 
         tokio::spawn(async move {
@@ -382,7 +442,8 @@ mod test {
             substream.shutdown().await.unwrap();
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         let mut substream = listener
             .incoming
             .next()
@@ -401,7 +462,8 @@ mod test {
         const NUM_SUBSTREAMS: usize = 10;
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).unwrap();
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
 
         let substreams_out = tokio::spawn(async move {
@@ -415,7 +477,8 @@ mod test {
             substreams
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound).unwrap();
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
 
         let substreams_in = collect_stream!(
             &mut listener.incoming,
@@ -438,7 +501,7 @@ mod test {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let mut dialer_control = dialer.get_yamux_control();
 
         tokio::spawn(async move {
@@ -452,7 +515,8 @@ mod test {
             assert_eq!(buf, b"");
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         let mut substream = listener.incoming.next().await.unwrap();
 
         let mut buf = vec![0; msg.len()];
@@ -480,14 +544,16 @@ mod test {
 
         tokio::spawn(async move {
             // Drop immediately
-            let incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-                .unwrap()
-                .into_incoming();
+            let incoming =
+                Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())
+                    .unwrap()
+                    .into_incoming();
             drop(incoming);
             b.wait().await;
         });
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).unwrap();
+        let dialer =
+            Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
         let mut substream = dialer_control.open_stream().await.unwrap();
         barrier.wait().await;
@@ -507,7 +573,7 @@ mod test {
 
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound, PeerConnectionInfo::default())?;
         let substream_counter = dialer.substream_counter();
         let mut dialer_control = dialer.get_yamux_control();
 
@@ -527,7 +593,8 @@ mod test {
             assert_eq!(buf, vec![0xAAu8; MSG_LEN]);
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?;
+        let mut listener =
+            Yamux::upgrade_connection(listener, ConnectionDirection::Inbound, PeerConnectionInfo::default())?;
         assert_eq!(listener.substream_count(), 0);
         let mut substream = listener.incoming.next().await.unwrap();
         assert_eq!(listener.substream_count(), 1);
