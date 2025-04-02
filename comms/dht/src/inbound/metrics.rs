@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::task::Poll;
+use std::{task::Poll, time::Instant};
 
 use futures::task::Context;
 use log::*;
@@ -47,7 +47,8 @@ impl<S> Metrics<S> {
 }
 
 impl<S> Service<InboundMessage> for Metrics<S>
-where S: Service<InboundMessage> + Clone + 'static
+where
+    S: Service<InboundMessage> + Clone + 'static,
 {
     type Error = S::Error;
     type Future = S::Future;
@@ -58,6 +59,8 @@ where S: Service<InboundMessage> + Clone + 'static
     }
 
     fn call(&mut self, message: InboundMessage) -> Self::Future {
+        let timer = Instant::now();
+
         if !self
             .metric_collector
             .write_metric_message_received(message.source_peer.clone())
@@ -65,6 +68,9 @@ where S: Service<InboundMessage> + Clone + 'static
             debug!(target: LOG_TARGET, "Unable to write metric");
         }
 
+        if timer.elapsed().as_millis() > 10 {
+            warn!(target: LOG_TARGET, "Message processing took too long: {:?}", timer.elapsed());
+        }
         self.next_service.call(message)
     }
 }

@@ -105,6 +105,7 @@ where
     }
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
+        let timer = std::time::Instant::now();
         let next_service = self.next_service.clone();
         let outbound_service = self.outbound_service.clone();
         let dht = self.dht.clone();
@@ -127,6 +128,15 @@ where
                 message.dht_header.message_tag
             );
             let forwarder = Forwarder::new(next_service, dht, outbound_service);
+            if timer.elapsed().as_millis() > 10 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Forwarding took too long for message {} (Trace: {}): {:?}",
+                    message.tag,
+                    message.dht_header.message_tag,
+                    timer.elapsed()
+                );
+            }
             forwarder.handle(message).await
         })
     }
@@ -151,9 +161,11 @@ impl<S> Forwarder<S> {
 }
 
 impl<S> Forwarder<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
+        let timer = std::time::Instant::now();
         if message.decryption_failed() {
             trace!(
                 target: LOG_TARGET,
@@ -168,6 +180,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
         }
 
+        if timer.elapsed().as_millis() > 10 {
+            warn!(
+                target: LOG_TARGET,
+                "Forwarding took too long for message {} (Trace: {}): {:?}",
+                message.tag,
+                message.dht_header.message_tag,
+                timer.elapsed()
+            );
+        }
         // The message has been forwarded, but downstream middleware may be interested
         trace!(
             target: LOG_TARGET,

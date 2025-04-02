@@ -27,11 +27,8 @@ use tari_common::configuration::serializers;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{
-    actor::OffenceSeverity,
-    network_discovery::NetworkDiscoveryConfig,
-    storage::DbConnectionUrl,
-    store_forward::SafConfig,
-    version::DhtProtocolVersion,
+    actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl,
+    store_forward::SafConfig, version::DhtProtocolVersion,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,7 +39,7 @@ pub struct DhtConfig {
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
     pub database_url: DbConnectionUrl,
     /// The size of the buffer (channel) which holds pending outbound message requests.
-    /// Default: 20
+    /// Default: 200
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
     /// Default: 8
@@ -181,7 +178,7 @@ impl Default for DhtConfig {
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,
-            outbound_buffer_size: 20,
+            outbound_buffer_size: 200,
             saf: Default::default(),
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),

@@ -91,7 +91,7 @@ where
             log!(
                 target: LOG_TARGET,
                 if num_available < max_available {
-                    Level::Debug
+                    Level::Info
                 } else {
                     Level::Trace
                 },
@@ -108,17 +108,27 @@ where
                 .spawn(async move {
                     let timer = Instant::now();
                     trace!(target: LOG_TARGET, "Start inbound pipeline {}", id);
-                    match time::timeout(Duration::from_secs(10), service.oneshot(item)).await {
-                        Ok(Ok(_)) => {},
+                    match time::timeout(Duration::from_secs(100), service.oneshot(item)).await {
+                        Ok(Ok(_)) => {
+                            if timer.elapsed().as_millis() > 50 {
+                                warn!(target: LOG_TARGET, "Inbound pipeline {} took too long: {:?}", id, timer.elapsed());
+                            }
+                            else {
+                                debug!(target: LOG_TARGET, "Inbound pipeline {} completed successfully after: {:?}", id, timer.elapsed());
+                            }
+                        },
                         Ok(Err(err)) => {
                             warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
                         },
                         Err(_) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Inbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                "Inbound pipeline {} timed out after {:?} and was aborted. Available: {} out of {}. THIS SHOULD NOT HAPPEN: there was a \
                                  deadlock or excessive delay in processing this pipeline.",
-                                id
+                                id,
+                                timer.elapsed(),
+                                num_available,
+                                max_available
                             );
                         },
                     }

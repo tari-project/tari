@@ -42,9 +42,8 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
-    filter,
-    inbound,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer},
+    filter, inbound,
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
     outbound,
@@ -52,12 +51,8 @@ use crate::{
     proto::envelope::DhtMessageType,
     rpc,
     storage::{DbConnection, StorageError},
-    store_forward,
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    DedupLayer,
-    DhtActorError,
-    DhtBuilder,
-    DhtConfig,
+    DedupLayer, DhtActorError, DhtBuilder, DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht";
@@ -311,29 +306,30 @@ impl Dht {
                 self.config.dedup_allowed_message_occurrences,
             ))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
+            .layer(filter::FilterLayer::new(filter_out_all_saf))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
                 self.node_identity.node_id().short_str()
             )))
-            .layer(store_forward::StoreLayer::new(
-                self.config.saf.clone(),
-                Arc::clone(&self.peer_manager),
-                Arc::clone(&self.node_identity),
-                self.store_and_forward_requester(),
-            ))
-            .layer(ForwardLayer::new(
-                self.dht_requester(),
-                self.outbound_requester(),
-                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
-            ))
-            .layer(store_forward::MessageHandlerLayer::new(
-                self.config.saf.clone(),
-                self.store_and_forward_requester(),
-                self.dht_requester(),
-                Arc::clone(&self.node_identity),
-                self.outbound_requester(),
-                self.saf_response_signal_sender.clone(),
-            ))
+            // .layer(store_forward::StoreLayer::new(
+            //     self.config.saf.clone(),
+            //     Arc::clone(&self.peer_manager),
+            //     Arc::clone(&self.node_identity),
+            //     self.store_and_forward_requester(),
+            // ))
+            // .layer(ForwardLayer::new(
+            //     self.dht_requester(),
+            //     self.outbound_requester(),
+            //     self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
+            // ))
+            // .layer(store_forward::MessageHandlerLayer::new(
+            //     self.config.saf.clone(),
+            //     self.store_and_forward_requester(),
+            //     self.dht_requester(),
+            //     Arc::clone(&self.node_identity),
+            //     self.outbound_requester(),
+            //     self.saf_response_signal_sender.clone(),
+            // ))
             .layer(inbound::DhtHandlerLayer::new(
                 self.config.clone(),
                 self.node_identity.clone(),
@@ -405,12 +401,15 @@ impl Dht {
     }
 }
 
+fn filter_out_all_saf(msg: &DecryptedDhtMessage) -> bool {
+    !msg.dht_header.message_type.is_saf_message()
+}
 /// Provides the gossip filtering rules for an inbound message
 fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     // Let the message through if:
     // it isn't a duplicate (normal message), or
-    let should_continue = !msg.is_duplicate() ||
-        (
+    let should_continue = !msg.is_duplicate()
+        || (
             // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
             msg.dht_header.message_type.is_domain_message() &&
                 // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
@@ -470,12 +469,8 @@ mod test {
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
         test_utils::{
-            build_peer_manager,
-            make_client_identity,
-            make_comms_inbound_message,
-            make_dht_envelope,
-            make_node_identity,
-            service_spy,
+            build_peer_manager, make_client_identity, make_comms_inbound_message, make_dht_envelope,
+            make_node_identity, service_spy,
         },
     };
 

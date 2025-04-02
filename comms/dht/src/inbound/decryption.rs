@@ -26,12 +26,8 @@ use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
-    message::EnvelopeBody,
-    peer_manager::NodeIdentity,
-    pipeline::PipelineError,
-    types::CommsDHKE,
-    BytesMut,
+    connectivity::ConnectivityRequester, message::EnvelopeBody, peer_manager::NodeIdentity, pipeline::PipelineError,
+    types::CommsDHKE, BytesMut,
 };
 use tari_crypto::compressed_key::CompressedKey;
 use tari_utilities::ByteArray;
@@ -141,7 +137,8 @@ where
 }
 
 impl<S> DecryptionService<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
 {
     async fn handle_message(
         next_service: S,
@@ -151,12 +148,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message: DhtInboundMessage,
     ) -> Result<(), PipelineError> {
         use DecryptionError::*;
+        let timer = std::time::Instant::now();
         let source = message.source_peer.clone();
         let trace_id = message.dht_header.message_tag;
         let tag = message.tag;
         match Self::validate_and_decrypt_message(node_identity, message).await {
             Ok(msg) => {
                 trace!(target: LOG_TARGET, "Passing onto next service (Trace: {})", msg.tag);
+                if timer.elapsed().as_millis() > 10 {
+                    warn!(target: LOG_TARGET, "Decryption Service took too long: {:?}", timer.elapsed());
+                }
                 next_service.oneshot(msg).await
             },
             // These are verifiable error cases that can be checked by every node
@@ -170,10 +171,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 connectivity
                     .ban_peer_until(source.node_id.clone(), ban_duration, err.to_string())
                     .await?;
+                if timer.elapsed().as_millis() > 10 {
+                    warn!(target: LOG_TARGET, "Decryption Service took too long when banning peer: {:?}", timer.elapsed());
+                }
                 Err(err.into())
             },
             Err(EnvelopeBodyDecodeFailed) => {
-                debug!(
+                warn!(
                     target: LOG_TARGET,
                     "Failed to decode message body ({}, peer={}, trace={}). Message discarded",
                     tag,

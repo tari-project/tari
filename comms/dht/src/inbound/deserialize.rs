@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, task::Poll};
+use std::{convert::TryInto, sync::Arc, task::Poll, time::Instant};
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
@@ -66,6 +66,7 @@ where
     }
 
     fn call(&mut self, message: InboundMessage) -> Self::Future {
+        let timer = Instant::now();
         let next_service = self.next_service.clone();
         let peer_manager = self.peer_manager.clone();
         Box::pin(async move {
@@ -99,6 +100,9 @@ where
                         inbound_msg.dht_header.message_tag
                     );
 
+                    if timer.elapsed().as_millis() > 50 {
+                        warn!(target: LOG_TARGET, "DHT deserialization processing took too long: {:?}", timer.elapsed());
+                    }
                     let next_service = next_service.ready_oneshot().await?;
                     next_service.oneshot(inbound_msg).await
                 },
@@ -137,12 +141,8 @@ mod test {
     use crate::{
         envelope::DhtMessageFlags,
         test_utils::{
-            assert_send_static_service,
-            build_peer_manager,
-            make_comms_inbound_message,
-            make_dht_envelope,
-            make_node_identity,
-            service_spy,
+            assert_send_static_service, build_peer_manager, make_comms_inbound_message, make_dht_envelope,
+            make_node_identity, service_spy,
         },
     };
 

@@ -119,6 +119,7 @@ where
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
+        let timer = std::time::Instant::now();
         if msg.is_duplicate() {
             trace!(
                 target: LOG_TARGET,
@@ -127,12 +128,31 @@ where
                 msg.dht_header.message_tag
             );
 
+            if timer.elapsed().as_millis() > 10 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Store layer took too long for message {} (Trace: {}): {:?}",
+                    msg.tag,
+                    msg.dht_header.message_tag,
+                    timer.elapsed()
+                );
+            }
             let service = self.next_service.clone();
             Box::pin(async move {
                 let service = service.ready_oneshot().await?;
                 service.oneshot(msg).await
             })
         } else {
+            if timer.elapsed().as_millis() > 10 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Store layer took too long for message {} (Trace: {}): {:?}",
+                    msg.tag,
+                    msg.dht_header.message_tag,
+                    timer.elapsed()
+                );
+            }
+
             Box::pin(
                 StoreTask::new(
                     self.next_service.clone(),
@@ -158,7 +178,8 @@ struct StoreTask<S> {
 }
 
 impl<S> StoreTask<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync,
 {
     pub fn new(
         next_service: S,
@@ -187,6 +208,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
     ///    interested in this message (High priority) 1. Encrypted messages addressed to a particular public key or node
     ///    id that this node knows about
     async fn handle(mut self, mut message: DecryptedDhtMessage) -> Result<(), PipelineError> {
+        let timer = std::time::Instant::now();
         if !self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) {
             trace!(
                 target: LOG_TARGET,
@@ -214,6 +236,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             message.dht_header.message_tag
         );
 
+        if timer.elapsed().as_millis() > 10 {
+            warn!(
+                target: LOG_TARGET,
+                "Store layer took too long for message {} (Trace: {}): {:?}",
+                message.tag,
+                message.dht_header.message_tag,
+                timer.elapsed()
+            );
+        }
         let service = self.next_service.ready_oneshot().await?;
         service.oneshot(message).await
     }
@@ -427,12 +458,8 @@ mod test {
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
         test_utils::{
-            assert_send_static_service,
-            build_peer_manager,
-            create_store_and_forward_mock,
-            make_dht_inbound_message,
-            make_node_identity,
-            service_spy,
+            assert_send_static_service, build_peer_manager, create_store_and_forward_mock, make_dht_inbound_message,
+            make_node_identity, service_spy,
         },
     };
 

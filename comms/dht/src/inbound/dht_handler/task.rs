@@ -45,8 +45,7 @@ use crate::{
         envelope::DhtMessageType,
     },
     rpc::UnvalidatedPeerInfo,
-    DhtConfig,
-    DhtRequester,
+    DhtConfig, DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -63,7 +62,8 @@ pub struct ProcessDhtMessage<S> {
 }
 
 impl<S> ProcessDhtMessage<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
 {
     pub fn new(
         next_service: S,
@@ -88,6 +88,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     pub async fn run(mut self) -> Result<(), PipelineError> {
+        let timer = std::time::Instant::now();
         let message = self
             .message
             .take()
@@ -112,6 +113,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.source_peer.node_id.short_str(),
                 message.dht_header.message_tag,
             );
+            if timer.elapsed().as_millis() > 10 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Deduplication took too long for message {} (Trace: {}): {:?}",
+                    message.tag,
+                    message.dht_header.message_tag,
+                    timer.elapsed()
+                );
+            }
             self.next_service.oneshot(message).await?;
             return Ok(());
         }
@@ -145,6 +155,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     #[allow(clippy::too_many_lines)]
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        let timer = std::time::Instant::now();
         let DecryptedDhtMessage {
             decryption_result,
             dht_header,
@@ -260,10 +271,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw_no_wait(
                     SendMessageParams::new()
-                        .propagate(valid_peer_public_key.into(), vec![
-                            valid_peer_node_id,
-                            source_peer.node_id.clone(),
-                        ])
+                        .propagate(
+                            valid_peer_public_key.into(),
+                            vec![valid_peer_node_id, source_peer.node_id.clone()],
+                        )
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
@@ -271,11 +282,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
                 .await?;
         }
+        if timer.elapsed().as_millis() > 50 {
+            warn!(
+                target: LOG_TARGET,
+                "Join message propagation took too long for message : {:?}",
+                timer.elapsed()
+            );
+        }
 
         Ok(())
     }
 
     async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        let timer = std::time::Instant::now();
         trace!(
             target: LOG_TARGET,
             "Received Discover Response Message from {}",
@@ -316,8 +335,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             )
             .await?;
 
-        if *authenticated_origin != message.source_peer.public_key ||
-            authenticated_origin.as_bytes() != discover_msg.public_key.as_slice()
+        if *authenticated_origin != message.source_peer.public_key
+            || authenticated_origin.as_bytes() != discover_msg.public_key.as_slice()
         {
             warn!(
                 target: LOG_TARGET,
@@ -346,10 +365,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .notify_discovery_response_received(discover_msg)
             .await?;
 
+        if timer.elapsed().as_millis() > 10 {
+            warn!(
+                target: LOG_TARGET,
+                "Discovery response message propagation took too long for message {}: {:?}",
+                message.dht_header.message_type,
+                timer.elapsed()
+            );
+        }
         Ok(())
     }
 
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+        let timer = std::time::Instant::now();
         let msg = message
             .success()
             .expect("already checked that this message decrypted successfully");
@@ -414,6 +442,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Send the origin the current nodes latest contact info
         self.send_discovery_response(origin_peer.public_key, nonce).await?;
 
+        if timer.elapsed().as_millis() > 10 {
+            warn!(
+                target: LOG_TARGET,
+                "Discovery message propagation took too long for message {}: {:?}",
+                message.dht_header.message_type,
+                timer.elapsed()
+            );
+        }
         Ok(())
     }
 
@@ -465,8 +501,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 match &err {
                     DhtInboundError::PeerValidatorError(err) => match err {
                         DhtPeerValidatorError::NewAndExistingMismatch { .. } => {},
-                        err @ DhtPeerValidatorError::ValidatorError(_) |
-                        err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
+                        err @ DhtPeerValidatorError::ValidatorError(_)
+                        | err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
                             self.dht
                                 .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
                                 .await;

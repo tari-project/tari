@@ -81,8 +81,17 @@ where
                 .spawn(async move {
                     let timer = Instant::now();
                     trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
-                    match time::timeout(Duration::from_secs(10), pipeline.oneshot(msg)).await {
-                        Ok(Ok(_)) => {},
+                    match time::timeout(Duration::from_secs(1), pipeline.oneshot(msg)).await {
+                        Ok(Ok(_)) => {
+                            if timer.elapsed() > Duration::from_millis(50) {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Outbound pipeline {} took too long to process a message: {:.2?}",
+                                    id,
+                                    timer.elapsed()
+                                );
+                            }
+                        },
                         Ok(Err(err)) => {
                             error!(
                                 target: LOG_TARGET,
@@ -92,10 +101,13 @@ where
                         Err(err) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                "Outbound pipeline {} timed out after {:.2?} and was aborted. Available tasks: {}/{}. THIS SHOULD NOT HAPPEN: there was a \
                                  deadlock or excessive delay in processing this pipeline. {}",
                                 id,
-                                err
+                                timer.elapsed(),
+                                num_available,
+                                max_available,
+                                err,
                             );
                         },
                     }
@@ -141,11 +153,14 @@ mod test {
         let (out_tx, mut out_rx) = mpsc::unbounded_channel();
         let executor = BoundedExecutor::new(100);
 
-        let pipeline = Outbound::new(executor, OutboundPipelineConfig {
-            in_receiver,
-            out_receiver: None,
-            pipeline: SinkService::new(out_tx),
-        });
+        let pipeline = Outbound::new(
+            executor,
+            OutboundPipelineConfig {
+                in_receiver,
+                out_receiver: None,
+                pipeline: SinkService::new(out_tx),
+            },
+        );
 
         let spawned_task = tokio::spawn(pipeline.run());
 

@@ -107,6 +107,7 @@ where
     }
 
     fn call(&mut self, mut message: DecryptedDhtMessage) -> Self::Future {
+        let timer = std::time::Instant::now();
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         let allowed_message_occurrences = self.allowed_message_occurrences;
@@ -122,6 +123,16 @@ where
             message.dedup_hit_count = dht_requester
                 .add_message_to_dedup_cache(message.dedup_hash.clone(), message.source_peer.public_key.clone())
                 .await?;
+
+            if timer.elapsed().as_millis() > 10 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Deduplication took too long for message {} (Trace: {}): {:?}",
+                    message.tag,
+                    message.dht_header.message_tag,
+                    timer.elapsed()
+                );
+            }
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
                 trace!(
