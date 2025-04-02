@@ -30,7 +30,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -78,7 +78,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header, &self.rules, db)?;
+        check_pow_data(header)?;
 
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
@@ -186,11 +186,7 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
 }
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-fn check_pow_data<B: BlockchainBackend>(
-    block_header: &BlockHeader,
-    rules: &ConsensusManager,
-    db: &B,
-) -> Result<(), ValidationError> {
+fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
     use PowAlgorithm::{RandomX, Sha3x};
     match block_header.pow.pow_algo {
         RandomX => {
@@ -199,18 +195,6 @@ fn check_pow_data<B: BlockchainBackend>(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
             }
-            let monero_data = MoneroPowData::from_header(block_header, rules)?;
-            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
-            if seed_height != 0 {
-                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
-                let seed_used_height = block_header.height.saturating_sub(seed_height);
-                if seed_used_height > rules.consensus_constants(block_header.height).max_randomx_seed_height() {
-                    return Err(ValidationError::BlockHeaderError(
-                        BlockHeaderValidationError::OldSeedHash,
-                    ));
-                }
-            }
-
             Ok(())
         },
         Sha3x => {

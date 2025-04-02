@@ -28,9 +28,10 @@ use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
-    blocks::{Block, ChainBlock},
+    blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
     chain_storage::{self, BlockchainBackend, ChainStorageError},
     consensus::ConsensusManager,
+    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
@@ -96,7 +97,30 @@ impl BlockBodyFullValidator {
         let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt)?;
         check_mmr_roots(&block.header, &mmr_roots)?;
 
+        BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
+
         Ok(block)
+    }
+
+    fn check_monero_seed_height<B: BlockchainBackend>(
+        header: &BlockHeader,
+        rules: &ConsensusManager,
+        backend: &B,
+    ) -> Result<(), ValidationError> {
+        if header.pow.pow_algo == PowAlgorithm::RandomX {
+            let monero_data = MoneroPowData::from_header(header, rules)?;
+            let seed_height = backend.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
+            if seed_height != 0 {
+                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
+                let seed_used_height = header.height.saturating_sub(seed_height);
+                if seed_used_height > rules.consensus_constants(header.height).max_randomx_seed_height() {
+                    return Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::OldSeedHash,
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -92,6 +92,10 @@ impl FixedByteArray {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.as_slice().to_vec()
+    }
 }
 
 impl Deref for FixedByteArray {
