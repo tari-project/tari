@@ -29,11 +29,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
 use crate::{
-    dht::DhtInitializationError,
-    outbound::DhtOutboundRequest,
-    version::DhtProtocolVersion,
-    DbConnectionUrl,
-    Dht,
+    dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion, DbConnectionUrl, Dht,
     DhtConfig,
 };
 
@@ -49,7 +45,7 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct DhtBuilder {
     config: DhtConfig,
-    outbound_tx: Option<mpsc::Sender<DhtOutboundRequest>>,
+    outbound_tx: Option<mpsc::UnboundedSender<DhtOutboundRequest>>,
 }
 
 impl DhtBuilder {
@@ -88,7 +84,7 @@ impl DhtBuilder {
     }
 
     /// Sets the mpsc sender that is hooked up to the outbound messaging pipeline.
-    pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::Sender<DhtOutboundRequest>) -> &mut Self {
+    pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>) -> &mut Self {
         self.outbound_tx = Some(outbound_tx);
         self
     }

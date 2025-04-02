@@ -48,8 +48,7 @@ use tari_utilities::{
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot},
-    task,
-    time,
+    task, time,
     time::MissedTickBehavior,
 };
 
@@ -60,8 +59,7 @@ use crate::{
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
     storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
-    DhtConfig,
-    DhtDiscoveryRequester,
+    DhtConfig, DhtDiscoveryRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -174,25 +172,24 @@ impl Display for DhtRequest {
 /// DHT actor requester
 #[derive(Clone)]
 pub struct DhtRequester {
-    sender: mpsc::Sender<DhtRequest>,
+    sender: mpsc::UnboundedSender<DhtRequest>,
 }
 
 impl DhtRequester {
-    pub(crate) fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::UnboundedSender<DhtRequest>) -> Self {
         Self { sender }
     }
 
     /// Send a Join message to the network
     pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
-        self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
+        self.sender.send(DhtRequest::SendJoin).map_err(Into::into)
     }
 
     /// Select peers by [BroadcastStrategy](crate::broadcast_strategy::BroadcastStrategy]
     pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))
-            .await?;
+            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
@@ -203,13 +200,11 @@ impl DhtRequester {
         received_from: CommsPublicKey,
     ) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(DhtRequest::MsgHashCacheInsert {
-                message_hash,
-                received_from,
-                reply_tx,
-            })
-            .await?;
+        self.sender.send(DhtRequest::MsgHashCacheInsert {
+            message_hash,
+            received_from,
+            reply_tx,
+        })?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -218,8 +213,7 @@ impl DhtRequester {
     pub async fn get_message_cache_hit_count(&mut self, message_hash: Vec<u8>) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx))
-            .await?;
+            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx))?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -227,7 +221,7 @@ impl DhtRequester {
     /// Returns the deserialized metadata value for the given key
     pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
+        self.sender.send(DhtRequest::GetMetadata(key, reply_tx))?;
         match reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?? {
             Some(bytes) => T::from_binary(&bytes)
                 .map(Some)
@@ -240,7 +234,7 @@ impl DhtRequester {
     pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
-        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx)).await?;
+        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx))?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -248,12 +242,10 @@ impl DhtRequester {
     /// connection to the peer will be returned.
     pub async fn dial_or_discover_peer(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(DhtRequest::DialDiscoverPeer {
-                public_key,
-                reply: reply_tx,
-            })
-            .await?;
+        self.sender.send(DhtRequest::DialDiscoverPeer {
+            public_key,
+            reply: reply_tx,
+        })?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -265,7 +257,6 @@ impl DhtRequester {
                 severity,
                 reason: reason.to_string(),
             })
-            .await
             .is_err()
         {
             debug!(target: LOG_TARGET, "DhtActor is shut down and no longer responding to requests. This is expected during shutdown.");
@@ -283,7 +274,7 @@ pub struct DhtActor {
     config: Arc<DhtConfig>,
     discovery: DhtDiscoveryRequester,
     shutdown_signal: ShutdownSignal,
-    request_rx: mpsc::Receiver<DhtRequest>,
+    request_rx: mpsc::UnboundedReceiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
@@ -296,7 +287,7 @@ impl DhtActor {
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
-        request_rx: mpsc::Receiver<DhtRequest>,
+        request_rx: mpsc::UnboundedReceiver<DhtRequest>,
         discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
@@ -915,8 +906,8 @@ impl DiscoveryDialTask {
             match self.connectivity.dial_peer(node_id).await {
                 Ok(conn) => Ok(conn),
                 Err(ConnectivityError::ConnectionFailed(err)) => match err {
-                    ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
-                    ConnectionManagerError::DialConnectFailedAllAddresses => {
+                    ConnectionManagerError::ConnectFailedMaximumAttemptsReached
+                    | ConnectionManagerError::DialConnectFailedAllAddresses => {
                         debug!(
                             target: LOG_TARGET,
                             "Dial failed for peer {}. Attempting discovery.", public_key
@@ -959,9 +950,7 @@ mod test {
     use std::{convert::TryFrom, time::Duration};
 
     use tari_comms::test_utils::mocks::{
-        create_connectivity_mock,
-        create_peer_connection_mock_pair,
-        ConnectivityManagerMockState,
+        create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
@@ -970,10 +959,7 @@ mod test {
     use crate::{
         envelope::NodeDestination,
         test_utils::{
-            build_peer_manager,
-            create_dht_discovery_mock,
-            make_client_identity,
-            make_node_identity,
+            build_peer_manager, create_dht_discovery_mock, make_client_identity, make_node_identity,
             DhtDiscoveryMockState,
         },
     };
@@ -988,10 +974,10 @@ mod test {
     async fn send_join_request() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (out_tx, mut out_rx) = mpsc::channel(1);
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));

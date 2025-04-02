@@ -48,25 +48,16 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        NodeNetworkInfo,
-        ProtocolId,
+        NodeNetworkInfo, ProtocolId,
     },
     tor,
     tor::{HiddenServiceControllerError, TorIdentity},
     transports::{
-        predicate::FalsePredicate,
-        HiddenServiceTransport,
-        MemoryTransport,
-        SocksConfig,
-        SocksTransport,
+        predicate::FalsePredicate, HiddenServiceTransport, MemoryTransport, SocksConfig, SocksTransport,
         TcpWithTorTransport,
     },
     utils::cidr::parse_cidrs,
-    CommsBuilder,
-    CommsBuilderError,
-    CommsNode,
-    PeerManager,
-    UnspawnedCommsNode,
+    CommsBuilder, CommsBuilderError, CommsNode, PeerManager, UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -85,9 +76,7 @@ use crate::{
     dns::DnsClientError,
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorTransportConfig, TransportType},
-    TransportConfig,
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
+    TransportConfig, MAJOR_NETWORK_VERSION, MINOR_NETWORK_VERSION,
 };
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -183,7 +172,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let dht = Dht::builder()
         .local_test()
@@ -347,7 +336,7 @@ async fn configure_comms_and_dht(
     let node_identity = comms.node_identity();
     let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(config.dht.outbound_buffer_size);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
