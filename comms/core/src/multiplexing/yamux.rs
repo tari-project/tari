@@ -329,7 +329,8 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                                 },
                                 ConnectionError::Decode(FrameDecodeError::Io(ref io_err)) if
                                     io_err.kind() == io::ErrorKind::ConnectionReset ||
-                                    io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                                    io_err.kind() == io::ErrorKind::ConnectionAborted ||
+                                    io_err.kind() == io::ErrorKind::UnexpectedEof =>
                                 {
                                     debug!(
                                         target: LOG_TARGET,
