@@ -41,6 +41,7 @@ use lmdb_zero::{
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
+use serde_json::de;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
@@ -2981,11 +2982,12 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 let mut seeds = Vec::new();
                 let mut final_table = heights.clone();
                 for (db_seed, height) in &heights {
-                    let mut delete = false;
+                    let mut delete = true;
                     if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)? {
+                        info!(target: LOG_TARGET, "Checking header for monero seed {}", header.hash().to_hex());
                         if header.pow_algo() != PowAlgorithm::RandomX {
                             // delete
-                            delete = true;
+                            info!(target: LOG_TARGET, "Deleting monero seed height {} because it is not RandomX", header.hash().to_hex());
                         } else {
                             let pow_bytes = header.pow.pow_data.to_vec();
                             let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
@@ -2993,9 +2995,10 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                             // seeds.push(seed);
                             if seed != *db_seed {
                                 // delete
-                                delete = true;
+                                info!(target: LOG_TARGET, "Deleting monero seed height {} because it does not match the seed", header.hash().to_hex());
                             } else {
                                 seeds.push(seed);
+                                delete = false;
                             }
                         }
                     }
@@ -3005,7 +3008,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                     }
                 }
                 for (seed, height) in final_table {
-                    let txn = db.write_transaction()?;
+                    info!(target: LOG_TARGET, "Inserting new monero seed height {} with seed {}", height, seed.to_hex());
                     lmdb_insert(
                         &txn,
                         &db.monero_seed_height_index_db,
@@ -3014,6 +3017,8 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                         "monero_seed_height_index_db",
                     )?;
                 }
+
+                txn.commit()?;
             }
         }
     }
