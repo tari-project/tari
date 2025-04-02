@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll};
+use std::{
+    sync::Arc,
+    task::Poll,
+    time::{Duration, Instant},
+};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -36,8 +40,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
     types::{CommsDHKE, CommsPublicKey},
-    Bytes,
-    BytesMut,
+    Bytes, BytesMut,
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use tokio::sync::oneshot;
@@ -47,8 +50,7 @@ use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
-    crypt,
-    dedup,
+    crypt, dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{datetime_to_epochtime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     message_signature::MessageSignature,
@@ -179,7 +181,8 @@ struct BroadcastTask<S> {
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
 impl<S> BroadcastTask<S>
-where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>,
 {
     pub fn new(
         service: S,
@@ -202,6 +205,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     }
 
     pub async fn handle(mut self) -> Result<(), PipelineError> {
+        let timer = Instant::now();
         let request = self.request.take().expect("request cannot be None");
         trace!(target: LOG_TARGET, "Processing outbound request {}", request);
         let messages = self.generate_outbound_messages(request).await?;
@@ -221,6 +225,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             })
             .await;
 
+        if timer.elapsed() > Duration::from_millis(50) {
+            warn!(target: LOG_TARGET, "Broadcast task took too long to process a message: {:.2?}", timer.elapsed());
+        }
         Ok(())
     }
 
@@ -502,8 +509,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Produce a masked sender public key using an offset mask derived from the ECDH exchange
                 let mask = crypt::generate_key_mask(&shared_ephemeral_secret)
                     .map_err(|e| DhtOutboundError::CipherError(e.to_string()))?;
-                let masked_sender_public_key = &mask *
-                    self.node_identity
+                let masked_sender_public_key = &mask
+                    * self
+                        .node_identity
                         .public_key()
                         .to_public_key()
                         .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
@@ -578,11 +586,7 @@ mod test {
     use crate::{
         outbound::SendMessageParams,
         test_utils::{
-            assert_send_static_service,
-            create_dht_actor_mock,
-            create_dht_discovery_mock,
-            make_peer,
-            service_spy,
+            assert_send_static_service, create_dht_actor_mock, create_dht_discovery_mock, make_peer, service_spy,
         },
     };
 

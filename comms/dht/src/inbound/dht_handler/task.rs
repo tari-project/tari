@@ -165,7 +165,6 @@ where
             ..
         } = message;
 
-        dbg!(timer.elapsed().as_millis());
         // Ban the source peer. They should not have propagated a DHT discover response.
         let Some(authenticated_pk) = authenticated_origin else {
             warn!(
@@ -180,19 +179,15 @@ where
                     "Received JoinMessage that did not have an authenticated origin",
                 )
                 .await;
-            dbg!(timer.elapsed().as_millis());
             return Ok(());
         };
 
-        dbg!(timer.elapsed().as_millis());
         if authenticated_pk == *self.node_identity.public_key() {
             debug!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
-        dbg!(timer.elapsed().as_millis());
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
-        dbg!(timer.elapsed().as_millis());
         let join_msg = self
             .ban_on_offence(
                 &authenticated_pk,
@@ -202,7 +197,6 @@ where
             )
             .await?;
 
-        dbg!(timer.elapsed().as_millis());
         if join_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
             warn!(
                 target: LOG_TARGET,
@@ -224,7 +218,6 @@ where
                 )
                 .await;
 
-            dbg!(timer.elapsed().as_millis());
             return Ok(());
         }
 
@@ -236,7 +229,6 @@ where
         let validator = PeerValidator::new(&self.config);
         let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
 
-        dbg!(timer.elapsed().as_millis());
         let valid_peer = self
             .ban_on_offence(
                 &authenticated_pk,
@@ -246,15 +238,12 @@ where
             )
             .await?;
 
-        dbg!(timer.elapsed().as_millis());
-
         let is_banned = valid_peer.is_banned();
         let valid_peer_node_id = valid_peer.node_id.clone();
         let valid_peer_public_key = valid_peer.public_key.clone();
         // Update peer details. If the peer is banned we preserve the ban but still allow them to update their claims.
         self.peer_manager.add_peer(valid_peer).await?;
 
-        dbg!(timer.elapsed().as_millis());
         // DO NOT propagate this peer if this node has banned them
         if is_banned {
             debug!(
@@ -271,8 +260,6 @@ where
             );
             return Ok(());
         }
-
-        dbg!(timer.elapsed().as_millis());
 
         // Only propagate a join that was not directly sent to this node
         if dht_header.destination != self.node_identity.public_key() {
@@ -298,7 +285,6 @@ where
                 .await?;
         }
 
-        dbg!(timer.elapsed().as_millis());
         if timer.elapsed().as_millis() > 50 {
             warn!(
                 target: LOG_TARGET,

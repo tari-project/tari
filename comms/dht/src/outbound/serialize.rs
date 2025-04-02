@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::task::Poll;
+use std::{task::Poll, time::Instant};
 
 use futures::task::Context;
 use log::*;
@@ -64,6 +64,7 @@ where
     }
 
     fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
+        let timer = Instant::now();
         let next_service = self.inner.clone();
 
         let DhtOutboundMessage {
@@ -107,6 +108,13 @@ where
             tag,
             destination_node_id.short_str()
         );
+        if timer.elapsed().as_millis() > 50 {
+            warn!(
+                target: LOG_TARGET,
+                "Serializing outbound message took {:.2?}",
+                timer.elapsed()
+            );
+        }
         next_service.oneshot(OutboundMessage {
             tag,
             peer_node_id: destination_node_id,
