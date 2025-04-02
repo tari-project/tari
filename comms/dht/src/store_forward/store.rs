@@ -178,8 +178,7 @@ struct StoreTask<S> {
 }
 
 impl<S> StoreTask<S>
-where
-    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Send + Sync
 {
     pub fn new(
         next_service: S,
@@ -458,8 +457,12 @@ mod test {
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
         test_utils::{
-            assert_send_static_service, build_peer_manager, create_store_and_forward_mock, make_dht_inbound_message,
-            make_node_identity, service_spy,
+            assert_send_static_service,
+            build_peer_manager,
+            create_store_and_forward_mock,
+            make_dht_inbound_message,
+            make_node_identity,
+            service_spy,
         },
     };
 

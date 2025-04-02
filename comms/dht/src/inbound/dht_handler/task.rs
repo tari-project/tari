@@ -45,7 +45,8 @@ use crate::{
         envelope::DhtMessageType,
     },
     rpc::UnvalidatedPeerInfo,
-    DhtConfig, DhtRequester,
+    DhtConfig,
+    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -62,8 +63,7 @@ pub struct ProcessDhtMessage<S> {
 }
 
 impl<S> ProcessDhtMessage<S>
-where
-    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         next_service: S,
@@ -271,10 +271,10 @@ where
             self.outbound_service
                 .send_raw_no_wait(
                     SendMessageParams::new()
-                        .propagate(
-                            valid_peer_public_key.into(),
-                            vec![valid_peer_node_id, source_peer.node_id.clone()],
-                        )
+                        .propagate(valid_peer_public_key.into(), vec![
+                            valid_peer_node_id,
+                            source_peer.node_id.clone(),
+                        ])
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
@@ -335,8 +335,8 @@ where
             )
             .await?;
 
-        if *authenticated_origin != message.source_peer.public_key
-            || authenticated_origin.as_bytes() != discover_msg.public_key.as_slice()
+        if *authenticated_origin != message.source_peer.public_key ||
+            authenticated_origin.as_bytes() != discover_msg.public_key.as_slice()
         {
             warn!(
                 target: LOG_TARGET,
@@ -501,8 +501,8 @@ where
                 match &err {
                     DhtInboundError::PeerValidatorError(err) => match err {
                         DhtPeerValidatorError::NewAndExistingMismatch { .. } => {},
-                        err @ DhtPeerValidatorError::ValidatorError(_)
-                        | err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
+                        err @ DhtPeerValidatorError::ValidatorError(_) |
+                        err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
                             self.dht
                                 .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
                                 .await;

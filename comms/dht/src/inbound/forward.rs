@@ -161,8 +161,7 @@ impl<S> Forwarder<S> {
 }
 
 impl<S> Forwarder<S>
-where
-    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         let timer = std::time::Instant::now();

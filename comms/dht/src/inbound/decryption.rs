@@ -26,8 +26,12 @@ use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use tari_comms::{
-    connectivity::ConnectivityRequester, message::EnvelopeBody, peer_manager::NodeIdentity, pipeline::PipelineError,
-    types::CommsDHKE, BytesMut,
+    connectivity::ConnectivityRequester,
+    message::EnvelopeBody,
+    peer_manager::NodeIdentity,
+    pipeline::PipelineError,
+    types::CommsDHKE,
+    BytesMut,
 };
 use tari_crypto::compressed_key::CompressedKey;
 use tari_utilities::ByteArray;
@@ -137,8 +141,7 @@ where
 }
 
 impl<S> DecryptionService<S>
-where
-    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle_message(
         next_service: S,

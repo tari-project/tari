@@ -42,7 +42,8 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
-    filter, inbound,
+    filter,
+    inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
@@ -52,7 +53,10 @@ use crate::{
     rpc,
     storage::{DbConnection, StorageError},
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    DedupLayer, DhtActorError, DhtBuilder, DhtConfig,
+    DedupLayer,
+    DhtActorError,
+    DhtBuilder,
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht";
@@ -408,8 +412,8 @@ fn filter_out_all_saf(msg: &DecryptedDhtMessage) -> bool {
 fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     // Let the message through if:
     // it isn't a duplicate (normal message), or
-    let should_continue = !msg.is_duplicate()
-        || (
+    let should_continue = !msg.is_duplicate() ||
+        (
             // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
             msg.dht_header.message_type.is_domain_message() &&
                 // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
@@ -469,8 +473,12 @@ mod test {
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
         test_utils::{
-            build_peer_manager, make_client_identity, make_comms_inbound_message, make_dht_envelope,
-            make_node_identity, service_spy,
+            build_peer_manager,
+            make_client_identity,
+            make_comms_inbound_message,
+            make_dht_envelope,
+            make_node_identity,
+            service_spy,
         },
     };
 

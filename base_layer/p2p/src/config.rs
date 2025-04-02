@@ -29,13 +29,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
-        deserialize_dns_name_server_list,
-        serializers,
-        utils::serialize_string,
-        DnsNameServerList,
-        MultiaddrList,
-        Network,
-        StringList,
+        deserialize_dns_name_server_list, serializers, utils::serialize_string, DnsNameServerList, MultiaddrList,
+        Network, StringList,
     },
     SubConfigPath,
 };
@@ -153,8 +148,8 @@ impl Default for P2pConfig {
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 4,
-            max_concurrent_outbound_tasks: 4,
+            max_concurrent_inbound_tasks: 50,
+            max_concurrent_outbound_tasks: 50,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("dht.sqlite"),
                 auto_join: true,
@@ -199,12 +194,15 @@ mod test {
     #[test]
     fn default_dns_seed_name_servers_test() {
         let dns_seed_name_servers = PeerSeedsConfig::default().dns_seed_name_servers;
-        assert_eq!(dns_seed_name_servers.into_vec(), vec![
-            DnsNameServer::from_str("system").unwrap(),
-            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
-            DnsNameServer::from_str("8.8.8.8:853/dns.google").unwrap(),
-            DnsNameServer::from_str("9.9.9.9:853/dns.quad9.net").unwrap()
-        ]);
+        assert_eq!(
+            dns_seed_name_servers.into_vec(),
+            vec![
+                DnsNameServer::from_str("system").unwrap(),
+                DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
+                DnsNameServer::from_str("8.8.8.8:853/dns.google").unwrap(),
+                DnsNameServer::from_str("9.9.9.9:853/dns.quad9.net").unwrap()
+            ]
+        );
     }
 
     #[test]
@@ -218,10 +216,13 @@ mod test {
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), vec!["seeds.esmeralda.tari.com"]);
-        assert_eq!(config.peer_seeds.into_vec(), vec![
-            "20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/\
+        assert_eq!(
+            config.peer_seeds.into_vec(),
+            vec![
+                "20605a28047938f851e3d0cd3f0ff771b2fb23036f0ab8eaa57947dccc834d15::/onion3/\
              e4dsii6vc5f7frao23syonalgikd5kcd7fddrdjhab6bdo3cu47n3kyd:18141"
-        ]);
+            ]
+        );
         assert_eq!(
             config.dns_seed_name_servers.to_string(),
             "1.1.1.1:853/cloudflare-dns.com".to_string()
@@ -253,10 +254,13 @@ mod test {
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
         assert_eq!(config.dns_seeds.into_vec(), Vec::<String>::new());
         assert_eq!(config.peer_seeds.into_vec(), Vec::<String>::new());
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![
-            DnsNameServer::from_str("system").unwrap(),
-            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
-        ]);
+        assert_eq!(
+            config.dns_seed_name_servers.into_vec(),
+            vec![
+                DnsNameServer::from_str("system").unwrap(),
+                DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
+            ]
+        );
         assert!(!config.dns_seeds_use_dnssec);
 
         // Omitted config fields
@@ -280,9 +284,9 @@ mod test {
             #dns_seeds_use_dnssec = false
          "#;
         let config = toml::from_str::<PeerSeedsConfig>(config_str).unwrap();
-        assert_eq!(config.dns_seed_name_servers.into_vec(), vec![DnsNameServer::from_str(
-            "system"
-        )
-        .unwrap(),]);
+        assert_eq!(
+            config.dns_seed_name_servers.into_vec(),
+            vec![DnsNameServer::from_str("system").unwrap(),]
+        );
     }
 }

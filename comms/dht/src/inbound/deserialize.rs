@@ -141,8 +141,12 @@ mod test {
     use crate::{
         envelope::DhtMessageFlags,
         test_utils::{
-            assert_send_static_service, build_peer_manager, make_comms_inbound_message, make_dht_envelope,
-            make_node_identity, service_spy,
+            assert_send_static_service,
+            build_peer_manager,
+            make_comms_inbound_message,
+            make_dht_envelope,
+            make_node_identity,
+            service_spy,
         },
     };
 

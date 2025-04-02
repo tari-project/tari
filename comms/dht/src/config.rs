@@ -27,8 +27,11 @@ use tari_common::configuration::serializers;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
 use crate::{
-    actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl,
-    store_forward::SafConfig, version::DhtProtocolVersion,
+    actor::OffenceSeverity,
+    network_discovery::NetworkDiscoveryConfig,
+    storage::DbConnectionUrl,
+    store_forward::SafConfig,
+    version::DhtProtocolVersion,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

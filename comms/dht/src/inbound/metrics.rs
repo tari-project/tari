@@ -47,8 +47,7 @@ impl<S> Metrics<S> {
 }
 
 impl<S> Service<InboundMessage> for Metrics<S>
-where
-    S: Service<InboundMessage> + Clone + 'static,
+where S: Service<InboundMessage> + Clone + 'static
 {
     type Error = S::Error;
     type Future = S::Future;
