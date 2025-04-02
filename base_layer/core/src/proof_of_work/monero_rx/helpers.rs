@@ -221,7 +221,7 @@ pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, Me
 where T: AsRef<[u8]> {
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
-        .map_err(|_| MergeMineError::ValidationError("blocktemplate blob invalid".to_string()))?;
+        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
     Ok(obj)
 }
 
@@ -550,6 +550,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -652,6 +653,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -726,6 +728,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -798,6 +801,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -874,6 +878,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -970,6 +975,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -1030,6 +1036,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -1102,6 +1109,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -1163,6 +1171,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,

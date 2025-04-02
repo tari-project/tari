@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::peer_manager::Peer;
@@ -136,15 +137,14 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_control_key(&mut self, c: char) {
-        match c {
-            'q' | 'c' => {
-                self.should_quit = true;
-            },
-            _ => (),
+        trace!(target: LOG_TARGET, "on_control_key: {}", c);
+        if c == 'q' {
+            self.should_quit = true;
         }
     }
 
     pub fn on_key(&mut self, c: char) {
+        trace!(target: LOG_TARGET, "on_key: {}", c);
         match c {
             '\t' => {
                 self.tabs.next();
@@ -154,34 +154,42 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_backtab(&mut self) {
+        trace!(target: LOG_TARGET, "on_backtab");
         self.tabs.previous();
     }
 
     pub fn on_up(&mut self) {
+        trace!(target: LOG_TARGET, "on_up");
         self.tabs.on_up(&mut self.app_state);
     }
 
     pub fn on_down(&mut self) {
+        trace!(target: LOG_TARGET, "on_down");
         self.tabs.on_down(&mut self.app_state);
     }
 
     pub fn on_f10(&mut self) {
+        trace!(target: LOG_TARGET, "on_f10");
         self.should_quit = true;
     }
 
     pub fn on_right(&mut self) {
+        trace!(target: LOG_TARGET, "on_right");
         self.tabs.next();
     }
 
     pub fn on_left(&mut self) {
+        trace!(target: LOG_TARGET, "on_left");
         self.tabs.previous();
     }
 
     pub fn on_esc(&mut self) {
+        trace!(target: LOG_TARGET, "on_esc");
         self.tabs.on_esc(&mut self.app_state);
     }
 
     pub fn on_backspace(&mut self) {
+        trace!(target: LOG_TARGET, "on_backspace");
         self.tabs.on_backspace(&mut self.app_state);
     }
 

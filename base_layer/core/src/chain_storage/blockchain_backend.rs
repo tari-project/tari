@@ -4,7 +4,7 @@
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_sidechain::ShardGroup;
 
@@ -82,6 +82,9 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch all the kernels in a block
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
 
+    /// Fetch all bad blocks
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError>;
+
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
     fn fetch_kernel_by_excess_sig(
@@ -106,7 +109,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// set, otherwise None is returned.
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
     /// Fetch all outputs in a block
@@ -183,54 +186,54 @@ pub trait BlockchainBackend: Send + Sync {
     /// block body ordering.
     fn fetch_active_validator_nodes(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
 
     fn fetch_validators_activating_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
 
     fn fetch_validators_exiting_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError>;
     /// Returns true if the validator node registration UTXO exists
     fn validator_node_exists(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError>;
     /// Returns true if the validator node is registered and currently active
     fn validator_node_is_active(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError>;
 
     fn validator_node_is_active_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
         shard_group: ShardGroup,
     ) -> Result<bool, ChainStorageError>;
     fn validator_nodes_count_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
         shard_group: ShardGroup,
     ) -> Result<usize, ChainStorageError>;
     /// Returns the validator node for the given sidechain and public key if it exists
     fn get_validator_node(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        public_key: PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.
     fn fetch_template_registrations(

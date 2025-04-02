@@ -22,17 +22,17 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitment, signatures::CommitmentSignature};
+use tari_common_types::types::PrivateKey;
+use tari_crypto::{commitment::HomomorphicCommitment, ristretto::RistrettoPublicKey, signatures::CommitmentSignature};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl TryFrom<grpc::CommitmentSignature> for CommitmentSignature<PublicKey, PrivateKey> {
+impl TryFrom<grpc::CommitmentSignature> for CommitmentSignature<RistrettoPublicKey, PrivateKey> {
     type Error = String;
 
     fn try_from(sig: grpc::CommitmentSignature) -> Result<Self, Self::Error> {
-        let public_nonce = HomomorphicCommitment::<PublicKey>::from_canonical_bytes(&sig.public_nonce)
+        let public_nonce = HomomorphicCommitment::<RistrettoPublicKey>::from_canonical_bytes(&sig.public_nonce)
             .map_err(|_| "Could not get public nonce".to_string())?;
         let u = PrivateKey::from_canonical_bytes(&sig.u).map_err(|_| "Could not get u_x".to_string())?;
         let v = PrivateKey::from_canonical_bytes(&sig.v).map_err(|_| "Could not get v_x".to_string())?;
@@ -41,8 +41,8 @@ impl TryFrom<grpc::CommitmentSignature> for CommitmentSignature<PublicKey, Priva
     }
 }
 
-impl From<CommitmentSignature<PublicKey, PrivateKey>> for grpc::CommitmentSignature {
-    fn from(sig: CommitmentSignature<PublicKey, PrivateKey>) -> Self {
+impl From<CommitmentSignature<RistrettoPublicKey, PrivateKey>> for grpc::CommitmentSignature {
+    fn from(sig: CommitmentSignature<RistrettoPublicKey, PrivateKey>) -> Self {
         Self {
             public_nonce: sig.public_nonce().to_vec(),
             u: sig.u().to_vec(),

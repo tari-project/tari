@@ -37,14 +37,13 @@ use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, P
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct MinerConfig {
     /// gRPC address of base node
-    pub base_node_grpc_address: Option<Multiaddr>,
+    pub base_node_grpc_address: Option<String>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation
@@ -151,10 +150,8 @@ impl MinerConfig {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
 
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MinerConfig;
 
@@ -163,7 +160,7 @@ mod test {
         const CONFIG: &str = r#"
 [miner]
 num_mining_threads=2
-base_node_grpc_address = "/dns4/my_base_node/tcp/1234"
+base_node_grpc_address = "http://my_base_node:1234"
 mine_on_tip_only = false
 "#;
         let mut cfg: config::Config = config::Config::default();
@@ -174,7 +171,7 @@ mine_on_tip_only = false
         assert_eq!(config.num_mining_threads, 2);
         assert_eq!(
             config.base_node_grpc_address,
-            Some(Multiaddr::from_str("/dns4/my_base_node/tcp/1234").unwrap())
+            Some("http://my_base_node:1234".to_string())
         );
         assert!(!config.mine_on_tip_only);
     }

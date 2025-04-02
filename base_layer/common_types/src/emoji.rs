@@ -34,7 +34,7 @@ use thiserror::Error;
 
 use crate::{
     dammsum::{compute_checksum, validate_checksum, CHECKSUM_BYTES},
-    types::PublicKey,
+    types::{CompressedPublicKey, UncompressedPublicKey},
 };
 
 /// An emoji ID is a 33-character emoji representation of a public key that includes a checksum for safety.
@@ -72,7 +72,7 @@ use crate::{
 /// assert!(EmojiId::from_str(invalid_emoji_string).is_err());
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct EmojiId(PublicKey);
+pub struct EmojiId(CompressedPublicKey);
 
 const DICT_SIZE: usize = 256; // number of elements in the symbol dictionary
 const DATA_BYTES: usize = 32; // number of bytes used for the key data
@@ -123,7 +123,7 @@ pub enum EmojiIdError {
 
 impl EmojiId {
     /// Get the public key from an emoji ID
-    pub fn as_public_key(&self) -> &PublicKey {
+    pub fn as_public_key(&self) -> &CompressedPublicKey {
         &self.0
     }
 }
@@ -151,26 +151,26 @@ impl FromStr for EmojiId {
         let data = validate_checksum(&bytes).map_err(|_| EmojiIdError::InvalidChecksum)?;
 
         // Convert to a public key
-        match PublicKey::from_canonical_bytes(data) {
-            Ok(public_key) => Ok(Self(public_key)),
+        match UncompressedPublicKey::from_canonical_bytes(data) {
+            Ok(public_key) => Ok(Self(CompressedPublicKey::new_from_pk(public_key))),
             Err(_) => Err(EmojiIdError::CannotRecoverPublicKey),
         }
     }
 }
 
-impl From<&PublicKey> for EmojiId {
-    fn from(value: &PublicKey) -> Self {
+impl From<&CompressedPublicKey> for EmojiId {
+    fn from(value: &CompressedPublicKey) -> Self {
         Self::from(value.clone())
     }
 }
 
-impl From<PublicKey> for EmojiId {
-    fn from(value: PublicKey) -> Self {
+impl From<CompressedPublicKey> for EmojiId {
+    fn from(value: CompressedPublicKey) -> Self {
         Self(value)
     }
 }
 
-impl From<&EmojiId> for PublicKey {
+impl From<&EmojiId> for CompressedPublicKey {
     fn from(value: &EmojiId) -> Self {
         value.as_public_key().clone()
     }
@@ -194,15 +194,12 @@ impl Display for EmojiId {
 mod test {
     use std::{iter, str::FromStr};
 
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey},
-        tari_utilities::ByteArray,
-    };
+    use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
 
     use crate::{
         dammsum::{compute_checksum, CHECKSUM_BYTES},
         emoji::{emoji_set, EmojiId, EmojiIdError, DATA_BYTES},
-        types::{PrivateKey, PublicKey},
+        types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey},
     };
 
     #[test]
@@ -210,7 +207,7 @@ mod test {
     fn valid_emoji_id() {
         // Generate random public key
         let mut rng = rand::thread_rng();
-        let public_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key = EmojiId::from(&public_key);
@@ -258,7 +255,7 @@ mod test {
         // This byte representation does not represent a valid public key
         let mut bytes = vec![0u8; DATA_BYTES];
         bytes[0] = 1;
-        assert!(PublicKey::from_canonical_bytes(&bytes).is_err());
+        assert!(UncompressedPublicKey::from_canonical_bytes(&bytes).is_err());
 
         // Convert to an emoji string and manually add a valid checksum
         let emoji_set = emoji_set();
@@ -277,6 +274,6 @@ mod test {
     #[test]
     /// Test that the data size is correct for the underlying key type
     fn data_size() {
-        assert_eq!(PublicKey::default().as_bytes().len(), DATA_BYTES);
+        assert_eq!(CompressedPublicKey::default().as_bytes().len(), DATA_BYTES);
     }
 }

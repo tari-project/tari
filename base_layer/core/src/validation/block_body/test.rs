@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tokio::time::Instant;
@@ -37,7 +36,6 @@ use crate::{
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::TariKeyId,
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
@@ -46,6 +44,7 @@ use crate::{
             RangeProofType,
             TransactionError,
         },
+        transaction_key_manager::TariKeyId,
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -94,6 +93,7 @@ async fn it_passes_if_large_output_block_is_valid() {
         .calculate_mmr_roots(chain_block.block().clone())
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_mr = mmr_roots.output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
@@ -131,6 +131,7 @@ async fn it_validates_when_a_coinbase_is_spent() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -173,6 +174,7 @@ async fn it_passes_if_large_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -203,6 +205,7 @@ async fn it_passes_if_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
+    block.header.block_output_mr = mmr_roots.block_output_mr;
     block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
@@ -238,7 +241,7 @@ async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true).await;
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
-    let commitment_mask_key = KeyId::Managed {
+    let commitment_mask_key = TariKeyId::Managed {
         branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
         index: 42,
     };

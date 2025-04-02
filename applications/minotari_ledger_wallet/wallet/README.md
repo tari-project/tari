@@ -72,13 +72,18 @@ For more information see [LedgerCTL](https://github.com/LedgerHQ/ledgerctl).
 It is recommended to build the Ledger application via the official `ledger-app-builder` Docker image, as the Docker 
 image is properly setup, supported and always kept up to date.
 
+**Note:** Before proceeding, manually delete any ledger docker images from Docker Desktop as those will not be updated 
+automatically: 
+- Select he _Images_ tab/menu item
+- Select the checkbox next to _ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder_ and then press _Delete_. 
+
 ### Option 1: Using Docker
 
 Ensure Docker Desktop is installed and running on your machine.
 
 The following command has to be run from the root of the Tari repository.  
 
-Replace ```{TARGET}``` with the appropriate value (e.g., `nanosplus`, `nanos`, etc.).
+Replace ```{TARGET}``` with the appropriate value (e.g., `nanosplus`, `stax`, etc.).
 
 Compiled resources will be found in `applications/minotari_ledger_wallet/wallet/target/{TARGET}/release`
 

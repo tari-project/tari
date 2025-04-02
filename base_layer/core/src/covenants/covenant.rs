@@ -194,7 +194,7 @@ mod test {
             test::{create_input, create_outputs},
             Covenant,
         },
-        transactions::{key_manager::create_memory_db_key_manager, test_helpers::UtxoTestParams},
+        transactions::{test_helpers::UtxoTestParams, transaction_key_manager::create_memory_db_key_manager},
     };
 
     #[tokio::test]

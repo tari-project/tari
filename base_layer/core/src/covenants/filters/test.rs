@@ -27,8 +27,8 @@ use crate::{
         Covenant,
     },
     transactions::{
-        key_manager::MemoryDbKeyManager,
         transaction_components::{TransactionInput, TransactionOutput},
+        transaction_key_manager::MemoryDbKeyManager,
     },
 };
 

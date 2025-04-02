@@ -22,34 +22,34 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::{hashing::DomainSeparation, signatures::SchnorrSignature};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey,};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl<H: DomainSeparation> TryFrom<grpc::Signature> for SchnorrSignature<PublicKey, PrivateKey, H> {
+impl<H: DomainSeparation> TryFrom<grpc::Signature> for SchnorrSignature<CompressedPublicKey, PrivateKey, H> {
     type Error = String;
 
     fn try_from(sig: grpc::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
         let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
     }
 }
-impl<H: DomainSeparation> From<&SchnorrSignature<PublicKey, PrivateKey, H>> for grpc::Signature {
-    fn from(sig: &SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<&SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: &SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
         }
     }
 }
-impl<H: DomainSeparation> From<SchnorrSignature<PublicKey, PrivateKey, H>> for grpc::Signature {
-    fn from(sig: SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
         }
     }

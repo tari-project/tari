@@ -52,10 +52,10 @@ use crate::{
         Mempool,
     },
     transactions::{
-        key_manager::create_memory_db_key_manager,
         tari_amount::uT,
         test_helpers::create_tx,
         transaction_components::Transaction,
+        transaction_key_manager::create_memory_db_key_manager,
     },
     validation::mocks::MockValidator,
 };

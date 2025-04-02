@@ -25,7 +25,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -41,7 +41,7 @@ use crate::{
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
@@ -79,6 +79,20 @@ impl LocalNodeCommsInterface {
     pub async fn get_metadata(&mut self) -> Result<ChainMetadata, CommsInterfaceError> {
         match self.request_sender.call(NodeCommsRequest::GetChainMetadata).await?? {
             NodeCommsResponse::ChainMetadata(metadata) => Ok(metadata),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_target_difficulty_for_next_block(
+        &mut self,
+        algo: PowAlgorithm,
+    ) -> Result<Difficulty, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetTargetDifficultyNextBlock(algo))
+            .await??
+        {
+            NodeCommsResponse::TargetDifficulty(target_difficulty) => Ok(target_difficulty),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
@@ -214,7 +228,7 @@ impl LocalNodeCommsInterface {
     /// Fetches the blocks with the specified utxo commitments
     pub async fn fetch_blocks_with_utxos(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
@@ -286,7 +300,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_active_validator_nodes(
         &mut self,
         height: u64,
-        validator_network: Option<PublicKey>,
+        validator_network: Option<CompressedPublicKey>,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
         match self
             .request_sender
@@ -303,7 +317,7 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_validator_node_changes(
         &mut self,
-        sidechain_id: Option<PublicKey>,
+        sidechain_id: Option<CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeChange>, CommsInterfaceError> {
         match self
@@ -318,8 +332,8 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_validator_node(
         &mut self,
-        sidechain_id: Option<PublicKey>,
-        public_key: PublicKey,
+        sidechain_id: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, CommsInterfaceError> {
         match self
             .request_sender

@@ -21,18 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
-    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
 use tari_core::transactions::{
@@ -246,9 +244,9 @@ pub enum DbValue {
     PendingOutboundTransaction(Box<OutboundTransaction>),
     PendingInboundTransaction(Box<InboundTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
-    PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
-    PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
-    CompletedTransactions(HashMap<TxId, CompletedTransaction>),
+    PendingOutboundTransactions(Vec<OutboundTransaction>),
+    PendingInboundTransactions(Vec<InboundTransaction>),
+    CompletedTransactions(Vec<CompletedTransaction>),
     WalletTransaction(Box<WalletTransaction>),
 }
 
@@ -509,22 +507,20 @@ where T: TransactionBackend + 'static
         Ok(*t)
     }
 
-    pub fn get_pending_inbound_transactions(
-        &self,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
+    pub fn get_pending_inbound_transactions(&self) -> Result<Vec<InboundTransaction>, TransactionStorageError> {
         self.get_pending_inbound_transactions_by_cancelled(false)
     }
 
     pub fn get_cancelled_pending_inbound_transactions(
         &self,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
+    ) -> Result<Vec<InboundTransaction>, TransactionStorageError> {
         self.get_pending_inbound_transactions_by_cancelled(true)
     }
 
     fn get_pending_inbound_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionStorageError> {
+    ) -> Result<Vec<InboundTransaction>, TransactionStorageError> {
         let key = if cancelled {
             DbKey::CancelledPendingInboundTransactions
         } else {
@@ -545,22 +541,20 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
-    pub fn get_pending_outbound_transactions(
-        &self,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
+    pub fn get_pending_outbound_transactions(&self) -> Result<Vec<OutboundTransaction>, TransactionStorageError> {
         self.get_pending_outbound_transactions_by_cancelled(false)
     }
 
     pub fn get_cancelled_pending_outbound_transactions(
         &self,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
+    ) -> Result<Vec<OutboundTransaction>, TransactionStorageError> {
         self.get_pending_outbound_transactions_by_cancelled(true)
     }
 
     fn get_pending_outbound_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionStorageError> {
+    ) -> Result<Vec<OutboundTransaction>, TransactionStorageError> {
         let key = if cancelled {
             DbKey::CancelledPendingOutboundTransactions
         } else {
@@ -589,13 +583,11 @@ where T: TransactionBackend + 'static
         Ok(address)
     }
 
-    pub fn get_completed_transactions(&self) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
+    pub fn get_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.get_completed_transactions_by_cancelled(false)
     }
 
-    pub fn get_cancelled_completed_transactions(
-        &self,
-    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
+    pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.get_completed_transactions_by_cancelled(true)
     }
 
@@ -621,7 +613,7 @@ where T: TransactionBackend + 'static
     fn get_completed_transactions_by_cancelled(
         &self,
         cancelled: bool,
-    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
             DbKey::CancelledCompletedTransactions
         } else {
@@ -689,22 +681,18 @@ where T: TransactionBackend + 'static
         tx_id: TxId,
         amount: MicroMinotari,
         source_address: TariAddress,
-        comms_address: TariAddress,
-        message: String,
-        import_status: ImportStatus,
+        destination_address: TariAddress,
+        status: TransactionStatus,
         current_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
+        mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
         payment_id: PaymentId,
+        direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
-        let payment_id = match payment_id {
-            PaymentId::Empty => None,
-            v => Some(v),
-        };
         let transaction = CompletedTransaction::new(
             tx_id,
             source_address,
-            comms_address,
+            destination_address,
             amount,
             MicroMinotari::from(0),
             Transaction::new(
@@ -714,10 +702,9 @@ where T: TransactionBackend + 'static
                 PrivateKey::default(),
                 PrivateKey::default(),
             ),
-            TransactionStatus::try_from(import_status)?,
-            message,
-            mined_timestamp.unwrap_or_else(|| Utc::now().naive_utc()),
-            TransactionDirection::Inbound,
+            status,
+            mined_timestamp.unwrap_or(Utc::now()),
+            direction,
             current_height,
             mined_timestamp,
             payment_id,

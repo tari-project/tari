@@ -26,15 +26,17 @@ use std::io;
 
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
-use minotari_app_grpc::authentication::BasicAuthError;
 use minotari_app_utilities::parse_miner_input::ParseInputError;
+use minotari_wallet_grpc_client::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{
     consensus::ConsensusBuilderError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
-    transactions::{key_manager::CoreKeyManagerError, CoinbaseBuildError},
+    transactions::{
+        transaction_key_manager::{error::KeyManagerServiceError, CoreKeyManagerError},
+        CoinbaseBuildError,
+    },
 };
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use thiserror::Error;
 use tonic::{codegen::http::uri::InvalidUri, transport};
@@ -122,6 +124,10 @@ pub enum MmProxyError {
     MaxSizeBytesError(#[from] MaxSizeBytesError),
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("Monerod timeout: {0}")]
+    MonerodTimeout(String),
+    #[error("Monerod request could not be parsed: {0}")]
+    InvalidMonerodRequest(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

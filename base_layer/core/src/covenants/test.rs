@@ -25,7 +25,6 @@ use std::convert::TryInto;
 use crate::{
     covenants::{context::CovenantContext, Covenant},
     transactions::{
-        key_manager::MemoryDbKeyManager,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
             BuildInfo,
@@ -36,6 +35,7 @@ use crate::{
             TransactionInput,
             TransactionOutput,
         },
+        transaction_key_manager::MemoryDbKeyManager,
     },
 };
 

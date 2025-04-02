@@ -383,6 +383,7 @@ async fn setup_base_node_services(
     let rpc_server = RpcServer::builder()
         .with_maximum_simultaneous_sessions(p2p_config.rpc_max_simultaneous_sessions)
         .with_maximum_sessions_per_client(p2p_config.rpc_max_sessions_per_peer)
+        .with_cull_oldest_peer_rpc_connection_on_full(p2p_config.cull_oldest_peer_rpc_connection_on_full)
         .finish();
     let rpc_server = rpc_server.add_service(base_node::create_base_node_sync_rpc_service(
         blockchain_db.clone().into(),

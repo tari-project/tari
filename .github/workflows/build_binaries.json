@@ -2,7 +2,7 @@
   {
     "name": "linux-x86_64",
     "runs-on": "ubuntu-20.04",
-    "rust": "nightly-2024-07-07",
+    "rust": "stable",
     "target": "x86_64-unknown-linux-gnu",
     "cross": false,
     "build_metric": true
@@ -33,16 +33,14 @@
     "runs-on": "macos-13",
     "rust": "stable",
     "target": "x86_64-apple-darwin",
-    "cross": false,
-    "build_enabled": false
+    "cross": false
   },
   {
     "name": "macos-arm64",
     "runs-on": "macos-14",
     "rust": "stable",
     "target": "aarch64-apple-darwin",
-    "cross": false,
-    "build_enabled": false
+    "cross": false
   },
   {
     "name": "windows-x64",
@@ -51,8 +49,7 @@
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
     "features": "safe",
-    "flags": "--workspace --exclude tari_libtor",
-    "build_enabled": false
+    "flags": "--workspace --exclude tari_libtor"
   },
   {
     "name": "windows-arm64",

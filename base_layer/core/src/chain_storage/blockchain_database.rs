@@ -39,7 +39,16 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        Signature,
+        UncompressedCommitment,
+    },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{
@@ -50,6 +59,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
+    block_output_mr_hash_from_pruned_mmr,
     blocks::{
         Block,
         BlockAccumulatedData,
@@ -93,7 +103,7 @@ use crate::{
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
     output_mr_hash_from_smt,
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
@@ -106,6 +116,7 @@ use crate::{
     OutputSmt,
     PrunedInputMmr,
     PrunedKernelMmr,
+    PrunedOutputMmr,
     ValidatorNodeBMT,
     ValidatorNodeMerkleHasherBlake256,
 };
@@ -229,8 +240,7 @@ where B: BlockchainBackend
         difficulty_calculator: DifficultyCalculator,
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
-        debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
-        let is_empty = db.is_empty()?;
+        trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
@@ -240,7 +250,36 @@ where B: BlockchainBackend
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
             smt,
         };
-        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
+        Ok(blockchain_db)
+    }
+
+    pub fn start_new(
+        db: B,
+        consensus_manager: ConsensusManager,
+        validators: Validators<B>,
+        config: BlockchainDatabaseConfig,
+        difficulty_calculator: DifficultyCalculator,
+        smt: Arc<RwLock<OutputSmt>>,
+    ) -> Result<Self, ChainStorageError> {
+        let blockchain_db = BlockchainDatabase {
+            db: Arc::new(RwLock::new(db)),
+            validators,
+            config,
+            consensus_manager,
+            difficulty_calculator: Arc::new(difficulty_calculator),
+            disable_add_block_flag: Arc::new(AtomicBool::new(false)),
+            smt,
+        };
+        blockchain_db.start()?;
+        Ok(blockchain_db)
+    }
+
+    pub fn start(&self) -> Result<(), ChainStorageError> {
+        let (is_empty, config) = {
+            let db = self.db_read_access()?;
+            (db.is_empty()?, &self.config)
+        };
+        let genesis_block = Arc::new(self.consensus_manager.get_genesis_block());
         if is_empty {
             info!(
                 target: LOG_TARGET,
@@ -248,35 +287,39 @@ where B: BlockchainBackend
                 genesis_block.block().body.to_counts_string()
             );
             let mut txn = DbTransaction::new();
-            blockchain_db.write(txn)?;
+            self.write(txn)?;
             txn = DbTransaction::new();
-            blockchain_db.insert_block(genesis_block.clone())?;
+            self.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
-            let input_sum = body
-                .inputs()
-                .iter()
-                .map(|k| k.commitment())
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .sum::<Commitment>();
-            let output_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
-            let total_utxo_sum = &output_sum - &input_sum;
-            let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
+
+            let mut input_sum = UncompressedCommitment::default();
+            for input in body.inputs() {
+                input_sum = &input_sum + &input.commitment()?.to_commitment()?;
+            }
+            let mut output_sum = UncompressedCommitment::default();
+            for output in body.outputs() {
+                output_sum = &output_sum + &output.commitment.to_commitment()?;
+            }
+            let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
+            let mut kernel_sum = UncompressedCommitment::default();
+            for kernel in body.kernels() {
+                kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
+            }
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(kernel_sum.clone()),
+                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(kernel_sum, total_utxo_sum);
-            blockchain_db.write(txn)?;
-            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
-        } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
+            txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
+            self.write(txn)?;
+            self.store_pruning_horizon(config.pruning_horizon)?;
+        } else if !self.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
             // Check the genesis block in the DB.
             error!(
                 target: LOG_TARGET,
                 "Genesis block in database does not match the supplied genesis block in the code! Hash in the code \
                  {:?}, hash in the database {:?}",
-                blockchain_db.fetch_chain_header(0)?.hash(),
+                self.fetch_chain_header(0)?.hash(),
                 genesis_block.accumulated_data().hash
             );
             return Err(ChainStorageError::CorruptedDatabase(
@@ -286,13 +329,13 @@ where B: BlockchainBackend
             ));
         } else {
             // lets load the smt into memory
-            let mut smt = blockchain_db.smt_write_access()?;
-            warn!(target: LOG_TARGET, "Loading SMT into memory from stored db");
-            *smt = blockchain_db.db_write_access()?.calculate_tip_smt()?;
-            warn!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
+            let mut smt = self.smt_write_access()?;
+            debug!(target: LOG_TARGET, "Loading SMT into memory from stored db");
+            *smt = self.db_write_access()?.calculate_tip_smt()?;
+            debug!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
         if config.cleanup_orphans_at_startup {
-            match blockchain_db.cleanup_all_orphans() {
+            match self.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
@@ -301,20 +344,20 @@ where B: BlockchainBackend
             }
         }
 
-        let pruning_horizon = blockchain_db.get_chain_metadata()?.pruning_horizon();
+        let pruning_horizon = self.get_chain_metadata()?.pruning_horizon();
         if config.pruning_horizon != pruning_horizon {
             debug!(
                 target: LOG_TARGET,
                 "Updating pruning horizon from {} to {}.", pruning_horizon, config.pruning_horizon,
             );
-            blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+            self.store_pruning_horizon(config.pruning_horizon)?;
         }
 
         if !config.track_reorgs {
-            blockchain_db.clear_all_reorgs()?;
+            self.clear_all_reorgs()?;
         }
 
-        Ok(blockchain_db)
+        Ok(())
     }
 
     /// Get the genesis block form the consensus manager
@@ -442,7 +485,7 @@ where B: BlockchainBackend
 
     pub fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_unspent_output_hash_by_commitment(&commitment)
@@ -508,6 +551,11 @@ where B: BlockchainBackend
     pub fn fetch_kernels_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernels_in_block(&hash)
+    }
+
+    pub fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_bad_blocks()
     }
 
     pub fn fetch_outputs_in_block_with_spend_state(
@@ -728,7 +776,7 @@ where B: BlockchainBackend
     }
 
     /// Returns the sum of all kernels
-    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
+    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<CompressedCommitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(*at_hash)?.kernel_sum().clone())
     }
 
@@ -906,6 +954,11 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets rewind the smt
+                warn!(
+                    target: LOG_TARGET,
+                    "Reloading SMT into memory from stored db via new block prepare due to '{}'",
+                    e
+                );
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -914,6 +967,7 @@ where B: BlockchainBackend
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
+        block.header.block_output_mr = roots.block_output_mr;
         block.header.output_smt_size = roots.output_smt_size;
         block.header.validator_node_mr = roots.validator_node_mr;
         block.header.validator_node_size = roots.validator_node_size;
@@ -933,6 +987,7 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets reset the smt to its starting state
+                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
                 *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
@@ -948,8 +1003,8 @@ where B: BlockchainBackend
 
     pub fn get_validator_node(
         &self,
-        sidechain_pk: Option<PublicKey>,
-        public_key: PublicKey,
+        sidechain_pk: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.get_validator_node(sidechain_pk.as_ref(), public_key)
@@ -1024,12 +1079,12 @@ where B: BlockchainBackend
         if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        let block_exist = db.bad_block_exists(block_hash)?;
-        if block_exist.0 {
+        let (is_bad_block, reason) = db.bad_block_exists(block_hash)?;
+        if is_bad_block {
             return Err(ChainStorageError::ValidationError {
                 source: ValidationError::BadBlockFound {
                     hash: block_hash.to_hex(),
-                    reason: block_exist.1,
+                    reason,
                 },
             });
         }
@@ -1097,7 +1152,7 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
 
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block, &self.consensus_manager, self.smt())?;
+        insert_best_block(&mut txn, block, self.smt())?;
         db.write(txn)
     }
 
@@ -1159,9 +1214,9 @@ where B: BlockchainBackend
             });
         }
 
-        debug!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
+        trace!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
         let blocks = fetch_blocks(&*db, start, end, compact)?;
-        debug!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
+        trace!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
 
         Ok(blocks)
     }
@@ -1185,7 +1240,10 @@ where B: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided utxo hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_utxo(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_by_utxo_commitment(&*db, &commitment)
     }
@@ -1207,14 +1265,6 @@ where B: BlockchainBackend
     pub fn bad_block_exists(&self, hash: BlockHash) -> Result<(bool, String), ChainStorageError> {
         let db = self.db_read_access()?;
         db.bad_block_exists(hash)
-    }
-
-    /// Adds a block hash to the list of bad blocks so it wont get process again.
-    pub fn add_bad_block(&self, hash: BlockHash, height: u64, reason: String) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        let mut txn = DbTransaction::new();
-        txn.insert_bad_block(hash, height, reason);
-        db.write(txn)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -1256,7 +1306,6 @@ where B: BlockchainBackend
             &self.config,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
-            &self.consensus_manager,
             self.smt(),
         )?;
         Ok(())
@@ -1302,7 +1351,7 @@ where B: BlockchainBackend
     pub fn fetch_active_validator_nodes(
         &self,
         height: u64,
-        sidechain_pk: Option<PublicKey>,
+        sidechain_pk: Option<CompressedPublicKey>,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_active_validator_nodes(sidechain_pk.as_ref(), height)
@@ -1310,7 +1359,7 @@ where B: BlockchainBackend
 
     pub fn fetch_validators_activating_in_epoch(
         &self,
-        sidechain_pk: Option<PublicKey>,
+        sidechain_pk: Option<CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -1319,7 +1368,7 @@ where B: BlockchainBackend
 
     pub fn fetch_validators_exiting_in_epoch(
         &self,
-        sidechain_pk: Option<PublicKey>,
+        sidechain_pk: Option<CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -1357,6 +1406,7 @@ pub struct MmrRoots {
     pub kernel_mmr_size: u64,
     pub input_mr: FixedHash,
     pub output_mr: FixedHash,
+    pub block_output_mr: FixedHash,
     pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
     pub validator_node_size: u64,
@@ -1369,6 +1419,7 @@ impl std::fmt::Display for MmrRoots {
         writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
         writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
         writeln!(f, "Output MR       : {}", self.output_mr)?;
+        writeln!(f, "Block Output MR : {}", self.block_output_mr)?;
         writeln!(f, "Output SMT Size : {}", self.output_smt_size)?;
         writeln!(f, "Validator MR    : {}", self.validator_node_mr)?;
         Ok(())
@@ -1408,6 +1459,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
@@ -1415,6 +1468,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let mut outputs_to_remove = Vec::new();
     for output in body.outputs() {
+        if output.features.is_coinbase() {
+            block_output_mmr.push(output.hash().to_vec())?;
+        } else {
+            normal_output_mmr.push(output.hash().to_vec())?;
+        }
         if !output.is_burned() {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
@@ -1429,6 +1487,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
             }
         }
     }
+    block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
     let mut outputs_to_add = Vec::new();
     for input in body.inputs() {
@@ -1459,11 +1518,18 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         (tip_header.validator_node_mr, 0)
     };
 
+    let block_output_mr = if block.version() > 0 {
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?
+    } else {
+        FixedHash::zero()
+    };
+
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
         output_mr: output_mr_hash_from_smt(output_smt)?,
+        block_output_mr,
         output_smt_size: output_smt.size(),
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
@@ -1505,7 +1571,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 pub fn calculate_validator_node_mr(
     validator_nodes: &[ValidatorNodeRegistrationInfo],
 ) -> Result<FixedHash, ChainStorageError> {
-    fn hash_node((pk, s): &(&PublicKey, &[u8; 32])) -> Vec<u8> {
+    fn hash_node((pk, s): &(&CompressedPublicKey, &[u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
             .chain(pk)
             .chain(s)
@@ -1653,7 +1719,6 @@ fn add_block<T: BlockchainBackend>(
 fn insert_best_block(
     txn: &mut DbTransaction,
     block: Arc<ChainBlock>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
@@ -1663,22 +1728,13 @@ fn insert_best_block(
         block.header().height,
         block_hash,
     );
-    if block.header().pow_algo() == PowAlgorithm::RandomX {
-        let monero_header =
-            MoneroPowData::from_header(block.header(), consensus).map_err(|e| ChainStorageError::InvalidArguments {
-                func: "insert_best_block",
-                arg: "block",
-                message: format!("block contained invalid or malformed monero PoW data: {}", e),
-            })?;
-        txn.insert_monero_seed_height(monero_header.randomx_key.to_vec(), block.height());
-    }
-
     let height = block.height();
     let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
+    let allow_smt_change = Arc::new(AtomicBool::new(true));
     txn.insert_chain_header(block.to_chain_header())
-        .insert_tip_block_body(block, smt)
+        .insert_tip_block_body(block, smt, allow_smt_change)
         .set_best_block(
             height,
             block_hash,
@@ -1797,23 +1853,16 @@ fn fetch_block_by_kernel_signature<T: BlockchainBackend>(
 
 fn fetch_block_by_utxo_commitment<T: BlockchainBackend>(
     db: &T,
-    commitment: &Commitment,
+    commitment: &CompressedCommitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    match fetch_utxo_by_commitment(db, commitment)? {
-        Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
+    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
+    match output {
+        Some(hash) => match db.fetch_output(&hash)? {
+            Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash, false),
+            None => Ok(None),
+        },
         None => Ok(None),
     }
-}
-
-fn fetch_utxo_by_commitment<T: BlockchainBackend>(
-    db: &T,
-    commitment: &Commitment,
-) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
-    output
-        .map(|hash| db.fetch_output(&hash))
-        .transpose()
-        .map(|output| output.flatten())
 }
 
 fn fetch_block_by_hash<T: BlockchainBackend>(
@@ -2012,14 +2061,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(
-        db,
-        config,
-        block_validator,
-        chain_strength_comparer,
-        consensus_manager,
-        smt,
-    );
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer, smt);
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -2038,7 +2080,6 @@ fn reorganize_chain<T: BlockchainBackend>(
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let removed_blocks = rewind_to_hash(backend, fork_hash, smt.clone())?;
@@ -2077,11 +2118,11 @@ fn reorganize_chain<T: BlockchainBackend>(
             backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus, smt.clone())?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, smt.clone())?;
             return Err(e.into());
         }
 
-        if let Err(e) = insert_best_block(&mut txn, block.clone(), consensus, smt.clone()) {
+        if let Err(e) = insert_best_block(&mut txn, block.clone(), smt.clone()) {
             let mut write_smt = smt.write().map_err(|e| {
                 error!(
                     target: LOG_TARGET,
@@ -2089,6 +2130,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 );
                 ChainStorageError::AccessError("write lock on smt".into())
             })?;
+            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg due to '{}'", e);
             *write_smt = backend.calculate_tip_smt()?;
             return Err(e);
         }
@@ -2101,7 +2143,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus, smt)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, smt)?;
             return Err(e);
         }
     }
@@ -2114,7 +2156,6 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
@@ -2172,7 +2213,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, consensus, smt)?;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, smt)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -2224,7 +2265,6 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
-    consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<(), ChainStorageError> {
     let invalid_chain = rewind_to_hash(db, to_hash, smt.clone())?;
@@ -2241,7 +2281,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block, consensus, smt.clone())?;
+        insert_best_block(&mut txn, block, smt.clone())?;
     }
     db.write(txn)?;
     Ok(())
@@ -2331,7 +2371,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height, e.to_string());
             db.write(txn)?;
             return Err(e.into());
-        }
+        },
     };
 
     // Include the current block timestamp in the median window

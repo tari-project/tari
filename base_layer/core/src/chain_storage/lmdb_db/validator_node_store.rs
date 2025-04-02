@@ -25,7 +25,8 @@ use std::{collections::BTreeSet, ops::Deref};
 use lmdb_zero::{ConstTransaction, WriteTransaction};
 use log::debug;
 use serde::de::DeserializeOwned;
-use tari_common_types::{epoch::VnEpoch, types::PublicKey};
+use tari_common_types::{epoch::VnEpoch, };
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -92,7 +93,7 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         Ok(())
     }
 
-    pub fn delete(&self, sidechain_pk: Option<&PublicKey>, public_key: &PublicKey) -> Result<(), ChainStorageError> {
+    pub fn delete(&self, sidechain_pk: Option<&CompressedPublicKey>, public_key: &CompressedPublicKey) -> Result<(), ChainStorageError> {
         let key = create_vn_key(sidechain_pk, public_key);
         let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
@@ -111,8 +112,8 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
 
     pub fn exit(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        exit_node: &PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        exit_node: &CompressedPublicKey,
         exit_epoch: VnEpoch,
     ) -> Result<(), ChainStorageError> {
         let vn_key = create_vn_key(sidechain_pk, exit_node);
@@ -141,9 +142,9 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
 
     pub fn undo_exit(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         exit_epoch: VnEpoch,
-        exit_node: &PublicKey,
+        exit_node: &CompressedPublicKey,
     ) -> Result<(), ChainStorageError> {
         let exit_key = create_exit_queue_key(sidechain_pk, exit_epoch, exit_node);
         let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes_exit, &exit_key)?.ok_or_else(
@@ -179,7 +180,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     fn activation_queue_read_cursor(
         &self,
-    ) -> Result<LmdbReadCursor<'a, ActivationQueueKey, PublicKey>, ChainStorageError> {
+    ) -> Result<LmdbReadCursor<'a, ActivationQueueKey, CompressedPublicKey>, ChainStorageError> {
         self.new_read_cursor(self.db_validator_activation_queue.clone())
     }
 
@@ -203,8 +204,8 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     /// exists until a given `end_epoch`.
     pub fn vn_exists(
         &self,
-        sidechain_id: Option<&PublicKey>,
-        public_key: &PublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
         end_epoch: VnEpoch,
     ) -> Result<bool, ChainStorageError> {
         let key = create_vn_key(sidechain_id, public_key);
@@ -219,8 +220,8 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     /// exists until a given `end_epoch`.
     pub fn is_vn_active(
         &self,
-        sidechain_id: Option<&PublicKey>,
-        public_key: &PublicKey,
+        sidechain_id: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
         end_epoch: VnEpoch,
     ) -> Result<bool, ChainStorageError> {
         let key = create_vn_key(sidechain_id, public_key);
@@ -287,7 +288,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     pub fn get_next_activation_epoch(
         &self,
-        sidechain_id: Option<&PublicKey>,
+        sidechain_id: Option<&CompressedPublicKey>,
         current_epoch: VnEpoch,
         initial_validators: usize,
         validators_per_epoch: usize,
@@ -326,7 +327,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     pub fn count_active_validators(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
     ) -> Result<usize, ChainStorageError> {
         let mut count = 0;
@@ -518,7 +519,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     /// This set contains no duplicates. If a duplicate registration is found, the last registration is included.
     pub fn get_vn_set(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         start_epoch: VnEpoch,
         end_epoch: VnEpoch,
         limit: usize,
@@ -564,7 +565,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     pub fn get_activating_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<BTreeSet<ValidatorNodeEntry>, ChainStorageError> {
         let keys = {
@@ -613,7 +614,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     pub fn get_exiting_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<BTreeSet<ValidatorNodeEntry>, ChainStorageError> {
         let mut cursor = self.exit_queue_read_cursor()?;
@@ -663,8 +664,8 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     pub fn get(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        public_key: &PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: &CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
         let key = create_vn_key(sidechain_pk, public_key);
         let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?;
@@ -672,7 +673,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     }
 }
 
-fn create_vn_key(sidechain_pk: Option<&PublicKey>, public_key: &PublicKey) -> ValidatorNodeStoreKey {
+fn create_vn_key(sidechain_pk: Option<&CompressedPublicKey>, public_key: &CompressedPublicKey) -> ValidatorNodeStoreKey {
     create_vn_key_raw(sid_as_slice(sidechain_pk), public_key.as_bytes())
 }
 fn create_vn_key_raw(sidechain_pk: &[u8], public_key: &[u8]) -> ValidatorNodeStoreKey {
@@ -680,7 +681,7 @@ fn create_vn_key_raw(sidechain_pk: &[u8], public_key: &[u8]) -> ValidatorNodeSto
         .expect("create_key: Composite key length is incorrect")
 }
 
-fn create_exit_queue_key(sidechain_pk: Option<&PublicKey>, epoch: VnEpoch, public_key: &PublicKey) -> ExitQueueKey {
+fn create_exit_queue_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch, public_key: &CompressedPublicKey) -> ExitQueueKey {
     ExitQueueKey::try_from_parts(&[
         sid_as_slice(sidechain_pk),
         epoch.to_be_bytes().as_slice(),
@@ -698,12 +699,12 @@ fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: V
     buf
 }
 
-fn create_activation_key(sidechain_pk: Option<&PublicKey>, epoch: VnEpoch) -> ActivationQueueKey {
+fn create_activation_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> ActivationQueueKey {
     ActivationQueueKey::try_from_parts(&[sid_as_slice(sidechain_pk), &epoch.to_be_bytes()])
         .expect("create_activation_key: Composite key length is incorrect")
 }
 
-fn create_vn_store_prefix_key(sidechain_pk: Option<&PublicKey>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
+fn create_vn_store_prefix_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
     let mut buf = [0u8; PK_SIZE + U64_SIZE];
     if let Some(pk) = sidechain_pk {
         buf[..PK_SIZE].copy_from_slice(pk.as_bytes());
@@ -712,7 +713,7 @@ fn create_vn_store_prefix_key(sidechain_pk: Option<&PublicKey>, epoch: VnEpoch) 
     buf
 }
 
-fn sid_as_slice(sidechain_pk: Option<&PublicKey>) -> &[u8] {
+fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
     sidechain_pk.map_or([0u8; 32].as_slice(), |pk| pk.as_bytes())
 }
 
@@ -749,7 +750,7 @@ mod tests {
         start_epoch: u64,
         epoch_increment: u64,
         n: usize,
-        sidechain_id: Option<&PublicKey>,
+        sidechain_id: Option<&CompressedPublicKey>,
     ) -> Vec<ValidatorNodeEntry> {
         let mut nodes = Vec::with_capacity(n);
         for i in 0..n {
@@ -759,7 +760,7 @@ mod tests {
             let entry = ValidatorNodeEntry {
                 public_key: public_key.clone(),
                 shard_key,
-                commitment: Commitment::from_public_key(&new_public_key()),
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                 activation_epoch: start_epoch,
                 sidechain_public_key: sidechain_id.cloned(),
                 ..Default::default()
@@ -800,7 +801,7 @@ mod tests {
             let entry = ValidatorNodeEntry {
                 shard_key: make_hash(p1.as_bytes()),
                 public_key: p1,
-                commitment: Commitment::from_public_key(&new_public_key()),
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                 ..Default::default()
             };
             store.insert(&entry).unwrap();
@@ -821,7 +822,7 @@ mod tests {
                 .insert(&ValidatorNodeEntry {
                     public_key: nodes[0].public_key.clone(),
                     shard_key: s0,
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key().clone()),
                     ..Default::default()
                 })
                 .unwrap_err();
@@ -998,7 +999,7 @@ mod tests {
                     activation_epoch: VnEpoch(210),
                     registration_epoch: VnEpoch(210),
                     public_key: nodes2[0].public_key.clone(),
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                     sidechain_public_key: None,
                     minimum_value_promise: Default::default(),
                 })

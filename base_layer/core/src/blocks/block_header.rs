@@ -45,7 +45,7 @@ use std::{
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
@@ -98,9 +98,10 @@ pub struct BlockHeader {
     pub timestamp: EpochTime,
     /// This is the Merkle root of the inputs in this block
     pub input_mr: FixedHash,
-    /// This is the UTXO merkle root of the outputs
-    /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
+    /// This is the UTXO merkle root of the outputs on the blockchain
     pub output_mr: FixedHash,
+    /// This is the block_output_mr
+    pub block_output_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_smt_size: u64,
     /// This is the MMR root of the kernels
@@ -130,6 +131,7 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -164,6 +166,7 @@ impl BlockHeader {
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
             output_smt_size: prev.output_smt_size,
+            block_output_mr: FixedHash::zero(),
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
@@ -230,6 +233,7 @@ impl BlockHeader {
             .chain(&self.input_mr)
             .chain(&self.output_mr)
             .chain(&self.output_smt_size)
+            .chain(&self.block_output_mr)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
@@ -253,9 +257,8 @@ impl BlockHeader {
     }
 
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
-        let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
-            .unwrap_or(NaiveDateTime::MAX);
-        DateTime::from_naive_utc_and_offset(dt, Utc)
+        DateTime::<Utc>::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
+            .unwrap_or(DateTime::<Utc>::MAX_UTC)
     }
 
     #[inline]
@@ -273,6 +276,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,

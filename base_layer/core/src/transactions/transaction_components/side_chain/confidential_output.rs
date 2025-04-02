@@ -22,12 +22,12 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::CompressedPublicKey;
 use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {
-    pub claim_public_key: PublicKey,
+    pub claim_public_key: CompressedPublicKey,
 }
 
 impl ConfidentialOutputData {

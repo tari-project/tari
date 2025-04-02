@@ -23,7 +23,7 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::epoch::VnEpoch;
+use tari_common_types::{epoch::VnEpoch, };
 use tari_core::chain_storage::ValidatorNodeRegistrationInfo;
 use tari_utilities::hex::{to_hex, Hex};
 

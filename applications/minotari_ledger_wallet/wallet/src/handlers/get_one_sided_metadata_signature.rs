@@ -24,25 +24,27 @@ use minotari_ledger_wallet_common::{
     tari_dual_address_display,
     TARI_DUAL_ADDRESS_SIZE,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    hashing::DomainSeparatedHasher,
-    keys::PublicKey,
-    ristretto::{
-        pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
-        RistrettoComAndPubSig,
-        RistrettoPublicKey,
-        RistrettoSecretKey,
-    },
-    tari_utilities::ByteArray,
-};
-use tari_hashing::{KeyManagerTransactionsHashDomain, TransactionHashDomain};
+use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
     hashing::DomainSeparatedConsensusHasher,
-    utils::{derive_from_bip32_key, get_key_from_canonical_bytes, get_key_from_uniform_bytes, get_random_nonce},
+    crypto::{
+        commitment::PedersenCommitment,
+        commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
+        commitment_factory::PedersenCommitmentFactory,
+        hashing::DomainSeparatedHasher,
+        keys::{RistrettoPublicKey, RistrettoSecretKey},
+    },
+    utils::{
+        derive_from_bip32_key,
+        get_key_from_canonical_bytes,
+        get_key_from_uniform_bytes,
+        get_random_nonce,
+        KeyManagerTransactionsHashDomain,
+        TransactionHashDomain,
+    },
     AppSW,
     KeyType,
     RESPONSE_VERSION,
@@ -84,6 +86,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             {
                 SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -107,6 +110,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             value: &format!("{}", receiver_address),
         },
     ];
+
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
     {
         let review = MultiFieldReview::new(
@@ -148,7 +152,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let r_x = get_random_nonce()?;
     let ephemeral_private_key = get_random_nonce()?;
 
-    let factory = ExtendedPedersenCommitmentFactory::default();
+    let factory = PedersenCommitmentFactory::default();
 
     let commitment = factory.commit(&commitment_mask, &value_as_private_key);
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
@@ -186,7 +190,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         &metadata_signature_message,
     );
 
-    let metadata_signature = match RistrettoComAndPubSig::sign(
+    let metadata_signature = match CommitmentAndPublicKeySignature::sign(
         &value_as_private_key,
         &commitment_mask,
         &sender_offset_private_key,
@@ -197,15 +201,18 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         &factory,
     ) {
         Ok(sig) => sig,
-        Err(e) => {
+        Err(_e) => {
+            let error_string = "Invalid challenge".to_string();
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
-                SingleMessage::new(&format!("Signing error: {:?}", e.to_string())).show_and_wait();
+                SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
-                    .text(&format!("Signing error: {:?}", e.to_string()))
+                    .text(&format!("Signing error: {}", error_string))
                     .show(false);
             }
             return Err(AppSW::MetadataSignatureFail);

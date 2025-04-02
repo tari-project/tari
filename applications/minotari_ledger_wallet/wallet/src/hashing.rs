@@ -1,4 +1,4 @@
-// Copyright 2024 The Tari Project
+// Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use alloc::format;
@@ -6,11 +6,12 @@ use core::marker::PhantomData;
 
 use borsh::{io, io::Write, BorshSerialize};
 use digest::Digest;
-use tari_crypto::hashing::DomainSeparation;
 
+use crate::crypto::hashing::DomainSeparation;
 pub struct DomainSeparatedConsensusHasher<M, D> {
     hasher: DomainSeparatedBorshHasher<M, D>,
 }
+use digest::Output;
 
 impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default
@@ -61,8 +62,6 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
     }
 }
 
-/// This private struct wraps a Digest and implements the Write trait to satisfy the consensus encoding trait.
-/// Do not use the DomainSeparatedHasher with this.
 #[derive(Clone)]
 struct WriteHashWrapper<D>(D);
 
@@ -74,5 +73,21 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+pub struct DomainSeparatedHash<D: Digest> {
+    pub output: Output<D>,
+}
+
+impl<D: Digest> DomainSeparatedHash<D> {
+    pub fn new(output: Output<D>) -> Self {
+        Self { output }
+    }
+}
+
+impl<D: Digest> AsRef<[u8]> for DomainSeparatedHash<D> {
+    fn as_ref(&self) -> &[u8] {
+        self.output.as_slice()
     }
 }

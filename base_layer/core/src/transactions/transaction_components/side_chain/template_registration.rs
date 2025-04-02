@@ -24,7 +24,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PublicKey, Signature};
+use tari_common_types::types::{FixedHash, CompressedPublicKey, Signature};
 use tari_hashing::TransactionHashDomain;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
@@ -32,7 +32,7 @@ use crate::consensus::DomainSeparatedConsensusHasher;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {
-    pub author_public_key: PublicKey,
+    pub author_public_key: CompressedPublicKey,
     pub author_signature: Signature,
     pub template_name: MaxSizeString<32>,
     pub template_version: u16,
@@ -44,7 +44,7 @@ pub struct CodeTemplateRegistration {
 
 impl CodeTemplateRegistration {
     /// Creates a signature message used to prove knowledge of the author secret key
-    pub fn create_signature_message(&self, public_nonce: &PublicKey) -> [u8; 64] {
+    pub fn create_signature_message(&self, public_nonce: &CompressedPublicKey) -> [u8; 64] {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
             .chain(&self.author_public_key)
             .chain(public_nonce)

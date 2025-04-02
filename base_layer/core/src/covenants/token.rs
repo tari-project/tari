@@ -22,7 +22,7 @@
 
 use std::{collections::VecDeque, io, iter::FromIterator};
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash};
 use tari_script::TariScript;
 
 use crate::{
@@ -170,13 +170,13 @@ impl CovenantToken {
 
     #[allow(dead_code)]
     /// Helper for creating a new instance wrapping an `PublicKeyFilter`.
-    pub fn public_key(public_key: PublicKey) -> Self {
+    pub fn public_key(public_key: CompressedPublicKey) -> Self {
         CovenantArg::PublicKey(public_key).into()
     }
 
     #[allow(dead_code)]
     /// Helper for creating a new instance wrapping an `CommitmentFilter`.
-    pub fn commitment(commitment: Commitment) -> Self {
+    pub fn commitment(commitment: CompressedCommitment) -> Self {
         CovenantArg::Commitment(commitment).into()
     }
 

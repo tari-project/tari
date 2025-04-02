@@ -50,7 +50,6 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_wallet_output_with_data,
@@ -60,6 +59,7 @@ use tari_core::{
             UtxoTestParams,
         },
         transaction_components::OutputFeatures,
+        transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
     },
     txn_schema,
@@ -76,7 +76,6 @@ use tari_core::{
     },
     OutputSmt,
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
@@ -345,7 +344,7 @@ async fn test_orphan_validator() {
     let key_manager = create_memory_db_key_manager().unwrap();
     let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(334)
+        .with_max_block_transaction_weight(335)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
@@ -364,7 +363,7 @@ async fn test_orphan_validator() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         orphan_validator.clone(),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -510,7 +509,7 @@ async fn test_orphan_body_validation() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -731,7 +730,7 @@ async fn test_header_validation() {
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -847,7 +846,7 @@ async fn test_block_sync_body_validator() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -874,7 +873,7 @@ async fn test_block_sync_body_validator() {
     ).await;
 
     // Coinbase extra field is too large
-    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(65).collect::<Vec<_>>()).unwrap();
+    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(257).collect::<Vec<_>>()).unwrap();
     let (template, _) = chain_block_with_new_coinbase(
         &genesis,
         vec![tx01.clone(), tx02.clone()],
@@ -895,7 +894,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::TransactionError(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize{len, max }) if
-            len == 65 && max == max_len
+            len == 257 && max == max_len
         ),
         "{}",
         err
@@ -941,7 +940,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 467 && max_weight == 400
+            actual_weight == 405 && max_weight == 400
         ),
         "{}",
         err
@@ -1138,7 +1137,7 @@ async fn add_block_with_large_block() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -1199,7 +1198,7 @@ async fn add_block_with_large_many_output_block() {
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
     );
 
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -1241,9 +1240,9 @@ use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     proof_of_work::PowData,
     transactions::{
-        key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
         transaction_components::{CoinBaseExtra, Transaction, TransactionError, TransactionKernel},
+        transaction_key_manager::create_memory_db_key_manager,
     },
 };
 
@@ -1351,6 +1350,7 @@ async fn test_fee_overflow() {
             .build(),
         Difficulty::min(),
         consensus_manager.get_block_reward_at(height),
+        true,
     );
     assert!(template_result.is_err());
     assert_eq!(

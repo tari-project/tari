@@ -1,9 +1,10 @@
 [package]
 name = "minotari_app_utilities"
 version.workspace = true
-authors = ["The Tari Development Community"]
 edition.workspace = true
-license = "BSD-3-Clause"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 tari_common = { workspace = true }
@@ -26,7 +27,10 @@ dialoguer = { version = "0.10" }
 tonic = "0.12.3"
 
 [build-dependencies]
-tari_common = { workspace = true, features = ["build", "static-application-info"] }
+tari_common = { workspace = true, features = [
+    "build",
+    "static-application-info",
+] }
 tari_features = { workspace = true }
 
 [features]

@@ -30,7 +30,12 @@ use tari_common::{
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
+    base_node::{
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
@@ -66,6 +71,10 @@ pub struct BaseNodeContext {
 }
 
 impl BaseNodeContext {
+    pub fn start(&self) -> Result<(), ChainStorageError> {
+        self.blockchain_db.start()
+    }
+
     /// Waits for shutdown of the base node state machine and comms.
     /// This call consumes the NodeContainer instance.
     pub async fn wait_for_shutdown(self) {
@@ -118,6 +127,10 @@ impl BaseNodeContext {
 
     /// Returns a software update handle
     pub fn software_updater(&self) -> SoftwareUpdaterHandle {
+        self.base_node_handles.expect_handle()
+    }
+
+    pub fn tari_pulse(&self) -> TariPulseHandle {
         self.base_node_handles.expect_handle()
     }
 
@@ -174,6 +187,8 @@ pub async fn configure_and_initialize_node(
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
+                app_config.base_node.storage.pruning_interval,
+                app_config.base_node.storage.pruning_horizon,
                 rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
@@ -201,7 +216,7 @@ async fn build_node_context(
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
-    debug!(
+    trace!(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
@@ -254,7 +269,7 @@ async fn build_node_context(
     );
 
     //---------------------------------- Base Node  --------------------------------------------//
-    debug!(target: LOG_TARGET, "Creating base node state machine.");
+    trace!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
         app_config: &app_config,

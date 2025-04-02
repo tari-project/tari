@@ -27,9 +27,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-use crate::types::{PrivateKey, PublicKey};
+use crate::types::{CompressedPublicKey, PrivateKey};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum WalletType {
@@ -51,7 +50,7 @@ impl Display for WalletType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ProvidedKeysWallet {
-    pub public_spend_key: PublicKey,
+    pub public_spend_key: CompressedPublicKey,
     pub private_spend_key: Option<PrivateKey>,
     pub private_comms_key: Option<PrivateKey>,
     pub view_key: PrivateKey,
@@ -60,7 +59,6 @@ pub struct ProvidedKeysWallet {
 impl Display for ProvidedKeysWallet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "public spend key {}", self.public_spend_key)?;
-        write!(f, "public view key{}", PublicKey::from_secret_key(&self.view_key))?;
         Ok(())
     }
 }
@@ -68,7 +66,7 @@ impl Display for ProvidedKeysWallet {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LedgerWallet {
     pub account: u64,
-    pub public_alpha: Option<PublicKey>,
+    pub public_alpha: Option<CompressedPublicKey>,
     pub network: Network,
     pub view_key: Option<PrivateKey>,
 }
@@ -84,7 +82,12 @@ impl Display for LedgerWallet {
 }
 
 impl LedgerWallet {
-    pub fn new(account: u64, network: Network, public_alpha: Option<PublicKey>, view_key: Option<PrivateKey>) -> Self {
+    pub fn new(
+        account: u64,
+        network: Network,
+        public_alpha: Option<CompressedPublicKey>,
+        view_key: Option<PrivateKey>,
+    ) -> Self {
         Self {
             account,
             public_alpha,

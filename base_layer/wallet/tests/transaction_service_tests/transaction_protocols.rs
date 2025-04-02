@@ -48,6 +48,7 @@ use minotari_wallet::{
         },
     },
     util::watch::Watch,
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -78,10 +79,13 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
-        transaction_components::OutputFeatures,
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+        },
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         CryptoFactories,
     },
     txn_schema,
@@ -175,6 +179,12 @@ pub async fn setup() -> (
     let interactive_tari_address =
         TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
     let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let utxo_scanner_handle =
+        UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
@@ -194,6 +204,7 @@ pub async fn setup() -> (
         },
         shutdown_signal: shutdown.to_signal(),
         wallet_type,
+        utxo_scanner_handle,
     };
 
     (
@@ -231,12 +242,11 @@ pub async fn add_transaction_to_database(
         200 * uT,
         tx1,
         status.unwrap_or(TransactionStatus::Completed),
-        "Test".to_string(),
-        Utc::now().naive_local(),
+        Utc::now(),
         TransactionDirection::Outbound,
         None,
         None,
-        None,
+        PaymentId::open("Test", TxType::PaymentToOther),
     )
     .unwrap();
     db.insert_completed_transaction(tx_id, completed_tx1).unwrap();
@@ -845,11 +855,19 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().unwrap();
 
     assert_eq!(
-        completed_txs.get(&1u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(1u64))
+            .unwrap()
+            .status,
         TransactionStatus::Broadcast
     );
     assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .status,
         TransactionStatus::MinedUnconfirmed
     );
 
@@ -872,11 +890,19 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().unwrap();
 
     assert_eq!(
-        completed_txs.get(&1u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(1u64))
+            .unwrap()
+            .status,
         TransactionStatus::Broadcast
     );
     assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .status,
         TransactionStatus::Completed
     );
 
@@ -917,10 +943,22 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let completed_txs = resources.db.get_completed_transactions().unwrap();
 
     assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 4);
+    assert_eq!(
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .confirmations
+            .unwrap(),
+        4
+    );
 }
 
 /// Test that revalidation clears the correct db fields and calls for validation of is said transactions
@@ -998,10 +1036,22 @@ async fn tx_revalidation() {
     let completed_txs = resources.db.get_completed_transactions().unwrap();
 
     assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 4);
+    assert_eq!(
+        completed_txs
+            .iter()
+            .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+            .unwrap()
+            .confirmations
+            .unwrap(),
+        4
+    );
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
@@ -1029,12 +1079,13 @@ async fn tx_revalidation() {
         .mark_all_non_coinbases_transactions_as_unvalidated()
         .unwrap();
     let completed_txs = resources.db.get_completed_transactions().unwrap();
-    assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
-        TransactionStatus::MinedConfirmed
-    );
-    assert_eq!(completed_txs.get(&2u64.into()).unwrap().mined_height, None);
-    assert_eq!(completed_txs.get(&2u64.into()).unwrap().mined_in_block, None);
+    let completed_tx_2 = completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+        .unwrap();
+    assert_eq!(completed_tx_2.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(completed_tx_2.mined_height, None);
+    assert_eq!(completed_tx_2.mined_in_block, None);
 
     let protocol = TransactionValidationProtocol::new(
         5.into(),
@@ -1050,11 +1101,12 @@ async fn tx_revalidation() {
 
     let completed_txs = resources.db.get_completed_transactions().unwrap();
     // data should now be updated and changed
-    assert_eq!(
-        completed_txs.get(&2u64.into()).unwrap().status,
-        TransactionStatus::MinedConfirmed
-    );
-    assert_eq!(completed_txs.get(&2u64.into()).unwrap().confirmations.unwrap(), 8);
+    let completed_tx_2 = completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+        .unwrap();
+    assert_eq!(completed_tx_2.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(completed_tx_2.confirmations.unwrap(), 8);
 }
 
 /// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to
@@ -1220,7 +1272,7 @@ async fn tx_validation_protocol_reorg() {
     let completed_txs = resources.db.get_completed_transactions().unwrap();
     let mut unconfirmed_count = 0;
     let mut confirmed_count = 0;
-    for tx in completed_txs.values() {
+    for tx in completed_txs {
         if tx.status == TransactionStatus::MinedUnconfirmed {
             unconfirmed_count += 1;
         }
@@ -1336,23 +1388,58 @@ async fn tx_validation_protocol_reorg() {
 
     let completed_txs = resources.db.get_completed_transactions().unwrap();
     // Tx 1
-    assert!(completed_txs.get(&1u64.into()).unwrap().mined_in_block.is_some());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(1u64))
+        .unwrap()
+        .mined_in_block
+        .is_some());
 
     // Tx 2
-    assert!(completed_txs.get(&2u64.into()).unwrap().mined_in_block.is_some());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
+        .unwrap()
+        .mined_in_block
+        .is_some());
 
     // Tx 3
-    assert!(completed_txs.get(&3u64.into()).unwrap().mined_in_block.is_some());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(3u64))
+        .unwrap()
+        .mined_in_block
+        .is_some());
 
     // Tx 4 (reorged out)
-    assert!(completed_txs.get(&4u64.into()).unwrap().mined_in_block.is_none());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(4u64))
+        .unwrap()
+        .mined_in_block
+        .is_none());
 
     // Tx 5
-    assert!(completed_txs.get(&5u64.into()).unwrap().mined_in_block.is_some());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(5u64))
+        .unwrap()
+        .mined_in_block
+        .is_some());
 
     // Tx 6 (reorged out)
-    assert!(completed_txs.get(&6u64.into()).unwrap().mined_in_block.is_none());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(6u64))
+        .unwrap()
+        .mined_in_block
+        .is_none());
 
     // Tx 7 (reorged out)
-    assert!(completed_txs.get(&7u64.into()).unwrap().mined_in_block.is_none());
+    assert!(completed_txs
+        .iter()
+        .find(|c_tx| c_tx.tx_id == TxId::from(7u64))
+        .unwrap()
+        .mined_in_block
+        .is_none());
 }

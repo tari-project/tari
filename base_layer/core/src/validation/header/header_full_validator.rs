@@ -38,7 +38,6 @@ use crate::{
         ValidationError,
     },
 };
-
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
 
 #[derive(Clone)]
@@ -176,11 +175,11 @@ pub fn check_timestamp_ftl(
 }
 
 fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<(), ValidationError> {
-    let block_exist = db.bad_block_exists(hash)?;
-    if block_exist.0 {
+    let (is_bad_block, reason) = db.bad_block_exists(hash)?;
+    if is_bad_block {
         return Err(ValidationError::BadBlockFound {
             hash: hash.to_hex(),
-            reason: block_exist.1,
+            reason,
         });
     }
     Ok(())

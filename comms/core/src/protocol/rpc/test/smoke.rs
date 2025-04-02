@@ -541,7 +541,8 @@ async fn max_global_sessions() {
 async fn max_per_client_sessions() {
     let builder = RpcServer::builder()
         .with_maximum_simultaneous_sessions(3)
-        .with_maximum_sessions_per_client(1);
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(false);
     let (muxer, _outbound, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
     let (_, inbound, outbound) = build_multiplexed_connections().await;
 

@@ -28,7 +28,7 @@ use std::{
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{CompressedPublicKey, HashOutput, PrivateKey},
 };
 
 use crate::{

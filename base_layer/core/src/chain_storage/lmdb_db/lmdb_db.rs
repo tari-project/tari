@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     cmp::max,
     convert::TryFrom,
@@ -28,25 +27,46 @@ use std::{
     fs::File,
     ops::Deref,
     path::Path,
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+        RwLock,
+    },
     time::Instant,
 };
 
 use fs2::FileExt;
-use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use lmdb_zero::{
+    open,
+    traits::AsLmdbBytes,
+    ConstTransaction,
+    Database,
+    Environment,
+    ReadTransaction,
+    WriteTransaction,
+};
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        Signature,
+        UncompressedCommitment,
+    },
 };
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
-    hex::{to_hex, Hex},
+    hex::{from_hex, to_hex, Hex},
     ByteArray,
 };
 
@@ -107,6 +127,7 @@ use crate::{
     },
     consensus::{ConsensusConstants, ConsensusManager},
     output_mr_hash_from_smt,
+    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
@@ -156,6 +177,8 @@ const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_ACTIVATION: &str = "validator_nodes_activation_queue";
 const LMDB_DB_VALIDATOR_NODES_EXIT: &str = "validator_nodes_exit";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
+const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
+const SMT_CACHE_PERIOD: u64 = 500;
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
@@ -165,6 +188,8 @@ type CodeTemplateRegistrationKey = CompositeKey<40>;
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
+    prune_interval: u64,
+    pruning_horizon: u64,
     consensus_manager: ConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
@@ -204,13 +229,19 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_ACTIVATION, flags | db::DUPSORT | db::DUPFIXED)
-        // .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_EXIT, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
+        .add_database(LMDB_DB_UTXO_SMT, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
+    LMDBDatabase::new(
+        &lmdb_store,
+        file_lock,
+        consensus_manager,
+        prune_interval,
+        pruning_horizon,
+    )
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -271,8 +302,12 @@ pub struct LMDBDatabase {
     validator_nodes_exit_queue: DatabaseRef,
     /// Maps CodeTemplateRegistration <block_height, output hash> -> TemplateRegistration
     template_registrations: DatabaseRef,
+    /// Stores a cache of the sparse merkle tree on the latest mod 1000 height
+    utxo_smt: DatabaseRef,
+
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
+    smt_cache_period: u64,
 }
 
 impl LMDBDatabase {
@@ -280,8 +315,16 @@ impl LMDBDatabase {
         store: &LMDBStore,
         file_lock: File,
         consensus_manager: ConsensusManager,
+        prune_interval: u64,
+        pruning_horizon: u64,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
+        let smt_cache_period = if pruning_horizon == 0 || prune_interval == 0 {
+            SMT_CACHE_PERIOD
+        } else {
+            // we make sure we run this in the pruning interval, 2 is just a same number here.
+            prune_interval / 2
+        };
 
         let db = Self {
             metadata_db: get_database(store, LMDB_DB_METADATA)?,
@@ -311,10 +354,12 @@ impl LMDBDatabase {
             validator_nodes_activation_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_ACTIVATION)?,
             validator_nodes_exit_queue: get_database(store, LMDB_DB_VALIDATOR_NODES_EXIT)?,
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
+            utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
+            smt_cache_period,
         };
 
         run_migrations(&db)?;
@@ -348,8 +393,18 @@ impl LMDBDatabase {
                 InsertChainHeader { header } => {
                     self.insert_header(&write_txn, header.header(), header.accumulated_data())?;
                 },
-                InsertTipBlockBody { block, smt } => {
-                    self.insert_tip_block_body(&write_txn, block.header(), block.block().body.clone(), smt.clone())?;
+                InsertTipBlockBody {
+                    block,
+                    smt,
+                    allow_smt_change,
+                } => {
+                    self.insert_tip_block_body(
+                        &write_txn,
+                        block.header(),
+                        block.block().body.clone(),
+                        smt.clone(),
+                        allow_smt_change.clone(),
+                    )?;
                 },
                 InsertKernel {
                     header_hash,
@@ -434,6 +489,10 @@ impl LMDBDatabase {
                     // for security we check that the best block does exist, and we check the previous value
                     // we dont want to check this if the prev block has never been set, this means a empty hash of 32
                     // bytes.
+                    trace!(target: LOG_TARGET,
+                        "Setting new best block as height: {}",
+                        height
+                    );
                     if *height > 0 {
                         let prev = fetch_best_block(&write_txn, &self.metadata_db)?;
                         if *expected_prev_best_block != prev {
@@ -506,7 +565,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 27] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 28] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -544,6 +603,7 @@ impl LMDBDatabase {
             ),
             (LMDB_DB_VALIDATOR_NODES_EXIT, &self.validator_nodes_exit_queue),
             (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
+            (LMDB_DB_UTXO_SMT, &self.utxo_smt),
         ]
     }
 
@@ -616,7 +676,7 @@ impl LMDBDatabase {
         )?;
 
         let mut excess_sig_key = Vec::<u8>::with_capacity(32 * 2);
-        excess_sig_key.extend(kernel.excess_sig.get_public_nonce().as_bytes());
+        excess_sig_key.extend(kernel.excess_sig.get_compressed_public_nonce().as_bytes());
         excess_sig_key.extend(kernel.excess_sig.get_signature().as_bytes());
         lmdb_insert(
             txn,
@@ -642,15 +702,17 @@ impl LMDBDatabase {
 
     fn input_with_output_data(
         &self,
-        txn: &WriteTransaction<'_>,
-        mut input: TransactionInput,
+        txn: &ConstTransaction<'_>,
+        input: TransactionInput,
     ) -> Result<TransactionInput, ChainStorageError> {
         let input_with_output_data = match input.spent_output {
             SpentOutput::OutputData { .. } => input,
             SpentOutput::OutputHash(output_hash) => match self.fetch_output_in_txn(txn, output_hash.as_slice()) {
-                Ok(Some(utxo_mined_info)) => {
-                    input.add_output_data(utxo_mined_info.output);
-                    input
+                Ok(Some(utxo_mined_info)) => TransactionInput {
+                    version: input.version,
+                    spent_output: SpentOutput::create_from_output(utxo_mined_info.output),
+                    input_data: input.input_data,
+                    script_signature: input.script_signature,
                 },
                 Ok(None) => {
                     error!(
@@ -812,6 +874,22 @@ impl LMDBDatabase {
             )));
         } else {
             // we can continue
+        }
+
+        if header.pow_algo() == PowAlgorithm::RandomX {
+            let monero_header = MoneroPowData::from_header(header, &self.consensus_manager).map_err(|e| {
+                ChainStorageError::InvalidArguments {
+                    func: "insert_best_block",
+                    arg: "block",
+                    message: format!("block contained invalid or malformed monero PoW data: {}", e),
+                }
+            })?;
+            let vm_key = monero_header.randomx_key.to_vec();
+            trace!(
+                target: LOG_TARGET,
+                "inserting monero vm key: {} for height {}",vm_key.to_hex(), header.height
+            );
+            self.insert_monero_seed_height(txn, &vm_key, header.height)?;
         }
 
         lmdb_insert(
@@ -1098,7 +1176,7 @@ impl LMDBDatabase {
                 "kernel_excess_index",
             )?;
             let mut excess_sig_key = Vec::<u8>::new();
-            excess_sig_key.extend(kernel.kernel.excess_sig.get_public_nonce().as_bytes());
+            excess_sig_key.extend(kernel.kernel.excess_sig.get_compressed_public_nonce().as_bytes());
             excess_sig_key.extend(kernel.kernel.excess_sig.get_signature().as_bytes());
             trace!(
                 target: LOG_TARGET,
@@ -1203,6 +1281,7 @@ impl LMDBDatabase {
         header: &BlockHeader,
         body: AggregateBody,
         smt: Arc<RwLock<OutputSmt>>,
+        allow_smt_change: Arc<AtomicBool>,
     ) -> Result<(), ChainStorageError> {
         let mut output_smt = smt.write().map_err(|e| {
             error!(
@@ -1211,6 +1290,7 @@ impl LMDBDatabase {
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
+        let can_we_change_smt = allow_smt_change.load(Ordering::SeqCst);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to insert block at height {} while next block already exists",
@@ -1218,7 +1298,7 @@ impl LMDBDatabase {
             )));
         }
         let block_hash = header.hash();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Inserting block body for header `{}`: {}",
             block_hash.to_hex(),
@@ -1256,7 +1336,7 @@ impl LMDBDatabase {
                 })?
         };
 
-        let mut total_kernel_sum = Commitment::default();
+        let mut total_kernel_sum = UncompressedCommitment::default();
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             ..
@@ -1265,7 +1345,7 @@ impl LMDBDatabase {
         let mut kernel_mmr = PrunedKernelMmr::new(pruned_kernel_set);
 
         for kernel in kernels {
-            total_kernel_sum = &total_kernel_sum + &kernel.excess;
+            total_kernel_sum = &total_kernel_sum + &kernel.excess.to_commitment()?;
             let pos =
                 u64::try_from(kernel_mmr.push(kernel.hash().to_vec())?).map_err(|_| ChainStorageError::OutOfRange)?;
             trace!(
@@ -1283,7 +1363,7 @@ impl LMDBDatabase {
                 output.commitment.to_hex(),
                 output.hash()
             );
-            if !output.is_burned() {
+            if !output.is_burned() && can_we_change_smt {
                 let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
                 let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
                 if let Err(e) = output_smt.insert(smt_key, smt_node) {
@@ -1306,17 +1386,19 @@ impl LMDBDatabase {
         for input in inputs {
             let input_with_output_data = self.input_with_output_data(txn, input)?;
             let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
-            match output_smt.delete(&smt_key)? {
-                DeleteResult::Deleted(_value_hash) => {},
-                DeleteResult::KeyNotFound => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not find input({}) in SMT",
-                        input_with_output_data.commitment()?.to_hex(),
-                    );
-                    return Err(ChainStorageError::UnspendableInput);
-                },
-            };
+            if can_we_change_smt {
+                match output_smt.delete(&smt_key)? {
+                    DeleteResult::Deleted(_value_hash) => {},
+                    DeleteResult::KeyNotFound => {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not find input({}) in SMT",
+                            input_with_output_data.commitment()?.to_hex(),
+                        );
+                        return Err(ChainStorageError::UnspendableInput);
+                    },
+                };
+            }
 
             let features = input_with_output_data.features()?;
             if let Some(sidechain_feature) = features.sidechain_feature.as_ref() {
@@ -1343,8 +1425,15 @@ impl LMDBDatabase {
         self.insert_block_accumulated_data(
             txn,
             header.height,
-            &BlockAccumulatedData::new(kernel_mmr.get_pruned_hash_set()?, total_kernel_sum),
+            &BlockAccumulatedData::new(
+                kernel_mmr.get_pruned_hash_set()?,
+                CompressedCommitment::from_commitment(total_kernel_sum),
+            ),
         )?;
+        allow_smt_change.store(false, Ordering::SeqCst);
+        if header.height % self.smt_cache_period == 0 {
+            self.insert_smt(txn, &output_smt, header.height)?;
+        }
 
         Ok(())
     }
@@ -1421,7 +1510,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         minimum_value_promise: MicroMinotari,
         sidechain_id: Option<&SideChainId>,
         vn_reg: &ValidatorNodeRegistration,
@@ -1596,7 +1685,7 @@ impl LMDBDatabase {
         &self,
         write_txn: &WriteTransaction<'_>,
         output_hash: &HashOutput,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         output_type: OutputType,
     ) -> Result<(), ChainStorageError> {
         match lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
@@ -1652,7 +1741,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         height: u64,
     ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
-        lmdb_get(txn, &self.block_accumulated_data_db, &height).map_err(Into::into)
+        lmdb_get(txn, &self.block_accumulated_data_db, &height)
     }
 
     #[allow(clippy::ptr_arg)]
@@ -1661,7 +1750,7 @@ impl LMDBDatabase {
         txn: &ConstTransaction<'_>,
         header_hash: &HashOutput,
     ) -> Result<Option<u64>, ChainStorageError> {
-        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice()).map_err(Into::into)
+        lmdb_get(txn, &self.block_hashes_db, header_hash.as_slice())
     }
 
     fn fetch_header_accumulated_data_by_height(
@@ -1688,6 +1777,7 @@ impl LMDBDatabase {
         #[cfg(not(test))]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 0;
 
+        debug!(target: LOG_TARGET, "New bad block - height: {}, hash: {}, reason: {}", height, hash.to_hex(), reason);
         lmdb_replace(txn, &self.bad_blocks, hash.deref(), &(height, reason), None)?;
         // Clean up bad blocks that are far from the tip
         let metadata = fetch_metadata(txn, &self.metadata_db)?;
@@ -1802,6 +1892,64 @@ impl LMDBDatabase {
                 })?;
 
         Ok(output)
+    }
+
+    fn insert_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt, height: u64) -> Result<(), ChainStorageError> {
+        let start = Instant::now();
+        let k = MetadataKey::Smt;
+
+        trace!(target: LOG_TARGET,
+            "Saving SMT at height: {}",
+            height
+        );
+
+        // This is best effort, if it fails (typically when the entry does not yet exist) we just log it
+        if let Err(e) = lmdb_delete(txn, &self.utxo_smt, &k.as_u32(), LMDB_DB_UTXO_SMT) {
+            debug!(
+                "Could NOT delete '{}' db with key '{}' ({})",
+                LMDB_DB_UTXO_SMT,
+                to_hex(k.as_u32().as_lmdb_bytes()),
+                e
+            );
+        }
+
+        #[allow(clippy::cast_possible_truncation)]
+        let estimated_bytes = smt.size().saturating_mul(225) as usize;
+
+        match lmdb_replace(txn, &self.utxo_smt, &k.as_u32(), smt, Some(estimated_bytes)) {
+            Ok(_) => {
+                trace!(
+                target: LOG_TARGET,
+                    "Inserted ~{} MB with key '{}' into '{}' (size {}) in {:.2?}",
+                    estimated_bytes / BYTES_PER_MB,
+                    to_hex(k.as_u32().as_lmdb_bytes()),
+                    LMDB_DB_UTXO_SMT,
+                    smt.size(),
+                    start.elapsed()
+                );
+                lmdb_replace(
+                    txn,
+                    &self.metadata_db,
+                    &MetadataKey::SmtHeight.as_u32(),
+                    &height,
+                    Some(8),
+                )?;
+                Ok(())
+            },
+            Err(e) => {
+                if let ChainStorageError::DbResizeRequired(Some(val)) = e {
+                    trace!(
+                    target: LOG_TARGET,
+                            "Could NOT insert {} MB with key '{}' into '{}' (size {})",
+                            val / BYTES_PER_MB,
+                            to_hex(k.as_u32().as_lmdb_bytes()),
+                            LMDB_DB_UTXO_SMT,
+                            smt.size()
+                        );
+                }
+                Err(e)
+            },
+        }
     }
 }
 
@@ -2101,13 +2249,26 @@ impl BlockchainBackend for LMDBDatabase {
             .collect())
     }
 
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let bad_blocks: Vec<(FixedHash, (u64, String))> = lmdb_filter_map_values(&txn, &self.bad_blocks, Some)?;
+        Ok(bad_blocks
+            .iter()
+            .map(|(hash, (height, reason))| BadBlock {
+                hash: *hash,
+                height: *height,
+                reason: reason.clone(),
+            })
+            .collect())
+    }
+
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let mut key = Vec::<u8>::new();
-        key.extend(excess_sig.get_public_nonce().as_bytes());
+        key.extend(excess_sig.get_compressed_public_nonce().as_bytes());
         key.extend(excess_sig.get_signature().as_bytes());
         if let Some((header_hash, mmr_position, hash)) =
             lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
@@ -2179,7 +2340,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
@@ -2513,7 +2674,14 @@ impl BlockchainBackend for LMDBDatabase {
         // We do this to ensure backwards compatibility on older exising dbs that did not store a reason
         let exist = lmdb_exists(&txn, &self.bad_blocks, block_hash.deref())?;
         match lmdb_get::<_, (u64, String)>(&txn, &self.bad_blocks, block_hash.deref()) {
-            Ok(Some((_height, reason))) => Ok((true, reason)),
+            Ok(Some((height, reason))) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Bad block exists at height: {}, hash: {}, reason: {}",
+                    height, block_hash, reason
+                );
+                Ok((true, reason))
+            },
             Ok(None) => Ok((false, "".to_string())),
             Err(ChainStorageError::AccessError(e)) => {
                 if exist {
@@ -2670,7 +2838,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_validators_exiting_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
@@ -2703,9 +2871,9 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn validator_node_exists(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
@@ -2719,9 +2887,9 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn validator_node_is_active(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
@@ -2733,9 +2901,9 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn validator_node_is_active_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
         _shard_group: ShardGroup,
     ) -> Result<bool, ChainStorageError> {
         // TODO: account for shard group
@@ -2744,7 +2912,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn validator_nodes_count_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
         _shard_group: ShardGroup,
     ) -> Result<usize, ChainStorageError> {
@@ -2755,8 +2923,8 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn get_validator_node(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        public_key: PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let store = self.validator_node_store(&txn);
@@ -2821,13 +2989,25 @@ impl BlockchainBackend for LMDBDatabase {
     fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
         let start = Instant::now();
         let metadata = self.fetch_chain_metadata()?;
-        let mut smt = OutputSmt::new();
+        let txn = self.read_transaction()?;
+        let k = MetadataKey::SmtHeight;
+        let mut starting_height = 0;
+        if let Some(val) = lmdb_get::<u32, u64>(&txn, &self.metadata_db, &k.as_u32())? {
+            starting_height = val + 1u64;
+        }
+
+        let k = MetadataKey::Smt;
+        let mut smt = match lmdb_get(&txn, &self.utxo_smt, &k.as_u32())? {
+            Some(smt) => smt,
+            _ => OutputSmt::new(),
+        };
         trace!(
             target: LOG_TARGET,
             "Calculating new smt at height: #{}",
-            metadata.pruned_height(),
+            metadata.best_block_height(),
         );
-        for height in 0..=metadata.best_block_height() {
+
+        for height in starting_height..=metadata.best_block_height() {
             let header = self.fetch_chain_header_by_height(height)?;
             let outputs =
                 self.fetch_outputs_in_block_with_spend_state(header.hash(), Some(metadata.best_block_hash()))?;
@@ -2844,6 +3024,13 @@ impl BlockchainBackend for LMDBDatabase {
                         return Err(e.into());
                     }
                 }
+            }
+            let inputs = self.fetch_inputs_in_block(header.hash())?;
+            for input in inputs {
+                let txn = self.read_transaction()?;
+                let input_with_output_data = self.input_with_output_data(&txn, input)?;
+                let smt_key = NodeKey::try_from(input_with_output_data.commitment()?.as_bytes())?;
+                smt.delete(&smt_key)?;
             }
         }
         trace!(
@@ -2978,6 +3165,8 @@ enum MetadataKey {
     HorizonData,
     BestBlockTimestamp,
     MigrationVersion,
+    Smt,
+    SmtHeight,
 }
 
 impl MetadataKey {
@@ -2998,6 +3187,8 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonData => write!(f, "Database info"),
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
+            MetadataKey::Smt => write!(f, "Chain Sparse Merkle Tree"),
+            MetadataKey::SmtHeight => write!(f, "Chain Sparse Merkle Tree saved height"),
         }
     }
 }
@@ -3031,25 +3222,64 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 1;
+    const MIGRATION_VERSION: u64 = 5;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
-    let n = match val {
+    let last_migrated_version = match val {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
     info!(
         target: LOG_TARGET,
-        "Blockchain database is at v{} (required version: {})", n, MIGRATION_VERSION
+        "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
     );
     drop(txn);
 
-    if n < MIGRATION_VERSION {
+    for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
-        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+        if migrate_from_version == 1 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
+            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+        if migrate_from_version == 2 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
+            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+        if migrate_from_version == 3 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
+            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
+                .expect("should be valid hex");
+            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &843, None)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
+        }
+        if migrate_from_version == 4 {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "re-adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
+            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
+                .expect("should be valid hex");
+            let _not_used = lmdb_delete(&txn, &db.monero_seed_height_db, &vm_key, "seed heights");
+            let height: u64 = 843;
+            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &height, None)?;
+            info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
+            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+            txn.commit()?;
+            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
+            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+    }
+    if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;
+        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
         lmdb_replace(
             &txn,
             &db.metadata_db,

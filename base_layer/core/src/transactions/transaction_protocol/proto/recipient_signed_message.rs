@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 use tari_utilities::ByteArray;
 
 use super::protocol as proto;
@@ -37,7 +37,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output not provided".to_string())??;
 
-        let public_spend_key = PublicKey::from_canonical_bytes(&message.public_spend_key)
+        let public_spend_key = CompressedPublicKey::from_canonical_bytes(&message.public_spend_key)
             .map_err(|err| format!("public_spend_key: {}", err))?;
 
         let partial_signature = message

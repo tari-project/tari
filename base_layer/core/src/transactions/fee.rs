@@ -73,6 +73,7 @@ impl From<TransactionWeight> for Fee {
 mod test {
     use std::convert::TryInto;
 
+    use tari_common_types::types::ComAndPubSignature;
     use tari_crypto::ristretto::RistrettoComAndPubSig;
     use tari_script::ExecutionStack;
 
@@ -108,7 +109,7 @@ mod test {
         let input = TransactionInput::new_current_version(
             spent_output,
             ExecutionStack::new(vec![]),
-            RistrettoComAndPubSig::default(),
+            ComAndPubSignature::new_from_capk_signature(RistrettoComAndPubSig::default()),
         );
         let aggregate_body = AggregateBody::new(vec![input], vec![], vec![]);
         let fee = Fee::new(TransactionWeight::latest());

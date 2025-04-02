@@ -23,7 +23,7 @@
 use minotari_merge_mining_proxy::Cli;
 
 mod block_template_data;
-mod block_template_protocol;
+mod block_template_manager;
 mod cli;
 mod common;
 mod config;

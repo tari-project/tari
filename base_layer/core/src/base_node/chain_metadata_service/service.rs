@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, sync::Arc, thread::sleep};
 
 use log::*;
 use prost::Message;
@@ -77,6 +77,9 @@ impl ChainMetadataService {
         let mut liveness_event_stream = self.liveness.get_event_stream();
         let mut block_event_stream = self.base_node.get_block_event_stream();
 
+        // just wait till the base node can create the chain metadata. This is to suppresses a warning about it not
+        // being found. If this passes before the base node has created the chain metadata, the warning will be logged.
+        sleep(std::time::Duration::from_secs(2));
         log_if_error!(
             target: LOG_TARGET,
             "Error when updating liveness chain metadata: '{}'",
@@ -141,10 +144,6 @@ impl ChainMetadataService {
         match event {
             // Received a ping, check if it contains ChainMetadata
             LivenessEvent::ReceivedPing(event) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Received ping from neighbouring node '{}'.", event.node_id
-                );
                 self.number_of_rounds_no_pings = 0;
                 if event.metadata.has(MetadataKey::ChainMetadata) {
                     self.send_chain_metadata_to_event_publisher(event).await?;
@@ -152,11 +151,6 @@ impl ChainMetadataService {
             },
             // Received a pong, check if our neighbour sent it and it contains ChainMetadata
             LivenessEvent::ReceivedPong(event) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Received pong from neighbouring node '{}'.",
-                    event.node_id
-                );
                 self.number_of_rounds_no_pings = 0;
                 if event.metadata.has(MetadataKey::ChainMetadata) {
                     self.send_chain_metadata_to_event_publisher(event).await?;
@@ -164,11 +158,11 @@ impl ChainMetadataService {
             },
             // New ping round has begun
             LivenessEvent::PingRoundBroadcast(num_peers) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
-                // If there were no pings for awhile, we are probably alone.
+                // If there were no pings for a while, we are probably alone.
                 if *num_peers == 0 {
                     self.number_of_rounds_no_pings += 1;
                     if self.number_of_rounds_no_pings >= NUM_ROUNDS_NETWORK_SILENCE {
@@ -325,6 +319,7 @@ mod test {
             metadata,
             node_id: node_id.clone(),
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -347,6 +342,7 @@ mod test {
             metadata,
             node_id,
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -365,6 +361,7 @@ mod test {
             metadata,
             node_id,
             latency: None,
+            nonce: 0,
         };
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));

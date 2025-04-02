@@ -375,7 +375,7 @@ impl FromIterator<OutputField> for OutputFields {
 #[cfg(test)]
 mod test {
 
-    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
     use tari_script::script;
 
     use super::*;
@@ -394,9 +394,9 @@ mod test {
         mod is_eq {
             use super::*;
             use crate::transactions::{
-                key_manager::create_memory_db_key_manager,
                 tari_amount::MicroMinotari,
                 transaction_components::RangeProofType,
+                transaction_key_manager::create_memory_db_key_manager,
             };
 
             #[tokio::test]
@@ -465,10 +465,12 @@ mod test {
                 .await
                 .remove(0);
 
-                assert!(!OutputField::Commitment.is_eq(&output, &Commitment::default()).unwrap());
+                assert!(!OutputField::Commitment
+                    .is_eq(&output, &CompressedCommitment::default())
+                    .unwrap());
                 assert!(!OutputField::Script.is_eq(&output, &script![Nop Drop].unwrap()).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
-                    .is_eq(&output, &PublicKey::default())
+                    .is_eq(&output, &CompressedPublicKey::default())
                     .unwrap());
                 assert!(!OutputField::Covenant
                     .is_eq(&output, &covenant!(and(identity(), identity())).unwrap())
@@ -491,7 +493,7 @@ mod test {
 
         mod is_eq_input {
             use super::*;
-            use crate::transactions::key_manager::create_memory_db_key_manager;
+            use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
@@ -562,7 +564,7 @@ mod test {
 
     mod output_fields {
         use super::*;
-        use crate::transactions::key_manager::create_memory_db_key_manager;
+        use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
         mod construct_challenge_from {
             use digest::Update;

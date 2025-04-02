@@ -58,6 +58,17 @@ impl NewBlockHeaderTemplate {
             pow: header.pow,
         }
     }
+
+    pub fn empty() -> Self {
+        Self {
+            version: 0,
+            height: 0,
+            prev_hash: Default::default(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            pow: Default::default(),
+        }
+    }
 }
 
 impl Display for NewBlockHeaderTemplate {

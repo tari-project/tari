@@ -12,6 +12,7 @@ target
 .vscode/
 *.code-workspace
 tags
+null
 
 # Ignore OS files
 .DS_Store

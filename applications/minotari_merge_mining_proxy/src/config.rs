@@ -20,19 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
+use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{Network, StringList},
+    configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::transaction_components::RangeProofType;
 
 // The default Monero fail URL for mainnet
-const MONERO_FAIL_MAINNET_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";
+pub(crate) const MONERO_FAIL_MAINNET_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";
+pub(crate) const TARI_MONEROD_SERVERS: [&str; 1] = ["https://xmr-01.tari.com"];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -56,9 +61,9 @@ pub struct MergeMiningProxyConfig {
     /// If authentication is being used for curl
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
-    pub base_node_grpc_address: Option<Multiaddr>,
+    pub base_node_grpc_address: Option<String>,
     /// P2Pool node's gRPC address
-    pub p2pool_node_grpc_address: Option<Multiaddr>,
+    pub p2pool_node_grpc_address: Option<String>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation
@@ -93,50 +98,54 @@ pub struct MergeMiningProxyConfig {
     pub wallet_payment_address: String,
     /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
-    /// Use p2pool to submit and get block templates
+    /// Use p2pool to submit and get block templates (default = false)
     pub p2pool_enabled: bool,
+    /// The timeout duration for connecting to monerod (default = 2s)
+    #[serde(with = "serializers::seconds")]
+    pub monerod_connection_timeout: Duration,
 }
 
 impl Default for MergeMiningProxyConfig {
     fn default() -> Self {
+        let mut monerod_servers = TARI_MONEROD_SERVERS.iter().map(|v| v.to_string()).collect::<Vec<_>>();
+        monerod_servers.append(&mut vec![
+            "http://node.c3pool.org:18081".to_string(),
+            "http://xmr-full.p2pool.uk:18089".to_string(),
+            "http://monero.stackwallet.com:18081".to_string(),
+            "http://xmr.support:18081".to_string(),
+            "http://node1.xmr-tw.org:18081".to_string(),
+            "http://monero-g2.hexhex.online:18081".to_string(),
+            "http://137.220.120.19:18089".to_string(),
+            "http://185.218.124.120:18489".to_string(),
+            "http://185.218.124.120:18789".to_string(),
+            "https://xmr-de-2.boldsuck.org:18081".to_string(),
+            "http://46.32.46.171:18081".to_string(),
+            "http://185.218.124.120:18089".to_string(),
+            "http://185.218.124.120:18589".to_string(),
+            "http://xmr-de-1.boldsuck.org:18081".to_string(),
+            "http://185.218.124.120:18889".to_string(),
+            "http://pinodexmr.hopto.org:18081".to_string(),
+            "http://node.tincloud.eu:18081".to_string(),
+            "http://183.6.24.33:18081".to_string(),
+            "http://147.45.196.232:18089".to_string(),
+            "http://h-helix.com:18089".to_string(),
+            "http://185.218.124.120:18689".to_string(),
+            "http://185.218.124.120:18289".to_string(),
+            "https://node.tincloud.eu".to_string(),
+            "https://xmr-de.boldsuck.org:18081".to_string(),
+            "https://monero.booze.org".to_string(),
+            "https://xmr.mailia.be:18088".to_string(),
+            "https://xmr.lolfox.au".to_string(),
+            "https://xmr1.doggett.tech:18089".to_string(),
+            "https://node.icefiles.nz:18081".to_string(),
+            "http://45.8.132.220:18089".to_string(),
+            "http://82.147.85.13:18089".to_string(),
+        ]);
         Self {
             override_from: None,
             use_dynamic_fail_data: true,
             monero_fail_url: MONERO_FAIL_MAINNET_URL.into(),
-            monerod_url: StringList::from(vec![
-                "http://node.c3pool.org:18081".to_string(),
-                "http://xmr-full.p2pool.uk:18089".to_string(),
-                "http://monero.stackwallet.com:18081".to_string(),
-                "http://xmr.support:18081".to_string(),
-                "https://xmr-01.tari.com".to_string(),
-                "http://node1.xmr-tw.org:18081".to_string(),
-                "http://monero-g2.hexhex.online:18081".to_string(),
-                "http://137.220.120.19:18089".to_string(),
-                "http://185.218.124.120:18489".to_string(),
-                "http://185.218.124.120:18789".to_string(),
-                "https://xmr-de-2.boldsuck.org:18081".to_string(),
-                "http://46.32.46.171:18081".to_string(),
-                "http://185.218.124.120:18089".to_string(),
-                "http://185.218.124.120:18589".to_string(),
-                "http://xmr-de-1.boldsuck.org:18081".to_string(),
-                "http://185.218.124.120:18889".to_string(),
-                "http://pinodexmr.hopto.org:18081".to_string(),
-                "http://node.tincloud.eu:18081".to_string(),
-                "http://183.6.24.33:18081".to_string(),
-                "http://147.45.196.232:18089".to_string(),
-                "http://h-helix.com:18089".to_string(),
-                "http://185.218.124.120:18689".to_string(),
-                "http://185.218.124.120:18289".to_string(),
-                "https://node.tincloud.eu".to_string(),
-                "https://xmr-de.boldsuck.org:18081".to_string(),
-                "https://monero.booze.org".to_string(),
-                "https://xmr.mailia.be:18088".to_string(),
-                "https://xmr.lolfox.au".to_string(),
-                "https://xmr1.doggett.tech:18089".to_string(),
-                "https://node.icefiles.nz:18081".to_string(),
-                "http://45.8.132.220:18089".to_string(),
-                "http://82.147.85.13:18089".to_string(),
-            ]),
+            monerod_url: StringList::from(monerod_servers),
             monerod_username: String::new(),
             monerod_password: String::new(),
             monerod_use_auth: false,
@@ -156,6 +165,7 @@ impl Default for MergeMiningProxyConfig {
             wallet_payment_address: TariAddress::default().to_base58(),
             range_proof_type: RangeProofType::RevealedValue,
             p2pool_enabled: false,
+            monerod_connection_timeout: Duration::from_secs(2),
         }
     }
 }
@@ -176,10 +186,8 @@ impl SubConfigPath for MergeMiningProxyConfig {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
 
     use tari_common::DefaultConfigLoader;
-    use tari_comms::multiaddr::Multiaddr;
 
     use crate::config::MergeMiningProxyConfig;
 
@@ -192,12 +200,12 @@ mod test {
             [config_a.merge_mining_proxy]
               monerod_url = [ "http://network.a.org" ]
               monerod_password = "password_igor"
-              base_node_grpc_address = "/dns4/base_node_a/tcp/8080"
+              base_node_grpc_address = "http://base_node_a:8080"
             [config_b.merge_mining_proxy]
               submit_to_origin = false
               monerod_url = [ "http://network.b.org" ]
               monerod_password = "password_stagenet"
-              base_node_grpc_address = "/dns4/base_node_b/tcp/8080"
+              base_node_grpc_address = "http://base_node_b:8080"
             "#;
 
         config::Config::builder()
@@ -218,7 +226,7 @@ mod test {
         assert_eq!(config.monerod_password.as_str(), "password_stagenet");
         assert_eq!(
             config.base_node_grpc_address,
-            Some(Multiaddr::from_str("/dns4/base_node_b/tcp/8080").unwrap())
+            Some("http://base_node_b:8080".to_string())
         );
 
         let cfg = get_config("config_a");
@@ -229,7 +237,7 @@ mod test {
         assert_eq!(config.monerod_password.as_str(), "password_igor");
         assert_eq!(
             config.base_node_grpc_address,
-            Some(Multiaddr::from_str("/dns4/base_node_a/tcp/8080").unwrap())
+            Some("http://base_node_a:8080".to_string())
         );
     }
 

@@ -38,13 +38,22 @@ use tari_common_types::{
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        Signature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
 };
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
         comms_interface::CommsInterfaceError,
         state_machine_service::states::StateInfo,
+        tari_pulse_service::TariPulseHandle,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -66,9 +75,9 @@ use tari_core::{
             TransactionKernel,
             TransactionKernelVersion,
         },
+        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
@@ -78,6 +87,7 @@ use crate::{
     builder::BaseNodeContext,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        data_cache::DataCache,
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
@@ -114,7 +124,9 @@ pub struct BaseNodeGrpcServer {
     comms: CommsNode,
     liveness: LivenessHandle,
     report_grpc_error: bool,
+    tari_pulse: TariPulseHandle,
     config: BaseNodeConfig,
+    data_cache: DataCache,
 }
 
 impl BaseNodeGrpcServer {
@@ -129,7 +141,9 @@ impl BaseNodeGrpcServer {
             comms: ctx.base_node_comms().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
+            tari_pulse: ctx.tari_pulse(),
             config,
+            data_cache: DataCache::new(),
         }
     }
 
@@ -177,7 +191,12 @@ impl BaseNodeGrpcServer {
 
     fn check_method_enabled(&self, method: GrpcMethod) -> Result<(), Status> {
         if !self.is_method_enabled(method) {
-            warn!(target: LOG_TARGET, "`{}` method called but it is not allowed. Allow it in the config file or start the node with a different set of CLI options", method);
+            warn!(
+                target: LOG_TARGET,
+                "`{}` method called but it is not allowed. Allow it in the config file or start the node with a \
+                different set of CLI options",
+                method
+            );
             return Err(Status::permission_denied(format!(
                 "`{}` method not made available",
                 method
@@ -361,6 +380,103 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Sending GetNetworkDifficulty response stream to client"
         );
         Ok(Response::new(rx))
+    }
+
+    async fn get_network_state(
+        &self,
+        _request: Request<tari_rpc::GetNetworkStateRequest>,
+    ) -> Result<Response<tari_rpc::GetNetworkStateResponse>, Status> {
+        trace!(target: LOG_TARGET, "Incoming GRPC request for get network hash rate");
+        let report_error_flag = self.report_error_flag();
+        let mut handler = self.node_service.clone();
+        let metadata = handler.get_metadata().await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get node tip: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
+        let reward = self
+            .consensus_rules
+            .get_block_reward_at(metadata.best_block_height())
+            .as_u64();
+        let constants = self.consensus_rules.consensus_constants(metadata.best_block_height());
+        let sha3x_estimated_hash_rate = match self
+            .data_cache
+            .get_sha3x_estimated_hash_rate(metadata.best_block_hash())
+            .await
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
+                    .await
+                    .map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for Sha3x: {}",
+                            e.to_string()
+                        );
+                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                    })?;
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
+                let estimated_hash_rate = target_difficulty.as_u64() / target_time;
+                self.data_cache
+                    .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                    .await;
+                estimated_hash_rate
+            },
+        };
+        let randomx_estimated_hash_rate = match self
+            .data_cache
+            .get_randomx_estimated_hash_rate(metadata.best_block_hash())
+            .await
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomX)
+                    .await
+                    .map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for RandomX: {}",
+                            e.to_string()
+                        );
+                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                    })?;
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
+                let estimated_hash_rate = target_difficulty.as_u64() / target_time;
+                self.data_cache
+                    .set_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                    .await;
+                estimated_hash_rate
+            },
+        };
+
+        let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
+        let status_watch = self.state_machine_handle.get_status_info_watch();
+        let state: tari_rpc::BaseNodeState = (&status_watch.borrow().state_info).into();
+
+        let mut connectivity = self.comms.connectivity();
+        let connected_peers = connectivity
+            .get_active_connections()
+            .await
+            .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
+
+        let response = tari_rpc::GetNetworkStateResponse {
+            metadata: Some(metadata.into()),
+            initial_sync_achieved: status_watch.borrow().bootstrapped,
+            base_node_state: state.into(),
+            failed_checkpoints,
+            reward,
+            sha3x_estimated_hash_rate,
+            randomx_estimated_hash_rate,
+            num_connections: connected_peers.len() as u64,
+        };
+        trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
+        Ok(Response::new(response))
     }
 
     async fn get_mempool_transactions(
@@ -595,6 +711,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_new_block_template(
         &self,
         request: Request<tari_rpc::NewBlockTemplateRequest>,
@@ -623,18 +740,71 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let mut handler = self.node_service.clone();
+        let metadata = handler.get_metadata().await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get node tip: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
 
-        let new_template = handler
-            .get_new_block_template(algo, request.max_weight)
-            .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not get new block template: {}",
-                    e.to_string()
-                );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
+        let new_template = match algo {
+            PowAlgorithm::Sha3x => {
+                match self
+                    .data_cache
+                    .get_sha3x_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
+                    None => {
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e.to_string()
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_sha3x_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
+                        new_template
+                    },
+                }
+            },
+            PowAlgorithm::RandomX => {
+                match self
+                    .data_cache
+                    .get_randomx_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
+                    None => {
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e.to_string()
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_randomx_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
+                        new_template
+                    },
+                }
+            },
+        };
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let pow = algo as i32;
@@ -799,18 +969,28 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         })?;
 
         let mut handler = self.node_service.clone();
-
-        let mut new_template = handler
-            .get_new_block_template(algo, request.max_weight)
+        let meta = handler
+            .get_metadata()
             .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not get new block template: {}",
-                    e.to_string()
-                );
-                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-            })?;
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        let constants_weight = self
+            .consensus_rules
+            .consensus_constants(meta.best_block_height().saturating_add(1))
+            .max_block_transaction_weight();
+        let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
+            constants_weight
+        } else {
+            request.max_weight
+        };
+
+        let mut new_template = handler.get_new_block_template(algo, asking_weight).await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get new block template: {}",
+                e.to_string()
+            );
+            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+        })?;
 
         let pow = algo as i32;
 
@@ -822,6 +1002,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(meta.best_block_height().saturating_add(1))
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         // let validate the coinbase amounts;
         let reward = u128::from(
@@ -870,8 +1060,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
 
-        let mut total_excess = Commitment::default();
-        let mut total_nonce = PublicKey::default();
+        let mut total_excess = UncompressedCommitment::default();
+        let mut total_nonce = UncompressedPublicKey::default();
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
@@ -904,8 +1094,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.pub_key;
-            total_excess = &total_excess + &coinbase_kernel.excess;
+            total_nonce = &total_nonce +
+                &new_nonce
+                    .pub_key
+                    .to_public_key()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_excess = &total_excess +
+                &coinbase_kernel
+                    .excess
+                    .to_commitment()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
@@ -916,29 +1114,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
             last_kernel = coinbase_kernel;
         }
-        let mut kernel_signature = Signature::default();
+        let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
             kernel_signature = &kernel_signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
-                        &total_nonce,
-                        total_excess.as_public_key(),
+                        &CompressedPublicKey::new_from_pk(total_nonce.clone()),
+                        &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
                         &TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,
                     )
                     .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+                    .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         }
         let kernel_new = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
-            .with_excess(&total_excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(total_excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1037,6 +1237,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 )
             })?;
         let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        if coinbases.len() as u64 >
+            self.consensus_rules
+                .consensus_constants(block_template.header.height)
+                .max_block_coinbase_count()
+        {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal("Too many coinbases, breaking consensus".to_string()),
+            ));
+        }
 
         let mut handler = self.node_service.clone();
 
@@ -1068,8 +1278,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
         let script_key_id = TariKeyId::default();
 
-        let mut total_excess = Commitment::default();
-        let mut total_nonce = PublicKey::default();
+        let mut total_excess = UncompressedCommitment::default();
+        let mut total_nonce = UncompressedPublicKey::default();
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
@@ -1102,8 +1312,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce + &new_nonce.pub_key;
-            total_excess = &total_excess + &coinbase_kernel.excess;
+            total_nonce = &total_nonce +
+                &new_nonce
+                    .pub_key
+                    .to_public_key()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+            total_excess = &total_excess +
+                &coinbase_kernel
+                    .excess
+                    .to_commitment()
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
             private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
@@ -1114,29 +1332,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
             last_kernel = coinbase_kernel;
         }
-        let mut kernel_signature = Signature::default();
+        let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
             kernel_signature = &kernel_signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
-                        &total_nonce,
-                        total_excess.as_public_key(),
+                        &CompressedPublicKey::new_from_pk(total_nonce.clone()),
+                        &CompressedPublicKey::new_from_pk(total_excess.as_public_key().clone()),
                         &TransactionKernelVersion::get_current_version(),
                         &kernel_message,
                         &last_kernel.features,
                         TxoStage::Output,
                     )
                     .await
+                    .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?
+                    .to_schnorr_signature()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         }
         let kernel_new = KernelBuilder::new()
             .with_fee(0.into())
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
-            .with_excess(&total_excess)
-            .with_signature(kernel_signature)
+            .with_excess(&CompressedCommitment::from_commitment(total_excess))
+            .with_signature(Signature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1639,6 +1859,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
         let mut handler = self.node_service.clone();
+        let failed_checkpoints = *self.tari_pulse.get_failed_checkpoints_notifier();
 
         let meta = handler
             .get_metadata()
@@ -1652,6 +1873,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             metadata: Some(meta.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
             base_node_state: state.into(),
+            failed_checkpoints,
         };
 
         trace!(target: LOG_TARGET, "Sending MetaData response to client");
@@ -1726,7 +1948,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let outputs = request
             .commitments
             .into_iter()
-            .map(|s| Commitment::from_canonical_bytes(&s))
+            .map(|s| CompressedCommitment::from_canonical_bytes(&s))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2271,7 +2493,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
-        let public_key = PublicKey::from_canonical_bytes(&request.public_key)
+        let public_key = CompressedPublicKey::from_canonical_bytes(&request.public_key)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
 
         let epoch = request.epoch;

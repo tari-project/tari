@@ -20,21 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use log::debug;
 use minotari_ledger_wallet_common::common_types::{AppSW, Instruction};
-use once_cell::sync::Lazy;
 use rand::{rngs::OsRng, RngCore};
 use semver::Version;
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
-use tari_crypto::dhke::DiffieHellmanSharedSecret;
-use tari_script::CheckSigSchnorrSignature;
+use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoPublicKey};
+use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -57,7 +56,7 @@ pub enum ScriptSignatureKey {
 
 /// Verify that the ledger application is working properly.
 pub fn verify_ledger_application() -> Result<(), LedgerDeviceError> {
-    static VERIFIED: Lazy<Mutex<Option<Result<(), LedgerDeviceError>>>> = Lazy::new(|| Mutex::new(None));
+    static VERIFIED: LazyLock<Mutex<Option<Result<(), LedgerDeviceError>>>> = LazyLock::new(|| Mutex::new(None));
     if let Ok(mut verified) = VERIFIED.try_lock() {
         if verified.is_none() {
             match verify() {
@@ -120,7 +119,14 @@ fn verify() -> Result<(), LedgerDeviceError> {
     {
         Ok(signature) => match ledger_get_public_key(account, private_key_index, private_key_branch) {
             Ok(public_key) => {
-                if !signature.verify(&public_key, nonce) {
+                let schnorr_signature = signature.to_schnorr_signature().map_err(|e| {
+                    LedgerDeviceError::Processing(format!(
+                        "Error 0: 'Minotari Wallet' application could not convert the compressed signature to a \
+                         Schnorr signature ({:?}). Please update the firmware on your device.",
+                        e
+                    ))
+                })?;
+                if !schnorr_signature.verify(&public_key, nonce) {
                     return Err(LedgerDeviceError::Processing(
                         "Error 1: 'Minotari Wallet' application could not create a valid signature. Please update the \
                          firmware on your device."
@@ -210,7 +216,7 @@ pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
 }
 
 /// Get the public alpha key from the ledger device
-pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDeviceError> {
+pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, LedgerDeviceError> {
     debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{}'", account);
     verify_ledger_application()?;
 
@@ -223,7 +229,7 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<PublicKey, LedgerDevi
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_alpha = PublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_alpha = CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?;
             Ok(public_alpha)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {}", e))),
@@ -235,7 +241,7 @@ pub fn ledger_get_public_key(
     account: u64,
     index: u64,
     branch: TransactionKeyManagerBranch,
-) -> Result<PublicKey, LedgerDeviceError> {
+) -> Result<RistrettoPublicKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
         "ledger_get_public_key: account '{}', index '{}', branch '{:?}'",
@@ -257,7 +263,7 @@ pub fn ledger_get_public_key(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_key = PublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_key = RistrettoPublicKey::from_canonical_bytes(&result.data()[1..33])?;
             Ok(public_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {}", e))),
@@ -272,7 +278,7 @@ pub fn ledger_get_script_signature(
     signature_key: &ScriptSignatureKey,
     value: &PrivateKey,
     commitment_private_key: &PrivateKey,
-    commitment: &Commitment,
+    commitment: &CompressedCommitment,
     message: [u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
     debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{}', message '{}'", account, message.to_hex());
@@ -320,8 +326,8 @@ pub fn ledger_get_script_signature(
             }
             let data = result.data();
             let signature = ComAndPubSignature::new(
-                Commitment::from_canonical_bytes(&data[1..33])?,
-                PublicKey::from_canonical_bytes(&data[33..65])?,
+                CompressedCommitment::from_canonical_bytes(&data[1..33])?,
+                CompressedPublicKey::from_canonical_bytes(&data[33..65])?,
                 PrivateKey::from_canonical_bytes(&data[65..97])?,
                 PrivateKey::from_canonical_bytes(&data[97..129])?,
                 PrivateKey::from_canonical_bytes(&data[129..161])?,
@@ -438,8 +444,8 @@ pub fn ledger_get_dh_shared_secret(
     account: u64,
     index: u64,
     branch: TransactionKeyManagerBranch,
-    public_key: &PublicKey,
-) -> Result<DiffieHellmanSharedSecret<PublicKey>, LedgerDeviceError> {
+    public_key: &CompressedPublicKey,
+) -> Result<DiffieHellmanSharedSecret<RistrettoPublicKey>, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
         "ledger_get_dh_shared_secret: account '{}', index '{}', branch '{:?}'",
@@ -461,7 +467,8 @@ pub fn ledger_get_dh_shared_secret(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let shared_secret = DiffieHellmanSharedSecret::<PublicKey>::from_canonical_bytes(&result.data()[1..33])?;
+            let shared_secret =
+                DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(&result.data()[1..33])?;
             Ok(shared_secret)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {}", e))),
@@ -503,7 +510,7 @@ pub fn ledger_get_raw_schnorr_signature(
             }
 
             let signature = Signature::new(
-                PublicKey::from_canonical_bytes(&result.data()[1..33])?,
+                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
                 PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
             );
             Ok(signature)
@@ -518,7 +525,7 @@ pub fn ledger_get_script_schnorr_signature(
     private_key_index: u64,
     private_key_branch: TransactionKeyManagerBranch,
     nonce: &[u8],
-) -> Result<CheckSigSchnorrSignature, LedgerDeviceError> {
+) -> Result<CompressedCheckSigSchnorrSignature, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
         "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}'",
@@ -544,8 +551,8 @@ pub fn ledger_get_script_schnorr_signature(
                 )));
             }
 
-            let signature = CheckSigSchnorrSignature::new(
-                PublicKey::from_canonical_bytes(&result.data()[1..33])?,
+            let signature = CompressedCheckSigSchnorrSignature::new(
+                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
                 PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
             );
             Ok(signature)
@@ -605,9 +612,9 @@ pub fn ledger_get_one_sided_metadata_signature(
             }
             let data = result.data();
             Ok(ComAndPubSignature::new(
-                Commitment::from_canonical_bytes(&data[1..33])
+                CompressedCommitment::from_canonical_bytes(&data[1..33])
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PublicKey::from_canonical_bytes(&data[33..65])
+                CompressedPublicKey::from_canonical_bytes(&data[33..65])
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
                 PrivateKey::from_canonical_bytes(&data[65..97])
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,

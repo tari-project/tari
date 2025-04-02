@@ -26,11 +26,10 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
@@ -39,10 +38,9 @@ use crate::{
     covenants::Covenant,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::*,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -50,11 +48,13 @@ use crate::{
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
+        transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
             sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
             TransactionMetadata,
         },
+        weight::TransactionWeight,
     },
 };
 
@@ -79,6 +79,7 @@ pub(super) struct RecipientDetails {
     pub recipient_covenant: Covenant,
     pub recipient_minimum_value_promise: MicroMinotari,
     pub recipient_ephemeral_public_key_nonce: TariKeyId,
+    pub recipient_address: TariAddress,
 }
 
 /// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
@@ -97,18 +98,18 @@ pub struct SenderTransactionInitializer<KM> {
     sender_custom_outputs: Vec<OutputPair>,
     change: Option<ChangeDetails>,
     recipient: Option<RecipientDetails>,
-    recipient_text_message: Option<String>,
+    payment_id: Option<PaymentId>,
     prevent_fee_gt_amount: bool,
     tx_id: Option<TxId>,
     kernel_features: KernelFeatures,
-    burn_commitment: Option<Commitment>,
+    burn_commitment: Option<CompressedCommitment>,
     fee: Fee,
     key_manager: KM,
     sender_address: TariAddress,
 }
 
 pub struct BuildError<KM> {
-    pub builder: SenderTransactionInitializer<KM>,
+    pub builder: Box<SenderTransactionInitializer<KM>>,
     pub message: String,
 }
 
@@ -129,7 +130,7 @@ where KM: TransactionKeyManagerInterface
             inputs: Vec::new(),
             sender_custom_outputs: Vec::new(),
             change: None,
-            recipient_text_message: None,
+            payment_id: None,
             prevent_fee_gt_amount: true,
             recipient: None,
             kernel_features: KernelFeatures::empty(),
@@ -162,6 +163,7 @@ where KM: TransactionKeyManagerInterface
         recipient_covenant: Covenant,
         recipient_minimum_value_promise: MicroMinotari,
         amount: MicroMinotari,
+        recipient_address: TariAddress,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let recipient_ephemeral_public_key_nonce = self
             .key_manager
@@ -179,6 +181,7 @@ where KM: TransactionKeyManagerInterface
             recipient_minimum_value_promise,
             recipient_ephemeral_public_key_nonce: recipient_ephemeral_public_key_nonce.key_id,
             amount,
+            recipient_address,
         };
         self.recipient = Some(recipient_details);
         Ok(self)
@@ -247,9 +250,9 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    /// Provide a text message for receiver
-    pub fn with_message(&mut self, message: String) -> &mut Self {
-        self.recipient_text_message = Some(message);
+    /// Provide a payment id for receiver
+    pub fn with_payment_id(&mut self, payment_id: PaymentId) -> &mut Self {
+        self.payment_id = Some(payment_id);
         self
     }
 
@@ -260,7 +263,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// This will allow the receipient to sign the burn commitment
-    pub fn with_burn_commitment(&mut self, commitment: Option<Commitment>) -> &mut Self {
+    pub fn with_burn_commitment(&mut self, commitment: Option<CompressedCommitment>) -> &mut Self {
         self.burn_commitment = commitment;
         self
     }
@@ -395,14 +398,73 @@ where KM: TransactionKeyManagerInterface
                             .ok_or("Change covenant was not provided")?
                             .change_covenant
                             .clone();
-                        let address = self
+                        let own_address = self
                             .change
                             .as_ref()
                             .ok_or("address was not provided")?
                             .own_address
                             .clone();
 
-                        let payment_id = PaymentId::Address(address);
+                        let weight_without_change = TransactionWeight::latest().calculate(
+                            1,
+                            num_inputs,
+                            num_outputs,
+                            features_and_scripts_size_without_change,
+                        );
+                        let weight_of_change =
+                            TransactionWeight::latest().calculate(0, 0, 1, change_features_and_scripts_size);
+                        let sender_one_sided = !self
+                            .change
+                            .as_ref()
+                            .ok_or("address was not provided")?
+                            .own_address
+                            .features()
+                            .contains(TariAddressFeatures::INTERACTIVE);
+
+                        let mut payment_id = PaymentId::TransactionInfo {
+                            recipient_address: TariAddress::default(),
+                            sender_one_sided,
+                            amount: MicroMinotari::default(),
+                            fee: fee_without_change + change_fee,
+                            weight: weight_without_change + weight_of_change,
+                            inputs_count: num_inputs,
+                            outputs_count: num_outputs + 1,
+                            tx_type: if let Some(
+                                PaymentId::Open { tx_type, .. } | PaymentId::AddressAndData { tx_type, .. },
+                            ) = self.payment_id.clone()
+                            {
+                                tx_type
+                            } else if self.kernel_features.is_burned() {
+                                TxType::Burn
+                            } else {
+                                TxType::default()
+                            },
+                            user_data: if let Some(data) = self.payment_id.clone() {
+                                data.user_data_as_bytes()
+                            } else {
+                                vec![]
+                            },
+                        };
+                        if let Some(recipient) = self.recipient.clone() {
+                            payment_id.transaction_info_set_amount(recipient.amount);
+                            match payment_id.get_type() {
+                                TxType::PaymentToOther => {
+                                    payment_id.transaction_info_set_address(recipient.recipient_address)
+                                },
+                                TxType::PaymentToSelf |
+                                TxType::CoinSplit |
+                                TxType::CoinJoin |
+                                TxType::ValidatorNodeRegistration |
+                                TxType::CodeTemplateRegistration |
+                                TxType::ClaimAtomicSwap |
+                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
+                                _ => {},
+                            }
+                        } else {
+                            payment_id.transaction_info_set_amount(total_to_self);
+                            payment_id.transaction_info_set_address(own_address);
+                        }
+                        trace!(target: LOG_TARGET, "Modified change payment id: {}, TxId: {:?}", payment_id, self.tx_id);
 
                         let encrypted_data = self
                             .key_manager
@@ -480,7 +542,7 @@ where KM: TransactionKeyManagerInterface
 
     fn build_err<T>(self, msg: &str) -> Result<T, BuildError<KM>> {
         Err(BuildError {
-            builder: self,
+            builder: Box::new(self),
             message: msg.to_string(),
         })
     }
@@ -575,12 +637,12 @@ where KM: TransactionKeyManagerInterface
             tx_id,
             recipient_data: self.recipient,
             recipient_output: None,
-            recipient_partial_kernel_excess: PublicKey::default(),
+            recipient_partial_kernel_excess: CompressedPublicKey::default(),
             recipient_partial_kernel_signature: Signature::default(),
             recipient_partial_kernel_offset: PrivateKey::default(),
             change_output: change_output_pair,
-            total_sender_nonce: PublicKey::default(),
-            total_sender_excess: PublicKey::default(),
+            total_sender_nonce: CompressedPublicKey::default(),
+            total_sender_excess: CompressedPublicKey::default(),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
@@ -589,7 +651,7 @@ where KM: TransactionKeyManagerInterface
             },
             inputs: self.inputs,
             outputs: self.sender_custom_outputs,
-            text_message: self.recipient_text_message.unwrap_or_default(),
+            payment_id: self.payment_id.unwrap_or_default(),
             sender_address: self.sender_address.clone(),
         };
 
@@ -613,10 +675,10 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             fee::Fee,
-            key_manager::create_memory_db_key_manager,
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction_key_manager::create_memory_db_key_manager,
             transaction_protocol::{sender::SenderState, transaction_initializer::SenderTransactionInitializer},
         },
     };
@@ -705,7 +767,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![], None).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             MicroMinotari(4),
@@ -770,6 +832,7 @@ mod test {
             0,
             &key_manager,
             vec![],
+            None,
         )
         .await;
         let output = p
@@ -830,7 +893,7 @@ mod test {
             .await
             .unwrap()
             .with_fee_per_gram(MicroMinotari(2));
-        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![]).await;
+        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![], None).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -852,7 +915,7 @@ mod test {
             p.get_size_for_default_features_and_scripts(1)
                 .expect("Failed to borsh serialized size"),
         );
-        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![]).await;
+        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
@@ -878,6 +941,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari(500),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -889,7 +953,7 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let output = create_wallet_output_with_data(
             script.clone(),
@@ -927,6 +991,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari::zero(),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -942,8 +1007,8 @@ mod test {
         // Create some inputs
         let key_manager = create_memory_db_key_manager().unwrap();
         let p = TestParams::new(&key_manager).await;
-        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
-        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![]).await;
+        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager, vec![], None).await;
         let fee_per_gram = MicroMinotari(6);
 
         let script = script!(Nop).unwrap();
@@ -994,6 +1059,7 @@ mod test {
                 Default::default(),
                 0.into(),
                 MicroMinotari(2500),
+                TariAddress::default(),
             )
             .await
             .unwrap();

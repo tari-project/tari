@@ -100,6 +100,7 @@ service BaseNode {
   // Get templates
   rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
   rpc GetSideChainUtxos(GetSideChainUtxosRequest) returns (stream GetSideChainUtxosResponse);
+  rpc GetNetworkState(GetNetworkStateRequest) returns (GetNetworkStateResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -161,6 +162,7 @@ message TipInfoResponse {
   MetaData metadata = 1;
   bool initial_sync_achieved = 2;
   BaseNodeState base_node_state = 3;
+  bool failed_checkpoints = 4;
 }
 
 enum BaseNodeState{
@@ -478,7 +480,6 @@ message MempoolStatsResponse {
 
 message GetActiveValidatorNodesRequest {
   uint64 height = 1;
-  bytes sidechain_id = 2;
 }
 
 message GetActiveValidatorNodesResponse {
@@ -547,5 +548,28 @@ message GetSideChainUtxosRequest {
 message GetSideChainUtxosResponse {
   BlockInfo block_info = 1;
   repeated TransactionOutput outputs = 2;
+}
+
+message GetNetworkStateRequest {
+}
+
+message GetNetworkStateResponse {
+  // metadata
+  MetaData metadata = 1;
+  // has the base node synced
+  bool initial_sync_achieved = 2;
+  //current state of the base node
+  BaseNodeState base_node_state = 3;
+  // do we have failed checkpoints
+  bool failed_checkpoints = 4;
+  // The block reward of the next tip
+  uint64 reward = 5;
+  // estimate sha3x hash rate
+  uint64 sha3x_estimated_hash_rate = 6;
+  // estimate randomx hash rate
+  uint64 randomx_estimated_hash_rate = 7;
+  // number of connections
+  uint64 num_connections = 8;
+
 }
 

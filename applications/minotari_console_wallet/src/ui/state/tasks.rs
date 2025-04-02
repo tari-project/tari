@@ -22,22 +22,29 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
-use log::{error, warn};
+use blake2::Blake2b;
+use digest::consts::U64;
+use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
 };
-use rand::random;
+use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{FixedHash, PrivateKey, PublicKey},
+    types::{CompressedPublicKey, Signature, UncompressedSignature},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+use tari_core::{
+    consensus::DomainSeparatedConsensusHasher,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+    },
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_hashing::TransactionHashDomain;
+use tari_key_manager::key_manager::KeyManager;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -54,7 +61,7 @@ pub async fn send_transaction_task(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -69,7 +76,7 @@ pub async fn send_transaction_task(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
+            payment_id,
         )
         .await
     {
@@ -130,7 +137,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -145,7 +151,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
             payment_id,
         )
         .await
@@ -181,15 +186,13 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     }
 }
 
-#[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
-    claim_public_key: Option<PublicKey>,
+    claim_public_key: Option<CompressedPublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
-    sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -201,15 +204,12 @@ pub async fn send_burn_transaction_task(
     // burning minotari
     // ----------------------------------------------------------------------------
 
+    debug!(
+        target: LOG_TARGET, "Burn tari - amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, selection: {}",
+        amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+    );
     let (burn_tx_id, original_proof) = match transaction_service_handle
-        .burn_tari(
-            amount,
-            selection_criteria,
-            fee_per_gram,
-            message,
-            claim_public_key,
-            sidechain_deployment_key,
-        )
+        .burn_tari(amount, selection_criteria, fee_per_gram, payment_id, claim_public_key)
         .await
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
@@ -324,7 +324,6 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
-    sidechain_id_key: Option<&RistrettoSecretKey>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -358,7 +357,7 @@ pub async fn send_register_template_transaction_task(
             return;
         },
     };
-    let binary_sha = match FixedHash::from_hex(&binary_sha) {
+    let binary_sha = match MaxSizeBytes::<32>::try_from(binary_sha) {
         Ok(binary_sha) => binary_sha,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
@@ -380,7 +379,7 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
-    let repository_commit_hash = match MaxSizeBytes::<32>::from_hex(&repository_commit_hash) {
+    let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash) {
         Ok(repository_commit_hash) => repository_commit_hash,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {}", e);
@@ -394,8 +393,43 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
+    // ----------------------------------------------------------------------------
+    // signing and sending code template registration request
+    // ----------------------------------------------------------------------------
+
+    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
+
+    let author_private_key = match km.next_key() {
+        Ok(secret_key) => secret_key.key,
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to generate key: {}", e);
+            result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
+            return;
+        },
+    };
+
+    let author_public_key = CompressedPublicKey::from_secret_key(&author_private_key);
+    let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
+        .chain(&author_public_key)
+        .chain(&public_nonce)
+        .chain(&binary_sha)
+        .chain(&b"")
+        .finalize();
+
+    let author_signature = Signature::new_from_schnorr(
+        UncompressedSignature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
+            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey"),
+    );
+
+    // ----------------------------------------------------------------------------
+    // ============================================================================
+    // ----------------------------------------------------------------------------
+
     let result = transaction_service_handle
         .register_code_template(
+            author_public_key,
+            author_signature,
             template_name,
             template_version,
             template_type,
@@ -406,11 +440,10 @@ pub async fn send_register_template_transaction_task(
             binary_sha,
             binary_url,
             fee_per_gram,
-            sidechain_id_key.cloned(),
         )
         .await;
 
-    let (sent_tx_id, _template_addr) = match result {
+    let sent_tx_id = match result {
         Ok(tx_id) => tx_id,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to register code template: {:?}", e);

@@ -82,7 +82,7 @@ impl<B> ServiceInitializer for BaseNodeStateMachineInitializer<B>
 where B: BlockchainBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing Base Node State Machine Service");
+        trace!(target: LOG_TARGET, "Initializing Base Node State Machine Service");
         let (state_event_publisher, _) = broadcast::channel(500);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
@@ -100,10 +100,7 @@ where B: BlockchainBackend + 'static
         let randomx_factory = self.randomx_factory.clone();
         let bypass_range_proof_verification = self.bypass_range_proof_verification;
 
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_when_ready(move |handles| async move {
-            log_mdc::extend(mdc);
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();

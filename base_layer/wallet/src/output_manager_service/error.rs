@@ -27,13 +27,11 @@ use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdE
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
+    transaction_key_manager::error::KeyManagerServiceError,
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::errors::RangeProofError;
-use tari_key_manager::{
-    error::{KeyManagerError, MnemonicError},
-    key_manager_service::KeyManagerServiceError,
-};
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};

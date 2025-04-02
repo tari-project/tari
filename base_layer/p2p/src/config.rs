@@ -139,6 +139,10 @@ pub struct P2pConfig {
     /// The maximum allowed RPC sessions per peer.
     /// Default: 10
     pub rpc_max_sessions_per_peer: usize,
+    /// If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace
+    /// it with a new session. If false, the RPC server will reject the new session and preserve the older session.
+    /// (default value = true).
+    pub cull_oldest_peer_rpc_connection_on_full: bool,
 }
 
 impl Default for P2pConfig {
@@ -163,6 +167,7 @@ impl Default for P2pConfig {
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,
             rpc_max_sessions_per_peer: 10,
+            cull_oldest_peer_rpc_connection_on_full: true,
         }
     }
 }

@@ -27,7 +27,7 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 
 pub mod weight;
 
-pub mod key_manager;
+pub mod transaction_key_manager;
 
 #[macro_use]
 #[cfg(feature = "base_node")]

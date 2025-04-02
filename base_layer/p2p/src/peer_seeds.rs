@@ -33,7 +33,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures},
-    types::CommsPublicKey,
+    types::{CommsPublicKey, UncompressedCommsPublicKey},
 };
 use tari_utilities::hex::Hex;
 
@@ -112,13 +112,16 @@ impl FromStr for SeedPeer {
         let mut parts = s.split("::").map(|s| s.trim());
         let public_key = parts
             .next()
-            .and_then(|s| CommsPublicKey::from_hex(s).ok())
+            .and_then(|s| UncompressedCommsPublicKey::from_hex(s).ok())
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
         let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
         if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
             return Err(anyhow!("Empty or invalid address in seed peer string"));
         }
-        Ok(SeedPeer { public_key, addresses })
+        Ok(SeedPeer {
+            public_key: CommsPublicKey::new_from_pk(public_key),
+            addresses,
+        })
     }
 }
 

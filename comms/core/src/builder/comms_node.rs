@@ -197,7 +197,7 @@ impl UnspawnedCommsNode {
         connectivity_manager.spawn();
         connection_manager.spawn();
 
-        debug!(target: LOG_TARGET, "Hello from comms!");
+        trace!(target: LOG_TARGET, "Hello from comms!");
         info!(
             target: LOG_TARGET,
             "Your node's public key is '{}'",

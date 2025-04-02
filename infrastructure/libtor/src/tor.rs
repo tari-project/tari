@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, io, net::TcpListener, path::PathBuf, thread};
+use std::{fmt, fs, io, net::TcpListener, path::PathBuf, thread};
 
 use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
@@ -28,7 +28,6 @@ use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
-use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
 
 const LOG_TARGET: &str = "tari_libtor";
@@ -46,13 +45,11 @@ impl fmt::Debug for TorPassword {
 pub struct Tor {
     control_port: u16,
     data_dir: PathBuf,
-    log_destination: String,
+    log_destination: PathBuf,
     log_level: LogLevel,
     #[derivative(Debug = "ignore")]
     passphrase: TorPassword,
     socks_port: u16,
-    temp_dir: Option<TempDir>,
-    temp_file: Option<TempPath>,
 }
 
 impl Default for Tor {
@@ -64,8 +61,6 @@ impl Default for Tor {
             log_level: LogLevel::Err,
             passphrase: TorPassword(None),
             socks_port: 0,
-            temp_dir: None,
-            temp_file: None,
         }
     }
 }
@@ -76,7 +71,7 @@ impl Tor {
     /// Two TCP ports will be provided by the operating system.
     /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
     /// node identity file.
-    pub fn initialize() -> Result<Tor, ExitError> {
+    pub fn initialize(data_dir: PathBuf) -> Result<Tor, ExitError> {
         debug!(target: LOG_TARGET, "Initializing libtor");
         let mut instance = Tor::default();
 
@@ -95,15 +90,33 @@ impl Tor {
         instance.passphrase = TorPassword(Some(passphrase));
 
         // data dir
-        let temp = tempdir()?;
-        instance.data_dir = temp.path().to_path_buf();
-        instance.temp_dir = Some(temp);
+        instance.data_dir = data_dir.join("data");
+
+        let exists = fs::exists(instance.data_dir.clone()).map_err(|e| {
+            ExitError::new(
+                ExitCode::InputError,
+                format!(
+                    "Could not verify libtor data directory: {} ({})",
+                    instance.data_dir.display(),
+                    e
+                ),
+            )
+        })?;
+        if !exists {
+            fs::create_dir_all(&instance.data_dir).map_err(|e| {
+                ExitError::new(
+                    ExitCode::InputError,
+                    format!(
+                        "Could not create libtor data directory: {} ({})",
+                        instance.data_dir.display(),
+                        e
+                    ),
+                )
+            })?;
+        }
 
         // log destination
-        let temp = NamedTempFile::new()?.into_temp_path();
-        let file = temp.to_string_lossy().to_string();
-        instance.temp_file = Some(temp);
-        instance.log_destination = file;
+        instance.log_destination = data_dir.join("tor.log");
 
         debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
@@ -152,7 +165,7 @@ impl Tor {
             // Write the final control port to a file. This could be used to configure the node to use this port when auto is set.
             .flag(TorFlag::ControlPortWriteToFile(data_dir.join("control_port").to_string_lossy().to_string()))
             .flag(TorFlag::Hush())
-            .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination)));
+            .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination.to_string_lossy().to_string())));
 
         if socks_port == 0 {
             tor.flag(TorFlag::SocksPortAuto);

@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
@@ -91,8 +91,9 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let script_private_key = PrivateKey::from_canonical_bytes(output.script_private_key.as_bytes())
             .map_err(|e| format!("script_private_key: {:?}", e))?;
 
-        let sender_offset_public_key = PublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-            .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
+        let sender_offset_public_key =
+            CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
 
         let metadata_signature = output
             .metadata_signature

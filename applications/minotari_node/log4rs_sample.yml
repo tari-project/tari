@@ -102,7 +102,7 @@ appenders:
         count: 5
         pattern: "{{log_dir}}/log/base_node/other.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m} // {f}:{L}{n}"
 
 # Set the default logging level to "info"
 root:
@@ -124,6 +124,8 @@ loggers:
     level: debug
     appenders:
       - grpc
+      - stdout
+    additive: false  
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:

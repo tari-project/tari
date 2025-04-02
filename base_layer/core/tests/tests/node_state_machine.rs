@@ -41,7 +41,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::key_manager::create_memory_db_key_manager,
+    transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::mocks::MockValidator,
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
@@ -117,7 +117,8 @@ async fn test_listening_lagging() {
     );
     wait_until_online(&[&alice_node, &bob_node]).await;
 
-    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
     let bob_db = bob_node.blockchain_db;
     let mut bob_local_nci = bob_node.local_nci;
@@ -251,7 +252,8 @@ async fn test_listening_initial_fallen_behind() {
     );
 
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
-    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
     let next_event = time::timeout(Duration::from_secs(10), await_event_task)
         .await
@@ -273,6 +275,7 @@ async fn test_listening_initial_fallen_behind() {
 
 #[tokio::test]
 async fn test_event_channel() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
         .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
@@ -311,7 +314,7 @@ async fn test_event_channel() {
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    for _ in 0..5 {
+    for _ in 0..10 {
         mock.publish_chain_metadata(
             peer_chain_metadata.node_id(),
             peer_chain_metadata.claimed_chain_metadata(),
@@ -320,7 +323,8 @@ async fn test_event_channel() {
         .expect("Could not publish metadata");
     }
     let event = state_change_event_subscriber.recv().await;
-    assert_eq!(*event.unwrap(), StateEvent::Initialized);
+    let event = event.unwrap();
+    unpack_enum!(StateEvent::Initialized(_) = &*event);
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
     assert!(matches!(&*event, StateEvent::FallenBehind(_)));

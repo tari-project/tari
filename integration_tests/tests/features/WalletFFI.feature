@@ -125,7 +125,7 @@ Feature: Wallet FFI
         And I start TXO validation on ffi wallet FFI_WALLET
         And I start TX validation on ffi wallet FFI_WALLET
         Then I wait for ffi wallet FFI_WALLET to receive 2 mined
-        Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
+        Then I want to view the transaction information for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
 

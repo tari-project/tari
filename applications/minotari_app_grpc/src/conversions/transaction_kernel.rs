@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::Commitment;
+use tari_common_types::types::CompressedCommitment;
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
@@ -35,7 +35,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_canonical_bytes(&kernel.excess)
+        let excess = CompressedCommitment::from_canonical_bytes(&kernel.excess)
             .map_err(|err| format!("Excess could not be converted:{}", err))?;
 
         let excess_sig = kernel
@@ -49,7 +49,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             None
         } else {
             Some(
-                Commitment::from_canonical_bytes(&kernel.burn_commitment)
+                CompressedCommitment::from_canonical_bytes(&kernel.burn_commitment)
                     .map_err(|err| format!("Burn commitment could not be converted:{}", err))?,
             )
         };
@@ -83,7 +83,7 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
             lock_height: kernel.lock_height,
             excess: Vec::from(kernel.excess.as_bytes()),
             excess_sig: Some(grpc::Signature {
-                public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
+                public_nonce: Vec::from(kernel.excess_sig.get_compressed_public_nonce().as_bytes()),
                 signature: Vec::from(kernel.excess_sig.get_signature().as_bytes()),
             }),
             hash,

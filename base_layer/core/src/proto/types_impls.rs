@@ -22,7 +22,8 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{ComAndPubSignature, Commitment, HashOutput, PrivateKey, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, HashOutput, PrivateKey};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_crypto::{hashing::DomainSeparation, signatures::SchnorrSignature};
 use tari_utilities::{ByteArray, ByteArrayError};
 
@@ -30,16 +31,16 @@ use super::types as proto;
 
 //---------------------------------- Commitment --------------------------------------------//
 
-impl TryFrom<proto::Commitment> for Commitment {
+impl TryFrom<proto::Commitment> for CompressedCommitment {
     type Error = ByteArrayError;
 
     fn try_from(commitment: proto::Commitment) -> Result<Self, Self::Error> {
-        Commitment::from_canonical_bytes(&commitment.data)
+        CompressedCommitment::from_canonical_bytes(&commitment.data)
     }
 }
 
-impl From<Commitment> for proto::Commitment {
-    fn from(commitment: Commitment) -> Self {
+impl From<CompressedCommitment> for proto::Commitment {
+    fn from(commitment: CompressedCommitment) -> Self {
         Self {
             data: commitment.to_vec(),
         }
@@ -48,26 +49,27 @@ impl From<Commitment> for proto::Commitment {
 
 //---------------------------------- Signature --------------------------------------------//
 
-impl<H: DomainSeparation> TryFrom<proto::Signature> for SchnorrSignature<PublicKey, PrivateKey, H> {
+impl<H: DomainSeparation> TryFrom<proto::Signature> for SchnorrSignature<CompressedPublicKey, PrivateKey, H> {
     type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
         let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
     }
 }
-impl<H: DomainSeparation> From<&SchnorrSignature<PublicKey, PrivateKey, H>> for proto::Signature {
-    fn from(sig: &SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
+
+impl<H: DomainSeparation> From<&SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: &SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
             public_nonce: sig.get_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
         }
     }
 }
-impl<H: DomainSeparation> From<SchnorrSignature<PublicKey, PrivateKey, H>> for proto::Signature {
-    fn from(sig: SchnorrSignature<PublicKey, PrivateKey, H>) -> Self {
+impl<H: DomainSeparation> From<SchnorrSignature<CompressedPublicKey, PrivateKey, H>> for proto::Signature {
+    fn from(sig: SchnorrSignature<CompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
             public_nonce: sig.get_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),
@@ -81,8 +83,8 @@ impl TryFrom<proto::ComAndPubSignature> for ComAndPubSignature {
     type Error = ByteArrayError;
 
     fn try_from(sig: proto::ComAndPubSignature) -> Result<Self, Self::Error> {
-        let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
-        let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
+        let ephemeral_commitment = CompressedCommitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
+        let ephemeral_pubkey = CompressedPublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
         let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)?;
         let u_x = PrivateKey::from_canonical_bytes(&sig.u_x)?;
         let u_y = PrivateKey::from_canonical_bytes(&sig.u_y)?;

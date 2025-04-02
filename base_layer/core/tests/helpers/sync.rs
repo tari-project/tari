@@ -51,10 +51,10 @@ use tari_core::{
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::T,
         test_helpers::schema_to_transaction,
         transaction_components::{Transaction, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     txn_schema,
     validation::mocks::MockValidator,
@@ -383,7 +383,7 @@ pub async fn wait_for_is_peer_banned(this_node: &NodeInterfaces, peer_node_id: &
 /// Condensed format of the state machine state for display
 pub fn state_event(event: &StateEvent) -> String {
     match event {
-        StateEvent::Initialized => "Initialized".to_string(),
+        StateEvent::Initialized(_) => "Initialized".to_string(),
         StateEvent::HeadersSynchronized(_, _) => "HeadersSynchronized".to_string(),
         StateEvent::HeaderSyncFailed(_) => "HeaderSyncFailed".to_string(),
         StateEvent::ProceedToHorizonSync(_) => "ProceedToHorizonSync".to_string(),

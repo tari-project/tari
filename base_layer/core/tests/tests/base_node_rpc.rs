@@ -49,10 +49,10 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{TransactionOutput, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     txn_schema,
 };

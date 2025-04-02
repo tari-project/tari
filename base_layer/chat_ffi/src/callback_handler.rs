@@ -81,7 +81,7 @@ impl CallbackHandler {
                                         "FFI Callback monitor received a new Message ({})",
                                         m
                                     );
-                                    self.trigger_message_received(m.clone());
+                                    self.trigger_message_received(*m.clone());
                                 }
                                 MessageDispatch::DeliveryConfirmation(c) => {
                                     trace!(

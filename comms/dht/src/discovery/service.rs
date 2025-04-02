@@ -100,10 +100,7 @@ impl DhtDiscoveryService {
     }
 
     pub fn spawn(self) {
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         task::spawn(async move {
-            log_mdc::extend(mdc);
             info!(target: LOG_TARGET, "Discovery service started");
             self.run().await
         });
@@ -417,7 +414,7 @@ mod test {
         )
         .spawn();
 
-        let dest_public_key = Box::<tari_crypto::ristretto::RistrettoPublicKey>::default();
+        let dest_public_key = Box::<CommsPublicKey>::default();
         let result = requester
             .discover_peer(
                 *dest_public_key.clone(),

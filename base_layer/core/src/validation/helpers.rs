@@ -61,6 +61,8 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, ValidationError> {
+    let mut timestamps: Vec<EpochTime> = timestamps.to_vec();
+    timestamps.sort();
     trace!(
         target: LOG_TARGET,
         "Calculate the median timestamp from {} timestamps",
@@ -344,6 +346,7 @@ pub fn check_eviction_proof<B: BlockchainBackend>(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
@@ -383,7 +386,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Utxo",
+            kind: "Utxos",
         }));
     };
     if header.output_smt_size != mmr_roots.output_smt_size {
@@ -399,7 +402,20 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             expected: mmr_roots.output_smt_size,
             actual: header.output_smt_size,
         }));
-    }
+    };
+    if header.block_output_mr != mmr_roots.block_output_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header block output MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
+            header.hash().to_hex(),
+            header.block_output_mr,
+            mmr_roots.block_output_mr,
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: "block outputs",
+        }));
+    };
     if header.input_mr != mmr_roots.input_mr {
         warn!(
             target: LOG_TARGET,
@@ -631,7 +647,7 @@ mod test {
             assert_eq!(median_timestamp, 3.into());
 
             let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
-            assert_eq!(median_timestamp, 100.into());
+            assert_eq!(median_timestamp, 0.into());
 
             let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 2.into());
@@ -647,8 +663,8 @@ mod test {
         use super::*;
         use crate::transactions::{
             aggregated_body::AggregateBody,
-            key_manager::create_memory_db_key_manager,
             transaction_components::{RangeProofType, TransactionError},
+            transaction_key_manager::create_memory_db_key_manager,
         };
 
         #[tokio::test]
@@ -671,7 +687,7 @@ mod test {
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
-            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap();
         }
 
@@ -694,7 +710,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
@@ -721,7 +737,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }

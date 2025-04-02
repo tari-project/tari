@@ -6,8 +6,8 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-
 mod hashing;
+mod crypto;
 pub mod utils;
 
 mod app_ui {
@@ -207,6 +207,7 @@ extern "C" fn sample_main() {
 
     // This is long-lived over the span the ledger app is open, across multiple interactions
     let mut offset_ctx = ScriptOffsetCtx::new();
+
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
         // Initialize reference to Comm instance for NBGL
@@ -229,7 +230,7 @@ extern "C" fn sample_main() {
             continue;
         };
 
-        let status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
@@ -239,8 +240,9 @@ extern "C" fn sample_main() {
                 sw
             },
         };
+
         #[cfg(any(target_os = "stax", target_os = "flex"))]
-        show_status_and_home_if_needed(&ins, &status, &mut offset_ctx, &mut home);
+        show_status_and_home_if_needed(&ins, &_status, &mut offset_ctx, &mut home);
     }
 }
 
