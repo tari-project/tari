@@ -1553,7 +1553,7 @@ impl LMDBDatabase {
     fn insert_monero_seed_height(
         &self,
         write_txn: &WriteTransaction<'_>,
-        seed: &[u8],
+        seed: &Vec<u8>,
         height: u64,
     ) -> Result<(), ChainStorageError> {
         let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?;
@@ -1575,10 +1575,10 @@ impl LMDBDatabase {
         }
         lmdb_insert(
             write_txn,
-            &self.monero_seed_height_db,
-            seed,
+            &self.monero_seed_height_index_db,
             &height,
-            "monero_seed_height_db",
+            seed,
+            "monero_seed_height_index_db",
         )?;
         Ok(())
     }
@@ -2953,7 +2953,7 @@ impl fmt::Display for MetadataValue {
 }
 
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 5;
+    const MIGRATION_VERSION: u64 = 6;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -3006,6 +3006,45 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             txn.commit()?;
             info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+        if migrate_from_version == 5{
+            // lets clear the list of bad blocks
+            {
+                let txn = db.write_transaction()?;
+                info!(target: LOG_TARGET, "Clearing bad blocks list due reorg issue with morero seed heights");
+                let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+                txn.commit()?;
+                info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+            }
+            // lets create the monero seed height indexes
+            {
+                let txn = db.write_transaction()?;
+                let heights: Vec<u64> = lmdb_filter_map_values(&txn, &db.monero_seed_height_db, Some)?;
+                let mut seeds = Vec::new();
+                for height in &heights{
+                    let header = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)?.ok_or_else(|| {
+                        ChainStorageError::ValueNotFound {
+                            entity: "Header",
+                            field: "height",
+                            value: height.to_string(),
+                        }
+                    })?;
+                    let pow_bytes = header.pow.pow_data.to_vec();
+                    let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
+                    let seed = pow_data.randomx_key.to_vec();
+                    seeds.push(seed);
+                }
+                for (i, seed) in seeds.iter().enumerate(){
+                    let txn = db.write_transaction()?;
+                    lmdb_insert(
+                        &txn,
+                        &db.monero_seed_height_index_db,
+                        &heights[i],
+                        &seed,
+                        "monero_seed_height_index_db",
+                    )?;
+                }
+            }
         }
     }
     if last_migrated_version != MIGRATION_VERSION {
