@@ -1557,13 +1557,20 @@ impl LMDBDatabase {
             Some(current_height) => {
                 if height < current_height {
                     lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
+                    lmdb_delete(
+                        write_txn,
+                        &self.monero_seed_height_index_db,
+                        &current_height,
+                        "monero_seed_height_index_db",
+                    )?;
+                    lmdb_insert(
+                        write_txn,
+                        &self.monero_seed_height_index_db,
+                        &height,
+                        seed,
+                        "monero_seed_height_index_db",
+                    )?;
                 };
-                lmdb_delete(
-                    write_txn,
-                    &self.monero_seed_height_index_db,
-                    &current_height,
-                    "monero_seed_height_index_db",
-                )?;
             },
             None => {
                 lmdb_insert(
@@ -1573,15 +1580,16 @@ impl LMDBDatabase {
                     &height,
                     "monero_seed_height_db",
                 )?;
+                lmdb_insert(
+                    write_txn,
+                    &self.monero_seed_height_index_db,
+                    &height,
+                    seed,
+                    "monero_seed_height_index_db",
+                )?;
             },
         }
-        lmdb_insert(
-            write_txn,
-            &self.monero_seed_height_index_db,
-            &height,
-            seed,
-            "monero_seed_height_index_db",
-        )?;
+
         Ok(())
     }
 

@@ -31,7 +31,7 @@ use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
     chain_storage::{self, BlockchainBackend, ChainStorageError},
     consensus::ConsensusManager,
-    proof_of_work::monero_rx::MoneroPowData,
+    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
@@ -107,15 +107,17 @@ impl BlockBodyFullValidator {
         rules: &ConsensusManager,
         backend: &B,
     ) -> Result<(), ValidationError> {
-        let monero_data = MoneroPowData::from_header(header, rules)?;
-        let seed_height = backend.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
-        if seed_height != 0 {
-            // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
-            let seed_used_height = header.height.saturating_sub(seed_height);
-            if seed_used_height > rules.consensus_constants(header.height).max_randomx_seed_height() {
-                return Err(ValidationError::BlockHeaderError(
-                    BlockHeaderValidationError::OldSeedHash,
-                ));
+        if header.pow.pow_algo == PowAlgorithm::RandomX {
+            let monero_data = MoneroPowData::from_header(header, rules)?;
+            let seed_height = backend.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
+            if seed_height != 0 {
+                // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
+                let seed_used_height = header.height.saturating_sub(seed_height);
+                if seed_used_height > rules.consensus_constants(header.height).max_randomx_seed_height() {
+                    return Err(ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::OldSeedHash,
+                    ));
+                }
             }
         }
         Ok(())
