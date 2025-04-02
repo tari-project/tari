@@ -29,7 +29,11 @@ use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
 use crate::{
-    dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion, DbConnectionUrl, Dht,
+    dht::DhtInitializationError,
+    outbound::DhtOutboundRequest,
+    version::DhtProtocolVersion,
+    DbConnectionUrl,
+    Dht,
     DhtConfig,
 };
 

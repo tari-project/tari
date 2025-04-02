@@ -33,7 +33,8 @@ use crate::{
         message::{OutboundEncryption, SendMessageResponse},
         message_params::{FinalSendMessageParams, SendMessageParams},
         message_send_state::MessageSendState,
-        DhtOutboundError, MessageSendStates,
+        DhtOutboundError,
+        MessageSendStates,
     },
 };
 

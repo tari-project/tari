@@ -87,9 +87,7 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
     }
 
     pub fn with_inbound_pipeline<S>(self, inbound: S) -> Builder<S, TOutSvc, TOutReq>
-    where
-        S: Service<InboundMessage> + Clone + Send + 'static,
-    {
+    where S: Service<InboundMessage> + Clone + Send + 'static {
         Builder {
             inbound: Some(inbound),
 
