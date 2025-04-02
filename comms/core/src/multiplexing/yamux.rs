@@ -243,6 +243,7 @@ struct YamuxWorker<TSocket> {
     counter: AtomicRefCounter,
     _phantom: PhantomData<TSocket>,
     peer_connection_info: PeerConnectionInfo,
+    is_closed: bool,
 }
 
 impl<TSocket> YamuxWorker<TSocket>
@@ -260,6 +261,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
             counter,
             _phantom: PhantomData,
             peer_connection_info,
+            is_closed: false,
         }
     }
 
@@ -276,8 +278,8 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                         self.counter.get(),
                         self.peer_connection_info,
                     );
-                    // Ignore: we already log the error variant in Self::close
-                    let _ignore = Self::close(&mut connection).await;
+                    // Ignore: we already log the error variant in self.close
+                    let _ignore = self.close(&mut connection).await;
                     break
                 },
 
@@ -347,18 +349,27 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                                     );
                                 },
                             }
-                            // Ignore: we already log the error variant in Self::close
-                            let _ignore = Self::close(&mut connection).await;
+                            self.is_closed = true;
                             break;
                         },
                     }
                 }
             }
+
+            if self.is_closed {
+                debug!(
+                    target: LOG_TARGET,
+                    "{} Incoming peer ({}) substream task is stopping because the connection was closed",
+                    self.counter.get(),
+                    self.peer_connection_info,
+                );
+                break;
+            }
         }
     }
 
     async fn handle_request(
-        &self,
+        &mut self,
         connection_mut: &mut yamux::Connection<TSocket>,
         request: YamuxRequest,
     ) -> io::Result<()> {
@@ -376,7 +387,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                 }
             },
             YamuxRequest::Close { reply } => {
-                if reply.send(Self::close(connection_mut).await).is_err() {
+                if reply.send(self.close(connection_mut).await).is_err() {
                     warn!(target: LOG_TARGET, "Request to close substream was aborted before reply was sent");
                 }
             },
@@ -390,7 +401,12 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
         poll_fn(|cx| connection_mut.poll_next_inbound(cx)).await
     }
 
-    async fn close(connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {
+    async fn close(&mut self, connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {
+        if self.is_closed {
+            return Ok(());
+        }
+
+        self.is_closed = true;
         if let Err(err) = poll_fn(|cx| connection.poll_close(cx)).await {
             match err {
                 ConnectionError::Io(ref io_err)
