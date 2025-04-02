@@ -94,7 +94,7 @@ impl FixedByteArray {
     }
 
     pub fn to_vec(&self)-> Vec<u8> {
-        self.elems.to_vec()
+        self.as_slice().to_vec()
     }
 }
 
