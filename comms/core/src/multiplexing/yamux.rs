@@ -30,7 +30,7 @@ use tokio::{
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing::{debug, error, warn};
 // Reexport
-use yamux::Mode;
+use yamux::{ConnectionError, FrameDecodeError, Mode};
 
 use crate::{
     connection_manager::{ConnectionDirection, PeerConnectionInfo},
@@ -312,13 +312,43 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                             break;
                         }
                         Some(Err(err)) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "{} Incoming peer ({}) substream task received an error because '{}'",
-                                self.counter.get(),
-                                self.peer_connection_info,
-                                err
-                            );
+                            match err {
+                                ConnectionError::Io(ref io_err) if
+                                    io_err.kind() == io::ErrorKind::ConnectionReset ||
+                                    io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                                {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream closed by the remote host '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                                ConnectionError::Decode(FrameDecodeError::Io(ref io_err)) if
+                                    io_err.kind() == io::ErrorKind::ConnectionReset ||
+                                    io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                                {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream closed by the remote host '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                                _ => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "{} Incoming peer ({}) substream task received an error because '{}'",
+                                        self.counter.get(),
+                                        self.peer_connection_info,
+                                        err
+                                    );
+                                },
+                            }
+                            // Ignore: we already log the error variant in Self::close
+                            let _ignore = Self::close(&mut connection).await;
                             break;
                         },
                     }
@@ -362,8 +392,18 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
 
     async fn close(connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {
         if let Err(err) = poll_fn(|cx| connection.poll_close(cx)).await {
-            error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
-            return Err(err);
+            match err {
+                ConnectionError::Io(ref io_err)
+                    if io_err.kind() == io::ErrorKind::ConnectionReset ||
+                        io_err.kind() == io::ErrorKind::ConnectionAborted =>
+                {
+                    debug!(target: LOG_TARGET, "Substream closed by the remote host '{}'", err);
+                },
+                _ => {
+                    error!(target: LOG_TARGET, "Error while closing yamux connection: {}", err);
+                    return Err(err);
+                },
+            }
         }
         debug!(target: LOG_TARGET, "Yamux connection has closed");
         Ok(())

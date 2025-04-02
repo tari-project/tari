@@ -64,7 +64,6 @@ where
             executor,
             service,
             stream,
-
             shutdown_signal,
         }
     }
