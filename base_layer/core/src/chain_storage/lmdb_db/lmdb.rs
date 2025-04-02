@@ -27,7 +27,13 @@ use lmdb_zero::{
     error::{self, LmdbResultExt},
     put,
     traits::{AsLmdbBytes, CreateCursor, FromLmdbBytes},
-    ConstTransaction, Cursor, CursorIter, Database, Error, MaybeOwned, WriteTransaction,
+    ConstTransaction,
+    Cursor,
+    CursorIter,
+    Database,
+    Error,
+    MaybeOwned,
+    WriteTransaction,
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
@@ -281,9 +287,7 @@ where
 
 /// Retrieves the last value stored in the database
 pub fn lmdb_last<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Option<V>, ChainStorageError>
-where
-    V: DeserializeOwned,
-{
+where V: DeserializeOwned {
     let mut cursor = txn.cursor(db)?;
     let access = txn.access();
     match cursor.last::<[u8], [u8]>(&access).to_opt() {
@@ -304,9 +308,7 @@ where
 
 /// Checks if the key exists in the database
 pub fn lmdb_exists<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
-where
-    K: AsLmdbBytes + ?Sized,
-{
+where K: AsLmdbBytes + ?Sized {
     let access = txn.access();
     match access.get::<K, [u8]>(db, key).to_opt() {
         Ok(None) => Ok(false),
@@ -422,9 +424,7 @@ where
 }
 
 pub fn lmdb_all<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
-where
-    V: DeserializeOwned,
-{
+where V: DeserializeOwned {
     let access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
