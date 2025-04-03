@@ -372,7 +372,7 @@ where
                     Err(err @ RpcServerError::HandshakeError(_)) => {
                         debug!(target: LOG_TARGET, "Handshake error: {}", err);
                         #[cfg(feature = "metrics")]
-                        metrics::handshake_error_counter(&node_id, &notification.protocol).inc();
+                        metrics::handshake_error_counter(&notification.protocol).inc();
                     },
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
@@ -525,7 +525,7 @@ where
             .executor
             .try_spawn(async move {
                 #[cfg(feature = "metrics")]
-                let num_sessions = metrics::num_sessions(&node_id_clone, &service.protocol);
+                let num_sessions = metrics::num_sessions(&service.protocol);
                 #[cfg(feature = "metrics")]
                 num_sessions.inc();
                 service.start().await;
@@ -615,7 +615,7 @@ where
         );
         if let Err(err) = self.run().await {
             #[cfg(feature = "metrics")]
-            metrics::error_counter(&self.node_id, &self.protocol, &err).inc();
+            metrics::error_counter(&self.protocol, &err).inc();
             let level = match &err {
                 RpcServerError::Io(e) => err_to_log_level(e),
                 RpcServerError::EarlyClose(e) => e.io().map(err_to_log_level).unwrap_or(log::Level::Error),
@@ -642,7 +642,7 @@ where
                     match result {
                         Some(Ok(frame)) => {
                             #[cfg(feature = "metrics")]
-                            metrics::inbound_requests_bytes(&self.node_id, &self.protocol).observe(frame.len() as f64);
+                            metrics::inbound_requests_bytes(&self.protocol).observe(frame.len() as f64);
 
                             let start = Instant::now();
 
@@ -788,7 +788,6 @@ where
 
                 #[cfg(feature = "metrics")]
                 metrics::error_counter(
-                    &self.node_id,
                     &self.protocol,
                     &RpcServerError::ServiceCallExceededDeadline,
                 )
@@ -880,7 +879,7 @@ where
                      match msg {
                          Some(msg) => {
                             #[cfg(feature = "metrics")]
-                            metrics::outbound_response_bytes(&self.node_id, &self.protocol).observe(msg.len() as f64);
+                            metrics::outbound_response_bytes(&self.protocol).observe(msg.len() as f64);
                             trace!(
                                 target: LOG_TARGET,
                                 "({}) Sending body len = {}",
@@ -907,7 +906,6 @@ where
 
                     #[cfg(feature = "metrics")]
                     metrics::error_counter(
-                        &self.node_id,
                         &self.protocol,
                         &RpcServerError::ReadStreamExceededDeadline,
                     )

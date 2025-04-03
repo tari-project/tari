@@ -243,7 +243,7 @@ where
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
+            metrics::pending_connections(ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_wire_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -329,7 +329,7 @@ where
             }
 
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
+            metrics::pending_connections(ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 

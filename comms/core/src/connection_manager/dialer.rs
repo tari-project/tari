@@ -230,7 +230,7 @@ where
     ) {
         let node_id = dial_state.peer().node_id.clone();
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
+        metrics::pending_connections(ConnectionDirection::Outbound).inc();
 
         match dial_result {
             Ok((conn, peer_identity)) => {
@@ -285,7 +285,7 @@ where
             });
 
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
+        metrics::pending_connections(ConnectionDirection::Outbound).dec();
 
         self.cancel_dial(&node_id);
     }
