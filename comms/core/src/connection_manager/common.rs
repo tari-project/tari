@@ -22,10 +22,12 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    fmt::{Display, Formatter},
     time::Duration,
 };
 
 use log::*;
+use tari_utilities::hex::Hex;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
@@ -47,6 +49,43 @@ const LOG_TARGET: &str = "comms::connection_manager::common";
 pub struct ValidatedPeerIdentityExchange {
     pub claim: PeerIdentityClaim,
     pub metadata: PeerIdentityMetadata,
+}
+
+/// Contains information about a peer connection that can be displayed for debugging purposes.
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct PeerConnectionInfo {
+    /// The public key of the connected peer, if available
+    public_key: Option<CommsPublicKey>,
+    /// The node id of the connected peer, if available
+    node_if: Option<NodeId>,
+    /// The features supported by the peer, if available
+    features: Option<PeerFeatures>,
+    /// The user agent string of the peer, if available
+    user_agent: Option<String>,
+}
+
+impl PeerConnectionInfo {
+    pub fn new(public_key: Option<CommsPublicKey>, features: Option<PeerFeatures>, user_agent: Option<String>) -> Self {
+        Self {
+            public_key: public_key.clone(),
+            node_if: public_key.as_ref().map(NodeId::from_public_key),
+            features,
+            user_agent,
+        }
+    }
+}
+
+impl Display for PeerConnectionInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "PeerConnectionInfo(public_key: {}, node_id: {}, features: {}, user_agent: {})",
+            self.public_key.as_ref().unwrap_or(&CommsPublicKey::default()).to_hex(),
+            self.node_if.as_ref().unwrap_or(&NodeId::default()),
+            self.features.unwrap_or_default(),
+            self.user_agent.as_deref().unwrap_or_default()
+        )
+    }
 }
 
 impl ValidatedPeerIdentityExchange {

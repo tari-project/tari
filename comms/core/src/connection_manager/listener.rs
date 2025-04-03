@@ -49,6 +49,7 @@ use super::{
     peer_connection::{self, PeerConnection},
     ConnectionManagerConfig,
     ConnectionManagerEvent,
+    PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
@@ -411,12 +412,17 @@ where
 
         let peer = common::create_or_update_peer_from_validated_peer_identity(
             known_peer,
-            authenticated_public_key,
+            authenticated_public_key.clone(),
             &valid_peer_identity,
             latency,
         );
 
-        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
+        let peer_connection_info = PeerConnectionInfo::new(
+            Some(authenticated_public_key.clone()),
+            Some(valid_peer_identity.claim.features),
+            Some(valid_peer_identity.metadata.user_agent.clone()),
+        );
+        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         let conn = peer_connection::create(

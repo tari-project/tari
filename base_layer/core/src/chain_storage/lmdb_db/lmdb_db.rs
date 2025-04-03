@@ -37,6 +37,7 @@ use std::{
     time::Instant,
 };
 
+use borsh::BorshDeserialize;
 use fs2::FileExt;
 use lmdb_zero::{
     open, traits::AsLmdbBytes, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction,
@@ -72,7 +73,7 @@ use crate::{
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
-                fetch_db_entry_sizes, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
+                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
                 lmdb_delete_keys_starting_with, lmdb_exists, lmdb_fetch_matching_after, lmdb_filter_map_values,
                 lmdb_first_after, lmdb_get, lmdb_get_multiple, lmdb_insert, lmdb_insert_dup, lmdb_last, lmdb_len,
                 lmdb_replace,
@@ -121,6 +122,7 @@ const LMDB_DB_UNIQUE_ID_INDEX: &str = "unique_id_index";
 const LMDB_DB_CONTRACT_ID_INDEX: &str = "contract_index";
 const LMDB_DB_ORPHANS: &str = "orphans";
 const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
+const LMDB_DB_MONERO_SEED_HEIGHT_INDEX: &str = "monero_seed_height_index";
 const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
 const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
@@ -176,6 +178,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
+        .add_database(LMDB_DB_MONERO_SEED_HEIGHT_INDEX, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
@@ -237,6 +240,8 @@ pub struct LMDBDatabase {
     orphans_db: DatabaseRef,
     /// Maps randomx_seed -> height
     monero_seed_height_db: DatabaseRef,
+    /// Maps block height -> randomx_seed
+    monero_seed_height_index_db: DatabaseRef,
     /// Maps block_hash -> BlockHeaderAccumulatedData
     orphan_header_accumulated_data_db: DatabaseRef,
     /// Stores the orphan tip block hashes
@@ -299,6 +304,7 @@ impl LMDBDatabase {
             orphans_db: get_database(store, LMDB_DB_ORPHANS)?,
             orphan_header_accumulated_data_db: get_database(store, LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA)?,
             monero_seed_height_db: get_database(store, LMDB_DB_MONERO_SEED_HEIGHT)?,
+            monero_seed_height_index_db: get_database(store, LMDB_DB_MONERO_SEED_HEIGHT_INDEX)?,
             orphan_chain_tips_db: get_database(store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
             orphan_parent_map_index: get_database(store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
             bad_blocks: get_database(store, LMDB_DB_BAD_BLOCK_LIST)?,
@@ -518,7 +524,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 28] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 29] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -545,6 +551,7 @@ impl LMDBDatabase {
                 &self.orphan_header_accumulated_data_db,
             ),
             (LMDB_DB_MONERO_SEED_HEIGHT, &self.monero_seed_height_db),
+            (LMDB_DB_MONERO_SEED_HEIGHT_INDEX, &self.monero_seed_height_index_db),
             (LMDB_DB_ORPHAN_CHAIN_TIPS, &self.orphan_chain_tips_db),
             (LMDB_DB_ORPHAN_PARENT_MAP_INDEX, &self.orphan_parent_map_index),
             (LMDB_DB_BAD_BLOCK_LIST, &self.bad_blocks),
@@ -921,6 +928,17 @@ impl LMDBDatabase {
             &header.kernel_mmr_size.to_be_bytes(),
             "kernel_mmr_size_index",
         )?;
+
+        let monero_seed: Option<Vec<u8>> = lmdb_get(txn, &self.monero_seed_height_index_db, &height)?;
+        if let Some(seed) = monero_seed {
+            lmdb_delete(
+                txn,
+                &self.monero_seed_height_index_db,
+                &height,
+                "monero_seed_height_index_db",
+            )?;
+            lmdb_delete(txn, &self.monero_seed_height_db, &seed, "monero_seed_height_db")?;
+        }
 
         Ok(())
     }
@@ -1567,13 +1585,47 @@ impl LMDBDatabase {
     fn insert_monero_seed_height(
         &self,
         write_txn: &WriteTransaction<'_>,
-        seed: &[u8],
+        seed: &Vec<u8>,
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?.unwrap_or(u64::MAX);
-        if height < current_height {
-            lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
-        };
+        let current_height = lmdb_get(write_txn, &self.monero_seed_height_db, seed)?;
+        match current_height {
+            Some(current_height) => {
+                if height < current_height {
+                    lmdb_replace(write_txn, &self.monero_seed_height_db, seed, &height, None)?;
+                    lmdb_delete(
+                        write_txn,
+                        &self.monero_seed_height_index_db,
+                        &current_height,
+                        "monero_seed_height_index_db",
+                    )?;
+                    lmdb_insert(
+                        write_txn,
+                        &self.monero_seed_height_index_db,
+                        &height,
+                        seed,
+                        "monero_seed_height_index_db",
+                    )?;
+                };
+            },
+            None => {
+                lmdb_insert(
+                    write_txn,
+                    &self.monero_seed_height_db,
+                    seed,
+                    &height,
+                    "monero_seed_height_db",
+                )?;
+                lmdb_insert(
+                    write_txn,
+                    &self.monero_seed_height_index_db,
+                    &height,
+                    seed,
+                    "monero_seed_height_index_db",
+                )?;
+            },
+        }
+
         Ok(())
     }
 
@@ -3174,8 +3226,9 @@ impl fmt::Display for MetadataValue {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 5;
+    const MIGRATION_VERSION: u64 = 6;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -3221,13 +3274,62 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
                 .expect("should be valid hex");
             let _not_used = lmdb_delete(&txn, &db.monero_seed_height_db, &vm_key, "seed heights");
-            let height: u64 = 843;
-            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &height, None)?;
             info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
             let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
             txn.commit()?;
-            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
             info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+        }
+        if migrate_from_version == 5 {
+            // lets clear the list of bad blocks
+            {
+                let txn = db.write_transaction()?;
+                info!(target: LOG_TARGET, "Clearing bad blocks list due reorg issue with morero seed heights");
+                let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
+                txn.commit()?;
+                info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
+            }
+            // lets create the monero seed height indexes
+            {
+                let txn = db.write_transaction()?;
+                let heights: Vec<(Vec<u8>, u64)> = lmdb_all(&txn, &db.monero_seed_height_db)?;
+                let mut final_table = heights.clone();
+                for (db_seed, height) in &heights {
+                    let mut delete = true;
+                    if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)? {
+                        info!(target: LOG_TARGET, "Checking header for monero seed {}", header.hash().to_hex());
+                        if header.pow_algo() == PowAlgorithm::RandomX {
+                            let pow_bytes = header.pow.pow_data.to_vec();
+                            let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
+                            let seed = pow_data.randomx_key.to_vec();
+                            if seed == *db_seed {
+                                delete = false;
+                            } else {
+                                // delete
+                                info!(target: LOG_TARGET, "Deleting monero seed height {} because it does not match the seed", header.hash().to_hex());
+                            }
+                        } else {
+                            // delete
+                            info!(target: LOG_TARGET, "Deleting monero seed height {} because it is not RandomX", header.hash().to_hex());
+                        }
+                    }
+                    if delete {
+                        lmdb_delete(&txn, &db.monero_seed_height_db, db_seed, "monero_seed_height_db")?;
+                        final_table.retain(|(s, _)| s != db_seed);
+                    }
+                }
+                for (seed, height) in final_table {
+                    info!(target: LOG_TARGET, "Inserting new monero seed height {} with seed {}", height, seed.to_hex());
+                    lmdb_insert(
+                        &txn,
+                        &db.monero_seed_height_index_db,
+                        &height,
+                        &seed,
+                        "monero_seed_height_index_db",
+                    )?;
+                }
+
+                txn.commit()?;
+            }
         }
     }
     if last_migrated_version != MIGRATION_VERSION {
