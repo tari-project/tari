@@ -180,24 +180,47 @@ impl ConnectivityManagerActor {
         loop {
             tokio::select! {
                 Some(req) = self.request_rx.recv() => {
+                    let request_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Request ({}): {:?}", request_id, req);
                     self.handle_request(req).await;
+                    trace!(target: LOG_TARGET, "Request ({}) done", request_id);
                 },
 
                 Ok(event) = connection_manager_events.recv() => {
+                    let event_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Event ({}): {:?}", event_id, event);
                     if let Err(err) = self.handle_connection_manager_event(&event).await {
-                        error!(target:LOG_TARGET, "Error handling connection manager event: {:?}", err);
+                        error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", event_id, err);
                     }
+                    trace!(target: LOG_TARGET, "Event ({}) done", event_id);
                 },
 
                 _ = ticker.tick() => {
+                    let ticker_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Ticker ({})", ticker_id);
                     self.cleanup_connection_stats();
-                    if let Err(err) = self.refresh_connection_pool().await {
-                        error!(target: LOG_TARGET, "Error when refreshing connection pools: {:?}", err);
+                    match tokio::time::timeout(Duration::from_millis(2500), self.refresh_connection_pool(ticker_id)).await {
+                        Ok(res) => {
+                            if let Err(err) = res {
+                                error!(target: LOG_TARGET, "Error refreshing connection pools ({}): {:?}", ticker_id, err);
+                            }
+                        },
+                        Err(_) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Timeout refreshing connection pool ({})",
+                                ticker_id,
+                            );
+                        },
                     }
+                    trace!(target: LOG_TARGET, "Ticker ({}) done", ticker_id);
                 },
 
                 _ = self.shutdown_signal.wait() => {
-                    info!(target: LOG_TARGET, "ConnectivityManager is shutting down because it received the shutdown signal");
+                    info!(
+                        target: LOG_TARGET,
+                        "ConnectivityManager is shutting down because it received the shutdown signal"
+                    );
                     self.disconnect_all().await;
                     break;
                 }
@@ -208,7 +231,6 @@ impl ConnectivityManagerActor {
     async fn handle_request(&mut self, req: ConnectivityRequest) {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
-        trace!(target: LOG_TARGET, "Request: {:?}", req);
         match req {
             WaitStarted(reply) => {
                 let _ = reply.send(());
@@ -223,7 +245,7 @@ impl ConnectivityManagerActor {
                 self.handle_dial_peer(node_id.clone(), reply_tx).instrument(span).await;
             },
             SelectConnections(selection, reply) => {
-                let _result = reply.send(self.select_connections(selection).await);
+                let _result = reply.send(self.select_connections(selection));
             },
             GetConnection(node_id, reply) => {
                 let _result = reply.send(
@@ -379,11 +401,12 @@ impl ConnectivityManagerActor {
         }
     }
 
-    async fn refresh_connection_pool(&mut self) -> Result<(), ConnectivityError> {
+    async fn refresh_connection_pool(&mut self, ticker_id: u64) -> Result<(), ConnectivityError> {
         debug!(
             target: LOG_TARGET,
-            "Performing connection pool cleanup/refresh. (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
+            "Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
+            ticker_id,
             self.pool.count_entries(),
             self.pool.count_connected_nodes(),
             self.pool.count_failed(),
@@ -393,32 +416,31 @@ impl ConnectivityManagerActor {
 
         self.clean_connection_pool();
         if self.config.is_connection_reaping_enabled {
-            self.reap_inactive_connections().await;
+            self.reap_inactive_connections(ticker_id).await;
         }
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
-            self.maintain_n_closest_peer_connections_only(threshold).await;
+            self.maintain_n_closest_peer_connections_only(threshold, ticker_id)
+                .await;
         }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
     }
 
-    async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize) {
+    async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, ticker_id: u64) {
         // Select all active peer connections (that are communication nodes)
-        let mut connections = match self
-            .select_connections(ConnectivitySelection::closest_to(
-                self.node_identity.node_id().clone(),
-                self.pool.count_connected_nodes(),
-                vec![],
-            ))
-            .await
-        {
+        let mut connections = match self.select_connections(ConnectivitySelection::closest_to(
+            self.node_identity.node_id().clone(),
+            self.pool.count_connected_nodes(),
+            vec![],
+        )) {
             Ok(peers) => peers,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Connectivity error trying to maintain {} closest peers ({:?})",
+                    "Connectivity error trying to maintain {} closest peers ({}) ({:?})",
                     threshold,
+                    ticker_id,
                     e
                 );
                 return;
@@ -430,7 +452,8 @@ impl ConnectivityManagerActor {
         connections.retain(|conn| !self.allow_list.contains(conn.peer_node_id()));
         debug!(
             target: LOG_TARGET,
-            "minimize_connections: Filtered peers: {}, Handles: {}",
+            "minimize_connections: ({}) Filtered peers: {}, Handles: {}",
+            ticker_id,
             connections.len(),
             num_connections,
         );
@@ -439,24 +462,50 @@ impl ConnectivityManagerActor {
         for conn in connections.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,
-                "minimize_connections: Disconnecting '{}' because the node is not among the {} closest peers",
+                "minimize_connections: ({}) Disconnecting '{}' because the node is not among the {} closest peers",
+                ticker_id,
                 conn.peer_node_id(),
                 threshold
             );
-            if let Err(err) = conn.disconnect(Minimized::Yes).await {
-                // Already disconnected
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' already disconnected. Error: {:?}",
-                    conn.peer_node_id().short_str(),
-                    err
-                );
+            if (ConnectivityManagerActor::disconnect_with_timeout(conn, Duration::from_millis(250), ticker_id).await)
+                .is_ok()
+            {
+                self.pool.remove(conn.peer_node_id());
             }
-            self.pool.remove(conn.peer_node_id());
         }
     }
 
-    async fn reap_inactive_connections(&mut self) {
+    async fn disconnect_with_timeout(
+        connection: &mut PeerConnection,
+        timeout: Duration,
+        ticker_id: u64,
+    ) -> Result<(), ()> {
+        match tokio::time::timeout(timeout, connection.disconnect(Minimized::Yes)).await {
+            Ok(res) => {
+                if let Err(err) = res {
+                    // Already disconnected
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer '{}' already disconnected. Error: {:?}",
+                        connection.peer_node_id().short_str(),
+                        err
+                    );
+                }
+                Ok(())
+            },
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Timeout disconnecting peer ({}) '{}'",
+                    ticker_id,
+                    connection.peer_node_id().short_str(),
+                );
+                Err(())
+            },
+        }
+    }
+
+    async fn reap_inactive_connections(&mut self, ticker_id: u64) {
         let excess_connections = self
             .pool
             .count_connected()
@@ -476,19 +525,13 @@ impl ConnectivityManagerActor {
 
             debug!(
                 target: LOG_TARGET,
-                "Disconnecting '{}' because connection was inactive ({} handles)",
+                "({}) Disconnecting '{}' because connection was inactive ({} handles)",
+                ticker_id,
                 conn.peer_node_id().short_str(),
                 conn.handle_count()
             );
-            if let Err(err) = conn.disconnect(Minimized::Yes).await {
-                // Already disconnected
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' already disconnected. Error: {:?}",
-                    conn.peer_node_id().short_str(),
-                    err
-                );
-            }
+            let _unused =
+                ConnectivityManagerActor::disconnect_with_timeout(conn, Duration::from_millis(250), ticker_id).await;
         }
     }
 
@@ -513,10 +556,7 @@ impl ConnectivityManagerActor {
         }
     }
 
-    async fn select_connections(
-        &self,
-        selection: ConnectivitySelection,
-    ) -> Result<Vec<PeerConnection>, ConnectivityError> {
+    fn select_connections(&self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
         trace!(
             target: LOG_TARGET,
