@@ -3038,7 +3038,6 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                             let pow_bytes = header.pow.pow_data.to_vec();
                             let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
                             let seed = pow_data.randomx_key.to_vec();
-                            // seeds.push(seed);
                             if seed == *db_seed {
                                 delete = false;
                             } else {
