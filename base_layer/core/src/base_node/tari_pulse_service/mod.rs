@@ -20,26 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::min, str::FromStr, time::Duration};
+use std::{cmp::min, time::Duration};
 
 use futures::future;
-use hickory_client::{
-    client::{AsyncDnssecClient, ClientHandle},
-    proto::{
-        iocompat::AsyncIoTokioAsStd,
-        rr::dnssec::{public_key::Rsa, SigSigner, TrustAnchor},
-        xfer::DnsMultiplexer,
-    },
-    rr::{DNSClass, Name, RData, Record, RecordType},
-    tcp::TcpClientStream,
-};
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
-use tari_p2p::Network;
+use tari_common::DnsNameServer;
+use tari_p2p::{dns::DnsClient, Network};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time, time::MissedTickBehavior};
+use tokio::{sync::watch, time, time::MissedTickBehavior};
 
 use super::LocalNodeCommsInterface;
 use crate::base_node::comms_interface::CommsInterfaceError;
@@ -61,26 +52,26 @@ impl Default for TariPulseConfig {
     }
 }
 
-fn get_network_dns_name(network: Network) -> Name {
+fn get_network_dns_name(network: Network) -> &'static str {
     match network {
-        Network::NextNet => Name::from_str("checkpoints-nextnet.tari.com").expect("infallible"),
-        Network::MainNet => Name::from_str("checkpoints-mainnet.tari.com").expect("infallible"),
-        Network::Esmeralda => Name::from_str("checkpoints-esmeralda.tari.com").expect("infallible"),
-        Network::StageNet => Name::from_str("checkpoints-stagenet.tari.com").expect("infallible"),
-        Network::Igor => Name::from_str("checkpoints-igor.tari.com").expect("infallible"),
-        Network::LocalNet => Name::from_str("checkpoints-localnet.tari.com").expect("infallible"),
+        Network::NextNet => "checkpoints-nextnet.tari.com",
+        Network::MainNet => "checkpoints-mainnet.tari.com",
+        Network::Esmeralda => "checkpoints-esmeralda.tari.com",
+        Network::StageNet => "checkpoints-stagenet.tari.com",
+        Network::Igor => "checkpoints-igor.tari.com",
+        Network::LocalNet => "checkpoints-localnet.tari.com",
     }
 }
 
 pub struct TariPulseService {
-    dns_name: Name,
+    dns_name: &'static str,
     config: TariPulseConfig,
     shutdown_signal: ShutdownSignal,
 }
 
 impl TariPulseService {
     pub async fn new(config: TariPulseConfig, shutdown_signal: ShutdownSignal) -> Result<Self, anyhow::Error> {
-        let dns_name: Name = get_network_dns_name(config.clone().network);
+        let dns_name = get_network_dns_name(config.clone().network);
         info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
         Ok(Self {
             dns_name,
@@ -89,29 +80,8 @@ impl TariPulseService {
         })
     }
 
-    pub fn default_trust_anchor() -> TrustAnchor {
-        const ROOT_ANCHOR_ORIG: &[u8] = include_bytes!("20326.rsa");
-        const ROOT_ANCHOR_CURRENT: &[u8] = include_bytes!("38696.rsa");
-
-        let mut anchor = TrustAnchor::new();
-        anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_ORIG).expect("Invalid ROOT_ANCHOR_ORIG"));
-        anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_CURRENT).expect("Invalid ROOT_ANCHOR_CURRENT"));
-        anchor
-    }
-
-    async fn get_dns_client(&self) -> Result<AsyncDnssecClient, anyhow::Error> {
-        let timeout: Duration = Duration::from_secs(5);
-        let trust_anchor = Self::default_trust_anchor();
-
-        let (stream, handle) = TcpClientStream::<AsyncIoTokioAsStd<TokioTcpStream>>::new(([1, 1, 1, 1], 53).into());
-        let dns_muxer = DnsMultiplexer::<_, SigSigner>::with_timeout(stream, handle, timeout, None);
-        let (client, bg) = AsyncDnssecClient::builder(dns_muxer)
-            .trust_anchor(trust_anchor)
-            .build()
-            .await?;
-
-        tokio::spawn(bg);
-
+    async fn get_dns_client(&self) -> Result<DnsClient, anyhow::Error> {
+        let client = DnsClient::connect(DnsNameServer::System).await?;
         Ok(client)
     }
 
@@ -209,21 +179,12 @@ impl TariPulseService {
 
     async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
         let mut client = self.get_dns_client().await?;
-        let query = client.query(self.dns_name.clone(), DNSClass::IN, RecordType::TXT);
-        let response = query.await?;
-        let answers: &[Record] = response.answers();
-        let checkpoints: Vec<(u64, String)> = answers
+        let response = client.query_txt(self.dns_name).await?;
+        let checkpoints: Vec<(u64, String)> = response
             .iter()
-            .filter_map(|record| {
-                if let RData::TXT(txt) = record.data() {
-                    let ascii_txt = txt.txt_data().iter().fold(String::new(), |mut acc, bytes| {
-                        acc.push_str(&String::from_utf8_lossy(bytes));
-                        acc
-                    });
-                    let (height, hash) = ascii_txt.split_once(':')?;
-                    return Some((height.parse().ok()?, hash.to_string()));
-                }
-                None
+            .filter_map(|ascii_txt| {
+                let (height, hash) = ascii_txt.split_once(':')?;
+                Some((height.parse().ok()?, hash.to_string()))
             })
             .collect();
 
