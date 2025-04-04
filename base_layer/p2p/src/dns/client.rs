@@ -76,7 +76,9 @@ impl DnsClient {
             bind_addr: None,
             tls_config: None,
         });
-        let opts = ResolverOpts::default();
+        let mut opts = ResolverOpts::default();
+        opts.edns0 = true;
+        opts.try_tcp_on_error = true;
         TokioResolver::tokio(conf, opts)
     }
 
