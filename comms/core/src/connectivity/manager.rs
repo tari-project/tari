@@ -64,6 +64,11 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
 
+const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
+const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
+const REQUEST_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
+const EVENT_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
+
 /// # Connectivity Manager
 ///
 /// The ConnectivityManager actor is responsible for tracking the state of all peer
@@ -167,54 +172,72 @@ impl ConnectivityManagerActor {
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
         let interval = self.config.connection_pool_refresh_interval;
-        let mut ticker = time::interval_at(
+        let mut connection_pool_timer = time::interval_at(
             Instant::now()
                 .checked_add(interval)
                 .expect("connection_pool_refresh_interval cause overflow")
                 .into(),
             interval,
         );
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        connection_pool_timer.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
         loop {
             tokio::select! {
                 Some(req) = self.request_rx.recv() => {
-                    let request_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Request ({}): {:?}", request_id, req);
+                    let timer = Instant::now();
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Request ({}): {:?}", task_id, req);
                     self.handle_request(req).await;
-                    trace!(target: LOG_TARGET, "Request ({}) done", request_id);
+                    if timer.elapsed() > REQUEST_TIME_LAPSE_WARNING {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Request ({}) took too long to process: {:.2?}",
+                            task_id,
+                            format_duration(timer.elapsed())
+                        );
+                    }
+                    trace!(target: LOG_TARGET, "Request ({}) done", task_id);
                 },
 
                 Ok(event) = connection_manager_events.recv() => {
-                    let event_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Event ({}): {:?}", event_id, event);
+                    let timer = Instant::now();
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Event ({}): {:?}", task_id, event);
                     if let Err(err) = self.handle_connection_manager_event(&event).await {
-                        error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", event_id, err);
+                        error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", task_id, err);
                     }
-                    trace!(target: LOG_TARGET, "Event ({}) done", event_id);
+                    if timer.elapsed() > EVENT_TIME_LAPSE_WARNING {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Event ({}) took too long to process: {:.2?}",
+                            task_id,
+                            format_duration(timer.elapsed())
+                        );
+                    }
+                    trace!(target: LOG_TARGET, "Event ({}) done", task_id);
                 },
 
-                _ = ticker.tick() => {
-                    let ticker_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Ticker ({})", ticker_id);
+                _ = connection_pool_timer.tick() => {
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Pool refresh task ({})", task_id);
                     self.cleanup_connection_stats();
-                    match tokio::time::timeout(Duration::from_millis(2500), self.refresh_connection_pool(ticker_id)).await {
+                    match tokio::time::timeout(POOL_REFRESH_TIMEOUT, self.refresh_connection_pool(task_id)).await {
                         Ok(res) => {
                             if let Err(err) = res {
-                                error!(target: LOG_TARGET, "Error refreshing connection pools ({}): {:?}", ticker_id, err);
+                                error!(target: LOG_TARGET, "Error refreshing connection pools ({}): {:?}", task_id, err);
                             }
                         },
                         Err(_) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Timeout refreshing connection pool ({})",
-                                ticker_id,
+                                "Pool refresh task ({}) timeout",
+                                task_id,
                             );
                         },
                     }
-                    trace!(target: LOG_TARGET, "Ticker ({}) done", ticker_id);
+                    trace!(target: LOG_TARGET, "Pool refresh task ({}) done", task_id);
                 },
 
                 _ = self.shutdown_signal.wait() => {
@@ -381,7 +404,7 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
-                match disconnect_silent_with_timeout(conn, Minimized::No, Duration::from_millis(250), None).await {
+                match disconnect_silent_with_timeout(conn, Minimized::No, None).await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());
                     },
@@ -468,7 +491,7 @@ impl ConnectivityManagerActor {
                 conn.peer_node_id(),
                 threshold
             );
-            match disconnect_with_timeout(conn, Minimized::Yes, Duration::from_millis(250), Some(task_id)).await {
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
                     self.pool.remove(conn.peer_node_id());
                 },
@@ -511,7 +534,7 @@ impl ConnectivityManagerActor {
                 conn.peer_node_id().short_str(),
                 conn.handle_count()
             );
-            match disconnect_with_timeout(conn, Minimized::Yes, Duration::from_millis(250), Some(task_id)).await {
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
                     nodes_to_remove.push(conn.peer_node_id().clone());
                 },
@@ -708,7 +731,7 @@ impl ConnectivityManagerActor {
                         msg
                     );
                     let mut conn = conn.clone();
-                    disconnect_with_timeout(&mut conn, Minimized::No, Duration::from_millis(250), None).await?;
+                    disconnect_with_timeout(&mut conn, Minimized::No, None).await?;
                 }
                 (node_id, ConnectionStatus::Failed, None)
             },
@@ -832,9 +855,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result =
-                        disconnect_silent_with_timeout(existing_conn, Minimized::Yes, Duration::from_millis(250), None)
-                            .await;
+                    let _result = disconnect_silent_with_timeout(existing_conn, Minimized::Yes, None).await;
                     self.pool.remove(existing_conn.peer_node_id());
                     TieBreak::UseNew
                 } else {
@@ -850,13 +871,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result = disconnect_silent_with_timeout(
-                        &mut new_conn.clone(),
-                        Minimized::Yes,
-                        Duration::from_millis(250),
-                        None,
-                    )
-                    .await;
+                    let _result = disconnect_silent_with_timeout(&mut new_conn.clone(), Minimized::Yes, None).await;
                     TieBreak::KeepExisting
                 }
             },
@@ -1035,7 +1050,7 @@ impl ConnectivityManagerActor {
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
-            disconnect_with_timeout(conn, Minimized::Yes, Duration::from_millis(250), None).await?;
+            disconnect_with_timeout(conn, Minimized::Yes, None).await?;
             let status = self.pool.get_connection_status(node_id);
             debug!(
                 target: LOG_TARGET,
@@ -1071,10 +1086,9 @@ enum TieBreak {
 async fn disconnect_with_timeout(
     connection: &mut PeerConnection,
     minimized: Minimized,
-    timeout: Duration,
     task_id: Option<u64>,
 ) -> Result<(), PeerConnectionError> {
-    match tokio::time::timeout(timeout, connection.disconnect(minimized)).await {
+    match tokio::time::timeout(PEER_DISCONNECT_TIMEOUT, connection.disconnect(minimized)).await {
         Ok(res) => res,
         Err(_) => {
             warn!(
@@ -1091,10 +1105,9 @@ async fn disconnect_with_timeout(
 async fn disconnect_silent_with_timeout(
     connection: &mut PeerConnection,
     minimized: Minimized,
-    timeout: Duration,
     task_id: Option<u64>,
 ) -> Result<(), PeerConnectionError> {
-    match tokio::time::timeout(timeout, connection.disconnect_silent(minimized)).await {
+    match tokio::time::timeout(PEER_DISCONNECT_TIMEOUT, connection.disconnect_silent(minimized)).await {
         Ok(res) => res,
         Err(_) => {
             warn!(
