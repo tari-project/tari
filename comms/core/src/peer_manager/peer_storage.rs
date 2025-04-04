@@ -346,6 +346,8 @@ where DS: KeyValueStore<PeerId, Peer>
     ///     seen for more than 5 days.
     ///   - The wallet must be identified as a client (not a node).
     pub fn delete_all_stale_peers(&mut self) -> Result<Vec<NodeId>, PeerManagerError> {
++    let mut all_deleted_peers = Vec::new();
++
         // All stale nodes (except seed nodes)
         let peers = self
             .peer_db
@@ -358,6 +360,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         for peer in &peers {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
++        all_deleted_peers.push(peer.1.node_id.clone());
         }
         // All stale wallets
         let peers = self
@@ -372,9 +375,11 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         for peer in &peers {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
++        all_deleted_peers.push(peer.1.node_id.clone());
         }
-
-        Ok(peers.iter().map(|p| p.1.node_id.clone()).collect())
+    
+-    Ok(peers.iter().map(|p| p.1.node_id.clone()).collect())
++    Ok(all_deleted_peers)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
