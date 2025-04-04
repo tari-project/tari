@@ -38,8 +38,7 @@ impl<T> KeyValueWrapper<T> {
 }
 
 impl<T> KeyValueStore<PeerId, Peer> for KeyValueWrapper<T>
-where
-    T: KeyValueStore<PeerId, Peer>,
+where T: KeyValueStore<PeerId, Peer>
 {
     fn insert(&self, key: u64, value: Peer) -> Result<(), KeyValStoreError> {
         self.inner.insert(key, value)

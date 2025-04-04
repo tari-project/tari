@@ -290,9 +290,7 @@ impl CommsBuilder {
     /// Set the backoff to use when a dial to a remote peer fails. This is optional. If omitted the default
     /// [ConstantBackoff](crate::backoff::ConstantBackoff) of 500ms is used.
     pub fn with_dial_backoff<T>(mut self, backoff: T) -> Self
-    where
-        T: Backoff + Send + Sync + 'static,
-    {
+    where T: Backoff + Send + Sync + 'static {
         self.dial_backoff = Box::new(backoff);
         self
     }

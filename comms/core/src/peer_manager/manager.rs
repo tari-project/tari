@@ -35,8 +35,15 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
-        peer::Peer, peer_id::PeerId, peer_storage::PeerStorage, wrapper::KeyValueWrapper, NodeDistance, NodeId,
-        PeerFeatures, PeerManagerError, PeerQuery,
+        peer::Peer,
+        peer_id::PeerId,
+        peer_storage::PeerStorage,
+        wrapper::KeyValueWrapper,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerManagerError,
+        PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -321,9 +328,7 @@ impl PeerManager {
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
-    where
-        F: FnMut(Peer) -> Option<Peer>,
-    {
+    where F: FnMut(Peer) -> Option<Peer> {
         let mut lock = self.peer_storage.write().await;
         let mut peers_to_update = Vec::new();
         lock.for_each(|peer| {
