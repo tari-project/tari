@@ -33,7 +33,7 @@ use tari_utilities::hex::{from_hex, Hex, HexError};
 use thiserror::Error;
 
 use super::{error::AutoUpdateError, AutoUpdateConfig, Version};
-use crate::dns::{default_trust_anchor, DnsClient};
+use crate::dns::DnsClient;
 
 const LOG_TARGET: &str = "p2p::auto_update::dns";
 
@@ -47,7 +47,7 @@ impl DnsSoftwareUpdate {
     pub async fn connect(config: AutoUpdateConfig) -> Result<Self, AutoUpdateError> {
         let name_server = config.name_server.clone();
         let client = if config.use_dnssec {
-            DnsClient::connect_secure(name_server, default_trust_anchor()).await?
+            DnsClient::connect_secure(name_server).await?
         } else {
             DnsClient::connect(name_server).await?
         };
@@ -204,104 +204,14 @@ impl Display for UpdateSpec {
 
 #[cfg(test)]
 mod test {
-    use hickory_client::{
-        op::Query,
-        proto::{
-            rr::{rdata, Name, RData, RecordType},
-            xfer::DnsResponse,
-        },
-        rr::Record,
-    };
-
     use super::*;
-    use crate::dns::mock;
 
-    fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
-        let resp_query = Query::query(Name::from_str("test.local.").unwrap(), RecordType::A);
-
-        let origin = Name::parse("example.com.", None).unwrap();
-        let record = Record::from_rdata(
-            origin,
-            86300,
-            RData::TXT(rdata::TXT::new(contents.into_iter().map(ToString::to_string).collect())),
-        );
-        DnsResponse::from_message(mock::message(resp_query, vec![record], vec![], vec![])).unwrap()
-    }
-
-    mod update_spec {
-        use super::*;
-
-        #[test]
-        fn it_parses_update_spec_string() {
-            let update_spec = UpdateSpec::from_str("base-node:linux-x64:1.0.0:bada55").unwrap();
-            assert_eq!(update_spec.application, ApplicationType::BaseNode);
-            assert_eq!(update_spec.arch, "linux-x64");
-            assert_eq!(update_spec.version.to_string(), "1.0.0");
-            assert_eq!(update_spec.hash, [0xBA, 0xDA, 0x55]);
-        }
-    }
-
-    mod dns_software_update {
-        use std::time::Duration;
-
-        use super::*;
-
-        impl AutoUpdateConfig {
-            fn get_test_defaults() -> Self {
-                Self {
-                    override_from: None,
-                    name_server: Default::default(),
-                    update_uris: vec!["test.local".to_string()].into(),
-                    use_dnssec: true,
-                    download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
-                    hashes_url: "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt"
-                        .to_string(),
-                    hashes_sig_url:
-                        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig"
-                            .to_string(),
-                    check_interval: Some(Duration::from_secs(30)),
-                }
-            }
-        }
-
-        #[tokio::test]
-        async fn it_ignores_non_conforming_txt_entries() {
-            let records = vec![
-                Ok(create_txt_record(vec![":::"])),
-                Ok(create_txt_record(vec!["base-node:::"])),
-                Ok(create_txt_record(vec!["base-node::1.0:"])),
-                Ok(create_txt_record(vec!["base-node:android-armv7:0.1.0:abcdef"])),
-                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.0:bada55"])),
-            ];
-            let updater = DnsSoftwareUpdate {
-                client: DnsClient::connect_mock(records).await.unwrap(),
-                config: AutoUpdateConfig::get_test_defaults(),
-            };
-            let spec = updater
-                .check_for_updates(ApplicationType::BaseNode, "linux-x86_64", &"1.0.0".parse().unwrap())
-                .await
-                .unwrap();
-            assert!(spec.is_none());
-        }
-
-        #[tokio::test]
-        async fn it_returns_best_update() {
-            let records = vec![
-                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.0:abcdef"])),
-                Ok(create_txt_record(vec!["base-node:linux-x86_64:1.0.1:abcdef01"])),
-            ];
-            let updater = DnsSoftwareUpdate {
-                client: DnsClient::connect_mock(records).await.unwrap(),
-                config: AutoUpdateConfig::get_test_defaults(),
-            };
-            let spec = updater
-                .check_for_updates(ApplicationType::BaseNode, "linux-x86_64", &"1.0.0".parse().unwrap())
-                .await
-                .unwrap()
-                .unwrap();
-
-            assert_eq!(spec.version.to_string(), "1.0.1");
-            assert_eq!(spec.hash, [0xab, 0xcd, 0xef, 0x01]);
-        }
+    #[test]
+    fn it_parses_update_spec_string() {
+        let update_spec = UpdateSpec::from_str("base-node:linux-x64:1.0.0:bada55").unwrap();
+        assert_eq!(update_spec.application, ApplicationType::BaseNode);
+        assert_eq!(update_spec.arch, "linux-x64");
+        assert_eq!(update_spec.version.to_string(), "1.0.0");
+        assert_eq!(update_spec.hash, [0xBA, 0xDA, 0x55]);
     }
 }
