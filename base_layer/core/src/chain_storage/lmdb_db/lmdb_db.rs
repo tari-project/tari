@@ -88,6 +88,7 @@ use crate::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
                 fetch_db_entry_sizes,
+                lmdb_all,
                 lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
@@ -2962,6 +2963,7 @@ impl fmt::Display for MetadataValue {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     const MIGRATION_VERSION: u64 = 6;
     let txn = db.read_transaction()?;
@@ -3026,31 +3028,44 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             // lets create the monero seed height indexes
             {
                 let txn = db.write_transaction()?;
-                let heights: Vec<u64> = lmdb_filter_map_values(&txn, &db.monero_seed_height_db, Some)?;
-                let mut seeds = Vec::new();
-                for height in &heights {
-                    let header = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)?.ok_or_else(|| {
-                        ChainStorageError::ValueNotFound {
-                            entity: "Header",
-                            field: "height",
-                            value: height.to_string(),
+                let heights: Vec<(Vec<u8>, u64)> = lmdb_all(&txn, &db.monero_seed_height_db)?;
+                let mut final_table = heights.clone();
+                for (db_seed, height) in &heights {
+                    let mut delete = true;
+                    if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)? {
+                        info!(target: LOG_TARGET, "Checking header for monero seed {}", header.hash().to_hex());
+                        if header.pow_algo() == PowAlgorithm::RandomX {
+                            let pow_bytes = header.pow.pow_data.to_vec();
+                            let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
+                            let seed = pow_data.randomx_key.to_vec();
+                            if seed == *db_seed {
+                                delete = false;
+                            } else {
+                                // delete
+                                info!(target: LOG_TARGET, "Deleting monero seed height {} because it does not match the seed", header.hash().to_hex());
+                            }
+                        } else {
+                            // delete
+                            info!(target: LOG_TARGET, "Deleting monero seed height {} because it is not RandomX", header.hash().to_hex());
                         }
-                    })?;
-                    let pow_bytes = header.pow.pow_data.to_vec();
-                    let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
-                    let seed = pow_data.randomx_key.to_vec();
-                    seeds.push(seed);
+                    }
+                    if delete {
+                        lmdb_delete(&txn, &db.monero_seed_height_db, db_seed, "monero_seed_height_db")?;
+                        final_table.retain(|(s, _)| s != db_seed);
+                    }
                 }
-                for (i, seed) in seeds.iter().enumerate() {
-                    let txn = db.write_transaction()?;
+                for (seed, height) in final_table {
+                    info!(target: LOG_TARGET, "Inserting new monero seed height {} with seed {}", height, seed.to_hex());
                     lmdb_insert(
                         &txn,
                         &db.monero_seed_height_index_db,
-                        &heights[i],
+                        &height,
                         &seed,
                         "monero_seed_height_index_db",
                     )?;
                 }
+
+                txn.commit()?;
             }
         }
     }
