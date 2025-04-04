@@ -15,7 +15,9 @@ use tari_comms::{
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId},
-    tor, CommsBuilder, CommsNode,
+    tor,
+    CommsBuilder,
+    CommsNode,
 };
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},

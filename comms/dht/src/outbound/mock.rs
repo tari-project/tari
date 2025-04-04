@@ -44,7 +44,8 @@ use crate::{
         message::{SendFailure, SendMessageResponse},
         message_params::FinalSendMessageParams,
         message_send_state::MessageSendState,
-        DhtOutboundRequest, OutboundMessageRequester,
+        DhtOutboundRequest,
+        OutboundMessageRequester,
     },
 };
 

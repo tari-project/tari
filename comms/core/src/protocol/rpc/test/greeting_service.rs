@@ -34,7 +34,8 @@ use std::{
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
-    task, time,
+    task,
+    time,
 };
 
 use crate::{
@@ -43,7 +44,8 @@ use crate::{
         rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
         ProtocolId,
     },
-    utils, Substream,
+    utils,
+    Substream,
 };
 
 #[async_trait]
@@ -373,8 +375,7 @@ impl<T> __rpc_deps::NamedProtocolService for GreetingServer<T> {
 
 /// A service maker for GreetingServer
 impl<T> __rpc_deps::Service<ProtocolId> for GreetingServer<T>
-where
-    T: GreetingRpc,
+where T: GreetingRpc
 {
     type Error = RpcServerError;
     type Future = __rpc_deps::future::Ready<Result<Self::Response, Self::Error>>;

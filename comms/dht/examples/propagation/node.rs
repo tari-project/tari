@@ -31,7 +31,9 @@ use tari_comms::{
     protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo, ProtocolId},
     tor,
     tor::TorIdentity,
-    CommsBuilder, CommsNode, NodeIdentity,
+    CommsBuilder,
+    CommsNode,
+    NodeIdentity,
 };
 use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht};
 use tari_shutdown::ShutdownSignal;

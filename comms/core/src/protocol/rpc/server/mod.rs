@@ -67,7 +67,8 @@ use super::{
     message::{Request, Response, RpcMessageFlags},
     not_found::ProtocolServiceNotFound,
     status::RpcStatus,
-    Handshake, RPC_MAX_FRAME_SIZE,
+    Handshake,
+    RPC_MAX_FRAME_SIZE,
 };
 use crate::{
     bounded_executor::BoundedExecutor,
@@ -83,10 +84,14 @@ use crate::{
             message::{RpcMethod, RpcResponse},
             server::early_close::EarlyClose,
         },
-        ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx,
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+        ProtocolNotificationRx,
     },
     stream_id::{Id, StreamId},
-    Bytes, Substream,
+    Bytes,
+    Substream,
 };
 
 const LOG_TARGET: &str = "comms::rpc::server";
@@ -1013,11 +1018,11 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
 
 fn err_to_log_level(err: &io::Error) -> log::Level {
     match err.kind() {
-        ErrorKind::ConnectionReset
-        | ErrorKind::ConnectionAborted
-        | ErrorKind::BrokenPipe
-        | ErrorKind::WriteZero
-        | ErrorKind::UnexpectedEof => log::Level::Debug,
+        ErrorKind::ConnectionReset |
+        ErrorKind::ConnectionAborted |
+        ErrorKind::BrokenPipe |
+        ErrorKind::WriteZero |
+        ErrorKind::UnexpectedEof => log::Level::Debug,
         _ => log::Level::Error,
     }
 }

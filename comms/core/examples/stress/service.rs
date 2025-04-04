@@ -34,7 +34,10 @@ use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
-    utils, CommsNode, PeerConnection, Substream,
+    utils,
+    CommsNode,
+    PeerConnection,
+    Substream,
 };
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;

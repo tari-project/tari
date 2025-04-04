@@ -32,7 +32,8 @@ use tari_comms::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
-    Minimized, PeerManager,
+    Minimized,
+    PeerManager,
 };
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_service_framework::reply_channel::RequestContext;
@@ -45,7 +46,9 @@ use super::{
     error::LivenessError,
     message::{PingPong, PingPongMessage},
     state::LivenessState,
-    LivenessRequest, LivenessResponse, LOG_TARGET,
+    LivenessRequest,
+    LivenessResponse,
+    LOG_TARGET,
 };
 use crate::{
     domain_message::DomainMessage,

@@ -42,7 +42,9 @@ use minotari_wallet::{
         },
         service::TransactionServiceResources,
         storage::{
-            database::TransactionDatabase, models::CompletedTransaction, sqlite_db::TransactionServiceSqliteDatabase,
+            database::TransactionDatabase,
+            models::CompletedTransaction,
+            sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     util::watch::Watch,
@@ -70,7 +72,8 @@ use tari_core::{
     consensus::ConsensusManager,
     proto::{
         base_node::{
-            TxLocation as TxLocationProto, TxQueryBatchResponse as TxQueryBatchResponseProto,
+            TxLocation as TxLocationProto,
+            TxQueryBatchResponse as TxQueryBatchResponseProto,
             TxQueryBatchResponses as TxQueryBatchResponsesProto,
         },
         types::Signature as SignatureProto,

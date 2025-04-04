@@ -31,7 +31,9 @@ use tari_comms::{
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
         node_identity::ordered_node_identities_by_distance,
     },
-    Minimized, NodeIdentity, PeerManager,
+    Minimized,
+    NodeIdentity,
+    PeerManager,
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;

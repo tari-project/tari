@@ -43,12 +43,25 @@ use crate::{
         rpc::{
             context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
             server::{handle::RpcServerRequest, PeerRpcServer, RpcServerError},
-            Body, NamedProtocolService, Request, Response, RpcError, RpcServer, RpcStatus, Streaming,
+            Body,
+            NamedProtocolService,
+            Request,
+            Response,
+            RpcError,
+            RpcServer,
+            RpcStatus,
+            Streaming,
         },
-        ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationTx,
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+        ProtocolNotificationTx,
     },
     test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
-    NodeIdentity, PeerConnection, PeerManager, Substream,
+    NodeIdentity,
+    PeerConnection,
+    PeerManager,
+    Substream,
 };
 
 pub struct RpcRequestMock {

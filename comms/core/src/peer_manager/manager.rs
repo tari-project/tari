@@ -35,8 +35,16 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
-        migrations, peer::Peer, peer_id::PeerId, peer_storage::PeerStorage, wrapper::KeyValueWrapper, NodeDistance,
-        NodeId, PeerFeatures, PeerManagerError, PeerQuery,
+        migrations,
+        peer::Peer,
+        peer_id::PeerId,
+        peer_storage::PeerStorage,
+        wrapper::KeyValueWrapper,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerManagerError,
+        PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -326,9 +334,7 @@ impl PeerManager {
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
-    where
-        F: FnMut(Peer) -> Option<Peer>,
-    {
+    where F: FnMut(Peer) -> Option<Peer> {
         let mut lock = self.peer_storage.write().await;
         let mut peers_to_update = Vec::new();
         lock.for_each(|peer| {
@@ -390,9 +396,8 @@ mod test {
     use rand::{rngs::OsRng, Rng};
     use tari_storage::HashmapDatabase;
 
-    use crate::{net_address::PeerAddressSource, peer_manager::PeerFlags};
-
     use super::*;
+    use crate::{net_address::PeerAddressSource, peer_manager::PeerFlags};
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);

@@ -34,7 +34,8 @@ use tari_comms::{
     },
     transports::MemoryTransport,
     types::CommsDatabase,
-    CommsBuilder, CommsNode,
+    CommsBuilder,
+    CommsNode,
 };
 use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht, DhtConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};

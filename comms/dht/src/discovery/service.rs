@@ -44,7 +44,8 @@ use crate::{
     peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     rpc::UnvalidatedPeerInfo,
-    DhtConfig, DhtRequester,
+    DhtConfig,
+    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -279,8 +280,8 @@ impl DhtDiscoveryService {
         match result {
             Ok(peer) => Ok(peer),
             Err(err @ DhtPeerValidatorError::NewAndExistingMismatch { .. }) => Err(err),
-            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. })
-            | Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
+            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
+            Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
                 Err(err)
             },

@@ -32,7 +32,12 @@ use crate::{
     peer_manager::{
         peer::Peer,
         peer_id::{generate_peer_key, PeerId},
-        NodeDistance, NodeId, PeerFeatures, PeerManagerError, PeerQuery, PeerQuerySortBy,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerManagerError,
+        PeerQuery,
+        PeerQuerySortBy,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -51,8 +56,7 @@ pub struct PeerStorage<DS> {
 }
 
 impl<DS> PeerStorage<DS>
-where
-    DS: KeyValueStore<PeerId, Peer>,
+where DS: KeyValueStore<PeerId, Peer>
 {
     /// Constructs a new PeerStorage, with indexes populated from the given datastore
     pub fn new_indexed(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
@@ -300,9 +304,7 @@ where
     }
 
     pub fn for_each<F>(&self, mut f: F) -> Result<(), PeerManagerError>
-    where
-        F: FnMut(Peer) -> IterationResult,
-    {
+    where F: FnMut(Peer) -> IterationResult {
         self.peer_db.for_each_ok(|(_, peer)| f(peer)).map_err(Into::into)
     }
 
@@ -335,10 +337,10 @@ where
         let mut peers = self
             .peer_db
             .filter(|(_, peer)| {
-                !peer.is_offline()
-                    && !peer.is_banned()
-                    && peer.features == PeerFeatures::COMMUNICATION_NODE
-                    && !exclude_peers.contains(&peer.node_id)
+                !peer.is_offline() &&
+                    !peer.is_banned() &&
+                    peer.features == PeerFeatures::COMMUNICATION_NODE &&
+                    !exclude_peers.contains(&peer.node_id)
             })
             .map(|pairs| pairs.into_iter().map(|(_, p)| p).collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
@@ -507,12 +509,12 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 }
 
 fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &[NodeId]) -> bool {
-    features.map(|f| peer.features == f).unwrap_or(true)
-        && !excluded_peers.contains(&peer.node_id)
-        && !peer.is_banned()
-        && peer.deleted_at.is_none()
-        && peer.last_seen_since().is_some()
-        && peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
+    features.map(|f| peer.features == f).unwrap_or(true) &&
+        !excluded_peers.contains(&peer.node_id) &&
+        !peer.is_banned() &&
+        peer.deleted_at.is_none() &&
+        peer.last_seen_since().is_some() &&
+        peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
 }
 
 #[cfg(test)]

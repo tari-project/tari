@@ -26,7 +26,8 @@ use std::{
     convert::TryFrom,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock,
+        Arc,
+        RwLock,
     },
 };
 

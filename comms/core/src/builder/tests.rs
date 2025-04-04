@@ -47,7 +47,9 @@ use crate::{
     pipeline::SinkService,
     protocol::{
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
-        ProtocolEvent, ProtocolId, Protocols,
+        ProtocolEvent,
+        ProtocolId,
+        Protocols,
     },
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,

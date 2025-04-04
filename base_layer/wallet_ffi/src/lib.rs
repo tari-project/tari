@@ -107,7 +107,9 @@ use minotari_wallet::{
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
-    Wallet, WalletConfig, WalletSqlite,
+    Wallet,
+    WalletConfig,
+    WalletSqlite,
 };
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
@@ -120,7 +122,11 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
-        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, RangeProof, SignatureWithDomain,
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        RangeProof,
+        SignatureWithDomain,
         UncompressedPublicKey,
     },
     wallet_types::WalletType,
@@ -133,7 +139,11 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{
-    store_forward::SafConfig, DbConnectionUrl, DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig,
+    store_forward::SafConfig,
+    DbConnectionUrl,
+    DhtConfig,
+    DhtConnectivityConfig,
+    NetworkDiscoveryConfig,
 };
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
@@ -143,7 +153,12 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra, OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput,
+            CoinBaseExtra,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
@@ -159,8 +174,16 @@ use tari_key_manager::{
     SeedWords,
 };
 use tari_p2p::{
-    auto_update::AutoUpdateConfig, transport::MemoryTransportConfig, Network, PeerSeedsConfig, SocksAuthentication,
-    TcpTransportConfig, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType,
+    auto_update::AutoUpdateConfig,
+    transport::MemoryTransportConfig,
+    Network,
+    PeerSeedsConfig,
+    SocksAuthentication,
+    TcpTransportConfig,
+    TorControlAuthentication,
+    TorTransportConfig,
+    TransportConfig,
+    TransportType,
 };
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
@@ -2959,9 +2982,9 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                         .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
                 ) {
                     Ok(payment_id) => {
-                        if let PaymentId::Open { tx_type, .. }
-                        | PaymentId::AddressAndData { tx_type, .. }
-                        | PaymentId::TransactionInfo { tx_type, .. } = payment_id
+                        if let PaymentId::Open { tx_type, .. } |
+                        PaymentId::AddressAndData { tx_type, .. } |
+                        PaymentId::TransactionInfo { tx_type, .. } = payment_id
                         {
                             transaction_type = c_uint::from(tx_type.as_u8());
                         }
@@ -4737,9 +4760,9 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_type(
         *error_out = LibWalletError::from(InterfaceError::NullError("completed_transaction".to_string())).code;
     } else {
         let payment_id = (*transaction).payment_id.clone();
-        if let PaymentId::Open { tx_type, .. }
-        | PaymentId::AddressAndData { tx_type, .. }
-        | PaymentId::TransactionInfo { tx_type, .. } = payment_id
+        if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = payment_id
         {
             transaction_type = c_uint::from(tx_type.as_u8());
         }
@@ -8276,9 +8299,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .iter()
                     .filter(|ct| {
-                        ct.status == TransactionStatus::Completed
-                            || ct.status == TransactionStatus::Broadcast
-                            || ct.status == TransactionStatus::Imported
+                        ct.status == TransactionStatus::Completed ||
+                            ct.status == TransactionStatus::Broadcast ||
+                            ct.status == TransactionStatus::Imported
                     })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
@@ -8558,8 +8581,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Inbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingInboundTransaction::from(completed);
@@ -8631,8 +8654,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Outbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingOutboundTransaction::from(completed);
@@ -9700,9 +9723,9 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
         w.runtime.block_on(w.wallet.wait_until_shutdown());
         // The wallet should be shutdown by now; these are just additional confirmations
         loop {
-            if w.shutdown.is_triggered()
-                && wallet_comms.shutdown_signal().is_triggered()
-                && w.runtime
+            if w.shutdown.is_triggered() &&
+                wallet_comms.shutdown_signal().is_triggered() &&
+                w.runtime
                     .block_on(wallet_comms.connectivity().get_connectivity_status())
                     .is_err()
             {
@@ -11692,8 +11715,8 @@ mod test {
                         alice_wallet_runtime
                             .block_on(val.commitment(key_manager))
                             .unwrap()
-                            .to_hex()
-                            == CStr::from_ptr(utxo.commitment).to_str().unwrap()
+                            .to_hex() ==
+                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
                     })
                     .unwrap();
                 assert_eq!(output.value.as_u64(), utxo.value);

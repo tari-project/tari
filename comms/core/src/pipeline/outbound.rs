@@ -152,14 +152,11 @@ mod test {
         let (out_tx, mut out_rx) = mpsc::unbounded_channel();
         let executor = BoundedExecutor::new(100);
 
-        let pipeline = Outbound::new(
-            executor,
-            OutboundPipelineConfig {
-                in_receiver,
-                out_receiver: None,
-                pipeline: SinkService::new(out_tx),
-            },
-        );
+        let pipeline = Outbound::new(executor, OutboundPipelineConfig {
+            in_receiver,
+            out_receiver: None,
+            pipeline: SinkService::new(out_tx),
+        });
 
         let spawned_task = tokio::spawn(pipeline.run());
 

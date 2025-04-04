@@ -33,7 +33,10 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
-    CommsBuilder, CommsNode, NodeIdentity, Substream,
+    CommsBuilder,
+    CommsNode,
+    NodeIdentity,
+    Substream,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
