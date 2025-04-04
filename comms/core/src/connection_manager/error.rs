@@ -130,6 +130,8 @@ pub enum PeerConnectionError {
     ProtocolError(#[from] ProtocolError),
     #[error("Protocol negotiation timeout")]
     ProtocolNegotiationTimeout,
+    #[error("Timeout disconnecting peer")]
+    DisconnectTimeout,
 }
 
 impl From<Elapsed> for PeerConnectionError {
