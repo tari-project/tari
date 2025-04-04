@@ -47,9 +47,7 @@ use super::{
     direction::ConnectionDirection,
     error::ConnectionManagerError,
     peer_connection::{self, PeerConnection},
-    ConnectionManagerConfig,
-    ConnectionManagerEvent,
-    PeerConnectionInfo,
+    ConnectionManagerConfig, ConnectionManagerEvent, PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
@@ -287,7 +285,7 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
@@ -297,9 +295,9 @@ where
                     let _result = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
-                    if config.self_liveness_self_check_interval.is_some() ||
-                        (liveness_session_count.load(Ordering::SeqCst) > 0 &&
-                            Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist))
+                    if config.self_liveness_self_check_interval.is_some()
+                        || (liveness_session_count.load(Ordering::SeqCst) > 0
+                            && Self::is_address_in_liveness_cidr_range(&peer_addr, &config.liveness_cidr_allowlist))
                     {
                         debug!(
                             target: LOG_TARGET,

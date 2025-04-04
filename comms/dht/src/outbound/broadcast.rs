@@ -43,7 +43,7 @@ use tari_comms::{
     Bytes, BytesMut,
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time};
 use tower::{layer::Layer, Service, ServiceExt};
 
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
@@ -214,6 +214,7 @@ where
             "Passing {} message(s) to next_service",
             messages.len()
         );
+        let count = messages.len();
 
         self.service
             .call_all(stream::iter(messages))
@@ -226,7 +227,7 @@ where
             .await;
 
         if timer.elapsed() > Duration::from_millis(50) {
-            warn!(target: LOG_TARGET, "Broadcast task took too long to process a message: {:.2?}", timer.elapsed());
+            warn!(target: LOG_TARGET, "Broadcast task took too long to process {} messages: {:.2?}", count, timer.elapsed());
         }
         Ok(())
     }
@@ -249,6 +250,7 @@ where
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         trace!(target: LOG_TARGET, "Send params: {:?}", params);
+        let timer = Instant::now();
         if params
             .broadcast_strategy
             .direct_public_key()
@@ -361,13 +363,19 @@ where
     }
 
     async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtOutboundError> {
-        self.dht_requester
-            .select_peers(broadcast_strategy)
+        let timer = Instant::now();
+        let res = self
+            .dht_requester
+            .select_peers(broadcast_strategy.clone())
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
                 DhtOutboundError::PeerSelectionFailed
-            })
+            });
+        if timer.elapsed() > Duration::from_millis(50) {
+            warn!(target: LOG_TARGET, "Peer selection took too long: {:?}, broadcast strategy: {}", timer.elapsed(), broadcast_strategy);
+        }
+        res
     }
 
     async fn initiate_peer_discovery(
@@ -416,6 +424,7 @@ where
         expires: Option<DateTime<Utc>>,
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
+        let timer = Instant::now();
         let dht_flags = encryption.flags() | extra_flags;
         let expires_epochtime = expires.map(datetime_to_epochtime);
 
