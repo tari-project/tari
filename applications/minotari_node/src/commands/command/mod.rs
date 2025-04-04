@@ -71,8 +71,7 @@ use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
     peer_manager::{Peer, PeerManagerError, PeerQuery},
     protocol::rpc::RpcServerHandle,
-    CommsNode,
-    NodeIdentity,
+    CommsNode, NodeIdentity,
 };
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
@@ -208,42 +207,42 @@ impl CommandContext {
             let time_out = match args.command {
                 // These commands should complete quickly, some of them like 'discover-peer' returns immediately
                 // although the requested action can take a long time
-                Command::Version(_) |
-                Command::Whoami(_) |
-                Command::CheckForUpdates(_) |
-                Command::AddPeer(_) |
-                Command::BanPeer(_) |
-                Command::UnbanAllPeers(_) |
-                Command::UnbanPeer(_) |
-                Command::GetPeer(_) |
-                Command::ResetOfflinePeers(_) |
-                Command::DialPeer(_) |
-                Command::PingPeer(_) |
-                Command::DiscoverPeer(_) |
-                Command::ListPeers(_) |
-                Command::ListBannedPeers(_) |
-                Command::ListConnections(_) |
-                Command::GetNetworkStats(_) |
-                Command::BlockTiming(_) |
-                Command::GetChainMetadata(_) |
-                Command::GetDbStats(_) |
-                Command::GetStateInfo(_) |
-                Command::ListReorgs(_) |
-                Command::ListBadBlocks(_) |
-                Command::GetBlock(_) |
-                Command::ListHeaders(_) |
-                Command::HeaderStats(_) |
-                Command::SearchUtxo(_) |
-                Command::SearchKernel(_) |
-                Command::GetMempoolStats(_) |
-                Command::GetMempoolState(_) |
-                Command::GetMempoolTx(_) |
-                Command::Status(_) |
-                Command::Watch(_) |
-                Command::ListValidatorNodes(_) |
-                Command::CreateTlsCerts(_) |
-                Command::Quit(_) |
-                Command::Exit(_) => 30,
+                Command::Version(_)
+                | Command::Whoami(_)
+                | Command::CheckForUpdates(_)
+                | Command::AddPeer(_)
+                | Command::BanPeer(_)
+                | Command::UnbanAllPeers(_)
+                | Command::UnbanPeer(_)
+                | Command::GetPeer(_)
+                | Command::ResetOfflinePeers(_)
+                | Command::DialPeer(_)
+                | Command::PingPeer(_)
+                | Command::DiscoverPeer(_)
+                | Command::ListPeers(_)
+                | Command::ListBannedPeers(_)
+                | Command::ListConnections(_)
+                | Command::GetNetworkStats(_)
+                | Command::BlockTiming(_)
+                | Command::GetChainMetadata(_)
+                | Command::GetDbStats(_)
+                | Command::GetStateInfo(_)
+                | Command::ListReorgs(_)
+                | Command::ListBadBlocks(_)
+                | Command::GetBlock(_)
+                | Command::ListHeaders(_)
+                | Command::HeaderStats(_)
+                | Command::SearchUtxo(_)
+                | Command::SearchKernel(_)
+                | Command::GetMempoolStats(_)
+                | Command::GetMempoolState(_)
+                | Command::GetMempoolTx(_)
+                | Command::Status(_)
+                | Command::Watch(_)
+                | Command::ListValidatorNodes(_)
+                | Command::CreateTlsCerts(_)
+                | Command::Quit(_)
+                | Command::Exit(_) => 30,
                 // This test can potentially take a longer time and should be allowed to run longer
                 Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
@@ -320,7 +319,7 @@ impl CommandContext {
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         let pm = self.comms.peer_manager();
         let query = PeerQuery::new().select_where(|p| p.is_banned());
-        pm.perform_query(query).await
+        pm.perform_query(query, "Banned peers").await
     }
 
     /// Function to process the get-headers command
@@ -350,7 +349,8 @@ pub enum TypeOrHex<T> {
 }
 
 impl<T> FromStr for TypeOrHex<T>
-where T: FromStr
+where
+    T: FromStr,
 {
     type Err = Error;
 

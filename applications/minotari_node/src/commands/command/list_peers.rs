@@ -54,7 +54,7 @@ impl CommandContext {
                 _ => false,
             })
         }
-        let mut peers = self.comms.peer_manager().perform_query(query).await?;
+        let mut peers = self.comms.peer_manager().perform_query(query, "List peers").await?;
         let num_peers = peers.len();
         println!();
         let mut table = Table::new();

@@ -48,18 +48,11 @@ use super::{
 };
 use crate::{
     connection_manager::{
-        ConnectionDirection,
-        ConnectionManagerError,
-        ConnectionManagerEvent,
-        ConnectionManagerRequester,
+        ConnectionDirection, ConnectionManagerError, ConnectionManagerEvent, ConnectionManagerRequester,
     },
     peer_manager::NodeId,
     utils::datetime::format_duration,
-    Minimized,
-    NodeIdentity,
-    PeerConnection,
-    PeerConnectionError,
-    PeerManager,
+    Minimized, NodeIdentity, PeerConnection, PeerConnectionError, PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
@@ -403,6 +396,7 @@ impl ConnectivityManagerActor {
     }
 
     async fn refresh_connection_pool(&mut self, ticker_id: u64) -> Result<(), ConnectivityError> {
+        let timer = Instant::now();
         debug!(
             target: LOG_TARGET,
             "Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
@@ -425,6 +419,13 @@ impl ConnectivityManagerActor {
         }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
+        if timer.elapsed().as_millis() > 100 {
+            warn!(
+                target: LOG_TARGET,
+                "Connection pool refresh took too long ({:.2?})",
+                timer.elapsed()
+            );
+        }
         Ok(())
     }
 
@@ -606,8 +607,8 @@ impl ConnectivityManagerActor {
             );
 
             if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
-                if !peer.is_banned() &&
-                    peer.last_seen_since()
+                if !peer.is_banned()
+                    && peer.last_seen_since()
                         // Haven't seen them in expire_peer_last_seen_duration
                         .map(|t| t > self.config.expire_peer_last_seen_duration)
                         // Or don't delete if never seen
@@ -766,10 +767,13 @@ impl ConnectivityManagerActor {
                 ),
             },
             (Connected, Disconnected(..)) => {
-                self.publish_event(ConnectivityEvent::PeerDisconnected(node_id, match new_status {
-                    ConnectionStatus::Disconnected(reason) => reason,
-                    _ => Minimized::No,
-                }));
+                self.publish_event(ConnectivityEvent::PeerDisconnected(
+                    node_id,
+                    match new_status {
+                        ConnectionStatus::Disconnected(reason) => reason,
+                        _ => Minimized::No,
+                    },
+                ));
             },
             // Was not connected so don't broadcast event
             (_, Disconnected(..)) => {},

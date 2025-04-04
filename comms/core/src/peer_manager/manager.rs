@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fs::File, time::Duration};
+use std::{
+    fmt,
+    fs::File,
+    time::{Duration, Instant},
+};
 
 use multiaddr::Multiaddr;
 use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
@@ -29,18 +33,10 @@ use tokio::sync::RwLock;
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
 use crate::{
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    net_address::MultiaddressesWithStats,
     peer_manager::{
-        migrations,
-        peer::{Peer, PeerFlags},
-        peer_id::PeerId,
-        peer_storage::PeerStorage,
-        wrapper::KeyValueWrapper,
-        NodeDistance,
-        NodeId,
-        PeerFeatures,
-        PeerManagerError,
-        PeerQuery,
+        migrations, peer::Peer, peer_id::PeerId, peer_storage::PeerStorage, wrapper::KeyValueWrapper, NodeDistance,
+        NodeId, PeerFeatures, PeerManagerError, PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -64,7 +60,7 @@ impl PeerManager {
     }
 
     /// Migrate the peer database, this only applies to the LMDB database
-    pub fn migrate_lmdb(database: &LMDBDatabase) -> Result<(), PeerManagerError> {
+    pub(crate) fn migrate_lmdb(database: &LMDBDatabase) -> Result<(), PeerManagerError> {
         migrations::migrate(database).map_err(|err| PeerManagerError::MigrationError(err.to_string()))
     }
 
@@ -75,6 +71,7 @@ impl PeerManager {
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        let timer: Instant = Instant::now();
         let mut lock = self.peer_storage.write().await;
         let peer_id = lock.add_peer(peer)?;
         #[cfg(feature = "metrics")]
@@ -82,6 +79,9 @@ impl PeerManager {
             let count = lock.count();
             #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
+        }
+        if timer.elapsed().as_millis() > 50 {
+            log::warn!("PeerManager::add_peer took {}ms", timer.elapsed().as_millis());
         }
         Ok(peer_id)
     }
@@ -102,9 +102,18 @@ impl PeerManager {
     /// Performs the given [PeerQuery].
     ///
     /// [PeerQuery]: crate::peer_manager::PeerQuery
-    pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
+    pub async fn perform_query(&self, peer_query: PeerQuery<'_>, desc: &str) -> Result<Vec<Peer>, PeerManagerError> {
+        let timer = Instant::now();
         let lock = self.peer_storage.read().await;
-        lock.perform_query(peer_query)
+        let res = lock.perform_query(peer_query);
+        if timer.elapsed().as_millis() > 50 {
+            log::warn!(
+                "PeerManager::perform_query took {}ms. Query: {}",
+                timer.elapsed().as_millis(),
+                desc
+            );
+        }
+        res
     }
 
     /// Find the peer with the provided NodeID
@@ -119,7 +128,16 @@ impl PeerManager {
 
     /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
     pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.find_all_starts_with(partial)
+        let timer = Instant::now();
+        let res = self.peer_storage.read().await.find_all_starts_with(partial);
+
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!(
+                "PeerManager::find_all_starts_with took {}ms",
+                timer.elapsed().as_millis()
+            );
+        }
+        res
     }
 
     /// Check if a peer exist using the specified public_key
@@ -155,43 +173,6 @@ impl PeerManager {
             .discovery_syncing(n, excluded_peers, features)
     }
 
-    /// Adds or updates a peer and sets the last connection as successful.
-    /// If the peer is marked as offline, it will be unmarked.
-    pub async fn add_or_update_online_peer(
-        &self,
-        pubkey: &CommsPublicKey,
-        node_id: NodeId,
-        addresses: Vec<Multiaddr>,
-        peer_features: PeerFeatures,
-        source: &PeerAddressSource,
-    ) -> Result<Peer, PeerManagerError> {
-        match self.find_by_public_key(pubkey).await {
-            Ok(Some(mut peer)) => {
-                peer.addresses.update_addresses(&addresses, source);
-                peer.features = peer_features;
-                self.add_peer(peer.clone()).await?;
-                Ok(peer)
-            },
-            Ok(None) => {
-                self.add_peer(Peer::new(
-                    pubkey.clone(),
-                    node_id,
-                    MultiaddressesWithStats::from_addresses_with_source(addresses, source),
-                    PeerFlags::default(),
-                    peer_features,
-                    Default::default(),
-                    Default::default(),
-                ))
-                .await?;
-
-                self.find_by_public_key(pubkey)
-                    .await?
-                    .ok_or(PeerManagerError::PeerNotFoundError)
-            },
-            Err(err) => Err(err),
-        }
-    }
-
     pub async fn update_peer_address_latency_and_last_seen(
         &self,
         pubkey: &CommsPublicKey,
@@ -214,7 +195,8 @@ impl PeerManager {
 
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        match self.peer_storage.read().await.direct_identity_node_id(node_id) {
+        let read_lock = self.peer_storage.read().await;
+        match read_lock.direct_identity_node_id(node_id) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
@@ -233,16 +215,6 @@ impl PeerManager {
         }
     }
 
-    /// Fetch all peers (except banned ones)
-    pub async fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.flood_peers()
-    }
-
-    pub async fn for_each<F>(&self, f: F) -> Result<(), PeerManagerError>
-    where F: FnMut(Peer) -> IterationResult {
-        self.peer_storage.read().await.for_each(f)
-    }
-
     /// Fetch n nearest neighbours. If features are supplied, the function will return the closest peers matching that
     /// feature
     pub async fn closest_peers(
@@ -252,16 +224,27 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage
+        let timer = Instant::now();
+        let res = self
+            .peer_storage
             .read()
             .await
-            .closest_peers(node_id, n, excluded_peers, features)
+            .closest_peers(node_id, n, excluded_peers, features);
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!("PeerManager::closest_peers took {}ms", timer.elapsed().as_millis());
+        }
+        res
     }
 
     /// Fetch n random peers
     pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
+        let timer = Instant::now();
         // Send to a random set of peers of size n that are Communication Nodes
-        self.peer_storage.read().await.random_peers(n, excluded)
+        let res = self.peer_storage.read().await.random_peers(n, excluded);
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!("PeerManager::random_peers took {}ms", timer.elapsed().as_millis());
+        }
+        res
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
@@ -284,8 +267,16 @@ impl PeerManager {
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
+        let timer = Instant::now();
         let lock = self.peer_storage.read().await;
-        lock.calc_region_threshold(region_node_id, n, features)
+        let res = lock.calc_region_threshold(region_node_id, n, features);
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!(
+                "PeerManager::calc_region_threshold took {}ms",
+                timer.elapsed().as_millis()
+            );
+        }
+        res
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
@@ -300,7 +291,12 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer(public_key, duration, reason)
+        let timer = Instant::now();
+        let res = self.peer_storage.write().await.ban_peer(public_key, duration, reason);
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!("PeerManager::ban_peer took {}ms", timer.elapsed().as_millis());
+        }
+        res
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -310,10 +306,19 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage
+        let timer = Instant::now();
+        let res = self
+            .peer_storage
             .write()
             .await
-            .ban_peer_by_node_id(node_id, duration, reason)
+            .ban_peer_by_node_id(node_id, duration, reason);
+        if timer.elapsed().as_millis() > 1 {
+            log::warn!(
+                "PeerManager::ban_peer_by_node_id took {}ms",
+                timer.elapsed().as_millis()
+            );
+        }
+        res
     }
 
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
@@ -321,7 +326,9 @@ impl PeerManager {
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
-    where F: FnMut(Peer) -> Option<Peer> {
+    where
+        F: FnMut(Peer) -> Option<Peer>,
+    {
         let mut lock = self.peer_storage.write().await;
         let mut peers_to_update = Vec::new();
         lock.for_each(|peer| {

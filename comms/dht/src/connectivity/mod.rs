@@ -43,18 +43,11 @@ use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
     connectivity::{
-        ConnectivityError,
-        ConnectivityEvent,
-        ConnectivityEventRx,
-        ConnectivityRequester,
-        ConnectivitySelection,
+        ConnectivityError, ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester, ConnectivitySelection,
     },
     multiaddr,
     peer_manager::{NodeDistance, NodeId, Peer, PeerManagerError, PeerQuery, PeerQuerySortBy},
-    Minimized,
-    NodeIdentity,
-    PeerConnection,
-    PeerManager,
+    Minimized, NodeIdentity, PeerConnection, PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
@@ -441,8 +434,9 @@ impl DhtConnectivity {
     }
 
     async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
-        let should_refresh = self.config.num_random_nodes > 0 &&
-            self.random_pool_last_refresh
+        let should_refresh = self.config.num_random_nodes > 0
+            && self
+                .random_pool_last_refresh
                 .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh_interval)
                 .unwrap_or(true);
         if should_refresh {
@@ -563,7 +557,7 @@ impl DhtConnectivity {
                     .any(|conn| conn.peer_node_id() == &peer.node_id)
             })
             .sort_by(PeerQuerySortBy::DistanceFrom(self.node_identity.node_id()));
-        let peers_by_distance = self.peer_manager.perform_query(query).await?;
+        let peers_by_distance = self.peer_manager.perform_query(query, "Closest1").await?;
         debug!(
             target: LOG_TARGET,
             "minimize_connections: Filtered peers: {}, Handles: {}",
@@ -1004,7 +998,7 @@ impl DhtConnectivity {
             .sort_by(PeerQuerySortBy::DistanceFrom(self_node_id))
             .limit(n);
 
-        let peers = peer_manager.perform_query(query).await?;
+        let peers = peer_manager.perform_query(query, "Closest2").await?;
 
         Ok(peers.into_iter().map(|p| p.node_id).take(n).collect())
     }

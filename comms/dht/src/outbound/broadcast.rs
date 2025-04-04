@@ -43,7 +43,7 @@ use tari_comms::{
     Bytes, BytesMut,
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
-use tokio::{sync::oneshot, time};
+use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
@@ -250,7 +250,6 @@ where
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
         trace!(target: LOG_TARGET, "Send params: {:?}", params);
-        let timer = Instant::now();
         if params
             .broadcast_strategy
             .direct_public_key()
@@ -372,7 +371,7 @@ where
                 error!(target: LOG_TARGET, "{}", err);
                 DhtOutboundError::PeerSelectionFailed
             });
-        if timer.elapsed() > Duration::from_millis(50) {
+        if timer.elapsed() > Duration::from_millis(10) {
             warn!(target: LOG_TARGET, "Peer selection took too long: {:?}, broadcast strategy: {}", timer.elapsed(), broadcast_strategy);
         }
         res
@@ -424,7 +423,6 @@ where
         expires: Option<DateTime<Utc>>,
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
-        let timer = Instant::now();
         let dht_flags = encryption.flags() | extra_flags;
         let expires_epochtime = expires.map(datetime_to_epochtime);
 

@@ -42,7 +42,7 @@ impl CommandContext {
     pub async fn unban_all_peers(&self) -> Result<(), Error> {
         let query = PeerQuery::new().select_where(|p| p.is_banned());
         let peer_manager = self.comms.peer_manager();
-        let peers = peer_manager.perform_query(query).await?;
+        let peers = peer_manager.perform_query(query, "Is banned").await?;
         let num_peers = peers.len();
         for peer in peers {
             if let Err(err) = peer_manager.unban_peer(&peer.node_id).await {

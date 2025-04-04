@@ -48,8 +48,7 @@ use tari_utilities::{
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot},
-    task,
-    time,
+    task, time,
     time::MissedTickBehavior,
 };
 
@@ -60,8 +59,7 @@ use crate::{
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
     storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
-    DhtConfig,
-    DhtDiscoveryRequester,
+    DhtConfig, DhtDiscoveryRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -819,7 +817,7 @@ impl DhtActor {
             .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
-        let peers = peer_manager.perform_query(query).await?;
+        let peers = peer_manager.perform_query(query, "Closest Peers").await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
         if total_excluded > 0 {
             debug!(
@@ -909,8 +907,8 @@ impl DiscoveryDialTask {
             match self.connectivity.dial_peer(node_id).await {
                 Ok(conn) => Ok(conn),
                 Err(ConnectivityError::ConnectionFailed(err)) => match err {
-                    ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
-                    ConnectionManagerError::DialConnectFailedAllAddresses => {
+                    ConnectionManagerError::ConnectFailedMaximumAttemptsReached
+                    | ConnectionManagerError::DialConnectFailedAllAddresses => {
                         debug!(
                             target: LOG_TARGET,
                             "Dial failed for peer {}. Attempting discovery.", public_key
@@ -953,9 +951,7 @@ mod test {
     use std::{convert::TryFrom, time::Duration};
 
     use tari_comms::test_utils::mocks::{
-        create_connectivity_mock,
-        create_peer_connection_mock_pair,
-        ConnectivityManagerMockState,
+        create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
@@ -964,10 +960,7 @@ mod test {
     use crate::{
         envelope::NodeDestination,
         test_utils::{
-            build_peer_manager,
-            create_dht_discovery_mock,
-            make_client_identity,
-            make_node_identity,
+            build_peer_manager, create_dht_discovery_mock, make_client_identity, make_node_identity,
             DhtDiscoveryMockState,
         },
     };

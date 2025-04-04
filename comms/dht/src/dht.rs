@@ -42,8 +42,7 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
-    filter,
-    inbound,
+    filter, inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
@@ -53,15 +52,11 @@ use crate::{
     rpc,
     storage::{DbConnection, StorageError},
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    DedupLayer,
-    DhtActorError,
-    DhtBuilder,
-    DhtConfig,
+    DedupLayer, DhtActorError, DhtBuilder, DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht";
 
-const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
 const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
 const DHT_EVENT_BROADCAST_CHANNEL_SIZE: usize = 100;
@@ -95,7 +90,6 @@ pub struct Dht {
     /// Sender for SAF requests
     saf_sender: mpsc::Sender<StoreAndForwardRequest>,
     /// Sender for SAF response signals
-    saf_response_signal_sender: mpsc::Sender<()>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connectivity actor requester
@@ -118,7 +112,7 @@ impl Dht {
         let (dht_sender, dht_receiver) = mpsc::unbounded_channel();
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (saf_sender, saf_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
-        let (saf_response_signal_sender, saf_response_signal_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
+        let (_saf_response_signal_sender, saf_response_signal_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
         let metrics_collector = MetricsCollector::spawn();
@@ -131,7 +125,6 @@ impl Dht {
             outbound_tx,
             dht_sender,
             saf_sender,
-            saf_response_signal_sender,
             connectivity,
             discovery_sender,
             event_publisher,
@@ -412,8 +405,8 @@ fn filter_out_all_saf(msg: &DecryptedDhtMessage) -> bool {
 fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     // Let the message through if:
     // it isn't a duplicate (normal message), or
-    let should_continue = !msg.is_duplicate() ||
-        (
+    let should_continue = !msg.is_duplicate()
+        || (
             // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
             msg.dht_header.message_type.is_domain_message() &&
                 // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
@@ -473,12 +466,8 @@ mod test {
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
         test_utils::{
-            build_peer_manager,
-            make_client_identity,
-            make_comms_inbound_message,
-            make_dht_envelope,
-            make_node_identity,
-            service_spy,
+            build_peer_manager, make_client_identity, make_comms_inbound_message, make_dht_envelope,
+            make_node_identity, service_spy,
         },
     };
 
