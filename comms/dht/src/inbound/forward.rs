@@ -161,7 +161,8 @@ impl<S> Forwarder<S> {
 }
 
 impl<S> Forwarder<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
 {
     async fn handle(mut self, message: DecryptedDhtMessage) -> Result<(), PipelineError> {
         let timer = std::time::Instant::now();
@@ -311,8 +312,8 @@ mod test {
     #[tokio::test]
     async fn decryption_succeeded() {
         let spy = service_spy();
-        let (oms_tx, _) = mpsc::channel(1);
-        let (dht, _mock) = create_dht_actor_mock(1);
+        let (oms_tx, _) = mpsc::unbounded_channel();
+        let (dht, _mock) = create_dht_actor_mock();
         let oms = OutboundMessageRequester::new(oms_tx);
         let mut service = ForwardLayer::new(dht, oms, true).layer(spy.to_service::<PipelineError>());
 
@@ -331,9 +332,9 @@ mod test {
     #[tokio::test]
     async fn decryption_failed() {
         let spy = service_spy();
-        let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
         let oms_mock_state = oms_mock.get_state();
-        let (dht, _mock) = create_dht_actor_mock(1);
+        let (dht, _mock) = create_dht_actor_mock();
         task::spawn(oms_mock.run());
 
         let mut service = ForwardLayer::new(dht, oms_requester, true).layer(spy.to_service::<PipelineError>());

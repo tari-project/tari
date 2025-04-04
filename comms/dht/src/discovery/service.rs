@@ -44,8 +44,7 @@ use crate::{
     peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     rpc::UnvalidatedPeerInfo,
-    DhtConfig,
-    DhtRequester,
+    DhtConfig, DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -280,8 +279,8 @@ impl DhtDiscoveryService {
         match result {
             Ok(peer) => Ok(peer),
             Err(err @ DhtPeerValidatorError::NewAndExistingMismatch { .. }) => Err(err),
-            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
-            Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
+            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. })
+            | Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
                 Err(err)
             },
@@ -393,7 +392,7 @@ mod test {
     async fn send_discovery() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());
 
@@ -401,7 +400,7 @@ mod test {
         // Requester which timeout instantly
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
         let shutdown = Shutdown::new();
-        let (dht, _mock) = create_dht_actor_mock(1);
+        let (dht, _mock) = create_dht_actor_mock();
 
         DhtDiscoveryService::new(
             Default::default(),

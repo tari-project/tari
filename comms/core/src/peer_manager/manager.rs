@@ -390,6 +390,8 @@ mod test {
     use rand::{rngs::OsRng, Rng};
     use tari_storage::HashmapDatabase;
 
+    use crate::{net_address::PeerAddressSource, peer_manager::PeerFlags};
+
     use super::*;
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
@@ -469,18 +471,6 @@ mod test {
             .await
             .unwrap()
             .is_none());
-
-        // Test Flood
-        let selected_peers = peer_manager.flood_peers().await.unwrap();
-        assert_eq!(selected_peers.len(), 18);
-        for peer_identity in &selected_peers {
-            assert!(!peer_manager
-                .find_by_node_id(&peer_identity.node_id)
-                .await
-                .unwrap()
-                .unwrap()
-                .is_banned(),);
-        }
 
         // Test Closest - No exclusions
         let selected_peers = peer_manager
@@ -641,26 +631,5 @@ mod test {
                 .iter()
                 .all(|p| network_region_node_id.distance(&p.node_id) <= node_threshold));
         }
-    }
-
-    #[tokio::test]
-    async fn test_add_or_update_online_peer() {
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
-        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
-
-        peer_manager.add_peer(peer.clone()).await.unwrap();
-
-        let peer = peer_manager
-            .add_or_update_online_peer(
-                &peer.public_key,
-                peer.node_id,
-                vec![],
-                peer.features,
-                &PeerAddressSource::Config,
-            )
-            .await
-            .unwrap();
-
-        assert!(!peer.is_offline());
     }
 }

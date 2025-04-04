@@ -34,8 +34,7 @@ use tari_comms::{
     },
     transports::MemoryTransport,
     types::CommsDatabase,
-    CommsBuilder,
-    CommsNode,
+    CommsBuilder, CommsNode,
 };
 use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht, DhtConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -155,7 +154,7 @@ pub async fn setup_comms_dht(
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()

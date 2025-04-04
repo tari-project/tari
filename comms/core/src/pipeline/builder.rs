@@ -87,7 +87,9 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
     }
 
     pub fn with_inbound_pipeline<S>(self, inbound: S) -> Builder<S, TOutSvc, TOutReq>
-    where S: Service<InboundMessage> + Clone + Send + 'static {
+    where
+        S: Service<InboundMessage> + Clone + Send + 'static,
+    {
         Builder {
             inbound: Some(inbound),
 
@@ -171,30 +173,4 @@ pub enum PipelineBuilderError {
     InboundNotProvided,
     #[error("Outbound pipeline was not provided")]
     OutboundPipelineNotProvided,
-}
-
-#[cfg(test)]
-mod test {
-    use std::convert::identity;
-
-    use futures::future;
-    use tower::service_fn;
-
-    use super::*;
-
-    #[test]
-    fn minimal_usage() {
-        // Called when a message is sent on the given channel.
-        let (_, rx) = mpsc::channel::<OutboundMessage>(1);
-
-        let config = Builder::new()
-            .max_concurrent_inbound_tasks(50)
-            // Forward all messages on rx_out to the provided SinkService
-            .with_outbound_pipeline(rx, identity)
-            // Discard all inbound messages
-            .with_inbound_pipeline(service_fn(|_| future::ready(Result::<_, ()>::Ok(()))))
-            .build();
-
-        assert_eq!(config.max_concurrent_inbound_tasks, 50);
-    }
 }

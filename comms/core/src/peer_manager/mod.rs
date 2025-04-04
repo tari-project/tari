@@ -103,6 +103,7 @@ mod peer_query;
 pub use peer_query::{PeerQuery, PeerQuerySortBy};
 
 mod peer_storage;
+pub use peer_storage::PeerStorage;
 
 mod peer_identity_claim;
 pub use peer_identity_claim::PeerIdentityClaim;

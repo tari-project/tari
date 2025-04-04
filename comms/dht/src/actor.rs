@@ -1017,11 +1017,11 @@ mod test {
         ) {
             let node_identity = make_node_identity();
             let peer_manager = build_peer_manager();
-            let (out_tx, _) = mpsc::channel(1);
+            let (out_tx, _) = mpsc::unbounded_channel();
             let (connectivity_manager, mock) = create_connectivity_mock();
             let connectivity_mock = mock.get_shared_state();
             mock.spawn();
-            let (actor_tx, actor_rx) = mpsc::channel(1);
+            let (actor_tx, actor_rx) = mpsc::unbounded_channel();
             let requester = DhtRequester::new(actor_tx);
             let outbound_requester = OutboundMessageRequester::new(out_tx);
             let (discovery, mock) = create_dht_discovery_mock(Duration::from_secs(10));
@@ -1096,8 +1096,8 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let outbound_requester = OutboundMessageRequester::new(out_tx);
@@ -1140,8 +1140,8 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
@@ -1242,8 +1242,8 @@ mod test {
 
         peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
 
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
@@ -1340,8 +1340,8 @@ mod test {
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (out_tx, _out_rx) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let mut requester = DhtRequester::new(actor_tx);

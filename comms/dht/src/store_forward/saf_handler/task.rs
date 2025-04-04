@@ -43,8 +43,7 @@ use tower::{Service, ServiceExt};
 
 use crate::{
     actor::{DhtRequester, OffenceSeverity},
-    crypt,
-    dedup,
+    crypt, dedup,
     envelope::{epochtime_to_datetime, DhtMessageError, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
@@ -52,18 +51,13 @@ use crate::{
     proto::{
         envelope::DhtMessageType,
         store_forward::{
-            stored_messages_response::SafResponseType,
-            StoredMessage as ProtoStoredMessage,
-            StoredMessagesRequest,
+            stored_messages_response::SafResponseType, StoredMessage as ProtoStoredMessage, StoredMessagesRequest,
             StoredMessagesResponse,
         },
     },
     storage::DhtMetadataKey,
     store_forward::{
-        error::StoreAndForwardError,
-        service::FetchStoredMessageQuery,
-        SafConfig,
-        StoreAndForwardRequester,
+        error::StoreAndForwardError, service::FetchStoredMessageQuery, SafConfig, StoreAndForwardRequester,
     },
 };
 
@@ -81,7 +75,8 @@ pub struct MessageHandlerTask<S> {
 }
 
 impl<S> MessageHandlerTask<S>
-where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
 {
     pub fn new(
         config: SafConfig,
@@ -563,8 +558,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let mask_inverse = mask.invert().ok_or(StoreAndForwardError::DecryptionFailed)?;
             Ok((
                 Some(CommsPublicKey::new_from_pk(
-                    mask_inverse *
-                        masked_sender_public_key
+                    mask_inverse
+                        * masked_sender_public_key
                             .to_public_key()
                             .map_err(|_| StoreAndForwardError::DecryptionFailed)?,
                 )),
@@ -640,20 +635,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
 
             // These aren't be possible in this function if the code is correct.
-            Err(err @ StoreAndForwardError::InvariantError(_)) |
-            Err(err @ StoreAndForwardError::SafMessagesReceivedAfterDeadline { .. }) |
-            Err(err @ StoreAndForwardError::ReceivedUnrequestedSafMessages) => {
+            Err(err @ StoreAndForwardError::InvariantError(_))
+            | Err(err @ StoreAndForwardError::SafMessagesReceivedAfterDeadline { .. })
+            | Err(err @ StoreAndForwardError::ReceivedUnrequestedSafMessages) => {
                 error!(target: LOG_TARGET, "BUG: unreachable error reached! {}", err);
                 None
             },
 
             // Internal errors
-            Err(err @ StoreAndForwardError::RequestCancelled) |
-            Err(err @ StoreAndForwardError::RequesterChannelClosed) |
-            Err(err @ StoreAndForwardError::DhtOutboundError(_)) |
-            Err(err @ StoreAndForwardError::StorageError(_)) |
-            Err(err @ StoreAndForwardError::PeerManagerError(_)) |
-            Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
+            Err(err @ StoreAndForwardError::RequestCancelled)
+            | Err(err @ StoreAndForwardError::RequesterChannelClosed)
+            | Err(err @ StoreAndForwardError::DhtOutboundError(_))
+            | Err(err @ StoreAndForwardError::StorageError(_))
+            | Err(err @ StoreAndForwardError::PeerManagerError(_))
+            | Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
                 None
             },
@@ -688,8 +683,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
 
             // Peer sent an invalid SAF reply
-            Err(err @ StoreAndForwardError::StoredAtWasInFuture) |
-            Err(err @ StoreAndForwardError::InvalidSafResponseMessage { .. }) => {
+            Err(err @ StoreAndForwardError::StoredAtWasInFuture)
+            | Err(err @ StoreAndForwardError::InvalidSafResponseMessage { .. }) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -705,10 +700,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             // Ban - peer sent us a message containing an invalid DhtHeader or encoded signature. They should
             // have discarded this message.
-            Err(err @ StoreAndForwardError::DecodeError(_)) |
-            Err(err @ StoreAndForwardError::MessageError(_)) |
-            Err(err @ StoreAndForwardError::MalformedEnvelopeBody(_)) |
-            Err(err @ StoreAndForwardError::DhtMessageError(_)) => {
+            Err(err @ StoreAndForwardError::DecodeError(_))
+            | Err(err @ StoreAndForwardError::MessageError(_))
+            | Err(err @ StoreAndForwardError::MalformedEnvelopeBody(_))
+            | Err(err @ StoreAndForwardError::DhtMessageError(_)) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -722,8 +717,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 Some(Err(err))
             },
 
-            Err(err @ StoreAndForwardError::BadDhtHeaderSemanticallyInvalid) |
-            Err(err @ StoreAndForwardError::InvalidMessageSignature(_)) => {
+            Err(err @ StoreAndForwardError::BadDhtHeaderSemanticallyInvalid)
+            | Err(err @ StoreAndForwardError::InvalidMessageSignature(_)) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -751,8 +746,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     .await;
                 Some(Err(err))
             },
-            Err(err @ StoreAndForwardError::PeerSentDhtMessageViaSaf) |
-            Err(err @ StoreAndForwardError::PeerSentSafMessageViaSaf) => {
+            Err(err @ StoreAndForwardError::PeerSentDhtMessageViaSaf)
+            | Err(err @ StoreAndForwardError::PeerSentSafMessageViaSaf) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -786,14 +781,8 @@ mod test {
         proto::envelope::DhtHeader,
         store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
-            build_peer_manager,
-            create_dht_actor_mock,
-            create_store_and_forward_mock,
-            make_dht_header,
-            make_dht_inbound_message,
-            make_keypair,
-            make_node_identity,
-            service_spy,
+            build_peer_manager, create_dht_actor_mock, create_store_and_forward_mock, make_dht_header,
+            make_dht_inbound_message, make_keypair, make_node_identity, service_spy,
         },
     };
 
@@ -831,7 +820,7 @@ mod test {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
 
-        let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());
 
@@ -869,7 +858,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafRequestMessages;
 
-        let (tx, _) = mpsc::channel(1);
+        let (tx, _) = mpsc::unbounded_channel();
         let dht_requester = DhtRequester::new(tx);
         let (saf_response_signal_sender, _saf_response_signal_receiver) = mpsc::channel(20);
 
@@ -980,7 +969,7 @@ mod test {
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();
 
         let peer_manager = build_peer_manager();
-        let (oms_tx, _) = mpsc::channel(1);
+        let (oms_tx, _) = mpsc::unbounded_channel();
 
         let node_identity = make_node_identity();
 
@@ -1039,7 +1028,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (mut dht_requester, mock) = create_dht_actor_mock(1);
+        let (mut dht_requester, mock) = create_dht_actor_mock();
         task::spawn(mock.run());
         let (saf_response_signal_sender, mut saf_response_signal_receiver) = mpsc::channel(20);
 
@@ -1098,7 +1087,7 @@ mod test {
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();
 
         let peer_manager = build_peer_manager();
-        let (oms_tx, _) = mpsc::channel(1);
+        let (oms_tx, _) = mpsc::unbounded_channel();
 
         let node_identity = make_node_identity();
 
@@ -1148,7 +1137,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (mut dht_requester, mock) = create_dht_actor_mock(1);
+        let (mut dht_requester, mock) = create_dht_actor_mock();
         task::spawn(mock.run());
         let (saf_response_signal_sender, _) = mpsc::channel(20);
 
@@ -1189,7 +1178,7 @@ mod test {
         let (requester, _) = create_store_and_forward_mock();
 
         let peer_manager = build_peer_manager();
-        let (oms_tx, _) = mpsc::channel(1);
+        let (oms_tx, _) = mpsc::unbounded_channel();
 
         let node_identity = make_node_identity();
 
@@ -1225,7 +1214,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (mut dht_requester, mock) = create_dht_actor_mock(1);
+        let (mut dht_requester, mock) = create_dht_actor_mock();
         task::spawn(mock.run());
 
         let (saf_response_signal_sender, _) = mpsc::channel(1);
@@ -1262,7 +1251,7 @@ mod test {
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();
 
         let peer_manager = build_peer_manager();
-        let (oms_tx, _) = mpsc::channel(1);
+        let (oms_tx, _) = mpsc::unbounded_channel();
 
         let node_identity = make_node_identity();
 
@@ -1298,7 +1287,7 @@ mod test {
         );
         message.dht_header.message_type = DhtMessageType::SafStoredMessages;
 
-        let (dht_requester, mock) = create_dht_actor_mock(1);
+        let (dht_requester, mock) = create_dht_actor_mock();
         task::spawn(mock.run());
 
         let (saf_response_signal_sender, _) = mpsc::channel(1);

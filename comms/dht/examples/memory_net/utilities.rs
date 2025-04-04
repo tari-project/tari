@@ -23,8 +23,7 @@
 
 use std::{
     collections::HashMap,
-    fmt,
-    iter,
+    fmt, iter,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -46,19 +45,11 @@ use tari_comms::{
     },
     transports::MemoryTransport,
     types::CommsDatabase,
-    CommsBuilder,
-    CommsNode,
-    PeerConnection,
+    CommsBuilder, CommsNode, PeerConnection,
 };
 use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
-    inbound::DecryptedDhtMessage,
-    outbound::OutboundEncryption,
-    store_forward::SafConfig,
-    DbConnectionUrl,
-    Dht,
-    DhtConfig,
+    domain_message::OutboundDomainMessage, envelope::NodeDestination, inbound::DecryptedDhtMessage,
+    outbound::OutboundEncryption, store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
@@ -69,8 +60,7 @@ use tari_test_utils::{paths::create_temporary_data_path, random, streams::conver
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},
-    task,
-    time,
+    task, time,
 };
 use tower::ServiceBuilder;
 
@@ -909,7 +899,7 @@ async fn setup_comms_dht(
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()

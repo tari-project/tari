@@ -43,26 +43,12 @@ use crate::{
         rpc::{
             context::{RequestContext, RpcCommsBackend, RpcCommsProvider},
             server::{handle::RpcServerRequest, PeerRpcServer, RpcServerError},
-            Body,
-            NamedProtocolService,
-            Request,
-            Response,
-            RpcError,
-            RpcServer,
-            RpcStatus,
-            Streaming,
+            Body, NamedProtocolService, Request, Response, RpcError, RpcServer, RpcStatus, Streaming,
         },
-        ProtocolEvent,
-        ProtocolId,
-        ProtocolNotification,
-        ProtocolNotificationTx,
+        ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationTx,
     },
     test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
-    utils,
-    NodeIdentity,
-    PeerConnection,
-    PeerManager,
-    Substream,
+    NodeIdentity, PeerConnection, PeerManager, Substream,
 };
 
 pub struct RpcRequestMock {
@@ -147,12 +133,8 @@ pub trait RpcMock {
         method_state.requests.write().await.push(request.into_message());
         let resp = method_state.response.read().await.clone()?;
         let (tx, rx) = mpsc::channel(resp.len());
-        #[allow(clippy::match_wild_err_arm)]
-        match utils::mpsc::send_all(&tx, resp.into_iter().map(Ok)).await {
-            Ok(_) => {},
-            // This is done because tokio mpsc channels give the item back to you in the error, and our item doesn't
-            // impl Debug, so we can't use unwrap, expect etc
-            Err(_) => panic!("send error"),
+        for item in resp.into_iter().map(Ok) {
+            tx.send(item).await.expect("send error");
         }
         Ok(Streaming::new(rx))
     }

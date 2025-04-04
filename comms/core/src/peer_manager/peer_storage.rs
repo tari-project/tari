@@ -44,7 +44,7 @@ const PEER_ACTIVE_WITHIN_DURATION: u64 = 7 * 24 * 60 * 60; // 7 days, 24h, 60m, 
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
-pub(crate) struct PeerStorage<DS> {
+pub struct PeerStorage<DS> {
     peer_db: DS,
     public_key_index: HashMap<CommsPublicKey, PeerId>,
     node_id_index: HashMap<NodeId, PeerId>,

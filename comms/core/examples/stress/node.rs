@@ -33,10 +33,7 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
-    CommsBuilder,
-    CommsNode,
-    NodeIdentity,
-    Substream,
+    CommsBuilder, CommsNode, NodeIdentity, Substream,
 };
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
@@ -62,7 +59,7 @@ pub async fn create(
         CommsNode,
         mpsc::Receiver<ProtocolNotification<Substream>>,
         mpsc::Receiver<InboundMessage>,
-        mpsc::Sender<OutboundMessage>,
+        mpsc::UnboundedSender<OutboundMessage>,
     ),
     Error,
 > {
@@ -107,7 +104,7 @@ pub async fn create(
         .disable_connection_reaping();
 
     let (inbound_tx, inbound_rx) = mpsc::channel(100);
-    let (outbound_tx, outbound_rx) = mpsc::channel(100);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
     let (event_tx, _) = broadcast::channel(1);
 
     let comms_node = if is_tcp {

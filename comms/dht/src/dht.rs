@@ -480,7 +480,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::unbounded_channel();
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()
@@ -533,7 +533,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::unbounded_channel();
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()
@@ -587,7 +587,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         let (connectivity, _) = create_connectivity_mock();
-        let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
 
         // Send all outbound requests to the mock
         let dht = Dht::builder()
@@ -655,7 +655,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::unbounded_channel();
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()

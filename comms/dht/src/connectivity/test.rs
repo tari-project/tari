@@ -31,9 +31,7 @@ use tari_comms::{
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
         node_identity::ordered_node_identities_by_distance,
     },
-    Minimized,
-    NodeIdentity,
-    PeerManager,
+    Minimized, NodeIdentity, PeerManager,
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
@@ -66,7 +64,7 @@ async fn setup(
     let (connectivity, mock) = create_connectivity_mock();
     let connectivity_state = mock.get_shared_state();
     mock.spawn();
-    let (dht_requester, mock) = create_dht_actor_mock(1);
+    let (dht_requester, mock) = create_dht_actor_mock();
     let dht_state = mock.get_shared_state();
     mock.spawn();
     let (event_publisher, _) = broadcast::channel(1);

@@ -34,10 +34,7 @@ use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
-    utils,
-    CommsNode,
-    PeerConnection,
-    Substream,
+    utils, CommsNode, PeerConnection, Substream,
 };
 use tari_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
@@ -56,7 +53,7 @@ pub fn start_service(
     comms_node: CommsNode,
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
     inbound_rx: mpsc::Receiver<InboundMessage>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
     shutdown: Shutdown,
 ) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>) {
     let node_identity = comms_node.node_identity();
@@ -151,7 +148,7 @@ struct StressTestService {
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 
     shutdown: Shutdown,
 }
@@ -162,7 +159,7 @@ impl StressTestService {
         comms_node: CommsNode,
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
         inbound_rx: mpsc::Receiver<InboundMessage>,
-        outbound_tx: mpsc::Sender<OutboundMessage>,
+        outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
         shutdown: Shutdown,
     ) -> Self {
         Self {
@@ -264,7 +261,7 @@ async fn start_initiator_protocol(
     protocol: StressProtocol,
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 ) -> Result<(), Error> {
     println!("Negotiating {:?} protocol...", protocol);
     let start = Instant::now();
@@ -347,7 +344,7 @@ async fn start_responder_protocol(
     mut substream: Substream,
 
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 ) -> Result<(), Error> {
     let mut buf = [0u8; 9];
     substream.read_exact(&mut buf).await?;
@@ -442,7 +439,7 @@ async fn messaging_flood(
     peer: NodeId,
     protocol: StressProtocol,
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 ) -> Result<(), Error> {
     let start = Instant::now();
     let mut counter = 1u32;
@@ -459,11 +456,9 @@ async fn messaging_flood(
             OutboundMessage::new(peer.clone(), generate_message(counter, protocol.message_size as usize))
         })
         .take(protocol.num_messages as usize);
-        utils::mpsc::send_all(&outbound_tx, iter).await?;
+        utils::mpsc::send_all_unbounded(&outbound_tx, iter)?;
         time::sleep(Duration::from_secs(5)).await;
-        outbound_tx
-            .send(OutboundMessage::new(peer.clone(), Bytes::from_static(&[0u8; 4])))
-            .await?;
+        outbound_tx.send(OutboundMessage::new(peer.clone(), Bytes::from_static(&[0u8; 4])))?;
         Result::<_, Error>::Ok(())
     });
 
