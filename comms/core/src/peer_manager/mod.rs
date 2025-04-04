@@ -108,8 +108,6 @@ pub use peer_storage::PeerStorage;
 mod peer_identity_claim;
 pub use peer_identity_claim::PeerIdentityClaim;
 
-mod migrations;
-
 mod or_not_found;
 pub use or_not_found::OrNotFound;
 

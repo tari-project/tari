@@ -290,7 +290,9 @@ impl CommsBuilder {
     /// Set the backoff to use when a dial to a remote peer fails. This is optional. If omitted the default
     /// [ConstantBackoff](crate::backoff::ConstantBackoff) of 500ms is used.
     pub fn with_dial_backoff<T>(mut self, backoff: T) -> Self
-    where T: Backoff + Send + Sync + 'static {
+    where
+        T: Backoff + Send + Sync + 'static,
+    {
         self.dial_backoff = Box::new(backoff);
         self
     }
@@ -317,9 +319,6 @@ impl CommsBuilder {
 
         match self.peer_storage.take() {
             Some(storage) => {
-                #[cfg(not(test))]
-                PeerManager::migrate_lmdb(&storage.inner())?;
-
                 let peer_manager = PeerManager::new(storage, file_lock).map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },

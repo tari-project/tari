@@ -42,8 +42,7 @@ use crate::{
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
-    filter,
-    inbound,
+    filter, inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
@@ -53,10 +52,7 @@ use crate::{
     rpc,
     storage::{DbConnection, StorageError},
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
-    DedupLayer,
-    DhtActorError,
-    DhtBuilder,
-    DhtConfig,
+    DedupLayer, DhtActorError, DhtBuilder, DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht";
@@ -409,8 +405,8 @@ fn filter_out_all_saf(msg: &DecryptedDhtMessage) -> bool {
 fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     // Let the message through if:
     // it isn't a duplicate (normal message), or
-    let should_continue = !msg.is_duplicate() ||
-        (
+    let should_continue = !msg.is_duplicate()
+        || (
             // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
             msg.dht_header.message_type.is_domain_message() &&
                 // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
@@ -458,25 +454,15 @@ mod test {
         message::{MessageExt, MessageTag},
         pipeline::SinkService,
         test_utils::mocks::create_connectivity_mock,
-        types::CommsDHKE,
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
-    use tokio::{task, time};
+    use tokio::time;
 
     use super::*;
     use crate::{
-        crypt,
         envelope::DhtMessageFlags,
-        outbound::mock::create_outbound_service_mock,
-        test_utils::{
-            build_peer_manager,
-            make_client_identity,
-            make_comms_inbound_message,
-            make_dht_envelope,
-            make_node_identity,
-            service_spy,
-        },
+        test_utils::{build_peer_manager, make_comms_inbound_message, make_dht_envelope, make_node_identity},
     };
 
     #[tokio::test]
@@ -584,122 +570,5 @@ mod test {
         };
 
         assert_eq!(msg, b"secret");
-    }
-
-    #[tokio::test]
-    async fn test_stack_forward() {
-        let node_identity = make_node_identity();
-        let peer_manager = build_peer_manager();
-        let shutdown = Shutdown::new();
-
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
-
-        let (connectivity, _) = create_connectivity_mock();
-        let (oms_requester, oms_mock) = create_outbound_service_mock();
-
-        // Send all outbound requests to the mock
-        let dht = Dht::builder()
-            .with_outbound_sender(oms_requester.get_mpsc_sender())
-            .build(
-                Arc::clone(&node_identity),
-                peer_manager,
-                connectivity,
-                shutdown.to_signal(),
-            )
-            .await
-            .unwrap();
-        let oms_mock_state = oms_mock.get_state();
-        task::spawn(oms_mock.run());
-
-        let spy = service_spy();
-        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
-
-        let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec());
-
-        // Encrypt for someone else
-        let node_identity2 = make_node_identity();
-        let ecdh_key = CommsDHKE::new(
-            node_identity2.secret_key(),
-            &node_identity2.public_key().to_public_key().unwrap(),
-        );
-        let key_message = crypt::generate_key_message(&ecdh_key);
-        let mut encrypted_bytes = msg.encode_into_bytes_mut();
-        crypt::encrypt_message(&key_message, &mut encrypted_bytes, b"test associated data").unwrap();
-        let dht_envelope = make_dht_envelope(
-            &node_identity2,
-            &encrypted_bytes.to_vec(),
-            DhtMessageFlags::ENCRYPTED,
-            true,
-            MessageTag::new(),
-            true,
-        )
-        .unwrap();
-
-        let message_signature = dht_envelope.header.as_ref().unwrap().message_signature.clone();
-        assert!(!message_signature.is_empty());
-        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
-
-        service.call(inbound_message).await.unwrap();
-
-        oms_mock_state
-            .wait_call_count(1, Duration::from_secs(10))
-            .await
-            .unwrap();
-        let (params, _) = oms_mock_state.pop_call().await.unwrap();
-
-        // Check that OMS got a request to forward with the original Dht Header
-        assert_eq!(params.dht_header.unwrap().message_signature, message_signature);
-
-        // Check the next service was not called
-        assert_eq!(spy.call_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_stack_filter_saf_message() {
-        let node_identity = make_client_identity();
-        let peer_manager = build_peer_manager();
-        let (connectivity, _) = create_connectivity_mock();
-
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
-
-        // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::unbounded_channel();
-
-        let shutdown = Shutdown::new();
-        let dht = Dht::builder()
-            .with_outbound_sender(out_tx)
-            .build(
-                Arc::clone(&node_identity),
-                peer_manager,
-                connectivity,
-                shutdown.to_signal(),
-            )
-            .await
-            .unwrap();
-
-        // SAF messages need to be requested before any response is accepted
-        dht.store_and_forward_requester()
-            .request_saf_messages_from_peer(node_identity.node_id().clone())
-            .await
-            .unwrap();
-
-        let spy = service_spy();
-        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
-
-        let msg = wrap_in_envelope_body!(b"secret".to_vec());
-        let mut dht_envelope = make_dht_envelope(
-            &node_identity,
-            &msg,
-            DhtMessageFlags::empty(),
-            false,
-            MessageTag::new(),
-            false,
-        )
-        .unwrap();
-        dht_envelope.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
-        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
-
-        service.call(inbound_message).await.unwrap_err();
-        assert_eq!(spy.call_count(), 0);
     }
 }

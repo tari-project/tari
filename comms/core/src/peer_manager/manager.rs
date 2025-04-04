@@ -27,7 +27,7 @@ use std::{
 };
 
 use multiaddr::Multiaddr;
-use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
+use tari_storage::{CachedStore, IterationResult};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
@@ -35,16 +35,8 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
-        migrations,
-        peer::Peer,
-        peer_id::PeerId,
-        peer_storage::PeerStorage,
-        wrapper::KeyValueWrapper,
-        NodeDistance,
-        NodeId,
-        PeerFeatures,
-        PeerManagerError,
-        PeerQuery,
+        peer::Peer, peer_id::PeerId, peer_storage::PeerStorage, wrapper::KeyValueWrapper, NodeDistance, NodeId,
+        PeerFeatures, PeerManagerError, PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -65,11 +57,6 @@ impl PeerManager {
             peer_storage: RwLock::new(storage),
             _file_lock: file_lock,
         })
-    }
-
-    /// Migrate the peer database, this only applies to the LMDB database
-    pub(crate) fn migrate_lmdb(database: &LMDBDatabase) -> Result<(), PeerManagerError> {
-        migrations::migrate(database).map_err(|err| PeerManagerError::MigrationError(err.to_string()))
     }
 
     pub async fn count(&self) -> usize {
@@ -334,7 +321,9 @@ impl PeerManager {
     }
 
     pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
-    where F: FnMut(Peer) -> Option<Peer> {
+    where
+        F: FnMut(Peer) -> Option<Peer>,
+    {
         let mut lock = self.peer_storage.write().await;
         let mut peers_to_update = Vec::new();
         lock.for_each(|peer| {

@@ -22,7 +22,7 @@
 
 use tari_storage::{IterationResult, KeyValStoreError, KeyValueStore};
 
-use crate::peer_manager::{migrations::MIGRATION_VERSION_KEY, Peer, PeerId};
+use crate::peer_manager::{Peer, PeerId};
 
 // TODO: Hack to get around current peer database design. Once PeerManager uses a PeerDatabase abstraction and the LMDB
 //       implementation has access to multiple databases we can remove this wrapper.
@@ -38,27 +38,18 @@ impl<T> KeyValueWrapper<T> {
 }
 
 impl<T> KeyValueStore<PeerId, Peer> for KeyValueWrapper<T>
-where T: KeyValueStore<PeerId, Peer>
+where
+    T: KeyValueStore<PeerId, Peer>,
 {
     fn insert(&self, key: u64, value: Peer) -> Result<(), KeyValStoreError> {
-        assert!(
-            key != MIGRATION_VERSION_KEY,
-            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::insert`. MIGRATION_VERSION_KEY is a reserved key"
-        );
         self.inner.insert(key, value)
     }
 
     fn get(&self, key: &u64) -> Result<Option<Peer>, KeyValStoreError> {
-        if key == &MIGRATION_VERSION_KEY {
-            return Ok(None);
-        }
         self.inner.get(key)
     }
 
     fn get_many(&self, keys: &[PeerId]) -> Result<Vec<Peer>, KeyValStoreError> {
-        if keys.iter().any(|k| k == &MIGRATION_VERSION_KEY) {
-            return Ok(Vec::new());
-        }
         self.inner.get_many(keys)
     }
 
@@ -82,17 +73,10 @@ where T: KeyValueStore<PeerId, Peer>
     }
 
     fn exists(&self, key: &u64) -> Result<bool, KeyValStoreError> {
-        if key == &MIGRATION_VERSION_KEY {
-            return Ok(false);
-        }
         self.inner.exists(key)
     }
 
     fn delete(&self, key: &u64) -> Result<(), KeyValStoreError> {
-        assert!(
-            key != &MIGRATION_VERSION_KEY,
-            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::delete`. MIGRATION_VERSION_KEY is a reserved key"
-        );
         self.inner.delete(key)
     }
 }
