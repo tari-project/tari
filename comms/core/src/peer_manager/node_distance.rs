@@ -210,40 +210,5 @@ mod test {
                 assert!(dist < 2u128.pow(i + 1), "Failed for {}, i = {}", dist, i,);
             }
         }
-
-        #[test]
-        #[ignore]
-        fn pockets() {
-            const N: usize = 100;
-            let mut nodes = Vec::with_capacity(N);
-            for i in 0..N {
-                let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-                nodes.push((format!("node_{}", i), NodeId::from_public_key(&pk)));
-            }
-            let mut distance_map = Vec::with_capacity(N * N);
-            for (node_i_str, node_i) in &nodes {
-                for (node_j_str, node_j) in &nodes {
-                    if node_i == node_j {
-                        continue;
-                    }
-                    let dist = NodeDistance::from_node_ids(node_i, node_j);
-                    distance_map.push((node_i_str.clone(), node_j_str.clone(), dist.clone()));
-                }
-            }
-            println!("Sorted");
-            println!();
-            for (node_str, _node) in &nodes {
-                let mut sorted_map = distance_map
-                    .iter()
-                    .filter(|(node_i_str, _, _)| node_str == node_i_str)
-                    .collect::<Vec<_>>();
-                // Sort by distance
-                sorted_map.sort_by(|(_, _, dist_i), (_, _, dist_j)| dist_i.cmp(dist_j));
-                for (node_i_str, node_j_str, dist) in &sorted_map {
-                    println!("{}, {}, dist: {}", node_i_str, node_j_str, dist);
-                }
-                println!();
-            }
-        }
     }
 }
