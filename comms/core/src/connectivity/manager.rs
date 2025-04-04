@@ -64,6 +64,8 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
 
+const PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(1000);
+
 /// # Connectivity Manager
 ///
 /// The ConnectivityManager actor is responsible for tracking the state of all peer
@@ -402,12 +404,12 @@ impl ConnectivityManagerActor {
         }
     }
 
-    async fn refresh_connection_pool(&mut self, ticker_id: u64) -> Result<(), ConnectivityError> {
+    async fn refresh_connection_pool(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
         debug!(
             target: LOG_TARGET,
             "Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
-            ticker_id,
+            task_id,
             self.pool.count_entries(),
             self.pool.count_connected_nodes(),
             self.pool.count_failed(),
@@ -417,18 +419,46 @@ impl ConnectivityManagerActor {
 
         self.clean_connection_pool();
         if self.config.is_connection_reaping_enabled {
-            self.reap_inactive_connections(ticker_id).await;
+            self.reap_inactive_connections(task_id).await;
         }
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
-            self.maintain_n_closest_peer_connections_only(threshold, ticker_id)
-                .await;
+            self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
         }
+        self.delete_all_stale_peers_from_db(task_id).await;
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
     }
 
+    async fn delete_all_stale_peers_from_db(&mut self, task_id: u64) {
+        let start = Instant::now();
+        match tokio::time::timeout(PEER_DELETE_TIMEOUT, self.peer_manager.delete_all_stale_peers()).await {
+            Ok(res) => match res {
+                Ok(deleted) => {
+                    let len = deleted.len();
+                    if len > 0 {
+                        for node_id in deleted {
+                            self.pool.remove(&node_id);
+                        }
+                        debug!(
+                            target: LOG_TARGET,
+                            "({}) Deleted {} stale peers from the db in {:.2?}",
+                            task_id, len, start.elapsed()
+                        );
+                    }
+                },
+                Err(err) => {
+                    error!(target: LOG_TARGET, "({}) Error deleting stale peers from the db: {:?}", task_id, err);
+                },
+            },
+            Err(_) => {
+                warn!(target: LOG_TARGET, "({}) Timeout deleting all stale peers from the db", task_id);
+            },
+        }
+    }
+
     async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {
+        let start = Instant::now();
         // Select all active peer connections (that are communication nodes)
         let mut connections = match self.select_connections(ConnectivitySelection::closest_to(
             self.node_identity.node_id().clone(),
@@ -460,6 +490,7 @@ impl ConnectivityManagerActor {
         );
 
         // Disconnect all remaining peers above the threshold
+        let len = connections.len();
         for conn in connections.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,
@@ -483,9 +514,18 @@ impl ConnectivityManagerActor {
                 },
             }
         }
+        if len > 0 {
+            debug!(
+                "minimize_connections: ({}) Minimized {} connections in {:.2?}",
+                task_id,
+                len,
+                start.elapsed()
+            );
+        }
     }
 
     async fn reap_inactive_connections(&mut self, task_id: u64) {
+        let start = Instant::now();
         let excess_connections = self
             .pool
             .count_connected()
@@ -526,8 +566,17 @@ impl ConnectivityManagerActor {
                 },
             }
         }
-        for node_id in nodes_to_remove {
-            self.pool.remove(&node_id);
+        let len = nodes_to_remove.len();
+        if len > 0 {
+            for node_id in nodes_to_remove {
+                self.pool.remove(&node_id);
+            }
+            debug!(
+                "({}) Reaped {} inactive connections in {:.2?}",
+                task_id,
+                len,
+                start.elapsed()
+            );
         }
     }
 

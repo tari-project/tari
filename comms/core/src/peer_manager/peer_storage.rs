@@ -35,6 +35,7 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
+        PeerFlags,
         PeerManagerError,
         PeerQuery,
         PeerQuerySortBy,
@@ -334,6 +335,46 @@ where DS: KeyValueStore<PeerId, Peer>
             .limit(n);
 
         self.perform_query(query)
+    }
+
+    /// Delete all stale peers, removing them from the database and returning their node_ids
+    /// - Stale Nodes:
+    ///   - A node is considered stale if all its addresses have failed or if it has not been seen for more than 5 days.
+    ///   - The node must not be a seed node and be identified as a node (not a client).
+    /// - Stale Wallets:
+    ///   - A wallet is considered stale if it has never been seen, all its addresses have failed, or it has not been
+    ///     seen for more than 5 days.
+    ///   - The wallet must be identified as a client (not a node).
+    pub fn delete_all_stale_peers(&mut self) -> Result<Vec<NodeId>, PeerManagerError> {
+        // All stale nodes (except seed nodes)
+        let peers = self
+            .peer_db
+            .filter(|(_, peer)| {
+                (peer.all_addresses_failed() || peer.last_seen_since() > Some(Duration::from_secs(5 * 24 * 60 * 60))) &&
+                    peer.features.is_node() &&
+                    peer.flags.contains(PeerFlags::NONE)
+            })
+            .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
+            .map_err(PeerManagerError::DatabaseError)?;
+        for peer in &peers {
+            self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
+        }
+        // All stale wallets
+        let peers = self
+            .peer_db
+            .filter(|(_, peer)| {
+                (peer.last_seen().is_none() ||
+                    peer.all_addresses_failed() ||
+                    peer.last_seen_since() > Some(Duration::from_secs(5 * 24 * 60 * 60))) &&
+                    peer.features.is_client()
+            })
+            .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
+            .map_err(PeerManagerError::DatabaseError)?;
+        for peer in &peers {
+            self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
+        }
+
+        Ok(peers.iter().map(|p| p.1.node_id.clone()).collect())
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline

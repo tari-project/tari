@@ -99,6 +99,13 @@ impl PeerManager {
         Ok(())
     }
 
+    /// Delete all stale peers, removing them from the database and returning their node_ids
+    pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+        let mut lock = self.peer_storage.write().await;
+        let deleted_peers = lock.delete_all_stale_peers()?;
+        Ok(deleted_peers)
+    }
+
     /// Performs the given [PeerQuery].
     ///
     /// [PeerQuery]: crate::peer_manager::PeerQuery
