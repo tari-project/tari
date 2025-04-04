@@ -357,13 +357,10 @@ async fn test_dht_propagate_dedup() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(
-        &123,
-        Person {
-            name: "John Conway".into(),
-            age: 82,
-        },
-    );
+    let out_msg = OutboundDomainMessage::new(&123, Person {
+        name: "John Conway".into(),
+        age: 82,
+    });
     node_A
         .dht
         .outbound_requester()
@@ -452,12 +449,10 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     .await;
 
     // Node A creates a message sends it to B, B modifies it, sends it to C; Node A sends message to C
-    let node_A = make_node(
-        "node_A",
-        PeerFeatures::COMMUNICATION_NODE,
-        config.clone(),
-        [node_B.to_peer(), node_C.to_peer()],
-    )
+    let node_A = make_node("node_A", PeerFeatures::COMMUNICATION_NODE, config.clone(), [
+        node_B.to_peer(),
+        node_C.to_peer(),
+    ])
     .await;
 
     log::info!(
@@ -500,13 +495,10 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     }
 
     // Just a message to test connectivity between Node A -> Node C, and to get the header from
-    let out_msg = OutboundDomainMessage::new(
-        &123,
-        Person {
-            name: "John Conway".into(),
-            age: 82,
-        },
-    );
+    let out_msg = OutboundDomainMessage::new(&123, Person {
+        name: "John Conway".into(),
+        age: 82,
+    });
 
     node_A
         .dht
@@ -613,19 +605,14 @@ async fn test_dht_repropagate() {
     let mut config = dht_config();
     config.dedup_allowed_message_occurrences = 3;
     let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, config.clone(), []).await;
-    let mut node_B = make_node(
-        "node_B",
-        PeerFeatures::COMMUNICATION_NODE,
-        config.clone(),
-        [node_C.to_peer()],
-    )
+    let mut node_B = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, config.clone(), [
+        node_C.to_peer()
+    ])
     .await;
-    let mut node_A = make_node(
-        "node_A",
-        PeerFeatures::COMMUNICATION_NODE,
-        config,
-        [node_B.to_peer(), node_C.to_peer()],
-    )
+    let mut node_A = make_node("node_A", PeerFeatures::COMMUNICATION_NODE, config, [
+        node_B.to_peer(),
+        node_C.to_peer(),
+    ])
     .await;
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     node_B.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
@@ -660,13 +647,10 @@ async fn test_dht_repropagate() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(
-        &123,
-        Person {
-            name: "Alan Turing".into(),
-            age: 41,
-        },
-    );
+    let out_msg = OutboundDomainMessage::new(&123, Person {
+        name: "Alan Turing".into(),
+        age: 41,
+    });
     node_A
         .dht
         .outbound_requester()
@@ -795,10 +779,10 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         .outbound_requester()
         .send_message_no_header(
             SendMessageParams::new()
-                .propagate(
-                    node_B.node_identity().public_key().clone().into(),
-                    vec![msg.source_peer.node_id.clone()],
-                )
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
+                    .source_peer
+                    .node_id
+                    .clone()])
                 .with_dht_header(msg.dht_header)
                 .finish(),
             envelope,
@@ -900,10 +884,10 @@ async fn test_dht_header_not_malleable() {
         .outbound_requester()
         .send_message_no_header(
             SendMessageParams::new()
-                .propagate(
-                    node_B.node_identity().public_key().clone().into(),
-                    vec![msg.source_peer.node_id.clone()],
-                )
+                .propagate(node_B.node_identity().public_key().clone().into(), vec![msg
+                    .source_peer
+                    .node_id
+                    .clone()])
                 .with_dht_header(msg.dht_header)
                 .finish(),
             envelope,
