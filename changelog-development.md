@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.13.3-pre.0](https://github.com/tari-project/tari/compare/v1.13.2-pre.0...v1.13.3-pre.0) (2025-04-03)
+
+
+### Bug Fixes
+
+* fix migration 5 ([#6915](https://github.com/tari-project/tari/issues/6915)) ([73a91d3](https://github.com/tari-project/tari/commit/73a91d3608475b164fc745a72f0adb94b52ed07b))
+
 ### [1.13.2-pre.0](https://github.com/tari-project/tari/compare/v1.13.1-pre.0...v1.13.2-pre.0) (2025-04-02)
 
 
