@@ -107,7 +107,7 @@ where
                 .spawn(async move {
                     let timer = Instant::now();
                     trace!(target: LOG_TARGET, "Start inbound pipeline {}", id);
-                    match time::timeout(Duration::from_secs(100), service.oneshot(item)).await {
+                    match time::timeout(Duration::from_secs(5), service.oneshot(item)).await {
                         Ok(Ok(_)) => {
                             if timer.elapsed().as_millis() > 50 {
                                 warn!(target: LOG_TARGET, "Inbound pipeline {} took too long: {:?}", id, timer.elapsed());
