@@ -35,7 +35,6 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
-        PeerFlags,
         PeerManagerError,
         PeerQuery,
         PeerQuerySortBy,
@@ -346,21 +345,21 @@ where DS: KeyValueStore<PeerId, Peer>
     ///     seen for more than 5 days.
     ///   - The wallet must be identified as a client (not a node).
     pub fn delete_all_stale_peers(&mut self) -> Result<Vec<NodeId>, PeerManagerError> {
-+    let mut all_deleted_peers = Vec::new();
-+
+        let mut all_deleted_peers = Vec::new();
+
         // All stale nodes (except seed nodes)
         let peers = self
             .peer_db
             .filter(|(_, peer)| {
                 (peer.all_addresses_failed() || peer.last_seen_since() > Some(Duration::from_secs(5 * 24 * 60 * 60))) &&
                     peer.features.is_node() &&
-                    peer.flags.contains(PeerFlags::NONE)
+                    !peer.is_seed()
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
         for peer in &peers {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
-+        all_deleted_peers.push(peer.1.node_id.clone());
+            all_deleted_peers.push(peer.1.node_id.clone());
         }
         // All stale wallets
         let peers = self
@@ -375,11 +374,10 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         for peer in &peers {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
-+        all_deleted_peers.push(peer.1.node_id.clone());
+            all_deleted_peers.push(peer.1.node_id.clone());
         }
-    
--    Ok(peers.iter().map(|p| p.1.node_id.clone()).collect())
-+    Ok(all_deleted_peers)
+
+        Ok(all_deleted_peers)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
