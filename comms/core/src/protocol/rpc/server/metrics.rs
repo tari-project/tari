@@ -24,11 +24,9 @@ use once_cell::sync::Lazy;
 #[cfg(feature = "metrics")]
 use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
-use crate::{
-    protocol::{
-        rpc::{RpcServerError, RpcStatusCode},
-        ProtocolId,
-    },
+use crate::protocol::{
+    rpc::{RpcServerError, RpcStatusCode},
+    ProtocolId,
 };
 
 pub fn num_sessions(protocol: &ProtocolId) -> IntGauge {
