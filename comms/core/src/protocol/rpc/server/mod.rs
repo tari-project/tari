@@ -67,7 +67,8 @@ use super::{
     message::{Request, Response, RpcMessageFlags},
     not_found::ProtocolServiceNotFound,
     status::RpcStatus,
-    Handshake, RPC_MAX_FRAME_SIZE,
+    Handshake,
+    RPC_MAX_FRAME_SIZE,
 };
 use crate::{
     bounded_executor::BoundedExecutor,
