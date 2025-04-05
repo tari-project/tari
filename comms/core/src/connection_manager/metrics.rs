@@ -43,7 +43,7 @@ pub fn successful_connections(direction: ConnectionDirection) -> IntCounter {
         tari_metrics::register_int_counter_vec(
             "comms::connections::success",
             "Number of active connections by direction",
-            &["peer_id", "direction"],
+            &["direction"],
         )
         .unwrap()
     });
@@ -56,7 +56,7 @@ pub fn failed_connections(direction: ConnectionDirection) -> IntCounter {
         tari_metrics::register_int_counter_vec(
             "comms::connections::failed",
             "Number of active connections by direction",
-            &["peer_id", "direction"],
+            &["direction"],
         )
         .unwrap()
     });
