@@ -29,7 +29,7 @@ pub fn num_sessions(protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::client::num_sessions",
-            "The number of active clients per peer per protocol",
+            "The number of active clients per protocol",
             &["protocol"],
         )
         .unwrap()
@@ -42,7 +42,7 @@ pub fn handshake_counter(protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::client::handshake_count",
-            "The number of handshakes per peer per protocol",
+            "The number of handshakes per protocol",
             &["protocol"],
         )
         .unwrap()
@@ -55,7 +55,7 @@ pub fn handshake_errors(protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::client::handshake_errors",
-            "The number of handshake errors per peer per protocol",
+            "The number of handshake errors per protocol",
             &["protocol"],
         )
         .unwrap()
@@ -68,7 +68,7 @@ pub fn client_errors(protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::client::error_count",
-            "The number of client errors per peer per protocol",
+            "The number of client errors per protocol",
             &["protocol"],
         )
         .unwrap()
@@ -107,7 +107,7 @@ pub fn outbound_request_bytes(protocol: &ProtocolId) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
             "comms::rpc::client::outbound_request_bytes",
-            "Avg. request bytes per peer per protocol",
+            "Avg. request bytes per protocol",
             &["protocol"],
         )
         .unwrap()

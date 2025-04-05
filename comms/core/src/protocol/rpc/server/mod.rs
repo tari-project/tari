@@ -723,7 +723,7 @@ where
                 payload: status.to_details_bytes(),
             };
             #[cfg(feature = "metrics")]
-            metrics::status_error_counter(&self.node_id, &self.protocol, status.as_status_code()).inc();
+            metrics::status_error_counter(&self.protocol, status.as_status_code()).inc();
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
             return Ok(());
         }
@@ -809,7 +809,7 @@ where
                 };
 
                 #[cfg(feature = "metrics")]
-                metrics::status_error_counter(&self.node_id, &self.protocol, err.as_status_code()).inc();
+                metrics::status_error_counter(&self.protocol, err.as_status_code()).inc();
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
             },
         }
@@ -830,8 +830,6 @@ where
         trace!(target: LOG_TARGET, "Service call succeeded");
 
         #[cfg(feature = "metrics")]
-        let node_id = self.node_id.clone();
-        #[cfg(feature = "metrics")]
         let protocol = self.protocol.clone();
         let mut stream = body
             .into_message()
@@ -842,7 +840,7 @@ where
                 }
                 #[cfg(feature = "metrics")]
                 if !message.status.is_ok() {
-                    metrics::status_error_counter(&node_id, &protocol, message.status).inc();
+                    metrics::status_error_counter(&protocol, message.status).inc();
                 }
                 message.to_proto()
             })

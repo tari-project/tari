@@ -25,7 +25,6 @@ use once_cell::sync::Lazy;
 use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 use crate::{
-    peer_manager::NodeId,
     protocol::{
         rpc::{RpcServerError, RpcStatusCode},
         ProtocolId,
@@ -49,7 +48,7 @@ pub fn handshake_error_counter(protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::handshake_error_count",
-            "The number of handshake errors per peer per protocol",
+            "The number of handshake errors per protocol",
             &["protocol"],
         )
         .unwrap()
@@ -62,7 +61,7 @@ pub fn error_counter(protocol: &ProtocolId, err: &RpcServerError) -> IntCounter 
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::error_count",
-            "The number of RPC errors per peer per protocol",
+            "The number of RPC errors per protocol",
             &["protocol", "error"],
         )
         .unwrap()
@@ -74,18 +73,17 @@ pub fn error_counter(protocol: &ProtocolId, err: &RpcServerError) -> IntCounter 
     ])
 }
 
-pub fn status_error_counter(node_id: &NodeId, protocol: &ProtocolId, status_code: RpcStatusCode) -> IntCounter {
+pub fn status_error_counter(protocol: &ProtocolId, status_code: RpcStatusCode) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::status_error_count",
-            "The number of RPC errors by status code per peer per protocol",
-            &["peer_id", "protocol", "status"],
+            "The number of RPC errors by status code per protocol",
+            &["protocol", "status"],
         )
         .unwrap()
     });
 
     METER.with_label_values(&[
-        node_id.to_string().as_str(),
         String::from_utf8_lossy(protocol).as_ref(),
         status_code.to_debug_string().as_str(),
     ])
