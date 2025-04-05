@@ -121,6 +121,7 @@ RUN apt-get update && \
       libsqlite3-0 \
       openssl \
       procps \
+      tini \
       lsof && \
     # Docker image reduction
     apt-get clean all && \

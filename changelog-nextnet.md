@@ -17,6 +17,21 @@ All notable changes to this project will be documented in this file. See [standa
 * dont poll yamux substream after an error ([#6909](https://github.com/tari-project/tari/issues/6909)) ([96c1707](https://github.com/tari-project/tari/commit/96c1707957cd09d1d62dac96dcab02cfe98a0a7a))
 * randomX seed management ([#6910](https://github.com/tari-project/tari/issues/6910)) ([8f43ff5](https://github.com/tari-project/tari/commit/8f43ff541f62bc5e5098a610c77870741e4df4b0))
 
+### [1.13.3-rc.0](https://github.com/tari-project/tari/compare/v1.13.2-rc.0...v1.13.3-rc.0) (2025-04-03)
+
+
+### Bug Fixes
+
+* fix migration 5 ([#6915](https://github.com/tari-project/tari/issues/6915)) ([73a91d3](https://github.com/tari-project/tari/commit/73a91d3608475b164fc745a72f0adb94b52ed07b))
+
+### [1.13.2-rc.0](https://github.com/tari-project/tari/compare/v1.13.1-rc.0...v1.13.2-rc.0) (2025-04-02)
+
+
+### Features
+
+* add display info to yamux ([#6904](https://github.com/tari-project/tari/issues/6904)) ([2156647](https://github.com/tari-project/tari/commit/2156647d8367c282ade13ea0ed8b876cba8641b4))
+* remove memory allocation for max_size_vec ([#6903](https://github.com/tari-project/tari/issues/6903)) ([594713c](https://github.com/tari-project/tari/commit/594713c3ae3d3cd5450896467d9e1fc913907296))
+
 ### [1.13.1-rc.0](https://github.com/tari-project/tari/compare/v1.13.0-rc.0...v1.13.1-rc.0) (2025-03-31)
 
 

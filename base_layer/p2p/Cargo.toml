@@ -26,11 +26,6 @@ pgp = { version = "0.14.2", optional = true }
 prost = "0.13.3"
 rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }
-rustls = { version = "0.23.13", default-features = false, features = [
-    "logging",
-    "std",
-    "tls12",
-] }
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
@@ -39,10 +34,8 @@ tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
 tower = "0.4.11"
-hickory-client = { version = "=0.25.0-alpha.2", features = ["dns-over-rustls"] }
-hickory-resolver = "0.25.0-alpha.2"
-hickory-proto = { version = "=0.25.0-alpha.2" }
-webpki-roots = "0.26.6"
+hickory-resolver = { version = "=0.25.0-alpha.4", features = ["tokio-runtime", "dns-over-tls", "dns-over-rustls"] }
+hickory-proto = { version = "=0.25.0-alpha.4" }
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }
@@ -60,4 +53,4 @@ test-mocks = []
 auto-update = ["reqwest/default", "pgp", "semver"]
 
 [package.metadata.cargo-machete]
-ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2
+ignored = []

@@ -571,6 +571,7 @@ impl DhtActor {
         mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
     ) -> Result<Vec<NodeId>, DhtActorError> {
+        trace!(target: LOG_TARGET, "Select peers broadcast strategy: {}", broadcast_strategy);
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         let peers = match broadcast_strategy {

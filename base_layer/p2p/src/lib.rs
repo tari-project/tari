@@ -39,7 +39,7 @@ pub mod tari_message;
 mod tor_authentication;
 pub mod transport;
 
-mod dns;
+pub mod dns;
 
 // Re-export
 pub use socks_authentication::SocksAuthentication;
