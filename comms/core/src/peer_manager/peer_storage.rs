@@ -345,10 +345,8 @@ where DS: KeyValueStore<PeerId, Peer>
     ///     seen for more than 5 days.
     ///   - The wallet must be identified as a client (not a node).
     pub fn delete_all_stale_peers(&mut self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let mut all_deleted_peers = Vec::new();
-
         // All stale nodes (except seed nodes)
-        let peers = self
+        let node_peers = self
             .peer_db
             .filter(|(_, peer)| {
                 (peer.all_addresses_failed() || peer.last_seen_since() > Some(Duration::from_secs(5 * 24 * 60 * 60))) &&
@@ -357,12 +355,8 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
-        for peer in &peers {
-            self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
-            all_deleted_peers.push(peer.1.node_id.clone());
-        }
         // All stale wallets
-        let peers = self
+        let wallet_peers = self
             .peer_db
             .filter(|(_, peer)| {
                 (peer.last_seen().is_none() ||
@@ -372,8 +366,11 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
-        for peer in &peers {
+        // Remove
+        let mut all_deleted_peers = Vec::new();
+        for peer in node_peers.iter().chain(wallet_peers.iter()) {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
+            self.remove_index_links(peer.0);
             all_deleted_peers.push(peer.1.node_id.clone());
         }
 
