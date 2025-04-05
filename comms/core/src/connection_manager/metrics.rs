@@ -35,9 +35,7 @@ pub fn pending_connections(direction: ConnectionDirection) -> IntGauge {
         .unwrap()
     });
 
-    METER.with_label_values(&[
-        direction.as_str(),
-    ])
+    METER.with_label_values(&[direction.as_str()])
 }
 
 pub fn successful_connections(direction: ConnectionDirection) -> IntCounter {

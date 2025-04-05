@@ -39,7 +39,7 @@ pub fn outbound_message_count() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
             "comms::messaging::outbound_message_count",
-            "The number of handshakes per peer"
+            "The number of handshakes per peer",
         )
         .unwrap()
     });
@@ -51,7 +51,7 @@ pub fn inbound_message_count() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
             "comms::messaging::inbound_message_count",
-            "The number of handshakes per peer"
+            "The number of handshakes per peer",
         )
         .unwrap()
     });
@@ -60,10 +60,8 @@ pub fn inbound_message_count() -> IntCounter {
 }
 
 pub fn error_count() -> IntCounter {
-    static METER: Lazy<IntCounter> = Lazy::new(|| {
-        tari_metrics::register_int_counter("comms::messaging::errors", "The number of errors")
-        .unwrap()
-    });
+    static METER: Lazy<IntCounter> =
+        Lazy::new(|| tari_metrics::register_int_counter("comms::messaging::errors", "The number of errors").unwrap());
 
     METER.clone()
 }

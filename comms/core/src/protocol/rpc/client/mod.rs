@@ -43,9 +43,7 @@ use futures::{
     future,
     future::{BoxFuture, Either},
     task::{Context, Poll},
-    FutureExt,
-    SinkExt,
-    StreamExt,
+    FutureExt, SinkExt, StreamExt,
 };
 use log::*;
 use prost::Message;
@@ -69,12 +67,7 @@ use crate::{
         rpc::{
             body::ClientStreaming,
             message::{BaseRequest, RpcMessageFlags},
-            Handshake,
-            NamedProtocolService,
-            Response,
-            RpcError,
-            RpcServerError,
-            RpcStatus,
+            Handshake, NamedProtocolService, Response, RpcError, RpcServerError, RpcStatus,
         },
         ProtocolId,
     },
@@ -91,7 +84,9 @@ pub struct RpcClient {
 
 impl RpcClient {
     pub fn builder<T>() -> RpcClientBuilder<T>
-    where T: NamedProtocolService {
+    where
+        T: NamedProtocolService,
+    {
         RpcClientBuilder::new().with_protocol_id(T::PROTOCOL_NAME.into())
     }
 
@@ -281,11 +276,14 @@ impl<TClient> RpcClientBuilder<TClient> {
 }
 
 impl<TClient> RpcClientBuilder<TClient>
-where TClient: From<RpcClient> + NamedProtocolService
+where
+    TClient: From<RpcClient> + NamedProtocolService,
 {
     /// Negotiates and establishes a session to the peer's RPC service
     pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
-    where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static {
+    where
+        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
+    {
         RpcClient::connect(
             self.config,
             self.node_id.unwrap_or_default(),
@@ -421,7 +419,8 @@ struct RpcClientWorker<TSubstream> {
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
+where
+    TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId,
 {
     pub(self) fn new(
         config: RpcClientConfig,
@@ -800,8 +799,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     }
                     break;
                 },
-                Err(err @ RpcError::ResponseIdDidNotMatchRequest { .. }) |
-                Err(err @ RpcError::UnexpectedAckResponse) => {
+                Err(err @ RpcError::ResponseIdDidNotMatchRequest { .. })
+                | Err(err @ RpcError::UnexpectedAckResponse) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     // Ignore the response, this can happen when there is excessive latency. The server sends back a
                     // reply before the deadline but it is only received after the client has timed
@@ -870,8 +869,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         reader.bytes_read()
                     );
                     #[cfg(feature = "metrics")]
-                    metrics::inbound_response_bytes(&self.protocol_id)
-                        .observe(reader.bytes_read() as f64);
+                    metrics::inbound_response_bytes(&self.protocol_id).observe(reader.bytes_read() as f64);
                     let time_to_first_msg = reader.time_to_first_msg();
                     break (resp, time_to_first_msg);
                 },
@@ -946,7 +944,8 @@ struct RpcResponseReader<'a, TSubstream> {
 }
 
 impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
-where TSubstream: AsyncRead + AsyncWrite + Unpin
+where
+    TSubstream: AsyncRead + AsyncWrite + Unpin,
 {
     pub fn new(framed: &'a mut CanonicalFraming<TSubstream>, config: RpcClientConfig, request_id: u16) -> Self {
         Self {
