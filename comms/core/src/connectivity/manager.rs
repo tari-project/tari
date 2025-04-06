@@ -432,7 +432,12 @@ impl ConnectivityManagerActor {
 
     async fn delete_all_stale_peers_from_db(&mut self, task_id: u64) {
         let start = Instant::now();
-        match tokio::time::timeout(PEER_DELETE_TIMEOUT, self.peer_manager.delete_all_stale_peers()).await {
+        match tokio::time::timeout(
+            PEER_DELETE_TIMEOUT,
+            self.peer_manager.delete_all_stale_peers(self.node_identity.node_id()),
+        )
+        .await
+        {
             Ok(res) => match res {
                 Ok(deleted) => {
                     let len = deleted.len();

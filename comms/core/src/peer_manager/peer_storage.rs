@@ -46,6 +46,7 @@ const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// The maximum number of peers to return in peer manager
 const PEER_MANAGER_SYNC_PEERS: usize = 100;
 const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60); // 5 days, 24h, 60m, 60s = 5 days
+const NEIGHBOUR_WALLET_PEER_COUNT: usize = 8;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -345,7 +346,8 @@ where DS: KeyValueStore<PeerId, Peer>
     ///   - A wallet is considered stale if it has never been seen, all its addresses have failed, or it has not been
     ///     seen for more than the threshold number of days.
     ///   - The wallet must be identified as a client (not a node).
-    pub fn delete_all_stale_peers(&mut self) -> Result<Vec<NodeId>, PeerManagerError> {
+    ///   - Wallets that are considered neighbours should not be deleted.
+    pub fn delete_all_stale_peers(&mut self, self_node_id: &NodeId) -> Result<Vec<NodeId>, PeerManagerError> {
         // All stale nodes (except seed nodes)
         let node_peers = self
             .peer_db
@@ -357,7 +359,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
         // All stale wallets
-        let wallet_peers = self
+        let mut wallet_peers = self
             .peer_db
             .filter(|(_, peer)| {
                 (peer.last_seen().is_none() ||
@@ -367,6 +369,13 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
+        // Stale wallet peers that are considered neighbours should not be deleted
+        let query = PeerQuery::new()
+            .select_where(|peer| peer.features.is_client())
+            .sort_by(PeerQuerySortBy::DistanceFrom(self_node_id))
+            .limit(NEIGHBOUR_WALLET_PEER_COUNT);
+        let closest_wallet_peers = self.perform_query(query)?;
+        wallet_peers.retain(|(_, peer)| !closest_wallet_peers.contains(peer));
         // Remove
         let mut all_deleted_peers = Vec::new();
         for peer in node_peers.iter().chain(wallet_peers.iter()) {

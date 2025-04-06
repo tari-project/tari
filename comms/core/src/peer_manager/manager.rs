@@ -100,9 +100,9 @@ impl PeerManager {
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+    pub async fn delete_all_stale_peers(&self, self_node_id: &NodeId) -> Result<Vec<NodeId>, PeerManagerError> {
         let mut lock = self.peer_storage.write().await;
-        let deleted_peers = lock.delete_all_stale_peers()?;
+        let deleted_peers = lock.delete_all_stale_peers(self_node_id)?;
         Ok(deleted_peers)
     }
 
