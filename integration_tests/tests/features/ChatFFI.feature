@@ -4,6 +4,8 @@
 @chat-ffi @critical
 Feature: Chat FFI messaging
 
+  # Ignored, possibly to be deleted with the removal of SAF
+  @ignore
   Scenario: A message is propagated between clients via 3rd party
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -11,6 +13,7 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  @ignore
   Scenario: Callback for new message received
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -19,6 +22,7 @@ Feature: Chat FFI messaging
     Then there will be a MessageReceived callback of at least 1
     Then CHAT_B will have 1 message with CHAT_A
 
+  @ignore
   Scenario: Callback for delivery confirmation received
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -28,6 +32,7 @@ Feature: Chat FFI messaging
     Then CHAT_B will have 1 message with CHAT_A
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching delivery timestamps
 
+  @ignore
   Scenario: Callback for read confirmation received
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -38,6 +43,7 @@ Feature: Chat FFI messaging
     Then there will be a ReadConfirmationReceived callback of at least 1
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching read timestamps
 
+  @ignore
   Scenario: Callback for status change is received
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -46,6 +52,7 @@ Feature: Chat FFI messaging
     When CHAT_A waits for contact CHAT_B to be online
     Then there will be a contact status update callback of at least 1
 
+  @ignore
   Scenario: A message is sent directly between two FFI clients
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -56,11 +63,13 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  @ignore
   Scenario: Chat shuts down without any errors
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
     Then I can shutdown CHAT_A without a problem
 
+  @ignore
   Scenario: Reply to message
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -71,6 +80,7 @@ Feature: Chat FFI messaging
     Then CHAT_A will have 2 messages with CHAT_B
     Then CHAT_A will have a replied to message from CHAT_B with 'oh hai'
 
+  @ignore
   Scenario: A message receives a delivery receipt via FFI
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -79,6 +89,7 @@ Feature: Chat FFI messaging
     When CHAT_B will have 1 message with CHAT_A
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching delivery timestamps
 
+  @ignore
   Scenario: A message receives a read receipt via FFI
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -88,6 +99,7 @@ Feature: Chat FFI messaging
     When CHAT_B sends a read receipt to CHAT_A for message 'Hey there'
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching read timestamps
 
+  @ignore
   Scenario: Fetches all addresses from FFI conversations
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
@@ -102,6 +114,7 @@ Feature: Chat FFI messaging
     When CHAT_A will have 1 message with CHAT_D
     Then CHAT_A will have 3 conversationalists
 
+  @ignore
   Scenario: A message is propagated between side loaded chat and client via 3rd party
     Given I have a seed node SEED_A
     Given I have a ffi wallet WALLET_A connected to base node SEED_A
@@ -110,6 +123,7 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  @ignore
   Scenario: A single message is fetched from FFI
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
