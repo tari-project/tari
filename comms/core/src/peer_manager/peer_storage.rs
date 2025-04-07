@@ -48,11 +48,12 @@ use crate::{
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 // The maximum number of peers to return in peer manager
 const PEER_MANAGER_SYNC_PEERS: usize = 100;
-// The maximum amount of time a peer can be inactive before being considered stale (5 days, 24h, 60m, 60s = 5 days)
-const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60);
+// The maximum amount of time a peer can be inactive before being considered stale:
+// ((5 days, 24h, 60m, 60s)/2 = 2.5 days)
+const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60 / 2);
 // Wallet peer connections are not verified in the way node peer connections are, thus a stale wallet connection may be
 // totally valid, just not verified. Any stale wallet peers that are not neighbours will be deleted.
-const NEIGHBOUR_WALLET_PEER_COUNT: usize = 25;
+const MAX_NEIGHBOUR_WALLET_PEER_COUNT: usize = 25;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -384,7 +385,7 @@ where DS: KeyValueStore<PeerId, Peer>
         let query = PeerQuery::new()
             .select_where(|peer| peer.features.is_client())
             .sort_by(PeerQuerySortBy::DistanceFrom(self_node_id))
-            .limit(NEIGHBOUR_WALLET_PEER_COUNT);
+            .limit(MAX_NEIGHBOUR_WALLET_PEER_COUNT);
         let closest_wallet_peers = self.perform_query(query)?;
         wallet_peers.retain(|(_, peer)| !closest_wallet_peers.contains(peer));
         let neighbours_query_time = neighbour_peers_query_time.elapsed();

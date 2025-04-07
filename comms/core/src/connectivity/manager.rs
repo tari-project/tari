@@ -71,9 +71,9 @@ const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
 // Maximum time allowed to disconnect a single peer
 const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 // Warning threshold for request processing time
-const REQUEST_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
+const ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME: Duration = Duration::from_millis(500);
 // Warning threshold for event processing time
-const EVENT_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
+const ACCEPTABLE_EVENT_PROCESSING_TIME: Duration = Duration::from_millis(500);
 
 /// # Connectivity Manager
 ///
@@ -196,7 +196,7 @@ impl ConnectivityManagerActor {
                     let task_id = rand::random::<u64>();
                     trace!(target: LOG_TARGET, "Request ({}): {:?}", task_id, req);
                     self.handle_request(req).await;
-                    if timer.elapsed() > REQUEST_TIME_LAPSE_WARNING {
+                    if timer.elapsed() > ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME {
                         warn!(
                             target: LOG_TARGET,
                             "Request ({}) took too long to process: {:.2?}",
@@ -214,7 +214,7 @@ impl ConnectivityManagerActor {
                     if let Err(err) = self.handle_connection_manager_event(&event).await {
                         error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", task_id, err);
                     }
-                    if timer.elapsed() > EVENT_TIME_LAPSE_WARNING {
+                    if timer.elapsed() > ACCEPTABLE_EVENT_PROCESSING_TIME {
                         warn!(
                             target: LOG_TARGET,
                             "Event ({}) took too long to process: {:.2?}",
@@ -470,7 +470,13 @@ impl ConnectivityManagerActor {
                     let len = deleted.len();
                     if len > 0 {
                         for node_id in deleted {
-                            self.pool.remove(&node_id);
+                            if let Some(removed) = self.pool.remove(&node_id) {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Stale connection {} encountered - removed",
+                                    removed.peer_node_id()
+                                );
+                            }
                         }
                         debug!(
                             target: LOG_TARGET,
