@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use log::*;
@@ -349,6 +352,7 @@ where DS: KeyValueStore<PeerId, Peer>
     ///   - Wallets that are considered neighbours should not be deleted.
     pub fn delete_all_stale_peers(&mut self, self_node_id: &NodeId) -> Result<Vec<NodeId>, PeerManagerError> {
         // All stale nodes (except seed nodes)
+        let nodes_query_time = Instant::now();
         let node_peers = self
             .peer_db
             .filter(|(_, peer)| {
@@ -358,7 +362,9 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
+        let nodes_query_time = nodes_query_time.elapsed();
         // All stale wallets
+        let wallets_query_time = Instant::now();
         let mut wallet_peers = self
             .peer_db
             .filter(|(_, peer)| {
@@ -369,25 +375,46 @@ where DS: KeyValueStore<PeerId, Peer>
             })
             .map(|pairs| pairs.into_iter().collect::<Vec<_>>())
             .map_err(PeerManagerError::DatabaseError)?;
+        let wallets_query_time = wallets_query_time.elapsed();
         // Stale wallet peers that are considered neighbours should not be deleted
+        let neighbour_peers_query_time = Instant::now();
         let query = PeerQuery::new()
             .select_where(|peer| peer.features.is_client())
             .sort_by(PeerQuerySortBy::DistanceFrom(self_node_id))
             .limit(NEIGHBOUR_WALLET_PEER_COUNT);
         let closest_wallet_peers = self.perform_query(query)?;
         wallet_peers.retain(|(_, peer)| !closest_wallet_peers.contains(peer));
+        let neighbours_query_time = neighbour_peers_query_time.elapsed();
         // Remove
+        let delete_peers_time = Instant::now();
         let mut all_deleted_peers = Vec::new();
         for peer in node_peers.iter().chain(wallet_peers.iter()) {
             self.peer_db.delete(&peer.0).map_err(PeerManagerError::DatabaseError)?;
             self.remove_index_links(peer.0);
             all_deleted_peers.push(peer.1.node_id.clone());
         }
-        if !all_deleted_peers.is_empty() {
+        let delete_peers_time = delete_peers_time.elapsed();
+        if all_deleted_peers.is_empty() {
             trace!(
                 target: LOG_TARGET,
-                "{} stale node peers and {} stale wallet peers deleted.",
-                node_peers.len(), wallet_peers.len(),
+                "node peers (query: {:.2?}), stale wallet peers (query: {:.2?} + {:.2?}) - {:.2?} total time.",
+                nodes_query_time,
+                wallets_query_time,
+                neighbours_query_time,
+                nodes_query_time + wallets_query_time + neighbours_query_time + delete_peers_time,
+            );
+        } else {
+            trace!(
+                target: LOG_TARGET,
+                "{} stale node peers (query: {:.2?}), {} stale wallet peers (query: {:.2?} + {:.2?}), deleted ({:.2?}) \
+                - {:.2?} total time.",
+                node_peers.len(),
+                nodes_query_time,
+                wallet_peers.len(),
+                wallets_query_time,
+                neighbours_query_time,
+                delete_peers_time,
+                nodes_query_time + wallets_query_time + neighbours_query_time + delete_peers_time,
             );
         }
 
