@@ -39,8 +39,15 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    calculate_mmr_roots, calculate_validator_node_mr, fetch_header, fetch_headers,
-    fetch_target_difficulty_for_next_block, BlockchainDatabase, BlockchainDatabaseConfig, MmrRoots, Validators,
+    calculate_mmr_roots,
+    calculate_validator_node_mr,
+    fetch_header,
+    fetch_headers,
+    fetch_target_difficulty_for_next_block,
+    BlockchainDatabase,
+    BlockchainDatabaseConfig,
+    MmrRoots,
+    Validators,
 };
 
 mod blockchain_backend;
@@ -76,8 +83,10 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
-use tari_common_types::types::CompressedPublicKey;
-use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, HashOutput},
+};
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;

@@ -3,10 +3,9 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, UncompressedPublicKey};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{FixedHash, PrivateKey},
+    types::{CompressedPublicKey, FixedHash, PrivateKey, UncompressedPublicKey},
 };
 use tari_crypto::signatures::CompressedSchnorrSignature;
 use tari_hashing::{

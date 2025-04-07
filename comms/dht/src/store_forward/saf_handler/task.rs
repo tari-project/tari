@@ -43,7 +43,8 @@ use tower::{Service, ServiceExt};
 
 use crate::{
     actor::{DhtRequester, OffenceSeverity},
-    crypt, dedup,
+    crypt,
+    dedup,
     envelope::{epochtime_to_datetime, DhtMessageError, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
@@ -51,13 +52,18 @@ use crate::{
     proto::{
         envelope::DhtMessageType,
         store_forward::{
-            stored_messages_response::SafResponseType, StoredMessage as ProtoStoredMessage, StoredMessagesRequest,
+            stored_messages_response::SafResponseType,
+            StoredMessage as ProtoStoredMessage,
+            StoredMessagesRequest,
             StoredMessagesResponse,
         },
     },
     storage::DhtMetadataKey,
     store_forward::{
-        error::StoreAndForwardError, service::FetchStoredMessageQuery, SafConfig, StoreAndForwardRequester,
+        error::StoreAndForwardError,
+        service::FetchStoredMessageQuery,
+        SafConfig,
+        StoreAndForwardRequester,
     },
 };
 
@@ -75,8 +81,7 @@ pub struct MessageHandlerTask<S> {
 }
 
 impl<S> MessageHandlerTask<S>
-where
-    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>,
+where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
         config: SafConfig,
@@ -550,8 +555,8 @@ where
             let mask_inverse = mask.invert().ok_or(StoreAndForwardError::DecryptionFailed)?;
             Ok((
                 Some(CommsPublicKey::new_from_pk(
-                    mask_inverse
-                        * masked_sender_public_key
+                    mask_inverse *
+                        masked_sender_public_key
                             .to_public_key()
                             .map_err(|_| StoreAndForwardError::DecryptionFailed)?,
                 )),
@@ -627,20 +632,20 @@ where
             },
 
             // These aren't be possible in this function if the code is correct.
-            Err(err @ StoreAndForwardError::InvariantError(_))
-            | Err(err @ StoreAndForwardError::SafMessagesReceivedAfterDeadline { .. })
-            | Err(err @ StoreAndForwardError::ReceivedUnrequestedSafMessages) => {
+            Err(err @ StoreAndForwardError::InvariantError(_)) |
+            Err(err @ StoreAndForwardError::SafMessagesReceivedAfterDeadline { .. }) |
+            Err(err @ StoreAndForwardError::ReceivedUnrequestedSafMessages) => {
                 error!(target: LOG_TARGET, "BUG: unreachable error reached! {}", err);
                 None
             },
 
             // Internal errors
-            Err(err @ StoreAndForwardError::RequestCancelled)
-            | Err(err @ StoreAndForwardError::RequesterChannelClosed)
-            | Err(err @ StoreAndForwardError::DhtOutboundError(_))
-            | Err(err @ StoreAndForwardError::StorageError(_))
-            | Err(err @ StoreAndForwardError::PeerManagerError(_))
-            | Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
+            Err(err @ StoreAndForwardError::RequestCancelled) |
+            Err(err @ StoreAndForwardError::RequesterChannelClosed) |
+            Err(err @ StoreAndForwardError::DhtOutboundError(_)) |
+            Err(err @ StoreAndForwardError::StorageError(_)) |
+            Err(err @ StoreAndForwardError::PeerManagerError(_)) |
+            Err(err @ StoreAndForwardError::ConnectivityError(_)) => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
                 None
             },
@@ -675,8 +680,8 @@ where
             },
 
             // Peer sent an invalid SAF reply
-            Err(err @ StoreAndForwardError::StoredAtWasInFuture)
-            | Err(err @ StoreAndForwardError::InvalidSafResponseMessage { .. }) => {
+            Err(err @ StoreAndForwardError::StoredAtWasInFuture) |
+            Err(err @ StoreAndForwardError::InvalidSafResponseMessage { .. }) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -692,10 +697,10 @@ where
 
             // Ban - peer sent us a message containing an invalid DhtHeader or encoded signature. They should
             // have discarded this message.
-            Err(err @ StoreAndForwardError::DecodeError(_))
-            | Err(err @ StoreAndForwardError::MessageError(_))
-            | Err(err @ StoreAndForwardError::MalformedEnvelopeBody(_))
-            | Err(err @ StoreAndForwardError::DhtMessageError(_)) => {
+            Err(err @ StoreAndForwardError::DecodeError(_)) |
+            Err(err @ StoreAndForwardError::MessageError(_)) |
+            Err(err @ StoreAndForwardError::MalformedEnvelopeBody(_)) |
+            Err(err @ StoreAndForwardError::DhtMessageError(_)) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -709,8 +714,8 @@ where
                 Some(Err(err))
             },
 
-            Err(err @ StoreAndForwardError::BadDhtHeaderSemanticallyInvalid)
-            | Err(err @ StoreAndForwardError::InvalidMessageSignature(_)) => {
+            Err(err @ StoreAndForwardError::BadDhtHeaderSemanticallyInvalid) |
+            Err(err @ StoreAndForwardError::InvalidMessageSignature(_)) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -738,8 +743,8 @@ where
                     .await;
                 Some(Err(err))
             },
-            Err(err @ StoreAndForwardError::PeerSentDhtMessageViaSaf)
-            | Err(err @ StoreAndForwardError::PeerSentSafMessageViaSaf) => {
+            Err(err @ StoreAndForwardError::PeerSentDhtMessageViaSaf) |
+            Err(err @ StoreAndForwardError::PeerSentSafMessageViaSaf) => {
                 warn!(
                     target: LOG_TARGET,
                     "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -773,8 +778,14 @@ mod test {
         proto::envelope::DhtHeader,
         store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
-            build_peer_manager, create_dht_actor_mock, create_store_and_forward_mock, make_dht_header,
-            make_dht_inbound_message, make_keypair, make_node_identity, service_spy,
+            build_peer_manager,
+            create_dht_actor_mock,
+            create_store_and_forward_mock,
+            make_dht_header,
+            make_dht_inbound_message,
+            make_keypair,
+            make_node_identity,
+            service_spy,
         },
     };
 

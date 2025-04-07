@@ -22,10 +22,13 @@
 
 use std::cmp;
 
-use crate::transactions::tari_amount::MicroMinotari;
 use serde::{Deserialize, Serialize};
-use tari_common_types::epoch::VnEpoch;
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedCommitment, CompressedPublicKey},
+};
+
+use crate::transactions::tari_amount::MicroMinotari;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValidatorNodeEntry {

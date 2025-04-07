@@ -36,7 +36,10 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit, Tag, XChaCha20Poly1305, XNonce,
+    KeyInit,
+    Tag,
+    XChaCha20Poly1305,
+    XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use num_traits::{FromPrimitive, ToBytes};
@@ -52,7 +55,8 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray, ByteArrayError,
+    ByteArray,
+    ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
@@ -217,9 +221,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match self {
-            PaymentId::Open { tx_type, .. }
-            | PaymentId::AddressAndData { tx_type, .. }
-            | PaymentId::TransactionInfo { tx_type, .. } => tx_type.clone(),
+            PaymentId::Open { tx_type, .. } |
+            PaymentId::AddressAndData { tx_type, .. } |
+            PaymentId::TransactionInfo { tx_type, .. } => tx_type.clone(),
             _ => TxType::default(),
         }
     }
@@ -290,11 +294,11 @@ impl PaymentId {
             // Pack
             bytes.extend_from_slice(&fee.to_be_bytes()[4..]);
             bytes.extend_from_slice(&weight.to_be_bytes()[6..]);
-            let inputs_count_packed = (u16::from_usize(inputs_count).unwrap_or_default() & 0b0111111111111111)
-                | (u16::from(*sender_one_sided) << 15);
+            let inputs_count_packed = (u16::from_usize(inputs_count).unwrap_or_default() & 0b0111111111111111) |
+                (u16::from(*sender_one_sided) << 15);
             bytes.extend_from_slice(&inputs_count_packed.to_be_bytes());
-            let outputs_count_packed = (u16::from_usize(outputs_count).unwrap_or_default() & 0b0000111111111111)
-                | (u16::from(tx_type.as_u8()) << 12);
+            let outputs_count_packed = (u16::from_usize(outputs_count).unwrap_or_default() & 0b0000111111111111) |
+                (u16::from(tx_type.as_u8()) << 12);
             bytes.extend_from_slice(&outputs_count_packed.to_be_bytes());
 
             bytes
@@ -451,8 +455,8 @@ impl PaymentId {
                 }
                 if bytes.len() > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE {
                     if let Ok(recipient_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA
-                            ..PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE],
+                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
+                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE],
                     ) {
                         // Amount + Dual + data
                         return PaymentId::TransactionInfo {
@@ -471,8 +475,8 @@ impl PaymentId {
                 }
                 if bytes.len() > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
                     if let Ok(recipient_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA
-                            ..PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE],
+                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
+                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE],
                     ) {
                         // Amount + Single + data
                         return PaymentId::TransactionInfo {

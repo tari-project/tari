@@ -35,15 +35,25 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        comms_response::ValidatorNodeChange, error::CommsInterfaceError, local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse, NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
+        comms_response::ValidatorNodeChange,
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse,
+        NodeCommsRequest,
+        NodeCommsResponse,
+        OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, Difficulty, PowAlgorithm, PowError,
+        randomx_difficulty,
+        randomx_factory::RandomXFactory,
+        sha3x_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
     },
     transactions::aggregated_body::AggregateBody,
     validation::{helpers, ValidationError},
@@ -84,8 +94,7 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(

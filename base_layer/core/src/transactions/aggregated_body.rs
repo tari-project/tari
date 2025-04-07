@@ -166,7 +166,7 @@ impl AggregateBody {
     }
 
     /// Add a series of inputs to the existing aggregate body
-    pub fn add_inputs<I: IntoIterator<Item=TransactionInput>>(&mut self, inputs: I) {
+    pub fn add_inputs<I: IntoIterator<Item = TransactionInput>>(&mut self, inputs: I) {
         self.inputs.extend(inputs);
         self.sorted = false;
     }
@@ -178,7 +178,7 @@ impl AggregateBody {
     }
 
     /// Add a series of outputs to the existing aggregate body
-    pub fn add_outputs<I: IntoIterator<Item=TransactionOutput>>(&mut self, outputs: I) {
+    pub fn add_outputs<I: IntoIterator<Item = TransactionOutput>>(&mut self, outputs: I) {
         self.outputs.extend(outputs);
         self.sorted = false;
     }
@@ -190,7 +190,7 @@ impl AggregateBody {
     }
 
     /// Add a series of kernels to the existing aggregate body
-    pub fn add_kernels<I: IntoIterator<Item=TransactionKernel>>(&mut self, new_kernels: I) {
+    pub fn add_kernels<I: IntoIterator<Item = TransactionKernel>>(&mut self, new_kernels: I) {
         self.kernels.extend(new_kernels);
         self.sorted = false;
     }

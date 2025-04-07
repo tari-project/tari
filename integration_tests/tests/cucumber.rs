@@ -21,7 +21,8 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fs, io,
+    fs,
+    io,
     path::PathBuf,
     str::{self},
 };

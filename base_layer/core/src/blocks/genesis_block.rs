@@ -34,13 +34,16 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr,
+    kernel_mr_hash_from_mmr,
+    output_mr_hash_from_smt,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt, PrunedInputMmr,
+    OutputSmt,
+    PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -526,7 +529,8 @@ mod test {
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr, PrunedOutputMmr,
+        KernelMmr,
+        PrunedOutputMmr,
     };
     #[test]
     #[serial]

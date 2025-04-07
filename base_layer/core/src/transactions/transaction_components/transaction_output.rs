@@ -37,12 +37,11 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{
         ComAndPubSignature,
-
-        CommitmentFactory,CompressedCommitment,
-    CompressedPublicKey,
+        CommitmentFactory,
+        CompressedCommitment,
+        CompressedPublicKey,
         FixedHash,
         PrivateKey,
-
         RangeProof,
         RangeProofService,
     },

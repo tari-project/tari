@@ -23,8 +23,7 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
-use tari_crypto::hashing::DomainSeparation;
-use tari_crypto::signatures::CompressedSchnorrSignature;
+use tari_crypto::{hashing::DomainSeparation, signatures::CompressedSchnorrSignature};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

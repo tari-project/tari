@@ -28,6 +28,53 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::{DateTime, Local, NaiveDateTime};
+use log::*;
+use minotari_wallet::{
+    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
+    transaction_service::{
+        handle::TransactionEventReceiver,
+        storage::models::{CompletedTransaction, TxCancellationReason},
+    },
+    util::wallet_identity::WalletIdentity,
+    utxo_scanner_service::handle::UtxoScannerHandle,
+    WalletConfig,
+    WalletSqlite,
+};
+use qrcode::{render::unicode, QrCode};
+use tari_common::configuration::Network;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::{CompressedPublicKey, PrivateKey},
+    wallet_types::WalletType,
+};
+use tari_comms::{
+    connectivity::ConnectivityEventRx,
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+};
+use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
+use tari_core::transactions::{
+    tari_amount::{uT, MicroMinotari},
+    transaction_components::{
+        encrypted_data::{PaymentId, TxType},
+        OutputFeatures,
+        TemplateType,
+        TransactionError,
+    },
+    weight::TransactionWeight,
+};
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
+use tokio::{
+    sync::{broadcast, watch, RwLock},
+    task,
+};
+
 use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
     notifier::Notifier,
@@ -43,50 +90,6 @@ use crate::{
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
-};
-use chrono::{DateTime, Local, NaiveDateTime};
-use log::*;
-use minotari_wallet::{
-    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TxCancellationReason},
-    },
-    util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig, WalletSqlite,
-};
-use qrcode::{render::unicode, QrCode};
-use tari_common::configuration::Network;
-use tari_common_types::types::PrivateKey;
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::CompressedPublicKey,
-    wallet_types::WalletType,
-};
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-};
-use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroMinotari},
-    transaction_components::{
-        encrypted_data::{PaymentId, TxType},
-        OutputFeatures, TemplateType, TransactionError,
-    },
-    weight::TransactionWeight,
-};
-use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
-use tokio::{
-    sync::{broadcast, watch, RwLock},
-    task,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
@@ -211,8 +214,8 @@ impl AppState {
     }
 
     pub async fn check_connectivity(&mut self) {
-        if self.get_custom_base_node().is_none()
-            && self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
+        if self.get_custom_base_node().is_none() &&
+            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
@@ -1216,9 +1219,9 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. }
-        | PaymentId::AddressAndData { tx_type, .. }
-        | PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        } else if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
         {
             tx_type == TxType::Burn
         } else {

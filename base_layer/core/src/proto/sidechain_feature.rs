@@ -26,12 +26,20 @@ use std::convert::{TryFrom, TryInto};
 
 use prost::Message;
 use tari_common::configuration::Network;
-use tari_common_types::types::CompressedPublicKey;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedPublicKey, Signature};
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
-    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
+    ChainLink,
+    CommandCommitProof,
+    CommandCommitProofV1,
+    CommitProofElement,
+    EvictNodeAtom,
+    EvictionProof,
+    QuorumCertificate,
+    QuorumDecision,
+    ShardGroup,
+    SidechainBlockCommitProof,
+    SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;
@@ -39,8 +47,15 @@ use tari_utilities::ByteArray;
 use crate::{
     proto,
     transactions::transaction_components::{
-        BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
-        SideChainId, TemplateType, ValidatorNodeRegistration, ValidatorNodeSignature,
+        BuildInfo,
+        CodeTemplateRegistration,
+        ConfidentialOutputData,
+        SideChainFeature,
+        SideChainFeatureData,
+        SideChainId,
+        TemplateType,
+        ValidatorNodeRegistration,
+        ValidatorNodeSignature,
     },
 };
 

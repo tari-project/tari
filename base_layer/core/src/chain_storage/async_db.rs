@@ -35,6 +35,7 @@ use tari_common_types::{
     types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
+
 use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{

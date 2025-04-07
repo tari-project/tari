@@ -118,10 +118,9 @@ mod header_validators {
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
             .unwrap_err();
-        assert!(matches!(
-            err,
-            ValidationError::InvalidBlockchainVersion { version: u16::MAX }
-        ));
+        assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
+            version: u16::MAX
+        }));
     }
 
     #[tokio::test]
@@ -159,10 +158,10 @@ mod header_validators {
                 None,
             )
             .unwrap_err();
-        assert!(matches!(
-            err,
-            ValidationError::IncorrectNumberOfTimestampsProvided { actual: 5, expected: 4 }
-        ));
+        assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {
+            actual: 5,
+            expected: 4
+        }));
     }
 }
 

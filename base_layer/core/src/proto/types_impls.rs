@@ -22,10 +22,15 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{ComAndPubSignature, HashOutput, PrivateKey, UncompressedPublicKey};
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
-use tari_crypto::hashing::DomainSeparation;
-use tari_crypto::signatures::CompressedSchnorrSignature;
+use tari_common_types::types::{
+    ComAndPubSignature,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    UncompressedPublicKey,
+};
+use tari_crypto::{hashing::DomainSeparation, signatures::CompressedSchnorrSignature};
 use tari_utilities::{ByteArray, ByteArrayError};
 
 use super::types as proto;

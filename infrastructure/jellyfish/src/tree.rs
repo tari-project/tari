@@ -89,10 +89,24 @@ use std::{
 use super::{
     store::TreeStoreReader,
     types::{
-        Child, InternalNode, IteratedLeafKey, JmtStorageError, LeafKey, LeafNode, Nibble, NibblePath, Node, NodeKey,
-        SparseMerkleProof, SparseMerkleProofExt, SparseMerkleRangeProof, Version, SPARSE_MERKLE_PLACEHOLDER_HASH,
+        Child,
+        InternalNode,
+        IteratedLeafKey,
+        JmtStorageError,
+        LeafKey,
+        LeafNode,
+        Nibble,
+        NibblePath,
+        Node,
+        NodeKey,
+        SparseMerkleProof,
+        SparseMerkleProofExt,
+        SparseMerkleRangeProof,
+        Version,
+        SPARSE_MERKLE_PLACEHOLDER_HASH,
     },
-    LeafKeyRef, TreeHash,
+    LeafKeyRef,
+    TreeHash,
 };
 
 // INITIAL-MODIFICATION: the original used a known key size (32) as a limit

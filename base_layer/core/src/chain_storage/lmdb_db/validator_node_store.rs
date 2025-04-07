@@ -28,8 +28,7 @@ use std::{collections::BTreeSet, ops::Deref};
 use lmdb_zero::{ConstTransaction, WriteTransaction};
 use log::debug;
 use serde::de::DeserializeOwned;
-use tari_common_types::epoch::VnEpoch;
-use tari_common_types::types::CompressedPublicKey;
+use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -39,7 +38,8 @@ use crate::chain_storage::{
         cursors::{FromKeyBytes, LmdbReadCursor},
         lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
     },
-    ChainStorageError, ValidatorNodeEntry,
+    ChainStorageError,
+    ValidatorNodeEntry,
 };
 
 const LOG_TARGET: &str = "c::cs::lmdb_db::validator_node_store";

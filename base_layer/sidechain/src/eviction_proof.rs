@@ -1,6 +1,11 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
+use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
+use tari_utilities::ByteArray;
+
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
@@ -8,11 +13,6 @@ use crate::{
     shard_group::ShardGroup,
     CheckVnFunc,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Serialize};
-use tari_common_types::epoch::VnEpoch;
-use tari_common_types::types::CompressedPublicKey;
-use tari_utilities::ByteArray;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct EvictionProof {

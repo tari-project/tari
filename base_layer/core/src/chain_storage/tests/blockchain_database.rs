@@ -30,7 +30,9 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block, default_coinbase_entities, BlockSpec,
+        create_block,
+        default_coinbase_entities,
+        BlockSpec,
     },
     transactions::{
         tari_amount::T,
@@ -585,8 +587,7 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::epoch::VnEpoch;
-    use tari_common_types::types::CompressedPublicKey;
+    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
     use tari_mmr::sparse_merkle_tree::SparseMerkleTree;
 
     use super::*;

@@ -26,28 +26,66 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
-    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
-};
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt,
+    future,
+    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
-    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest,
-    GetBalanceResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest,
-    GetIdentityRequest, GetIdentityResponse, GetStateRequest, GetStateResponse, GetTransactionInfoRequest,
-    GetTransactionInfoResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse, ImportUtxosRequest,
-    ImportUtxosResponse, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, RevalidateRequest,
-    RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse,
-    SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse, TransactionDirection, TransactionEvent,
-    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
-    TransferResponse, TransferResult, ValidateRequest, ValidateResponse,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    GetAddressResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -59,11 +97,10 @@ use minotari_wallet::{
     },
     WalletSqlite,
 };
-use tari_common_types::types::PrivateKey;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -72,7 +109,8 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            OutputFeatures, UnblindedOutput,
+            OutputFeatures,
+            UnblindedOutput,
         },
     },
 };
@@ -83,6 +121,11 @@ use tokio::{
     task,
 };
 use tonic::{Request, Response, Status};
+
+use crate::{
+    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
+    notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
+};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
 
