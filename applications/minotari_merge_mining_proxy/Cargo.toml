@@ -9,6 +9,10 @@ license.workspace = true
 
 [features]
 default = []
+# If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_merge_mining_proxy --features=dhat-heap            ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_merge_mining_proxy --features=dhat-heap  ...(PowerShell)
+dhat-heap = []
 
 [dependencies]
 minotari_app_grpc = { workspace = true }
@@ -34,6 +38,7 @@ chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = { version = "0.14.0" }
 crossterm = { version = "0.28" }
+dhat = "0.3.3"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
 hyper = { version = "0.14.12", features = ["default"] }

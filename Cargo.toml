@@ -90,7 +90,12 @@ minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/co
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error
 # seen in debug mode. Panicking at this time is better than silently using the wrong value.
 overflow-checks = true
-
+opt-level = 3
+debug = false
+# To enable debug symbols with dhat profiling in release mode, enable the 'dhat-heap' feature and use
+# CARGO_PROFILE_* Environment Variables:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --features=dhat-heap               ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --features=dhat-heap     ...(PowerShell)
 
 [patch.crates-io]
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }

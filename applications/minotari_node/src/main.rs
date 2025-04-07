@@ -80,11 +80,19 @@ use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 
 /// Application entry point
 fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let dhat_profiler = dhat::Profiler::new_heap();
+    #[cfg(feature = "dhat-heap")]
+    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
+
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;
@@ -97,7 +105,15 @@ fn main() {
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}", exit_code as i32, err
         );
+        #[cfg(feature = "dhat-heap")]
+        drop(dhat_profiler);
         process::exit(exit_code as i32);
+    }
+
+    #[cfg(feature = "dhat-heap")]
+    {
+        println!("\nCtrl-C pressed, exiting...\n");
+        drop(dhat_profiler);
     }
 }
 

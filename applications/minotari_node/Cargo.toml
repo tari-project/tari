@@ -39,6 +39,7 @@ crossterm = { version = "0.28.1", default-features = false, features = [
     "libc",
 ] }
 derive_more = "0.99.17"
+dhat = "0.3.3"
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
@@ -71,6 +72,10 @@ default = ["libtor"]
 metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
+# If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_node --features=dhat-heap            ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_node --features=dhat-heap  ...(PowerShell)
+dhat-heap = []
 
 [build-dependencies]
 tari_features = { workspace = true }

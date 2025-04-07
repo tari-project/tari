@@ -38,6 +38,7 @@ chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.14.0"
 crossterm = { version = "0.28" }
+dhat = "0.3.3"
 digest = "0.10"
 dialoguer = { version = "0.10" }
 dirs-next = "2.0"
@@ -75,7 +76,6 @@ zeroize = "1"
 zxcvbn = "2"
 tui ={ version = "^0.19", default-features = false, features = ["crossterm"]}
 
-
 [build-dependencies]
 tari_features = { workspace = true }
 
@@ -84,6 +84,10 @@ default = ["libtor", "ledger"]
 grpc = []
 ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger"]
 libtor = ["tari_libtor"]
+# If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
+#   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_console_wallet --features=dhat-heap            ...(Linux)
+#   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_console_wallet --features=dhat-heap  ...(PowerShell)
+dhat-heap = []
 
 [package.metadata.cargo-machete]
 # We need to specify extra features for log4rs even though it is not used directly in this crate
