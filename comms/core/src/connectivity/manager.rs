@@ -63,11 +63,16 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
+// Maximum time allowed for deleting stale peers from database
 
 const STALE_PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(1500);
+// Maximum time allowed for refreshing the connection pool
 const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
+// Maximum time allowed to disconnect a single peer
 const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
+// Warning threshold for request processing time
 const REQUEST_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
+// Warning threshold for event processing time
 const EVENT_TIME_LAPSE_WARNING: Duration = Duration::from_millis(500);
 
 /// # Connectivity Manager

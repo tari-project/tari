@@ -46,10 +46,13 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
-/// The maximum number of peers to return in peer manager
+// The maximum number of peers to return in peer manager
 const PEER_MANAGER_SYNC_PEERS: usize = 100;
-const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60); // 5 days, 24h, 60m, 60s = 5 days
-const NEIGHBOUR_WALLET_PEER_COUNT: usize = 8;
+// The maximum amount of time a peer can be inactive before being considered stale (5 days, 24h, 60m, 60s = 5 days)
+const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60);
+// Wallet peer connections are not verified in the way node peer connections are, thus a stale wallet connection may be
+// totally valid, just not verified. Any stale wallet peers that are not neighbours will be deleted.
+const NEIGHBOUR_WALLET_PEER_COUNT: usize = 25;
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
