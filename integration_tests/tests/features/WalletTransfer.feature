@@ -14,7 +14,7 @@ Feature: Wallet Transfer
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
     When I wait 5 seconds
-    When I transfer a one-sided transaction of T from WALLET_A to WALLET_B
+    When I transfer a one-sided transaction of 5T from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     Then wallet WALLET_A has 5T
     When I wait 5 seconds
