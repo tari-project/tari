@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::Commitment;
+use tari_common_types::types::CompressedCommitment;
 use tari_utilities::ByteArray;
 
 use super::protocol as proto;
@@ -37,7 +37,7 @@ impl TryFrom<proto::TransactionMetadata> for TransactionMetadata {
         let commitment = metadata
             .burned_commitment
             .map(|burned_commitment| {
-                Commitment::from_canonical_bytes(&burned_commitment.data)
+                CompressedCommitment::from_canonical_bytes(&burned_commitment.data)
                     .map_err(|e| format!("burned_commitment.data: {}", e))
             })
             .transpose()?;

@@ -30,7 +30,6 @@ use tari_comms::{
     types::{CommsDHKE, CommsDatabase, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
-use tari_crypto::keys::PublicKey;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 use tari_utilities::ByteArray;
@@ -99,7 +98,8 @@ pub fn make_dht_header(
         );
         if flags.is_encrypted() {
             // We need to offset the sender key by an ECDH-derived mask
-            let shared_ephemeral_secret = CommsDHKE::new(e_secret_key, node_identity.public_key());
+            let shared_ephemeral_secret =
+                CommsDHKE::new(e_secret_key, &node_identity.public_key().to_public_key().unwrap());
             let mask = crypt::generate_key_mask(&shared_ephemeral_secret).unwrap();
             message_signature =
                 make_valid_message_signature(&(mask * node_identity.secret_key()), &binding_message_representation);
@@ -206,10 +206,10 @@ pub fn make_dht_envelope<T: prost::Message>(
 ) -> Result<DhtEnvelope, DhtOutboundError> {
     let (e_secret_key, e_public_key) = make_keypair();
     let message = if flags.is_encrypted() {
-        let shared_secret = CommsDHKE::new(&e_secret_key, node_identity.public_key());
+        let shared_secret = CommsDHKE::new(&e_secret_key, &node_identity.public_key().to_public_key().unwrap());
         let key_message = crypt::generate_key_message(&shared_secret);
         let mask = crypt::generate_key_mask(&shared_secret).unwrap();
-        let masked_public_key = mask * node_identity.public_key();
+        let masked_public_key = mask * node_identity.public_key().to_public_key().unwrap();
         let mut message = prepare_message(true, message).unwrap();
         crypt::encrypt_message(&key_message, &mut message, masked_public_key.as_bytes()).unwrap();
         message.freeze()

@@ -152,8 +152,8 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
 
     let args = SendMinotariArgs {
         amount: MicroMinotari(amount),
-        message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
+        payment_id: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
     };
     cli.command2 = Some(CliCommands::SendMinotari(args));
 
@@ -174,7 +174,7 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
 
     let args = BurnMinotariArgs {
         amount: MicroMinotari(amount),
-        message: format!("Burn, burn amount {} !!!", amount,),
+        payment_id: format!("Burn, burn amount {} !!!", amount),
     };
     cli.command2 = Some(CliCommands::BurnMinotari(args));
 
@@ -218,15 +218,15 @@ async fn make_it_rain(
         start_amount: MicroMinotari(start_amount),
         transactions_per_second: f64::from(txs_per_second),
         duration: Duration::from_secs(duration),
-        message: format!(
-            "Make it raing amount {} from {} to {}",
-            start_amount, wallet_a, wallet_b
-        ),
         increase_amount: MicroMinotari(increment_amount),
         destination: wallet_b_address,
         start_time: None,
         one_sided: false,
         burn_tari: false,
+        payment_id: format!(
+            "Make it raing amount {} from {} to {}",
+            start_amount, wallet_a, wallet_b
+        ),
     };
 
     cli.command2 = Some(CliCommands::MakeItRain(args));
@@ -250,7 +250,7 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
         amount_per_split: MicroMinotari(amount),
         num_splits: usize::try_from(splits).unwrap(),
         fee_per_gram: MicroMinotari(20),
-        message: format!("coin split amount {} with splits {}", amount, splits),
+        payment_id: format!("coin split amount {} with splits {}", amount, splits),
     };
 
     cli.command2 = Some(CliCommands::CoinSplit(args));

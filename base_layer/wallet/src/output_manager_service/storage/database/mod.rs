@@ -30,7 +30,7 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, HashOutput},
+    types::{CompressedCommitment, FixedHash, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -61,7 +61,7 @@ pub enum SortDirection {
 pub struct OutputBackendQuery {
     pub tip_height: i64,
     pub status: Vec<OutputStatus>,
-    pub commitments: Vec<Commitment>,
+    pub commitments: Vec<CompressedCommitment>,
     pub pagination: Option<(i64, i64)>,
     pub value_min: Option<(i64, bool)>,
     pub value_max: Option<(i64, bool)>,
@@ -87,7 +87,7 @@ pub enum DbKey {
     SpentOutput(String),
     UnspentOutput(String),
     UnspentOutputHash(HashOutput),
-    AnyOutputByCommitment(Commitment),
+    AnyOutputByCommitment(CompressedCommitment),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
     SpentOutputs,
@@ -109,9 +109,9 @@ pub enum DbValue {
 }
 
 pub enum DbKeyValuePair {
-    UnspentOutput(Commitment, Box<DbWalletOutput>),
-    UnspentOutputWithTxId(Commitment, (TxId, Box<DbWalletOutput>)),
-    OutputToBeReceived(Commitment, (TxId, Box<DbWalletOutput>)),
+    UnspentOutput(CompressedCommitment, Box<DbWalletOutput>),
+    UnspentOutputWithTxId(CompressedCommitment, (TxId, Box<DbWalletOutput>)),
+    OutputToBeReceived(CompressedCommitment, (TxId, Box<DbWalletOutput>)),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
@@ -223,7 +223,10 @@ where T: OutputManagerBackend + 'static
         Ok(result)
     }
 
-    pub fn fetch_by_commitment(&self, commitment: Commitment) -> Result<DbWalletOutput, OutputManagerStorageError> {
+    pub fn fetch_by_commitment(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let req = DbKey::AnyOutputByCommitment(commitment);
         match self.db.fetch(&req)? {
             Some(DbValue::AnyOutput(output)) => Ok(*output),
@@ -313,7 +316,7 @@ where T: OutputManagerBackend + 'static
         self.db.update_output_metadata_signature(&output)
     }
 
-    pub fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+    pub fn revalidate_output(&self, commitment: CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         self.db.revalidate_unspent_output(&commitment)
     }
 
@@ -368,7 +371,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+    pub fn remove_output_by_commitment(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<(), OutputManagerStorageError> {
         match self
             .db
             .write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone())))
@@ -404,7 +410,7 @@ where T: OutputManagerBackend + 'static
 
     pub fn update_last_validation_timestamps(
         &self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         db.update_last_validation_timestamps(commitments)?;

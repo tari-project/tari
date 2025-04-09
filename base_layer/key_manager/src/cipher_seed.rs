@@ -70,6 +70,7 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 pub const CIPHER_SEED_ENCRYPTION_KEY_BYTES: usize = 32;
 pub const CIPHER_SEED_MAC_KEY_BYTES: usize = 32;
 pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
+pub const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 
 /// This is an implementation of a Cipher Seed based on the `aezeed` encoding scheme:
 /// https://github.com/lightningnetwork/lnd/tree/master/aezeed
@@ -134,7 +135,6 @@ impl CipherSeed {
     /// Generate a new seed
     pub fn new() -> Self {
         use std::time::{Duration, SystemTime, UNIX_EPOCH};
-        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
         let birthday_genesis_date = UNIX_EPOCH + Duration::from_secs(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH);
         let days = SystemTime::now()
             .duration_since(birthday_genesis_date)
@@ -148,7 +148,7 @@ impl CipherSeed {
     #[cfg(target_arch = "wasm32")]
     /// Generate a new seed
     pub fn new() -> Self {
-        const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
+        const MILLISECONDS_PER_DAY: u64 = SECONDS_PER_DAY * 1000;
         let millis = js_sys::Date::now() as u64;
         let days = millis / MILLISECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16); // default to the epoch on error
@@ -447,10 +447,11 @@ impl Mnemonic<CipherSeed> for CipherSeed {
 mod test {
     use std::str::FromStr;
 
+    use chrono::{DateTime, TimeZone, Utc};
     use crc32fast::Hasher as CrcHasher;
     use tari_utilities::{Hidden, SafePassword};
 
-    use super::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
+    use super::{BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, SECONDS_PER_DAY};
     use crate::{
         cipher_seed::{
             CipherSeed,
@@ -663,7 +664,7 @@ mod test {
         let birthday_genesis_time_in_seconds = get_birthday_from_unix_epoch_in_seconds(birthday, to_days);
         assert_eq!(
             birthday_genesis_time_in_seconds,
-            BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + u64::from(birthday - to_days) * 24 * 60 * 60
+            BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + u64::from(birthday - to_days) * SECONDS_PER_DAY
         );
     }
 
@@ -677,5 +678,57 @@ mod test {
         // 1656806400 corresponds to the duration, in seconds, from unix epoch
         // to 3th July 2022 00:00:00
         assert_eq!(birthday_from_unix_epoch, 1656806400);
+    }
+
+    // This test simulates a wallet that was created on the 29th January 2025, one day after the birthday genesis date
+    // of 28th January 2025. The birthday is 1124 days after the genesis date of 1st January 2022. The wallet will
+    // request blocks from the base node 14 days before its birthday, which is 15th January 2025.
+    #[test]
+    fn verify_birthday_genesis_from_unix_epoch_constant() {
+        let birthday = 1124u16;
+        let to_days = 14u16;
+        let year = 2025;
+        let month = 1;
+        let day = 29;
+        let day_less_to_days = day - u32::from(to_days);
+
+        // Verify birthday genesis from unix epoch constant
+        let date = Utc.with_ymd_and_hms(2022, 1, 1, 0, 0, 0);
+        let seconds_since_epoch = date.unwrap().timestamp();
+        assert_eq!(
+            BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
+            u64::try_from(seconds_since_epoch).unwrap()
+        );
+
+        // The wallet birthday is 1124 days after the genesis date
+        let birthday_epoch_time = i64::try_from(BIRTHDAY_GENESIS_FROM_UNIX_EPOCH).unwrap() +
+            i64::from(birthday) * i64::try_from(SECONDS_PER_DAY).unwrap();
+        assert_eq!(birthday_epoch_time, 1738108800i64);
+        let birthday_epoch_time_date = Utc.timestamp_opt(birthday_epoch_time, 0);
+        assert_eq!(
+            birthday_epoch_time_date.unwrap(),
+            Utc.with_ymd_and_hms(year, month, day, 0, 0, 0).unwrap()
+        );
+
+        // The wallet will request blocks from the base node 14 days before its birthday
+        let birthday_epoch_time_less_to_days =
+            birthday_epoch_time - i64::from(to_days) * i64::try_from(SECONDS_PER_DAY).unwrap();
+        assert_eq!(
+            birthday_epoch_time_less_to_days,
+            i64::try_from(get_birthday_from_unix_epoch_in_seconds(birthday, to_days)).unwrap()
+        );
+        assert_eq!(birthday_epoch_time_less_to_days, 1736899200i64);
+        let birthday_epoch_time_less_to_days_date = Utc.timestamp_opt(birthday_epoch_time_less_to_days, 0);
+        assert_eq!(
+            birthday_epoch_time_less_to_days_date.unwrap(),
+            Utc.with_ymd_and_hms(year, month, day_less_to_days, 0, 0, 0).unwrap()
+        );
+
+        // The base node will return the genesis block as the first block to scan from
+        let genesis_date_time = DateTime::parse_from_rfc2822("28 Jan 2025 08:00:00 +0200").unwrap();
+        let genesis_epoch_time = genesis_date_time.timestamp();
+        assert_eq!(genesis_epoch_time, 1738044000i64);
+        assert!(genesis_epoch_time > birthday_epoch_time_less_to_days);
+        assert!(genesis_epoch_time < birthday_epoch_time);
     }
 }

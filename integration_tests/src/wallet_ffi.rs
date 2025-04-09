@@ -32,6 +32,7 @@ use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use super::ffi::{
     Balance,
@@ -167,13 +168,13 @@ impl WalletFFI {
         dest: String,
         amount: u64,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         one_sided: bool,
     ) -> u64 {
         self.wallet
             .lock()
             .unwrap()
-            .send_transaction(dest, amount, fee_per_gram, message, one_sided)
+            .send_transaction(dest, amount, fee_per_gram, payment_id, one_sided)
     }
 
     pub fn restart(&mut self) {

@@ -29,6 +29,7 @@ use crate::peer_manager::NodeId;
 pub enum RpcServerRequest {
     GetNumActiveSessions(oneshot::Sender<usize>),
     GetNumActiveSessionsForPeer(NodeId, oneshot::Sender<usize>),
+    CloseAllSessionsForPeer(NodeId, oneshot::Sender<usize>),
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +55,15 @@ impl RpcServerHandle {
         let (req, resp) = oneshot::channel();
         self.sender
             .send(RpcServerRequest::GetNumActiveSessionsForPeer(peer, req))
+            .await
+            .map_err(|_| RpcServerError::RequestCanceled)?;
+        resp.await.map_err(Into::into)
+    }
+
+    pub async fn close_all_sessions_for(&mut self, peer: NodeId) -> Result<usize, RpcServerError> {
+        let (req, resp) = oneshot::channel();
+        self.sender
+            .send(RpcServerRequest::CloseAllSessionsForPeer(peer, req))
             .await
             .map_err(|_| RpcServerError::RequestCanceled)?;
         resp.await.map_err(Into::into)

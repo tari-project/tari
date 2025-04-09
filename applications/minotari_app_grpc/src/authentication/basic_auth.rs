@@ -53,7 +53,7 @@ impl BasicAuthCredentials {
     /// Creates a new `Credentials` instance from a username and password (PHC string bytes).
     pub fn new(user_name: String, phc_password_hash: SafePassword) -> Result<Self, BasicAuthError> {
         // Validate the username is well formed
-        if user_name.as_bytes().len() > MAX_USERNAME_LEN {
+        if user_name.len() > MAX_USERNAME_LEN {
             return Err(BasicAuthError::InvalidUsername);
         }
         // Validate the password is a well formed byte representation of a PHC string
@@ -72,7 +72,7 @@ impl BasicAuthCredentials {
         user_name_bytes[bytes.len()..MAX_USERNAME_LEN].clone_from_slice(&random_bytes[bytes.len()..MAX_USERNAME_LEN]);
 
         Ok(Self {
-            user_name_bytes_length: user_name.as_bytes().len(),
+            user_name_bytes_length: user_name.len(),
             user_name_bytes,
             phc_password_hash,
             random_bytes,

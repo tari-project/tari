@@ -21,13 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::{Arc, RwLock},
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
 use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
@@ -41,7 +40,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -266,67 +265,49 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 None
             },
             DbKey::PendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from(o.clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from(o.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from((i).clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from((i).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for o in OutboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (o.tx_id as u64).into(),
-                        OutboundTransaction::try_from((o).clone(), &cipher)?,
-                    );
+                    result.push(OutboundTransaction::try_from((o).clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for i in InboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (i.tx_id as u64).into(),
-                        InboundTransaction::try_from(i.clone(), &cipher)?,
-                    );
+                    result.push(InboundTransaction::try_from(i.clone(), &cipher)?);
                 }
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CancelledCompletedTransactions => {
-                let mut result = HashMap::new();
+                let mut result = Vec::new();
                 for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    result.insert(
-                        (c.tx_id as u64).into(),
-                        CompletedTransaction::try_from((c).clone(), &cipher)?,
-                    );
+                    result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
                 Some(DbValue::CompletedTransactions(result))
@@ -1165,12 +1146,12 @@ struct InboundTransactionSql {
     source_address: Vec<u8>,
     amount: i64,
     receiver_protocol: Vec<u8>,
-    message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
+    payment_id: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1192,6 +1173,7 @@ impl InboundTransactionSql {
     ) -> Result<Vec<InboundTransactionSql>, TransactionStorageError> {
         Ok(inbound_transactions::table
             .filter(inbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(inbound_transactions::timestamp.desc())
             .load::<InboundTransactionSql>(conn)?)
     }
 
@@ -1350,12 +1332,12 @@ impl InboundTransactionSql {
             source_address: i.source_address.to_vec(),
             amount: u64::from(i.amount) as i64,
             receiver_protocol: receiver_protocol_bytes.to_vec(),
-            message: i.message,
-            timestamp: i.timestamp,
+            timestamp: i.timestamp.naive_utc(),
             cancelled: i32::from(i.cancelled),
             direct_send_success: i32::from(i.direct_send_success),
             send_count: i.send_count as i32,
-            last_send_timestamp: i.last_send_timestamp,
+            last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
+            payment_id: Some(i.payment_id.to_bytes()),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1400,12 +1382,12 @@ impl InboundTransaction {
             receiver_protocol: bincode::deserialize(&i.receiver_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
-            message: i.message,
-            timestamp: i.timestamp,
+            timestamp: i.timestamp.and_utc(),
             cancelled: i.cancelled != 0,
             direct_send_success: i.direct_send_success != 0,
             send_count: i.send_count as u32,
-            last_send_timestamp: i.last_send_timestamp,
+            last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
+            payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
         })
     }
 }
@@ -1429,12 +1411,12 @@ struct OutboundTransactionSql {
     amount: i64,
     fee: i64,
     sender_protocol: Vec<u8>,
-    message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
+    payment_id: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1456,6 +1438,7 @@ impl OutboundTransactionSql {
     ) -> Result<Vec<OutboundTransactionSql>, TransactionStorageError> {
         Ok(outbound_transactions::table
             .filter(outbound_transactions::cancelled.eq(i32::from(cancelled)))
+            .order_by(outbound_transactions::timestamp.desc())
             .load::<OutboundTransactionSql>(conn)?)
     }
 
@@ -1599,12 +1582,12 @@ impl OutboundTransactionSql {
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
             sender_protocol: sender_protocol_bytes.to_vec(),
-            message: o.message,
-            timestamp: o.timestamp,
+            timestamp: o.timestamp.naive_utc(),
             cancelled: i32::from(o.cancelled),
             direct_send_success: i32::from(o.direct_send_success),
             send_count: o.send_count as i32,
-            last_send_timestamp: o.last_send_timestamp,
+            last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
+            payment_id: Some(o.payment_id.to_bytes()),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1651,12 +1634,12 @@ impl OutboundTransaction {
             sender_protocol: bincode::deserialize(&o.sender_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
-            message: o.message,
-            timestamp: o.timestamp,
+            timestamp: o.timestamp.and_utc(),
             cancelled: o.cancelled != 0,
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
-            last_send_timestamp: o.last_send_timestamp,
+            last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
+            payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -1687,7 +1670,6 @@ pub struct CompletedTransactionSql {
     fee: i64,
     transaction_protocol: Vec<u8>,
     status: i32,
-    message: String,
     timestamp: NaiveDateTime,
     cancelled: Option<i32>,
     direction: Option<i32>,
@@ -1727,7 +1709,9 @@ impl CompletedTransactionSql {
             query.filter(completed_transactions::cancelled.is_null())
         };
 
-        Ok(query.load::<CompletedTransactionSql>(conn)?)
+        Ok(query
+            .order_by(completed_transactions::mined_timestamp.desc())
+            .load::<CompletedTransactionSql>(conn)?)
     }
 
     pub fn index_by_status_and_cancelled(
@@ -1868,7 +1852,7 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
-        let timestamp = NaiveDateTime::from_timestamp_opt(mined_timestamp as i64, 0).ok_or_else(|| {
+        let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
                 "Could not create timestamp mined_timestamp: {}",
                 mined_timestamp
@@ -1891,7 +1875,7 @@ impl CompletedTransactionSql {
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
-                mined_timestamp: Some(timestamp),
+                mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
                 ..Default::default()
@@ -1964,10 +1948,6 @@ impl CompletedTransactionSql {
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-        let payment_id = match c.payment_id {
-            Some(id) => Some(id.to_bytes()),
-            None => Some(Vec::new()),
-        };
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_vec(),
@@ -1976,19 +1956,18 @@ impl CompletedTransactionSql {
             fee: u64::from(c.fee) as i64,
             transaction_protocol: transaction_bytes.to_vec(),
             status: c.status as i32,
-            message: c.message,
-            timestamp: c.timestamp,
+            timestamp: c.timestamp.naive_utc(),
             cancelled: c.cancelled.map(|v| v as i32),
             direction: Some(c.direction as i32),
             send_count: c.send_count as i32,
-            last_send_timestamp: c.last_send_timestamp,
+            last_send_timestamp: c.last_send_timestamp.map(|t| t.naive_utc()),
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
-            mined_timestamp: c.mined_timestamp,
-            transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
+            mined_timestamp: c.mined_timestamp.map(|t| t.naive_utc()),
+            transaction_signature_nonce: c.transaction_signature.get_compressed_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
-            payment_id,
+            payment_id: Some(c.payment_id.to_bytes()),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2048,7 +2027,7 @@ impl CompletedTransaction {
         let mut c = c
             .decrypt(cipher)
             .map_err(CompletedTransactionConversionError::AeadError)?;
-        let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
+        let transaction_signature = match CompressedPublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
                 Ok(signature) => Signature::new(public_nonce, signature),
                 Err(_) => Signature::default(),
@@ -2062,18 +2041,6 @@ impl CompletedTransaction {
             },
             None => None,
         };
-        let payment_id = match c.payment_id {
-            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create payment id from stored bytes"
-                );
-                CompletedTransactionConversionError::BincodeDeserialize(
-                    "payment id could not be converted from bytes".to_string(),
-                )
-            })?,
-            None => PaymentId::Empty,
-        };
 
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
@@ -2085,20 +2052,19 @@ impl CompletedTransaction {
             transaction: bincode::deserialize(&c.transaction_protocol)
                 .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::try_from(c.status)?,
-            message: c.message,
-            timestamp: c.timestamp,
+            timestamp: c.timestamp.and_utc(),
             cancelled: c
                 .cancelled
                 .map(|v| TxCancellationReason::try_from(v as u32).unwrap_or(TxCancellationReason::Unknown)),
             direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
             send_count: c.send_count as u32,
-            last_send_timestamp: c.last_send_timestamp,
+            last_send_timestamp: c.last_send_timestamp.map(|t| t.and_utc()),
             transaction_signature,
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
-            mined_timestamp: c.mined_timestamp,
-            payment_id: Some(payment_id),
+            mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
+            payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
         };
 
         // zeroize sensitive data
@@ -2131,7 +2097,7 @@ pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
     pub signature: Signature,
     pub status: TransactionStatus,
-    pub message: String,
+    pub payment_id: PaymentId,
 }
 
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
@@ -2141,11 +2107,11 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
             signature: Signature::new(
-                PublicKey::from_vec(&i.transaction_signature_nonce)?,
+                CompressedPublicKey::from_vec(&i.transaction_signature_nonce)?,
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
             status: TransactionStatus::try_from(i.status)?,
-            message: i.message,
+            payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
         })
     }
 }
@@ -2156,7 +2122,7 @@ pub struct UnconfirmedTransactionInfoSql {
     pub status: i32,
     pub transaction_signature_nonce: Vec<u8>,
     pub transaction_signature_key: Vec<u8>,
-    pub message: String,
+    pub payment_id: Option<Vec<u8>>,
 }
 
 impl UnconfirmedTransactionInfoSql {
@@ -2170,7 +2136,7 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::status,
                 completed_transactions::transaction_signature_nonce,
                 completed_transactions::transaction_signature_key,
-                completed_transactions::message,
+                completed_transactions::payment_id,
             ))
             .filter(
                 completed_transactions::status
@@ -2213,18 +2179,22 @@ mod test {
         encryption::Encryptable,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
-        types::{PrivateKey, PublicKey, Signature},
+        types::{CompressedPublicKey, PrivateKey, Signature},
     };
     use tari_core::transactions::{
-        key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+            Transaction,
+        },
+        transaction_key_manager::create_memory_db_key_manager,
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::{inputs, script};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
@@ -2299,7 +2269,7 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_message("Yo!".to_string())
+            .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
             .unwrap()
@@ -2309,6 +2279,7 @@ mod test {
                 Default::default(),
                 MicroMinotari::zero(),
                 amount,
+                TariAddress::default(),
             )
             .await
             .unwrap()
@@ -2323,7 +2294,7 @@ mod test {
         let mut stp = builder.build().await.unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let outbound_tx1 = OutboundTransaction {
@@ -2333,15 +2304,15 @@ mod test {
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
         };
         let address = TariAddress::new_single_address_with_interactive_only(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let outbound_tx2 = OutboundTransactionSql::try_from(
@@ -2352,8 +2323,8 @@ mod test {
                 fee: stp.get_fee_amount().unwrap(),
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
-                message: "Hey!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2408,8 +2379,8 @@ mod test {
         )
         .await;
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let inbound_tx1 = InboundTransaction {
@@ -2418,16 +2389,16 @@ mod test {
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
         };
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let inbound_tx2 = InboundTransaction {
@@ -2436,8 +2407,8 @@ mod test {
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2480,13 +2451,13 @@ mod test {
             PrivateKey::random(&mut OsRng),
         );
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let completed_tx1 = CompletedTransaction {
@@ -2497,8 +2468,7 @@ mod test {
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::MinedUnconfirmed,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2508,16 +2478,16 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: None,
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let completed_tx2 = CompletedTransaction {
@@ -2528,8 +2498,7 @@ mod test {
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Broadcast,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2539,7 +2508,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: None,
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2689,8 +2658,8 @@ mod test {
         let cipher = XChaCha20Poly1305::new(key_ga);
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let inbound_tx = InboundTransaction {
@@ -2699,8 +2668,8 @@ mod test {
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2716,8 +2685,8 @@ mod test {
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let outbound_tx = OutboundTransaction {
@@ -2727,8 +2696,8 @@ mod test {
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -2745,13 +2714,13 @@ mod test {
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let destination_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let completed_tx = CompletedTransaction {
@@ -2768,8 +2737,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             ),
             status: TransactionStatus::MinedUnconfirmed,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -2779,7 +2747,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: Some(PaymentId::Empty),
+            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2833,8 +2801,8 @@ mod test {
                 .expect("Migrations failed");
 
             let source_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let inbound_tx = InboundTransaction {
@@ -2843,8 +2811,8 @@ mod test {
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2855,8 +2823,8 @@ mod test {
             inbound_tx_sql.commit(&mut conn).unwrap();
 
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let outbound_tx = OutboundTransaction {
@@ -2866,8 +2834,8 @@ mod test {
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -2878,13 +2846,13 @@ mod test {
             outbound_tx_sql.commit(&mut conn).unwrap();
 
             let source_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let completed_tx = CompletedTransaction {
@@ -2901,8 +2869,7 @@ mod test {
                     PrivateKey::random(&mut OsRng),
                 ),
                 status: TransactionStatus::MinedUnconfirmed,
-                message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled: None,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
@@ -2912,7 +2879,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: None,
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3021,13 +2988,13 @@ mod test {
                 _ => (None, TransactionStatus::Completed),
             };
             let source_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let destination_address = TariAddress::new_dual_address_with_default_features(
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let completed_tx = CompletedTransaction {
@@ -3044,8 +3011,7 @@ mod test {
                     PrivateKey::random(&mut OsRng),
                 ),
                 status,
-                message: "Yo!".to_string(),
-                timestamp: Utc::now().naive_utc(),
+                timestamp: Utc::now(),
                 cancelled,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
@@ -3055,7 +3021,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: None,
+                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

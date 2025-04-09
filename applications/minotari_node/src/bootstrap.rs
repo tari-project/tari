@@ -38,18 +38,18 @@ use tari_comms::{
 };
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node,
     base_node::{
+        self,
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::BaseNodeServiceInitializer,
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
+        tari_pulse_service::TariPulseServiceInitializer,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    mempool,
-    mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
+    mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
@@ -59,7 +59,10 @@ use tari_p2p::{
     initialization,
     initialization::P2pInitializer,
     peer_seeds::SeedPeer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    services::{
+        liveness::{config::LivenessConfig, LivenessInitializer},
+        monitor_peers::MonitorPeersInitializer,
+    },
     P2pConfig,
     TransportType,
 };
@@ -155,6 +158,9 @@ where B: BlockchainBackend + 'static
                 },
                 peer_message_subscriptions,
             ))
+            .add_initializer(MonitorPeersInitializer::new(
+                base_node_config.metadata_auto_ping_interval,
+            ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
@@ -163,6 +169,10 @@ where B: BlockchainBackend + 'static
                 self.factories,
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
+            ))
+            .add_initializer(TariPulseServiceInitializer::new(
+                base_node_config.tari_pulse_interval,
+                base_node_config.network,
             ))
             .build()
             .await?;
@@ -215,7 +225,6 @@ where B: BlockchainBackend + 'static
         };
 
         handles.register(comms);
-
         Ok(handles)
     }
 
@@ -230,6 +239,7 @@ where B: BlockchainBackend + 'static
         let rpc_server = RpcServer::builder()
             .with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions)
             .with_maximum_sessions_per_client(config.rpc_max_sessions_per_peer)
+            .with_cull_oldest_peer_rpc_connection_on_full(config.cull_oldest_peer_rpc_connection_on_full)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊

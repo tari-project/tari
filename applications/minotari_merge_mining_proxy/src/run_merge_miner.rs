@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::Infallible, str::FromStr};
+use std::convert::Infallible;
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_app_grpc::{tari_rpc::sha_p2_pool_client::ShaP2PoolClient, tls::protocol_string};
+use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
-    base_node_socket_address,
+    prompt_for_base_node_address,
+    prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
     wallet_payment_address,
     BaseNodeGrpcClient,
@@ -43,10 +44,10 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
-    config::MergeMiningProxyConfig,
+    config::{MergeMiningProxyConfig, MONERO_FAIL_MAINNET_URL, TARI_MONEROD_SERVERS},
     error::MmProxyError,
     monero_fail::{get_monerod_info, order_and_select_monerod_info, MonerodEntry},
-    proxy::{MergeMiningProxyService, MONEROD_CONNECTION_TIMEOUT, NUMBER_OF_MONEROD_SERVERS},
+    proxy::service::MergeMiningProxyService,
     Cli,
 };
 
@@ -64,8 +65,9 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     if config.use_dynamic_fail_data {
         if let Ok(entries) = get_monerod_info(
             NUMBER_OF_MONEROD_SERVERS,
-            MONEROD_CONNECTION_TIMEOUT,
+            config.monerod_connection_timeout,
             &config.monero_fail_url,
+            get_tari_monerod_entries(&config.monero_fail_url),
         )
         .await
         {
@@ -90,7 +92,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             });
         }
         if let Ok(entries) =
-            order_and_select_monerod_info(NUMBER_OF_MONEROD_SERVERS, MONEROD_CONNECTION_TIMEOUT, &entries).await
+            order_and_select_monerod_info(NUMBER_OF_MONEROD_SERVERS, config.monerod_connection_timeout, &entries).await
         {
             if !entries.is_empty() {
                 let entries_len = entries.len();
@@ -105,10 +107,12 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
+    let agent = concat!("minotari_mm_proxy/", env!("CARGO_PKG_VERSION"));
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
-        .pool_max_idle_per_host(25)
+        .user_agent(agent)
+        .tcp_keepalive(Duration::from_secs(60))
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
@@ -150,7 +154,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
-    let randomx_service = MergeMiningProxyService::new(
+    let randomx_service = MergeMiningProxyService::try_create(
         config,
         client,
         base_node_client,
@@ -181,6 +185,25 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     }
 }
 
+pub(crate) fn get_tari_monerod_entries(monero_fail_url: &str) -> Vec<MonerodEntry> {
+    if monero_fail_url == MONERO_FAIL_MAINNET_URL {
+        TARI_MONEROD_SERVERS
+            .iter()
+            .map(|v| MonerodEntry {
+                address_type: "clear".to_string(),
+                url: v.to_string(),
+                network: "mainnet".to_string(),
+                up: true,
+                up_history: vec![true, true, true, true, true, true],
+                last_checked: "2 hours ago".to_string(),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    }
+}
+
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
     if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, grpc::NewBlockTemplateRequest {
         algo: Some(grpc::PowAlgo {
@@ -196,15 +219,15 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
 }
 
 async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
-    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
+    let base_node_addr;
+    if let Some(ref a) = config.base_node_grpc_address {
+        base_node_addr = a.clone();
+    } else {
+        base_node_addr = prompt_for_base_node_address(config.network)?;
+    };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
@@ -231,16 +254,14 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
 }
 
 async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
-    // TODO: Merge this code in the sha miner
-    let socketaddr = base_node_socket_address(config.p2pool_node_grpc_address.clone(), config.network)?;
-    let base_node_addr = format!(
-        "{}{}",
-        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        socketaddr,
-    );
-
-    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", base_node_addr);
-    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+    let p2pool_node_addr;
+    if let Some(ref a) = config.p2pool_node_grpc_address {
+        p2pool_node_addr = a.clone();
+    } else {
+        p2pool_node_addr = prompt_for_p2pool_address()?;
+    };
+    info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {}", p2pool_node_addr);
+    let mut endpoint = Endpoint::new(p2pool_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
         let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
@@ -265,3 +286,5 @@ async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2Pool
 
     Ok(node_conn)
 }
+
+pub(crate) const NUMBER_OF_MONEROD_SERVERS: usize = 15;

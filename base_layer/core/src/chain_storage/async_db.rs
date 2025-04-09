@@ -22,7 +22,7 @@
 use std::{
     mem,
     ops::RangeBounds,
-    sync::{Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc, RwLock},
     time::Instant,
 };
 
@@ -32,7 +32,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -99,10 +99,7 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
-            let mut mdc = vec![];
-            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
-                    log_mdc::extend(mdc.clone());
                     trace_log($name, move || db.$fn())
             })
             .await?
@@ -116,10 +113,7 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn$(< $( $lt $( : $clt )? ),+ + Sync + Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
-            let mut mdc = vec![];
-            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
-                log_mdc::extend(mdc.clone());
                 trace_log($name, move || db.$fn($($param),+))
             })
             .await?
@@ -169,7 +163,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_input(output_hash: HashOutput) -> Option<InputMinedInfo>, "fetch_input");
 
-    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: Commitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
+    make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
 
     make_async_fn!(fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_outputs_with_spend_status_at_tip");
 
@@ -243,7 +237,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> (bool, String), "bad_block_exists");
 
-    make_async_fn!(add_bad_block(hash: BlockHash, height: u64, reason: String) -> (), "add_bad_block");
+    make_async_fn!(fetch_bad_blocks() -> Vec<BadBlock>, "bad_block_exists");
 
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 
@@ -255,7 +249,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
-    make_async_fn!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+    make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 
     make_async_fn!(fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData, "fetch_block_accumulated_data");
 
@@ -283,13 +277,13 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_all_active_validator_nodes(height: u64) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_all_active_validator_nodes");
 
-    make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<PublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
+    make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<CompressedPublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
 
-    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<PublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
+    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
 
-    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<PublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
+    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
 
-    make_async_fn!(get_validator_node(sidechain_id: Option<PublicKey>, public_key: PublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
+    make_async_fn!(get_validator_node(sidechain_id: Option<CompressedPublicKey>, public_key: CompressedPublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
@@ -344,7 +338,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_horizon_data(&mut self, kernel_sum: CompressedCommitment, utxo_sum: CompressedCommitment) -> &mut Self {
         self.transaction.set_horizon_data(kernel_sum, utxo_sum);
         self
     }
@@ -374,7 +368,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     pub fn prune_output_from_all_dbs(
         &mut self,
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     ) -> &mut Self {
         self.transaction
@@ -401,8 +395,13 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
-        self.transaction.insert_tip_block_body(block, smt);
+    pub fn insert_tip_block_body(
+        &mut self,
+        block: Arc<ChainBlock>,
+        smt: Arc<RwLock<OutputSmt>>,
+        allow_smt_change: Arc<AtomicBool>,
+    ) -> &mut Self {
+        self.transaction.insert_tip_block_body(block, smt, allow_smt_change);
         self
     }
 

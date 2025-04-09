@@ -87,10 +87,17 @@ impl TransactionWeight {
     pub fn calculate_body(&self, body: &AggregateBody) -> std::io::Result<u64> {
         let rounded_up_features_and_scripts_bytes_size =
             self.calculate_normalised_total_features_and_scripts_size(body)?;
+        let output_count = body.outputs().len().saturating_sub(body.get_coinbase_outputs().len());
+        let kernel_count = if body.get_coinbase_outputs().is_empty() {
+            // we dont count coinbase kernels, and there is only ever an allowed max of 1 coinbase kernel
+            body.kernels().len()
+        } else {
+            body.kernels().len().saturating_sub(1)
+        };
         Ok(self.calculate(
-            body.kernels().len(),
+            kernel_count,
             body.inputs().len(),
-            body.outputs().len(),
+            output_count,
             rounded_up_features_and_scripts_bytes_size,
         ))
     }
@@ -105,6 +112,7 @@ impl TransactionWeight {
         Ok(body
             .outputs()
             .iter()
+            .filter(|o| !o.is_coinbase())
             .map(|o| o.get_features_and_scripts_size())
             .collect::<Result<Vec<_>, _>>()?
             .iter()

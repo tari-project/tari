@@ -33,7 +33,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_sidechain::ShardGroup;
@@ -70,7 +70,6 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{
             RangeProofType,
             TransactionInput,
@@ -78,6 +77,7 @@ use crate::{
             TransactionOutput,
             WalletOutput,
         },
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
     },
     validation::{
@@ -129,7 +129,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
     smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
-    BlockchainDatabase::new(
+    BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
@@ -171,7 +171,7 @@ impl TempDatabase {
         let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, 0, rules).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
@@ -180,7 +180,7 @@ impl TempDatabase {
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
         let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, 0, rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }
@@ -277,6 +277,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernels_in_block(header_hash)
     }
 
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_bad_blocks()
+    }
+
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,
@@ -305,7 +309,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         self.db
             .as_ref()
@@ -417,7 +421,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_active_validator_nodes(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db
@@ -428,7 +432,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_validators_activating_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db
@@ -439,7 +443,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_validators_exiting_in_epoch(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db
@@ -450,9 +454,9 @@ impl BlockchainBackend for TempDatabase {
 
     fn validator_node_exists(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         self.db
             .as_ref()
@@ -462,9 +466,9 @@ impl BlockchainBackend for TempDatabase {
 
     fn validator_node_is_active(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         self.db
             .as_ref()
@@ -474,9 +478,9 @@ impl BlockchainBackend for TempDatabase {
 
     fn validator_node_is_active_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
-        validator_node_pk: &PublicKey,
+        validator_node_pk: &CompressedPublicKey,
         shard_group: ShardGroup,
     ) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().validator_node_is_active_for_shard_group(
@@ -489,7 +493,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn validator_nodes_count_for_shard_group(
         &self,
-        sidechain_pk: Option<&PublicKey>,
+        sidechain_pk: Option<&CompressedPublicKey>,
         end_epoch: VnEpoch,
         shard_group: ShardGroup,
     ) -> Result<usize, ChainStorageError> {
@@ -501,8 +505,8 @@ impl BlockchainBackend for TempDatabase {
 
     fn get_validator_node(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        public_key: PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().get_validator_node(sidechain_pk, public_key)
     }

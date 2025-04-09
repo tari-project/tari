@@ -25,7 +25,8 @@ use integer_encoding::{VarIntReader, VarIntWriter};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
-    keys::PublicKey,
+    compressed_commitment::CompressedCommitment,
+    compressed_key::CompressedKey,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
 };
 use tari_max_size::MaxSizeVec;
@@ -37,7 +38,7 @@ use tari_utilities::{
 use crate::{
     op_codes::Message,
     slice_to_hash,
-    CheckSigSchnorrSignature,
+    CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     HashValue,
     Opcode,
@@ -542,8 +543,17 @@ impl TariScript {
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
             (Number(v1), Number(v2)) => stack.push(Number(v1.checked_add(v2).ok_or(ScriptError::ValueExceedsBounds)?)),
-            (Commitment(c1), Commitment(c2)) => stack.push(Commitment(&c1 + &c2)),
-            (PublicKey(p1), PublicKey(p2)) => stack.push(PublicKey(&p1 + &p2)),
+            (Commitment(c1), Commitment(c2)) => {
+                let com_1 = c1.to_commitment()?;
+                let com_2 = c2.to_commitment()?;
+                stack.push(Commitment(CompressedCommitment::from_commitment(&com_1 + &com_2)))
+            },
+            (PublicKey(p1), PublicKey(p2)) => {
+                let key1 = p1.to_public_key().map_err(|_| ScriptError::InvalidInput)?;
+                let key2 = p2.to_public_key().map_err(|_| ScriptError::InvalidInput)?;
+                let compressed_key = CompressedKey::new_from_pk(&key1 + &key2);
+                stack.push(PublicKey(compressed_key))
+            },
             (_, _) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -554,7 +564,11 @@ impl TariScript {
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
             (Number(v1), Number(v2)) => stack.push(Number(v2.checked_sub(v1).ok_or(ScriptError::ValueExceedsBounds)?)),
-            (Commitment(c1), Commitment(c2)) => stack.push(Commitment(&c2 - &c1)),
+            (Commitment(c1), Commitment(c2)) => {
+                let com_1 = c1.to_commitment()?;
+                let com_2 = c2.to_commitment()?;
+                stack.push(Commitment(CompressedCommitment::from_commitment(&com_2 - &com_1)))
+            },
             (..) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -578,7 +592,11 @@ impl TariScript {
         let pk = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let sig = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (pk, sig) {
-            (PublicKey(p), Signature(s)) => Ok(s.verify(&p, message)),
+            (PublicKey(p), Signature(s)) => {
+                let key = p.to_public_key().map_err(|_| ScriptError::InvalidInput)?;
+                let sig = s.to_schnorr_signature()?;
+                Ok(sig.verify(&key, message))
+            },
             (..) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -603,11 +621,12 @@ impl TariScript {
     fn check_multisig(
         &self,
         stack: &mut ExecutionStack,
+
         m: u8,
         n: u8,
-        public_keys: &[RistrettoPublicKey],
+        public_keys: &[CompressedKey<RistrettoPublicKey>],
         message: Message,
-    ) -> Result<Option<RistrettoPublicKey>, ScriptError> {
+    ) -> Result<Option<CompressedKey<RistrettoPublicKey>>, ScriptError> {
         if m == 0 || n == 0 || m > n || n > MAX_MULTISIG_LIMIT || public_keys.len() != n as usize {
             return Err(ScriptError::ValueExceedsBounds);
         }
@@ -620,7 +639,7 @@ impl TariScript {
                 StackItem::Signature(s) => Ok(s),
                 _ => Err(ScriptError::IncompatibleTypes),
             })
-            .collect::<Result<Vec<CheckSigSchnorrSignature>, ScriptError>>()?;
+            .collect::<Result<Vec<CompressedCheckSigSchnorrSignature>, ScriptError>>()?;
 
         // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
@@ -643,9 +662,11 @@ impl TariScript {
             }
 
             for pk in pub_keys.by_ref() {
-                if s.verify(pk, message) {
+                let ristretto_key = pk.to_public_key().map_err(|_| ScriptError::InvalidInput)?;
+                let sig = s.to_schnorr_signature()?;
+                if sig.verify(&ristretto_key, message) {
                     sig_set.insert(s);
-                    agg_pub_key = agg_pub_key + pk;
+                    agg_pub_key = agg_pub_key + ristretto_key;
                     break;
                 }
             }
@@ -655,7 +676,8 @@ impl TariScript {
             }
         }
         if sig_set.len() == m {
-            Ok(Some(agg_pub_key))
+            let key = CompressedKey::new_from_pk(agg_pub_key);
+            Ok(Some(key))
         } else {
             Ok(None)
         }
@@ -669,7 +691,7 @@ impl TariScript {
             _ => return Err(ScriptError::IncompatibleTypes),
         };
         let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidInput)?;
-        let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
+        let ristretto_pk = CompressedKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
     }
@@ -737,8 +759,10 @@ mod test {
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
+        compressed_commitment::CompressedCommitment,
+        compressed_key::CompressedKey,
+        keys::SecretKey,
+        ristretto::{pedersen::CompressedPedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::{hex::Hex, ByteArray};
 
@@ -747,6 +771,7 @@ mod test {
         inputs,
         op_codes::{slice_to_boxed_hash, slice_to_boxed_message, HashValue, Message},
         CheckSigSchnorrSignature,
+        CompressedCheckSigSchnorrSignature,
         ExecutionStack,
         Opcode::CheckMultiSigVerifyAggregatePubKey,
         ScriptContext,
@@ -756,7 +781,7 @@ mod test {
     };
 
     fn context_with_height(height: u64) -> ScriptContext {
-        ScriptContext::new(height, &HashValue::default(), &PedersenCommitment::default())
+        ScriptContext::new(height, &HashValue::default(), &CompressedPedersenCommitment::default())
     }
 
     #[test]
@@ -803,7 +828,7 @@ mod test {
         assert_eq!(result, Number(0));
 
         let mut rng = rand::thread_rng();
-        let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let inputs = inputs!(1, p.clone(), 1, 3);
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::InvalidInput));
@@ -1012,8 +1037,8 @@ mod test {
     #[test]
     fn op_hash() {
         let mut rng = rand::thread_rng();
-        let (_, p) = RistrettoPublicKey::random_keypair(&mut rng);
-        let c = PedersenCommitment::from_public_key(&p);
+        let (_, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let c = CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(p.clone());
         let script = script!(HashSha256).unwrap();
 
         let hash = Sha256::digest(p.as_bytes());
@@ -1059,13 +1084,13 @@ mod test {
     fn op_add_commitments() {
         let script = script!(Add).unwrap();
         let mut rng = rand::thread_rng();
-        let (_, c1) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, c2) = RistrettoPublicKey::random_keypair(&mut rng);
-        let c3 = &c1 + &c2;
-        let c3 = PedersenCommitment::from_public_key(&c3);
+        let (_, c1) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (_, c2) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let c3 = &c1.to_public_key().unwrap() + &c2.to_public_key().unwrap();
+        let c3 = CompressedCommitment::<RistrettoPublicKey>::from_public_key(c3);
         let inputs = inputs!(
-            PedersenCommitment::from_public_key(&c1),
-            PedersenCommitment::from_public_key(&c2)
+            CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(c1),
+            CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(c2)
         );
         assert_eq!(script.execute(&inputs).unwrap(), Commitment(c3));
     }
@@ -1096,9 +1121,11 @@ mod test {
     fn check_sig() {
         use crate::StackItem::Number;
         let mut rng = rand::thread_rng();
-        let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (pvt_key, pub_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
+        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap(),
+        );
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSig(msg)).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1117,9 +1144,11 @@ mod test {
     fn check_sig_verify() {
         use crate::StackItem::Number;
         let mut rng = rand::thread_rng();
-        let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (pvt_key, pub_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap();
+        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&pvt_key, m_key.as_bytes(), &mut rng).unwrap(),
+        );
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSigVerify(msg) PushOne).unwrap();
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1134,11 +1163,16 @@ mod test {
         assert!(matches!(err, ScriptError::VerifyFailed));
     }
 
+    #[allow(clippy::type_complexity)]
     fn multisig_data(
         n: usize,
     ) -> (
         Box<Message>,
-        Vec<(RistrettoSecretKey, RistrettoPublicKey, CheckSigSchnorrSignature)>,
+        Vec<(
+            RistrettoSecretKey,
+            CompressedKey<RistrettoPublicKey>,
+            CompressedCheckSigSchnorrSignature,
+        )>,
     ) {
         let mut rng = rand::thread_rng();
         let mut data = Vec::with_capacity(n);
@@ -1146,8 +1180,10 @@ mod test {
         let msg = slice_to_boxed_message(m.as_bytes());
 
         for _ in 0..n {
-            let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
-            let s = CheckSigSchnorrSignature::sign(&k, m.as_bytes(), &mut rng).unwrap();
+            let (k, p) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+            let s = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+                CheckSigSchnorrSignature::sign(&k, m.as_bytes(), &mut rng).unwrap(),
+            );
             data.push((k, p, s));
         }
 
@@ -1159,16 +1195,26 @@ mod test {
     fn check_multisig() {
         use crate::{op_codes::Opcode::CheckMultiSig, StackItem::Number};
         let mut rng = rand::thread_rng();
-        let (k_alice, p_alice) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_carol, p_carol) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_carol, p_carol) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
-        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
-        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
-        let s_carol = CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap();
-        let s_alice2 = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
+        let s_alice = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_bob = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_eve = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_carol = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_alice2 = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
+        );
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1357,15 +1403,23 @@ mod test {
     fn check_multisig_verify() {
         use crate::{op_codes::Opcode::CheckMultiSigVerify, StackItem::Number};
         let mut rng = rand::thread_rng();
-        let (k_alice, p_alice) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_carol, p_carol) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_carol, p_carol) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
-        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
-        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
-        let s_carol = CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap();
+        let s_alice = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_bob = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_eve = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_carol = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_carol, m.as_bytes(), &mut rng).unwrap(),
+        );
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1444,15 +1498,30 @@ mod test {
 
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let agg_pub_key = script.execute(&inputs).unwrap();
-        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_bob.clone()));
+        assert_eq!(
+            agg_pub_key,
+            StackItem::PublicKey(CompressedKey::<RistrettoPublicKey>::new_from_pk(
+                &p_alice.clone().to_public_key().unwrap() + &p_bob.clone().to_public_key().unwrap()
+            ))
+        );
 
         let inputs = inputs!(s_alice.clone(), s_carol.clone());
         let agg_pub_key = script.execute(&inputs).unwrap();
-        assert_eq!(agg_pub_key, StackItem::PublicKey(p_alice.clone() + p_carol.clone()));
+        assert_eq!(
+            agg_pub_key,
+            StackItem::PublicKey(CompressedKey::<RistrettoPublicKey>::new_from_pk(
+                &p_alice.clone().to_public_key().unwrap() + &p_carol.clone().to_public_key().unwrap()
+            ))
+        );
 
         let inputs = inputs!(s_bob.clone(), s_carol.clone());
         let agg_pub_key = script.execute(&inputs).unwrap();
-        assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
+        assert_eq!(
+            agg_pub_key,
+            StackItem::PublicKey(CompressedKey::<RistrettoPublicKey>::new_from_pk(
+                &p_bob.clone().to_public_key().unwrap() + &p_carol.clone().to_public_key().unwrap()
+            ))
+        );
 
         let inputs = inputs!(s_carol.clone(), s_bob.clone());
         let err = script.execute(&inputs).unwrap_err();
@@ -1550,7 +1619,7 @@ mod test {
         use crate::StackItem::PublicKey;
         let k =
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
-        let p = RistrettoPublicKey::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
+        let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
         let hash = Blake2b::<U32>::digest(p.as_bytes());
         let pkh = slice_to_boxed_hash(hash.as_slice()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
 
@@ -1574,9 +1643,11 @@ mod test {
     fn hex_roundtrip() {
         // Generate a signature
         let mut rng = rand::thread_rng();
-        let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (secret_key, public_key) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
         let message = [1u8; 32];
-        let sig = CheckSigSchnorrSignature::sign(&secret_key, message, &mut rng).unwrap();
+        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&secret_key, message, &mut rng).unwrap(),
+        );
 
         // Produce a script using the signature
         let script = script!(CheckSig(slice_to_boxed_message(message.as_bytes()))).unwrap();
@@ -1626,11 +1697,11 @@ mod test {
     fn time_locked_contract_example() {
         let k_alice =
             RistrettoSecretKey::from_hex("f305e64c0e73cbdb665165ac97b69e5df37b2cd81f9f8f569c3bd854daff290e").unwrap();
-        let p_alice = RistrettoPublicKey::from_secret_key(&k_alice); // 9c35e9f0f11cf25ce3ca1182d37682ab5824aa033f2024651e007364d06ec355
+        let p_alice = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k_alice); // 9c35e9f0f11cf25ce3ca1182d37682ab5824aa033f2024651e007364d06ec355
 
         let k_bob =
             RistrettoSecretKey::from_hex("e0689386a018e88993a7bb14cbff5bad8a8858ea101d6e0da047df3ddf499c0e").unwrap();
-        let p_bob = RistrettoPublicKey::from_secret_key(&k_bob); // 3a58f371e94da76a8902e81b4b55ddabb7dc006cd8ebde3011c46d0e02e9172f
+        let p_bob = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k_bob); // 3a58f371e94da76a8902e81b4b55ddabb7dc006cd8ebde3011c46d0e02e9172f
 
         let lock_height = 4000u64;
 
@@ -1673,16 +1744,22 @@ mod test {
     fn m_of_n_signatures() {
         use crate::StackItem::PublicKey;
         let mut rng = rand::thread_rng();
-        let (k_alice, p_alice) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (k_eve, _) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (k_alice, p_alice) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_bob, p_bob) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
+        let (k_eve, _) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
 
         let m = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(m.as_bytes());
 
-        let s_alice = CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap();
-        let s_bob = CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap();
-        let s_eve = CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap();
+        let s_alice = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_alice, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_bob = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_bob, m.as_bytes(), &mut rng).unwrap(),
+        );
+        let s_eve = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k_eve, m.as_bytes(), &mut rng).unwrap(),
+        );
 
         // 1 of 2
         use crate::Opcode::{CheckSig, Drop, Dup, Else, EndIf, IfThen, PushPubKey, Return};
@@ -1727,14 +1804,14 @@ mod test {
 
         // Generate a key pair
         let mut rng = rand::thread_rng();
-        let (k_1, p_1) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (k_1, p_1) = CompressedKey::<RistrettoPublicKey>::random_keypair(&mut rng);
 
         // Generate a test script
         let ops = vec![ToRistrettoPoint];
         let script = TariScript::new(ops).unwrap();
 
         // Invalid stack type
-        let inputs = inputs!(RistrettoPublicKey::default());
+        let inputs = inputs!(CompressedKey::<RistrettoPublicKey>::default());
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::IncompatibleTypes));
 

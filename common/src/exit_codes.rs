@@ -130,6 +130,8 @@ pub enum ExitCode {
     WalletPaymentAddress = 123,
     #[error("Unable to configure TLS")]
     TlsConfigurationError = 124,
+    #[error("Unable to setup tari pulse")]
+    TariPulseError = 125,
 }
 
 impl From<super::ConfigError> for ExitError {

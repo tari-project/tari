@@ -26,8 +26,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
+use tari_common_types::types::CompressedPublicKey;
 use tari_comms_dht::envelope::NodeDestination;
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tokio::task;
 
 use super::{CommandContext, HandleCommand};
@@ -48,7 +48,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     /// Function to process the discover-peer command
-    pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
+    pub async fn discover_peer(&mut self, dest_pubkey: Box<CompressedPublicKey>) -> Result<(), Error> {
         let mut discovery_service = self.discovery_service.clone();
         task::spawn(async move {
             let start = Instant::now();

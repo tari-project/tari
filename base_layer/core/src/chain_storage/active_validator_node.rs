@@ -25,7 +25,7 @@ use std::cmp;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{Commitment, PublicKey},
+    types::{CompressedCommitment, CompressedPublicKey},
 };
 
 use crate::transactions::tari_amount::MicroMinotari;
@@ -35,11 +35,11 @@ pub struct ValidatorNodeEntry {
     pub shard_key: [u8; 32],
     /// The epoch in which this validator node was (or will be) activated
     pub activation_epoch: VnEpoch,
-    /// The epoch in which the validator registartion UTXO was submitted
+    /// The epoch in which the validator registration UTXO was submitted
     pub registration_epoch: VnEpoch,
-    pub public_key: PublicKey,
-    pub commitment: Commitment,
-    pub sidechain_public_key: Option<PublicKey>,
+    pub public_key: CompressedPublicKey,
+    pub commitment: CompressedCommitment,
+    pub sidechain_public_key: Option<CompressedPublicKey>,
     pub minimum_value_promise: MicroMinotari,
 }
 

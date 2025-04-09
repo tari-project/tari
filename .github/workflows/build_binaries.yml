@@ -25,6 +25,8 @@ env:
   TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
   TS_FEATURES: "default, safe"
   TS_LIBRARIES: "minotari_mining_helper_ffi"
+  TS_DESCRIPTION: "Tari Suite"
+  TS_URL: "https://tari.com"
   # For debug builds
   # TS_BUILD: "debug"
   TS_BUILD: "release"
@@ -36,6 +38,7 @@ env:
   CARGO: cargo
   CARGO_OPTIONS: "--locked"
   CARGO_CACHE: true
+  RUSTUP_PERMIT_COPY_RENAME: true
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -94,7 +97,7 @@ jobs:
   builds:
     name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
-    continue-on-error: ${{ matrix.builds.best_effort || false }}
+    continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') || matrix.builds.best_effort || false }}
     outputs:
       TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
       TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}
@@ -139,7 +142,7 @@ jobs:
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_OUTPUT
           TARI_VERSION=$(awk -F ' = ' '$1 ~ /^version/ \
             { gsub(/["]/, "", $2); printf("%s",$2) }' \
-            "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
+            "$GITHUB_WORKSPACE/Cargo.toml")
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_ENV
           echo "TARI_VERSION=${TARI_VERSION}" >> $GITHUB_OUTPUT
           if [[ "${{ matrix.builds.features }}" == "" ]]; then
@@ -218,14 +221,8 @@ jobs:
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')
         run: |
-          vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
-          choco upgrade llvm -y
-          # psutils is out of date
-          # choco upgrade psutils -y
-          choco upgrade openssl -y
-          # Should already be installed
-          # choco upgrade strawberryperl -y
+          vcpkg install openssl:x64-windows-static
           choco upgrade protoc -y
           rustup target add ${{ matrix.builds.target }}
 
@@ -277,10 +274,8 @@ jobs:
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TS_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
-          echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
-          echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
-          echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
+          echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static" >> $GITHUB_ENV
 
       - name: Cache cargo files and outputs
         if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) && ( env.CARGO_CACHE ) }}
@@ -319,6 +314,10 @@ jobs:
           echo "cargo command is: ${{ env.CARGO }}"
           echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
           echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Debug environment variables - Windows
+        if: startsWith(runner.os,'Windows')
+        run: printenv
 
       - name: Build release binaries
         shell: bash
@@ -520,11 +519,11 @@ jobs:
           name: ${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}*.pkg*"
 
-      - name: Sign files with Trusted Signing (windows binaries)
+      - name: Sign Windows files with Trusted Signing
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        uses: azure/trusted-signing-action@v0.4.0
+        uses: azure/trusted-signing-action@v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -537,6 +536,8 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+          description: ${{ env.TS_DESCRIPTION }}
+          description-url: ${{ env.TS_URL }}
 
       - name: Build the Windows installer
         if: startsWith(runner.os,'Windows')
@@ -545,11 +546,11 @@ jobs:
           cd buildtools
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TS_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TS_DIST }}" "windows_inno_installer.iss"
 
-      - name: Sign files with Trusted Signing (windows installer)
+      - name: Sign Windows installer with Trusted Signing
         if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        uses: azure/trusted-signing-action@v0.4.0
+        uses: azure/trusted-signing-action@v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -562,6 +563,46 @@ jobs:
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
+          description: ${{ env.TS_DESCRIPTION }}
+          description-url: ${{ env.TS_URL }}
+
+      - name: Verify Windows signing for installer
+        if: ${{ ( startsWith(runner.os,'Windows') ) && ( env.AZURE_TENANT_ID != '' ) }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        shell: powershell
+        run: |
+          # Get the Program Files (x86) directory dynamically
+          $programFilesX86 = [System.Environment]::GetFolderPath("ProgramFilesX86")
+          $sdkBasePath = Join-Path $programFilesX86 "Windows Kits"
+
+          # Check if Windows Kits exists
+          if (-Not (Test-Path $sdkBasePath)) {
+            Write-Error "Windows Kits folder not found at $sdkBasePath!"
+            exit 1
+          }
+
+          Write-Output "Searching for signtool.exe in: $sdkBasePath"
+
+          # Search for signtool.exe within Windows Kits fold with x64 in the path
+          $signtoolPath = Get-ChildItem -Path $sdkBasePath -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                          Where-Object { $_.FullName -match '\\x64\\' } |
+                          Select-Object -ExpandProperty FullName -First 1
+
+          if (-not $signtoolPath) {
+            Write-Error "signtool.exe not found in Windows Kits folder!"
+            exit 1
+          }
+
+          Write-Output "Found signtool.exe at: $signtoolPath"
+
+          cd buildtools\Output
+
+          & $signtoolPath verify /pa "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "!! Signature verification failed for ${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe !!"
+            exit 1
+          }
 
       - name: Windows installer Compute archive checksum
         if: startsWith(runner.os,'Windows')

@@ -583,7 +583,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn flush(&mut self) -> io::Result<()> {
-        self.socket.flush().await.map_err(Into::into)
+        self.socket.flush().await
     }
 
     async fn receive(&mut self) -> io::Result<usize> {

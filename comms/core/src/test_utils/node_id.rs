@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey;
 
 use crate::{peer_manager::NodeId, types::CommsPublicKey};
 

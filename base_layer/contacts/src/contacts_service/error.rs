@@ -69,7 +69,7 @@ pub enum ContactsServiceStorageError {
     #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
     #[error("Value not found error: `{0}`")]
-    ValueNotFound(DbKey),
+    ValueNotFound(Box<DbKey>),
     #[error("Unexpected result error: `{0}`")]
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]

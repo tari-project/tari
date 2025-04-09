@@ -38,9 +38,9 @@ mod benches {
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
         transactions::{
-            key_manager::create_memory_db_key_manager,
             tari_amount::{uT, T},
             transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
+            transaction_key_manager::create_memory_db_key_manager,
             CryptoFactories,
         },
         tx,

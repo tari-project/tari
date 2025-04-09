@@ -73,7 +73,7 @@ use std::{process, sync::Arc};
 
 use clap::Parser;
 use log::*;
-use minotari_app_utilities::{identity_management::setup_node_identity, utilities::setup_runtime};
+use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{cli::Cli, run_base_node_with_cli, ApplicationConfig};
 use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration};
 use tari_comms::peer_manager::PeerFeatures;
@@ -113,7 +113,7 @@ fn main_inner() -> Result<(), ExitError> {
     info!(
         target: LOG_TARGET,
         "Starting Minotari Base Node version: {}",
-        env!("CARGO_PKG_VERSION")
+        consts::APP_VERSION
     );
 
     let config_path = cli.common.config_path();
@@ -152,7 +152,12 @@ fn main_inner() -> Result<(), ExitError> {
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
     if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
-        let tor = Tor::initialize()?;
+        let data_dir = if let Some(dir) = cli.libtor_data_dir.clone() {
+            dir.join("libtor").join("base_node")
+        } else {
+            cli.common.get_base_path().join("libtor").join("base_node")
+        };
+        let tor = Tor::initialize(data_dir)?;
         tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
         tor.run_background();
         debug!(

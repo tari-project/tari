@@ -19,7 +19,11 @@ use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::{VarIntReader, VarIntWriter};
-use tari_crypto::ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey};
+use tari_crypto::{
+    compressed_commitment::CompressedCommitment,
+    compressed_key::CompressedKey,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     ByteArray,
@@ -29,6 +33,7 @@ use crate::{
     error::ScriptError,
     op_codes::{HashValue, ScalarValue},
     CheckSigSchnorrSignature,
+    CompressedCheckSigSchnorrSignature,
 };
 
 pub const MAX_STACK_SIZE: usize = 255;
@@ -65,9 +70,9 @@ pub enum StackItem {
     Number(i64),
     Hash(HashValue),
     Scalar(ScalarValue),
-    Commitment(PedersenCommitment),
-    PublicKey(RistrettoPublicKey),
-    Signature(CheckSigSchnorrSignature),
+    Commitment(CompressedCommitment<RistrettoPublicKey>),
+    PublicKey(CompressedKey<RistrettoPublicKey>),
+    Signature(CompressedCheckSigSchnorrSignature),
 }
 
 impl StackItem {
@@ -94,7 +99,7 @@ impl StackItem {
             },
             StackItem::Signature(s) => {
                 array.push(TYPE_SIG);
-                array.extend_from_slice(s.get_public_nonce().as_bytes());
+                array.extend_from_slice(s.get_compressed_public_nonce().as_bytes());
                 array.extend_from_slice(s.get_signature().as_bytes());
             },
             StackItem::Scalar(scalar) => {
@@ -151,7 +156,7 @@ impl StackItem {
         if b.len() < 32 {
             return None;
         }
-        let c = PedersenCommitment::from_canonical_bytes(&b[..32]).ok()?;
+        let c = CompressedCommitment::from_canonical_bytes(&b[..32]).ok()?;
         Some((StackItem::Commitment(c), &b[32..]))
     }
 
@@ -159,7 +164,7 @@ impl StackItem {
         if b.len() < 32 {
             return None;
         }
-        let p = RistrettoPublicKey::from_canonical_bytes(&b[..32]).ok()?;
+        let p = CompressedKey::from_canonical_bytes(&b[..32]).ok()?;
         Some((StackItem::PublicKey(p), &b[32..]))
     }
 
@@ -169,15 +174,15 @@ impl StackItem {
         }
         let r = RistrettoPublicKey::from_canonical_bytes(&b[..32]).ok()?;
         let s = RistrettoSecretKey::from_canonical_bytes(&b[32..64]).ok()?;
-        let sig = CheckSigSchnorrSignature::new(r, s);
+        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(CheckSigSchnorrSignature::new(r, s));
         Some((StackItem::Signature(sig), &b[64..]))
     }
 }
 
 stack_item_from!(i64 => Number);
-stack_item_from!(PedersenCommitment => Commitment);
-stack_item_from!(RistrettoPublicKey => PublicKey);
-stack_item_from!(CheckSigSchnorrSignature => Signature);
+stack_item_from!(CompressedCommitment<RistrettoPublicKey> => Commitment);
+stack_item_from!(CompressedKey<RistrettoPublicKey> => PublicKey);
+stack_item_from!(CompressedCheckSigSchnorrSignature => Signature);
 stack_item_from!(ScalarValue => Scalar);
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -395,22 +400,33 @@ mod test {
     use digest::{consts::U32, Digest};
     use rand::rngs::OsRng;
     use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSecretKey},
+        compressed_commitment::CompressedCommitment,
+        compressed_key::CompressedKey,
+        keys::SecretKey,
+        ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     };
     use tari_utilities::{
         hex::{from_hex, Hex},
         message_format::MessageFormat,
     };
 
-    use crate::{op_codes::ScalarValue, CheckSigSchnorrSignature, ExecutionStack, HashValue, StackItem};
+    use crate::{
+        op_codes::ScalarValue,
+        CheckSigSchnorrSignature,
+        CompressedCheckSigSchnorrSignature,
+        ExecutionStack,
+        HashValue,
+        StackItem,
+    };
 
     #[test]
     fn as_bytes_roundtrip() {
         use crate::StackItem::{Number, PublicKey, Signature};
         let k = RistrettoSecretKey::random(&mut rand::thread_rng());
-        let p = RistrettoPublicKey::from_secret_key(&k);
-        let s = CheckSigSchnorrSignature::sign(&k, b"hi", &mut OsRng).unwrap();
+        let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k);
+        let s = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign(&k, b"hi", &mut OsRng).unwrap(),
+        );
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);
         let bytes = stack.to_bytes();
@@ -424,9 +440,11 @@ mod test {
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
         let r =
             RistrettoSecretKey::from_hex("193ee873f3de511eda8ae387db6498f3d194d31a130a94cdf13dc5890ec1ad0f").unwrap();
-        let p = RistrettoPublicKey::from_secret_key(&k);
+        let p = CompressedKey::<RistrettoPublicKey>::from_secret_key(&k);
         let m = [1u8; 32];
-        let sig = CheckSigSchnorrSignature::sign_with_nonce_and_message(&k, r, m).unwrap();
+        let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(
+            CheckSigSchnorrSignature::sign_with_nonce_and_message(&k, r, m).unwrap(),
+        );
         let inputs = inputs!(sig, p, m as HashValue);
         assert_eq!(inputs.to_hex(),
         "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c31c6134be1c65544fa3f26c59903165f664db0dc364cbbaa4b35a9b33342cc01000456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c060101010101010101010101010101010101010101010101010101010101010101");
@@ -461,7 +479,7 @@ mod test {
         }
         if let Some(StackItem::Signature(s)) = stack.pop() {
             assert_eq!(
-                s.get_public_nonce().to_hex(),
+                s.get_compressed_public_nonce().to_hex(),
                 "00f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c31"
             );
             assert_eq!(
@@ -489,14 +507,16 @@ mod test {
         6c5a37e00d5f2fee182dcb38c1b6c65e90a43c10906fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e7\
         50e417a90ecc5da501d2040000000000000356c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435\
         f08ebbc7c";
-        let p =
-            RistrettoPublicKey::from_hex("56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c").unwrap();
+        let p = CompressedKey::<RistrettoPublicKey>::from_hex(
+            "56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c",
+        )
+        .unwrap();
         let s =
             RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").unwrap();
-        let sig = CheckSigSchnorrSignature::new(p.clone(), s);
+        let sig = CompressedCheckSigSchnorrSignature::new(p.clone(), s);
         let m: HashValue = Blake2b::<U32>::digest(b"Hello Tari Script").into();
         let s: ScalarValue = m;
-        let commitment = PedersenCommitment::from_public_key(&p);
+        let commitment = CompressedCommitment::<RistrettoPublicKey>::from_compressed_key(p.clone());
 
         // Includes all variants for StackItem
         let mut expected_inputs = inputs!(s, p, sig, m, 1234, commitment);

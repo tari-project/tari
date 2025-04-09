@@ -33,7 +33,7 @@ use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey, RangeProof},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, RangeProof},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -45,9 +45,9 @@ use tari_core::transactions::{
         TransactionOutputVersion,
         WalletOutput,
     },
+    transaction_key_manager::TariKeyId,
 };
 use tari_crypto::tari_utilities::ByteArray;
-use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
@@ -72,7 +72,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
-#[derive(Clone, Derivative, Queryable, Identifiable, PartialEq, QueryableByName)]
+#[derive(Clone, Derivative, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[diesel(table_name = outputs)]
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
@@ -390,7 +390,7 @@ impl OutputSql {
 
     /// Verify that outputs with specified commitments exist in the database
     pub fn verify_outputs_exist(
-        commitments: &[Commitment],
+        commitments: &[CompressedCommitment],
         conn: &mut SqliteConnection,
     ) -> Result<bool, OutputManagerStorageError> {
         #[derive(QueryableByName, Clone)]
@@ -676,22 +676,14 @@ impl OutputSql {
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let payment_id = match self.payment_id {
-            Some(bytes) => PaymentId::from_bytes(&bytes).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create payment id from stored bytes"
-                );
-                OutputManagerStorageError::ConversionError {
-                    reason: "payment id could not be converted from bytes".to_string(),
-                }
-            })?,
+            Some(bytes) => PaymentId::from_bytes(&bytes),
             None => PaymentId::Empty,
         };
 
         let wallet_output = WalletOutput::new_with_rangeproof(
             TransactionOutputVersion::get_current_version(),
             MicroMinotari::from(self.value as u64),
-            KeyId::from_str(&self.spending_key).map_err(|e| {
+            TariKeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create spending key id from stored string ({})", e
@@ -703,7 +695,7 @@ impl OutputSql {
             features,
             TariScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
-            KeyId::from_str(&self.script_private_key).map_err(|e| {
+            TariKeyId::from_str(&self.script_private_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create script private key id from stored string ({})", e
@@ -712,7 +704,7 @@ impl OutputSql {
                     reason: format!("Script private key id could not be converted from string ({})", e),
                 }
             })?,
-            PublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
+            CompressedPublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
@@ -722,7 +714,7 @@ impl OutputSql {
                 }
             })?,
             ComAndPubSignature::new(
-                Commitment::from_vec(&self.metadata_signature_ephemeral_commitment).map_err(|_| {
+                CompressedCommitment::from_vec(&self.metadata_signature_ephemeral_commitment).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create Commitment from stored bytes, They might be encrypted"
@@ -731,7 +723,7 @@ impl OutputSql {
                         reason: "Commitment could not be converted from bytes".to_string(),
                     }
                 })?,
-                PublicKey::from_vec(&self.metadata_signature_ephemeral_pubkey).map_err(|_| {
+                CompressedPublicKey::from_vec(&self.metadata_signature_ephemeral_pubkey).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
@@ -779,7 +771,7 @@ impl OutputSql {
             payment_id.clone(),
         );
 
-        let commitment = Commitment::from_vec(&self.commitment)?;
+        let commitment = CompressedCommitment::from_vec(&self.commitment)?;
         let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
             Ok(v) => v,
             Err(e) => {
@@ -815,7 +807,7 @@ impl OutputSql {
             status: self.status.try_into()?,
             mined_height: self.mined_height.map(|mh| mh as u64),
             mined_in_block,
-            mined_timestamp: self.mined_timestamp,
+            mined_timestamp: self.mined_timestamp.map(|mt| mt.and_utc()),
             marked_deleted_at_height: self.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block,
             spending_priority,

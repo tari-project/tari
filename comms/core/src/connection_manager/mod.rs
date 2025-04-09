@@ -34,6 +34,7 @@ mod listener;
 mod metrics;
 
 mod common;
+pub use common::PeerConnectionInfo;
 
 mod direction;
 pub use direction::ConnectionDirection;

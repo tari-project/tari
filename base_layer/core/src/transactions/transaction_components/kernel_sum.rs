@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::Commitment;
+use tari_common_types::types::CompressedCommitment;
 
 use crate::transactions::tari_amount::MicroMinotari;
 
@@ -31,6 +31,6 @@ use crate::transactions::tari_amount::MicroMinotari;
 /// and returns the summed commitments and the total fees
 #[derive(Default)]
 pub struct KernelSum {
-    pub sum: Commitment,
+    pub sum: CompressedCommitment,
     pub fees: MicroMinotari,
 }

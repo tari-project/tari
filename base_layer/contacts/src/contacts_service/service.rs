@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
@@ -298,11 +298,11 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
-                message.sent_at = Utc::now().naive_utc().timestamp() as u64;
+                message.sent_at = Utc::now().timestamp() as u64;
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
-                message.stored_at = Utc::now().naive_utc().timestamp() as u64;
-                match self.db.save_message(message) {
+                message.stored_at = Utc::now().timestamp() as u64;
+                match self.db.save_message(*message) {
                     Ok(_) => {
                         if let Err(e) = self.deliver_message(address.clone(), ob_message).await {
                             trace!(target: LOG_TARGET, "Failed to broadcast a message {} over the network: {}", address, e);
@@ -351,7 +351,7 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::GetMessage(message_id) => {
                 let result = self.db.get_message(message_id);
-                Ok(result.map(ContactsServiceResponse::Message)?)
+                Ok(result.map(|m| ContactsServiceResponse::Message(Box::new(m)))?)
             },
         }
     }
@@ -449,7 +449,7 @@ where T: ContactsBackend + 'static
             let dispatch = MessageDispatch::try_from(msg_inner).map_err(ContactsServiceError::MessageParsingError)?;
 
             match dispatch {
-                MessageDispatch::Message(m) => self.handle_chat_message(m, source_public_key).await,
+                MessageDispatch::Message(m) => self.handle_chat_message(*m, source_public_key).await,
                 MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
                     self.handle_confirmation(dispatch.clone()).await
                 },
@@ -481,12 +481,12 @@ where T: ContactsBackend + 'static
         Ok(online_status)
     }
 
-    fn is_online(&self, last_seen: NaiveDateTime) -> bool {
+    fn is_online(&self, last_seen: DateTime<Utc>) -> bool {
         #[allow(clippy::cast_possible_wrap)]
         let ping_window = chrono::Duration::seconds(
             (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
         );
-        Utc::now().naive_utc().sub(last_seen) <= ping_window
+        Utc::now().sub(last_seen) <= ping_window
     }
 
     fn update_with_ping_pong(
@@ -513,15 +513,13 @@ where T: ContactsBackend + 'static
                     .latency
                     .map(|val| u32::try_from(val.as_millis()).unwrap_or(u32::MAX));
             }
-            let this_public_key = self
-                .db
-                .update_contact_last_seen(&event.node_id, last_seen.naive_utc(), latency)?;
+            let this_public_key = self.db.update_contact_last_seen(&event.node_id, last_seen, latency)?;
 
             let data = ContactsLivenessData::new(
                 this_public_key,
                 event.node_id.clone(),
                 latency,
-                Some(last_seen.naive_utc()),
+                Some(last_seen),
                 message_type,
                 ContactOnlineStatus::Online,
             );
@@ -598,7 +596,7 @@ where T: ContactsBackend + 'static
             Ok(..) => {
                 if let Err(e) = self
                     .message_publisher
-                    .send(Arc::new(MessageDispatch::Message(our_message.clone())))
+                    .send(Arc::new(MessageDispatch::Message(Box::new(our_message.clone()))))
                 {
                     debug!(target: LOG_TARGET, "Failed to re-broadcast chat message internally: {}", e);
                 }

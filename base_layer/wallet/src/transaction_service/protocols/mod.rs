@@ -44,7 +44,9 @@ pub fn check_transaction_size<T: Serialize>(
     serialize_into(&mut buf, transaction).map_err(|e| {
         TransactionServiceProtocolError::new(tx_id, TransactionServiceError::SerializationError(e.to_string()))
     })?;
-    const SIZE_MARGIN: usize = 1024 * 10;
+    // we reserve some space for the frame overhead and same for coinbases trying to keep the single transaction under
+    // 4MB
+    const SIZE_MARGIN: usize = (1024 * 10) + (2 * 1024 * 1024);
     if buf.len() > rpc::RPC_MAX_FRAME_SIZE.saturating_sub(SIZE_MARGIN) {
         let err = TransactionServiceProtocolError::new(tx_id, TransactionServiceError::TransactionTooLarge {
             got: buf.len(),

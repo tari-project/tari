@@ -85,7 +85,7 @@ mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{HashOutput, PublicKey},
+    types::{CompressedPublicKey, HashOutput},
 };
 
 mod template_registation;
@@ -101,8 +101,8 @@ pub struct ChainTipData {
 
 #[derive(Debug, Clone)]
 pub struct ValidatorNodeRegistrationInfo {
-    pub public_key: PublicKey,
-    pub sidechain_id: Option<PublicKey>,
+    pub public_key: CompressedPublicKey,
+    pub sidechain_id: Option<CompressedPublicKey>,
     pub shard_key: [u8; 32],
     pub activation_epoch: VnEpoch,
     pub original_registration: ValidatorNodeRegistration,

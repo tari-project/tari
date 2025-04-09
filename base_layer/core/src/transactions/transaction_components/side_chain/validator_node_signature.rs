@@ -25,42 +25,44 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{PrivateKey, PublicKey, Signature},
+    types::{CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
 };
-use tari_crypto::keys::PublicKey as PublicKeyT;
 use tari_hashing::layer2::validator_registration_hasher;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     signature: Signature,
 }
 
 impl ValidatorNodeSignature {
-    pub fn new(public_key: PublicKey, signature: Signature) -> Self {
+    pub fn new(public_key: CompressedPublicKey, signature: Signature) -> Self {
         Self { public_key, signature }
     }
 
     pub fn sign(
         private_key: &PrivateKey,
-        sidechain_pk: Option<&PublicKey>,
-        claim_public_key: &PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        claim_public_key: &CompressedPublicKey,
         epoch: VnEpoch,
     ) -> Self {
-        let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-        let public_key = PublicKey::from_secret_key(private_key);
-        let challenge =
+        let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let public_key = CompressedPublicKey::from_secret_key(private_key);
+        let message =
             Self::construct_signature_message(&public_key, &public_nonce, sidechain_pk, claim_public_key, epoch);
-        let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
+        let signature = UncompressedSignature::sign_raw_uniform(private_key, secret_nonce, &message)
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
-        Self { public_key, signature }
+        Self {
+            public_key,
+            signature: Signature::new_from_schnorr(signature),
+        }
     }
 
     fn construct_signature_message(
-        public_key: &PublicKey,
-        public_nonce: &PublicKey,
-        sidechain_pk: Option<&PublicKey>,
-        claim_public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
+        public_nonce: &CompressedPublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        claim_public_key: &CompressedPublicKey,
         epoch: VnEpoch,
     ) -> [u8; 64] {
         validator_registration_hasher()
@@ -74,21 +76,24 @@ impl ValidatorNodeSignature {
 
     pub fn is_valid_signature_for(
         &self,
-        sidechain_pk: Option<&PublicKey>,
-        claim_public_key: &PublicKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        claim_public_key: &CompressedPublicKey,
         epoch: VnEpoch,
     ) -> bool {
-        let challenge = Self::construct_signature_message(
+        let message = Self::construct_signature_message(
             &self.public_key,
-            self.signature.get_public_nonce(),
+            self.signature.get_compressed_public_nonce(),
             sidechain_pk,
             claim_public_key,
             epoch,
         );
-        self.signature.verify_raw_uniform(&self.public_key, &challenge)
+        match (self.signature.to_schnorr_signature(), self.public_key.to_public_key()) {
+            (Ok(sig), Ok(public_key)) => sig.verify_raw_uniform(&public_key, &message),
+            _ => false,
+        }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &CompressedPublicKey {
         &self.public_key
     }
 

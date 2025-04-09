@@ -108,6 +108,7 @@ impl Block {
             consensus_constants.coinbase_min_maturity(),
             factories,
             self.header.height,
+            consensus_constants.max_block_coinbase_count(),
         )?;
         Ok(())
     }

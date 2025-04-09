@@ -4,9 +4,10 @@
 use alloc::vec::Vec;
 
 use ledger_device_sdk::io::Comm;
-use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use tari_utilities::ByteArray;
 
 use crate::{
+    crypto::keys::RistrettoSecretKey,
     utils::{alpha_hasher, derive_from_bip32_key, get_key_from_canonical_bytes},
     AppSW,
     KeyType,

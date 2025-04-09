@@ -650,7 +650,7 @@ impl<'a, P> NibbleRangeIterator<'a, P> {
     }
 }
 
-impl<'a, P> Iterator for NibbleRangeIterator<'a, P> {
+impl<P> Iterator for NibbleRangeIterator<'_, P> {
     type Item = (usize, usize);
 
     fn next(&mut self) -> Option<Self::Item> {

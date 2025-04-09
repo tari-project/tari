@@ -32,7 +32,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature};
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
@@ -63,12 +63,12 @@ pub struct TransactionKernel {
     pub lock_height: u64,
     /// Remainder of the sum of all transaction commitments (minus an offset). If the transaction is well-formed,
     /// amounts plus fee will sum to zero, and the excess is hence a valid public key.
-    pub excess: Commitment,
+    pub excess: CompressedCommitment,
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
     pub excess_sig: Signature,
     /// This is an optional field that must be set if the transaction contains a burned output.
-    pub burn_commitment: Option<Commitment>,
+    pub burn_commitment: Option<CompressedCommitment>,
 }
 
 impl TransactionKernel {
@@ -77,9 +77,9 @@ impl TransactionKernel {
         features: KernelFeatures,
         fee: MicroMinotari,
         lock_height: u64,
-        excess: Commitment,
+        excess: CompressedCommitment,
         excess_sig: Signature,
-        burn_commitment: Option<Commitment>,
+        burn_commitment: Option<CompressedCommitment>,
     ) -> TransactionKernel {
         TransactionKernel {
             version,
@@ -104,9 +104,9 @@ impl TransactionKernel {
         features: KernelFeatures,
         fee: MicroMinotari,
         lock_height: u64,
-        excess: Commitment,
+        excess: CompressedCommitment,
         excess_sig: Signature,
-        burn_commitment: Option<Commitment>,
+        burn_commitment: Option<CompressedCommitment>,
     ) -> TransactionKernel {
         TransactionKernel::new(
             TransactionKernelVersion::get_current_version(),
@@ -129,18 +129,23 @@ impl TransactionKernel {
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        let excess = self.excess.as_public_key();
-        let r = self.excess_sig.get_public_nonce();
+        let excess = self.excess.to_compressed_key();
+        let r = self.excess_sig.get_compressed_public_nonce();
         let c = TransactionKernel::build_kernel_signature_challenge(
             &self.version,
             r,
-            excess,
+            &excess,
             self.fee,
             self.lock_height,
             &self.features,
             &self.burn_commitment,
         );
-        if self.excess_sig.verify_raw_uniform(excess, &c) {
+
+        if self
+            .excess_sig
+            .to_schnorr_signature()?
+            .verify_raw_uniform(&excess.to_public_key()?, &c)
+        {
             Ok(())
         } else {
             Err(TransactionError::InvalidSignatureError(
@@ -150,7 +155,7 @@ impl TransactionKernel {
     }
 
     /// This gets the burn commitment if it exists
-    pub fn get_burn_commitment(&self) -> Result<&Commitment, TransactionError> {
+    pub fn get_burn_commitment(&self) -> Result<&CompressedCommitment, TransactionError> {
         match self.burn_commitment {
             Some(ref burn_commitment) => Ok(burn_commitment),
             None => Err(TransactionError::InvalidKernel("Burn commitment not found".to_string())),
@@ -161,8 +166,8 @@ impl TransactionKernel {
     /// but rather takes in the TransactionMetadata object.
     pub fn build_kernel_challenge_from_tx_meta(
         version: &TransactionKernelVersion,
-        sum_public_nonces: &PublicKey,
-        total_excess: &PublicKey,
+        sum_public_nonces: &CompressedPublicKey,
+        total_excess: &CompressedPublicKey,
         tx_meta: &TransactionMetadata,
     ) -> [u8; 64] {
         TransactionKernel::build_kernel_signature_challenge(
@@ -185,12 +190,12 @@ impl TransactionKernel {
     ///  Burn commitment if present
     pub fn build_kernel_signature_challenge(
         version: &TransactionKernelVersion,
-        sum_public_nonces: &PublicKey,
-        total_excess: &PublicKey,
+        sum_public_nonces: &CompressedPublicKey,
+        total_excess: &CompressedPublicKey,
         fee: MicroMinotari,
         lock_height: u64,
         features: &KernelFeatures,
-        burn_commitment: &Option<Commitment>,
+        burn_commitment: &Option<CompressedCommitment>,
     ) -> [u8; 64] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
@@ -202,8 +207,8 @@ impl TransactionKernel {
     /// Helper function to finalize the kernel excess signature challenge.
     pub fn finalize_kernel_signature_challenge(
         version: &TransactionKernelVersion,
-        sum_public_nonces: &PublicKey,
-        total_excess: &PublicKey,
+        sum_public_nonces: &CompressedPublicKey,
+        total_excess: &CompressedPublicKey,
         message: &[u8; 32],
     ) -> [u8; 64] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("kernel_signature")
@@ -222,7 +227,7 @@ impl TransactionKernel {
         fee: MicroMinotari,
         lock_height: u64,
         features: &KernelFeatures,
-        burn_commitment: &Option<Commitment>,
+        burn_commitment: &Option<CompressedCommitment>,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("kernel_message")
             .chain(version)

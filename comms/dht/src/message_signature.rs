@@ -23,16 +23,15 @@
 use std::convert::TryFrom;
 
 use rand::rngs::OsRng;
-use tari_comms::types::{CommsPublicKey, CommsSecretKey, Signature};
-use tari_crypto::keys::PublicKey;
-use tari_utilities::ByteArray;
+use tari_comms::types::{CommsPublicKey, CommsSecretKey, CompressedSignature, Signature};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 use crate::comms_dht_hash_domain_message_signature;
 
 #[derive(Debug, Clone)]
 pub struct MessageSignature {
     signer_public_key: CommsPublicKey,
-    signature: Signature,
+    signature: CompressedSignature,
 }
 
 fn construct_message_signature_hash(
@@ -61,18 +60,23 @@ impl MessageSignature {
         let challenge = construct_message_signature_hash(&signer_public_key, &nonce_pk, message);
         let signature = Signature::sign_raw_uniform(&signer_secret_key, nonce_s, &challenge)
             .expect("challenge is [u8;32] but SchnorrSignature::sign failed");
-
+        let compressed_signature = CompressedSignature::new_from_schnorr(signature);
         Self {
             signer_public_key,
-            signature,
+            signature: compressed_signature,
         }
     }
 
     /// Returns true if the provided message valid for this message signature, otherwise false.
-    pub fn verify(&self, message: &[u8]) -> bool {
-        let challenge =
-            construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
-        self.signature.verify_raw_uniform(&self.signer_public_key, &challenge)
+    pub fn verify(&self, message: &[u8]) -> Result<bool, ByteArrayError> {
+        let challenge = construct_message_signature_hash(
+            &self.signer_public_key,
+            self.signature.get_compressed_public_nonce(),
+            message,
+        );
+        let signature = self.signature.to_schnorr_signature()?;
+        let key = self.signer_public_key.to_public_key()?;
+        Ok(signature.verify_raw_uniform(&key, &challenge))
     }
 
     /// Consume this instance, returning the public key of the signer.
@@ -84,7 +88,7 @@ impl MessageSignature {
     pub fn to_proto(&self) -> ProtoMessageSignature {
         ProtoMessageSignature {
             signer_public_key: self.signer_public_key.to_vec(),
-            public_nonce: self.signature.get_public_nonce().to_vec(),
+            public_nonce: self.signature.get_compressed_public_nonce().to_vec(),
             signature: self.signature.get_signature().to_vec(),
         }
     }
@@ -105,7 +109,7 @@ impl TryFrom<ProtoMessageSignature> for MessageSignature {
 
         Ok(Self {
             signer_public_key,
-            signature: Signature::new(public_nonce, signature),
+            signature: CompressedSignature::new(public_nonce, signature),
         })
     }
 }
@@ -148,27 +152,28 @@ mod test {
     #[test]
     fn it_secures_the_message() {
         let (mac, _) = setup();
-        assert!(mac.verify(MSG));
-        assert!(!mac.verify(b"99.9% genuine"));
+        assert!(mac.verify(MSG).unwrap());
+        assert!(!mac.verify(b"99.9% genuine").unwrap());
     }
 
     #[test]
     fn it_is_secure_against_related_key_attack() {
         let (mut mac, signer_k) = setup();
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
-        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
+        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_compressed_public_nonce(), MSG);
         let msg_scalar = CommsSecretKey::from_uniform_bytes(&msg).unwrap();
 
         // Some `a` key
         let (bad_signer_k, bad_signer_pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        mac.signer_public_key = &bad_signer_pk + &signer_pk;
+        mac.signer_public_key =
+            CommsPublicKey::new_from_pk(&bad_signer_pk.to_public_key().unwrap() + &signer_pk.to_public_key().unwrap());
         // s' = s + e.a
-        mac.signature = Signature::new(
-            mac.signature.get_public_nonce().clone(),
+        mac.signature = CompressedSignature::new(
+            mac.signature.get_compressed_public_nonce().clone(),
             mac.signature.get_signature() + (&msg_scalar * bad_signer_k),
         );
 
-        assert!(!mac.verify(MSG));
+        assert!(!mac.verify(MSG).unwrap());
     }
 
     #[test]
@@ -177,11 +182,12 @@ mod test {
         let (nonce_k, _) = CommsPublicKey::random_keypair(&mut OsRng);
         // Get the original hashed challenge
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
-        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
+        let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_compressed_public_nonce(), MSG);
 
         // Change <R, s> to <R', s>. Note: We need signer_k because the Signature interface does not provide a way to
         // change just the public nonce, an attacker does not need the secret key.
-        mac.signature = Signature::sign_raw_uniform(&signer_k, nonce_k, &msg).unwrap();
-        assert!(!mac.verify(MSG));
+        mac.signature =
+            CompressedSignature::new_from_schnorr(Signature::sign_raw_uniform(&signer_k, nonce_k, &msg).unwrap());
+        assert!(!mac.verify(MSG).unwrap());
     }
 }

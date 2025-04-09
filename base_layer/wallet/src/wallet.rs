@@ -31,7 +31,14 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, SignatureWithDomain},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        RangeProof,
+        SignatureWithDomain,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -54,17 +61,28 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, TransactionKeyManagerInitializer},
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, OutputFeatures, UnblindedOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            EncryptedData,
+            OutputFeatures,
+            UnblindedOutput,
+        },
+        transaction_key_manager::{
+            error::KeyManagerServiceError,
+            key_manager::TariKeyManager,
+            storage::database::TransactionKeyManagerBackend,
+            SecretTransactionKeyManagerInterface,
+            TariKeyId,
+            TransactionKeyManagerInitializer,
+        },
         CryptoFactories,
     },
 };
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerBranch, KeyManagerServiceError},
+    key_manager_service::{KeyDigest, KeyManagerBranch},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -157,7 +175,7 @@ where
     TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
-    pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
+    pub async fn start<TKeyManagerBackend: TransactionKeyManagerBackend + 'static>(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
@@ -412,14 +430,12 @@ where
                     peer_manager.add_peer(current_peer.clone()).await?;
                 }
             }
-            connectivity
-                .add_peer_to_allow_list(current_peer.node_id.clone())
-                .await?;
             let mut peer_list = vec![current_peer];
             if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
                 backup_peers.remove(pos);
             }
             peer_list.append(&mut backup_peers);
+            self.update_allow_list(&peer_list).await?;
             self.wallet_connectivity
                 .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         } else {
@@ -451,10 +467,23 @@ where
                 backup_peers.remove(pos);
             }
             peer_list.append(&mut backup_peers);
+            self.update_allow_list(&peer_list).await?;
             self.wallet_connectivity
                 .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
         }
 
+        Ok(())
+    }
+
+    async fn update_allow_list(&mut self, peer_list: &[Peer]) -> Result<(), WalletError> {
+        let mut connectivity = self.comms.connectivity();
+        let current_allow_list = connectivity.get_allow_list().await?;
+        for peer in &current_allow_list {
+            connectivity.remove_peer_from_allow_list(peer.clone()).await?;
+        }
+        for peer in peer_list {
+            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
+        }
         Ok(())
     }
 
@@ -545,15 +574,15 @@ where
         input_data: ExecutionStack,
         source_address: TariAddress,
         features: OutputFeatures,
-        message: String,
         metadata_signature: ComAndPubSignature,
         script_private_key: &PrivateKey,
-        sender_offset_public_key: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         range_proof: Option<RangeProof>,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -570,7 +599,7 @@ where
             minimum_value_promise,
             range_proof,
         );
-        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, payment_id)
             .await
     }
 
@@ -581,24 +610,24 @@ where
         &mut self,
         unblinded_output: UnblindedOutput,
         source_address: TariAddress,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
             .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
             .await?;
+
         let tx_id = self
             .transaction_service
             .import_utxo_with_status(
                 value,
                 source_address,
-                message,
                 ImportStatus::Imported,
                 None,
                 None,
                 None,
                 wallet_output.to_transaction_output(&self.key_manager_service).await?,
-                PaymentId::Empty,
+                payment_id,
             )
             .await?;
         // As non-rewindable
@@ -626,17 +655,21 @@ where
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
         signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
-        signature.verify(public_key, message)
+        if let Ok(key) = public_key.clone().to_public_key() {
+            signature.verify(&key, message.as_bytes())
+        } else {
+            false
+        }
     }
 
     /// Appraise the expected outputs and a fee
     pub async fn preview_coin_split_with_commitments_no_amount(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
@@ -649,7 +682,7 @@ where
     /// Appraise the expected outputs and a fee
     pub async fn preview_coin_join_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
@@ -661,11 +694,11 @@ where
     /// Do a coin split
     pub async fn coin_split(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         amount_per_split: MicroMinotari,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -676,7 +709,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -690,10 +723,10 @@ where
     /// Do a coin split
     pub async fn coin_split_even(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -704,7 +737,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -718,10 +751,10 @@ where
     /// Do a coin split
     pub async fn coin_split_even_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        message: String,
+        payment_id: PaymentId,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -732,7 +765,7 @@ where
             Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, payment_id)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -745,20 +778,24 @@ where
 
     pub async fn coin_join(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
-        msg: Option<String>,
+        payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
+        let payment_id = payment_id.unwrap_or(PaymentId::open(
+            &format!("Coin join {} outputs", commitments.len()),
+            TxType::CoinJoin,
+        ));
         let coin_join_tx = self
             .output_manager_service
-            .create_coin_join(commitments, fee_per_gram)
+            .create_coin_join(commitments, fee_per_gram, payment_id.clone())
             .await;
 
         match coin_join_tx {
             Ok((tx_id, tx, output_value)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, tx, output_value, msg.unwrap_or_default())
+                    .submit_transaction(tx_id, tx, output_value, payment_id)
                     .await;
 
                 match coin_tx {
@@ -844,7 +881,7 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager =
-        KeyManager::<PublicKey, KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
+        TariKeyManager::<KeyDigest>::from(master_seed.clone(), KeyManagerBranch::Comms.get_branch_key(), 0);
     Ok(comms_key_manager.derive_key(0)?.key)
 }
 
@@ -853,7 +890,7 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    spend_key: &PublicKey,
+    spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
     let script = push_pubkey_script(spend_key);

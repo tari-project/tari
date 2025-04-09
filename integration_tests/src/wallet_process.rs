@@ -235,6 +235,7 @@ pub fn get_default_cli() -> Cli {
         profile_with_tokio_console: false,
         view_private_key: None,
         spend_key: None,
+        libtor_data_dir: None,
     }
 }
 

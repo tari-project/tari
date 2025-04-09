@@ -48,7 +48,7 @@ pub enum BaseNodeState {
     HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSync),
     // The best network chain metadata
-    Listening(Listening),
+    Listening(Listening, bool),
     // We're in a paused state, and will return to Listening after a timeout
     Waiting(Waiting),
     Shutdown(Shutdown),
@@ -56,7 +56,7 @@ pub enum BaseNodeState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
-    Initialized,
+    Initialized(bool), // Initialized with or without network silence
     HeadersSynchronized(SyncPeer, AttemptSyncResult),
     HeaderSyncFailed(String),
     ProceedToHorizonSync(Vec<SyncPeer>),
@@ -143,7 +143,7 @@ impl Display for StateEvent {
         #[allow(clippy::enum_glob_use)]
         use StateEvent::*;
         match self {
-            Initialized => write!(f, "Initialized"),
+            Initialized(..) => write!(f, "Initialized"),
             BlocksSynchronized => write!(f, "Synchronised Blocks"),
             HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{}` ({:?})", peer, result),
             HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({})", err),
@@ -171,7 +171,7 @@ impl Display for BaseNodeState {
             DecideNextSync(_) => "Deciding next sync",
             HorizonStateSync(_) => "Synchronizing horizon state",
             BlockSync(_) => "Synchronizing blocks",
-            Listening(_) => "Listening",
+            Listening(..) => "Listening",
             Shutdown(_) => "Shutting down",
             Waiting(_) => "Waiting",
         };

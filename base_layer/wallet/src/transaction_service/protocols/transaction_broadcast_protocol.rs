@@ -37,7 +37,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::{key_manager::TransactionKeyManagerInterface, transaction_components::Transaction},
+    transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
 };
 use tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};

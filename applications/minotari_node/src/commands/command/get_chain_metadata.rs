@@ -26,7 +26,7 @@ use clap::Parser;
 
 use super::{CommandContext, HandleCommand};
 
-/// Gets your base node chain meta data
+/// Gets your base node chain metadata
 #[derive(Debug, Parser)]
 pub struct Args {}
 

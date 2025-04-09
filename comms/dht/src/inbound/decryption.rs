@@ -33,6 +33,7 @@ use tari_comms::{
     types::CommsDHKE,
     BytesMut,
 };
+use tari_crypto::compressed_key::CompressedKey;
 use tari_utilities::ByteArray;
 use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -230,8 +231,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let ephemeral_public_key = header
             .ephemeral_public_key
             .as_ref()
-            .ok_or(DecryptionError::BadEncryptedMessageSemantics)?;
-        let shared_ephemeral_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
+            .ok_or(DecryptionError::BadEncryptedMessageSemantics)?
+            .to_public_key()
+            .map_err(|_| DecryptionError::InvalidSignature)?;
+        let shared_ephemeral_secret = CommsDHKE::new(node_identity.secret_key(), &ephemeral_public_key);
         let message = validated_msg.message();
 
         // Unmask the sender public key using an offset mask derived from the ECDH exchange
@@ -240,8 +243,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mask_inverse = mask.invert().ok_or(DecryptionError::MessageRejectDecryptionFailed)?;
         let sender_masked_public_key = validated_msg
             .authenticated_origin()
-            .ok_or(DecryptionError::MessageRejectDecryptionFailed)?;
-        let sender_public_key = mask_inverse * sender_masked_public_key;
+            .ok_or(DecryptionError::MessageRejectDecryptionFailed)?
+            .to_public_key()
+            .map_err(|_| DecryptionError::InvalidSignature)?;
+        let sender_public_key = mask_inverse * &sender_masked_public_key;
 
         trace!(
             target: LOG_TARGET,
@@ -264,7 +269,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 );
                 Ok(DecryptedDhtMessage::succeeded(
                     message_body,
-                    Some(sender_public_key),
+                    Some(CompressedKey::new_from_pk(sender_public_key)),
                     validated_msg.into_message(),
                 ))
             },
@@ -318,8 +323,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-        if !message_signature.verify(&binding_hash) {
-            return Err(DecryptionError::InvalidSignature);
+        match message_signature.verify(&binding_hash) {
+            Ok(true) => {},
+            _ => return Err(DecryptionError::InvalidSignature),
         }
 
         // The message is valid at this point

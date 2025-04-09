@@ -24,7 +24,6 @@ use std::iter::repeat_with;
 
 use multiaddr::Multiaddr;
 use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey;
 
 use super::{net_address::NetAddressesFactory, TestFactory, TestFactoryError};
 use crate::{

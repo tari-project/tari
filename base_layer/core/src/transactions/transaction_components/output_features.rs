@@ -28,7 +28,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 use tari_max_size::MaxSizeBytes;
 use tari_sidechain::EvictionProof;
 
@@ -44,7 +44,7 @@ use crate::transactions::transaction_components::{
 };
 
 /// Coinbase outputs are allowed to have metadata, but it has the following length limit
-pub type CoinBaseExtra = MaxSizeBytes<256>;
+pub type CoinBaseExtra = MaxSizeBytes<258>;
 
 /// Options for UTXO's
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
@@ -129,7 +129,7 @@ impl OutputFeatures {
 
     /// creates output features for a burned output with confidential output data
     pub fn create_burn_confidential_output(
-        claim_public_key: PublicKey,
+        claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<&PrivateKey>,
     ) -> OutputFeatures {
         let output_data = ConfidentialOutputData { claim_public_key };
@@ -165,7 +165,7 @@ impl OutputFeatures {
 
     pub fn for_validator_node_registration(
         signature: ValidatorNodeSignature,
-        claim_public_key: PublicKey,
+        claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<&PrivateKey>,
     ) -> OutputFeatures {
         let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key);

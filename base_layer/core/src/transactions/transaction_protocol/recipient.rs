@@ -25,14 +25,14 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{PrivateKey, PublicKey, Signature},
+    types::{CompressedPublicKey, PrivateKey, Signature},
 };
 
 use crate::{
     consensus::ConsensusConstants,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         transaction_components::{TransactionOutput, WalletOutput},
+        transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::{
             sender::{SingleRoundSenderData, TransactionSenderMessage},
             single_receiver::SingleReceiverTransactionProtocol,
@@ -68,7 +68,7 @@ impl fmt::Display for RecipientState {
 pub struct RecipientSignedMessage {
     pub tx_id: TxId,
     pub output: TransactionOutput,
-    pub public_spend_key: PublicKey,
+    pub public_spend_key: CompressedPublicKey,
     pub partial_signature: Signature,
     pub tx_metadata: TransactionMetadata,
     pub offset: PrivateKey,
@@ -165,9 +165,7 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::TariScript;
 
     use crate::{
@@ -175,10 +173,15 @@ mod test {
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::{OutputFeatures, TransactionKernelVersion, TransactionOutputVersion},
+            transaction_components::{
+                encrypted_data::PaymentId,
+                OutputFeatures,
+                TransactionKernelVersion,
+                TransactionOutputVersion,
+            },
+            transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 TransactionMetadata,
@@ -202,7 +205,7 @@ mod test {
             public_excess: sender_test_params.kernel_nonce_key_pk, // any random key will do
             public_nonce: sender_test_params.public_nonce_key_pk,  // any random key will do
             metadata: m.clone(),
-            message: "".to_string(),
+            payment_id: PaymentId::Empty,
             features,
             script,
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,
@@ -231,8 +234,10 @@ mod test {
             .await
             .unwrap();
         let offset = data.offset.clone();
-        let public_offset = PublicKey::from_secret_key(&offset);
-        let signing_pubkey = &pubkey - &public_offset;
+        let public_offset = CompressedPublicKey::from_secret_key(&offset);
+        let signing_pubkey = CompressedPublicKey::new_from_pk(
+            &pubkey.to_public_key().unwrap() - &public_offset.to_public_key().unwrap(),
+        );
         assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, signing_pubkey);
         let commitment = key_manager

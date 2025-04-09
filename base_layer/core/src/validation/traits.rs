@@ -23,7 +23,7 @@ use std::sync::{Arc, RwLock};
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -76,8 +76,8 @@ pub trait FinalHorizonStateValidation<B>: Send + Sync {
         &self,
         backend: &B,
         height: u64,
-        total_utxo_sum: &Commitment,
-        total_kernel_sum: &Commitment,
-        total_burned_sum: &Commitment,
+        total_utxo_sum: &CompressedCommitment,
+        total_kernel_sum: &CompressedCommitment,
+        total_burned_sum: &CompressedCommitment,
     ) -> Result<(), ValidationError>;
 }

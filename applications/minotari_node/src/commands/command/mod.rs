@@ -37,6 +37,7 @@ mod get_network_stats;
 mod get_peer;
 mod get_state_info;
 mod header_stats;
+mod list_bad_blocks;
 mod list_banned_peers;
 mod list_connections;
 mod list_headers;
@@ -51,6 +52,7 @@ mod rewind_blockchain;
 mod search_kernel;
 mod search_utxo;
 mod status;
+mod test_peer_liveness;
 mod unban_all_peers;
 mod version;
 mod watch_command;
@@ -97,6 +99,12 @@ pub struct Args {
     pub command: Command,
 }
 
+impl Args {
+    pub fn is_quit(&self) -> bool {
+        matches!(self.command, Command::Quit(_) | Command::Exit(_))
+    }
+}
+
 #[derive(Debug, Subcommand, EnumVariantNames)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Command {
@@ -112,6 +120,7 @@ pub enum Command {
     ResetOfflinePeers(reset_offline_peers::Args),
     RewindBlockchain(rewind_blockchain::Args),
     AddPeer(add_peer::ArgsAddPeer),
+    TestPeerLiveness(test_peer_liveness::ArgsTestPeerLiveness),
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
@@ -123,6 +132,7 @@ pub enum Command {
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
+    ListBadBlocks(list_bad_blocks::Args),
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
@@ -219,6 +229,7 @@ impl CommandContext {
                 Command::GetDbStats(_) |
                 Command::GetStateInfo(_) |
                 Command::ListReorgs(_) |
+                Command::ListBadBlocks(_) |
                 Command::GetBlock(_) |
                 Command::ListHeaders(_) |
                 Command::HeaderStats(_) |
@@ -233,6 +244,8 @@ impl CommandContext {
                 Command::CreateTlsCerts(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
+                // This test can potentially take a longer time and should be allowed to run longer
+                Command::TestPeerLiveness(_) => 240,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
                 Command::CheckDb(_) | Command::PeriodStats(_) | Command::RewindBlockchain(_) => 600,
             };
@@ -266,6 +279,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetDbStats(args) => self.handle_command(args).await,
             Command::GetPeer(args) => self.handle_command(args).await,
+            Command::TestPeerLiveness(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
             Command::GetNetworkStats(args) => self.handle_command(args).await,
             Command::ListPeers(args) => self.handle_command(args).await,
@@ -283,6 +297,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::ListBadBlocks(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,

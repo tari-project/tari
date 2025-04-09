@@ -34,18 +34,22 @@ use tari_chat_client::ChatClient;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey},
 };
 use tari_core::{
     blocks::Block,
     consensus::ConsensusManager,
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{Transaction, WalletOutput},
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+        },
     },
 };
-use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_crypto::keys::SecretKey;
 use thiserror::Error;
 
 use crate::{
@@ -112,8 +116,8 @@ impl Default for TariWorld {
         println!("\nWorld initialized - remove this line when called!\n");
         let wallet_private_key = PrivateKey::random(&mut OsRng);
         let default_payment_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&wallet_private_key),
-            PublicKey::from_secret_key(&wallet_private_key),
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
+            CompressedPublicKey::from_secret_key(&wallet_private_key),
             Network::LocalNet,
         );
         Self {
@@ -311,8 +315,8 @@ impl TariWorld {
     pub async fn script_key_id(&mut self) -> TariKeyId {
         match self.key_manager.import_key(self.wallet_private_key.clone()).await {
             Ok(key_id) => key_id,
-            Err(_) => KeyId::Imported {
-                key: PublicKey::from_secret_key(&self.wallet_private_key),
+            Err(_) => TariKeyId::Imported {
+                key: CompressedPublicKey::from_secret_key(&self.wallet_private_key),
             },
         }
     }

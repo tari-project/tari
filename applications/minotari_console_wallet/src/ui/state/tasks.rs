@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
-use log::{error, warn};
+use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
@@ -31,13 +31,12 @@ use minotari_wallet::{
 use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{FixedHash, PrivateKey, PublicKey},
+    types::{CompressedPublicKey, FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -54,7 +53,7 @@ pub async fn send_transaction_task(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -69,7 +68,7 @@ pub async fn send_transaction_task(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
+            payment_id,
         )
         .await
     {
@@ -130,7 +129,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
-    message: String,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -145,7 +143,6 @@ pub async fn send_one_sided_to_stealth_address_transaction(
             selection_criteria,
             output_features,
             fee_per_gram,
-            message,
             payment_id,
         )
         .await
@@ -184,10 +181,10 @@ pub async fn send_one_sided_to_stealth_address_transaction(
 #[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
-    claim_public_key: Option<PublicKey>,
+    claim_public_key: Option<CompressedPublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
-    message: String,
+    payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
     sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
@@ -201,12 +198,16 @@ pub async fn send_burn_transaction_task(
     // burning minotari
     // ----------------------------------------------------------------------------
 
+    debug!(
+        target: LOG_TARGET, "Burn tari - amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, selection: {}",
+        amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+    );
     let (burn_tx_id, original_proof) = match transaction_service_handle
         .burn_tari(
             amount,
             selection_criteria,
             fee_per_gram,
-            message,
+            payment_id,
             claim_public_key,
             sidechain_deployment_key,
         )
@@ -324,7 +325,7 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
-    sidechain_id_key: Option<&RistrettoSecretKey>,
+    sidechain_id_key: Option<&PrivateKey>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -380,7 +381,7 @@ pub async fn send_register_template_transaction_task(
         },
     };
 
-    let repository_commit_hash = match MaxSizeBytes::<32>::from_hex(&repository_commit_hash) {
+    let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash) {
         Ok(repository_commit_hash) => repository_commit_hash,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {}", e);

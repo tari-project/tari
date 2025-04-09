@@ -35,15 +35,21 @@ impl From<Peer> for grpc::Peer {
         let last_connection = peer
             .addresses
             .last_seen()
-            .map(|f| f.timestamp() as u64)
+            .map(|f| f.and_utc().timestamp() as u64)
             .unwrap_or_default();
         for address in peer.addresses.addresses() {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
-        let banned_until = peer.banned_until.map(|f| f.timestamp() as u64).unwrap_or_default();
+        let banned_until = peer
+            .banned_until
+            .map(|f| f.and_utc().timestamp() as u64)
+            .unwrap_or_default();
         let banned_reason = peer.banned_reason.to_string();
-        let offline_at = peer.offline_at().map(|f| f.timestamp() as u64).unwrap_or_default();
+        let offline_at = peer
+            .offline_at()
+            .map(|f| f.and_utc().timestamp() as u64)
+            .unwrap_or_default();
         let features = peer.features.bits();
 
         let supported_protocols = peer.supported_protocols.into_iter().map(|p| p.to_vec()).collect();

@@ -25,7 +25,7 @@ use std::{convert::TryInto, sync::Arc, time::Duration};
 use rand::rngs::OsRng;
 use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
@@ -38,7 +38,6 @@ use tari_contacts::contacts_service::{
     types::{Contact, MessageBuilder},
     ContactsServiceInitializer,
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization::P2pInitializer,
@@ -96,6 +95,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_self_liveness_check_interval: None,
+        cull_oldest_peer_rpc_connection_on_full: true,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
@@ -150,7 +150,7 @@ pub fn test_contacts_service() {
 
         let mut contacts = Vec::new();
         for i in 0..5 {
-            let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+            let (_secret_key, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
             let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
             contacts.push(Contact::new(random::string(8), address, None, None, false));
@@ -168,14 +168,14 @@ pub fn test_contacts_service() {
             .unwrap();
         assert_eq!(contact, contacts[0]);
 
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let (_secret_key, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
         match contact {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-                assert_eq!(val, DbKey::Contact(address.clone()))
+                assert_eq!(*val, DbKey::Contact(address.clone()))
             },
             _ => panic!("There should be a specific error here"),
         }
@@ -183,7 +183,7 @@ pub fn test_contacts_service() {
         match result {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
-                assert_eq!(val, DbKey::Contact(address))
+                assert_eq!(*val, DbKey::Contact(address))
             },
             _ => panic!("There should be a specific error here"),
         }
@@ -233,7 +233,7 @@ pub fn test_message_pagination() {
 
         let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let (_secret_key, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::default());
 
         let contact = Contact::new(random::string(8), address.clone(), None, None, false);

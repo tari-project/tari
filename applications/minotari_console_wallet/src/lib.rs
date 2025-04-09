@@ -33,7 +33,6 @@ mod recovery;
 mod ui;
 mod utils;
 mod wallet_modes;
-
 pub use cli::{
     BurnMinotariArgs,
     Cli,
@@ -108,6 +107,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         profile_with_tokio_console: false,
         view_private_key: None,
         spend_key: None,
+        libtor_data_dir: None,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -165,7 +165,12 @@ pub fn run_wallet_with_cli(
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
     if config.wallet.use_libtor && config.wallet.p2p.transport.is_tor() {
-        let tor = Tor::initialize()?;
+        let data_dir = if let Some(dir) = cli.libtor_data_dir.clone() {
+            dir.join("libtor").join("wallet")
+        } else {
+            cli.common.get_base_path().join("libtor").join("wallet")
+        };
+        let tor = Tor::initialize(data_dir)?;
         tor.update_comms_transport(&mut config.wallet.p2p.transport)?;
         tor.run_background();
         debug!(
@@ -265,6 +270,7 @@ pub fn run_wallet_with_cli(
     print!("\nShutting down wallet... ");
     shutdown.trigger();
     runtime.block_on(wallet.wait_until_shutdown());
+
     println!("Done.");
 
     result

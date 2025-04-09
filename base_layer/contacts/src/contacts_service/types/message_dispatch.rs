@@ -32,7 +32,7 @@ use crate::contacts_service::{
 
 #[derive(Clone)]
 pub enum MessageDispatch {
-    Message(Message),
+    Message(Box<Message>),
     DeliveryConfirmation(Confirmation),
     ReadConfirmation(Confirmation),
 }
@@ -42,7 +42,9 @@ impl TryFrom<proto::MessageDispatch> for MessageDispatch {
 
     fn try_from(dispatch: proto::MessageDispatch) -> Result<Self, String> {
         Ok(match dispatch.contents {
-            Some(proto::message_dispatch::Contents::Message(m)) => MessageDispatch::Message(Message::try_from(m)?),
+            Some(proto::message_dispatch::Contents::Message(m)) => {
+                MessageDispatch::Message(Box::new(Message::try_from(m)?))
+            },
             Some(proto::message_dispatch::Contents::DeliveryConfirmation(c)) => {
                 MessageDispatch::DeliveryConfirmation(Confirmation::try_from(c).map_err(|e| e.to_string())?)
             },
@@ -57,7 +59,7 @@ impl TryFrom<proto::MessageDispatch> for MessageDispatch {
 impl From<MessageDispatch> for proto::MessageDispatch {
     fn from(dispatch: MessageDispatch) -> Self {
         let content = match dispatch {
-            MessageDispatch::Message(m) => proto::message_dispatch::Contents::Message(m.into()),
+            MessageDispatch::Message(m) => proto::message_dispatch::Contents::Message((*m).into()),
             MessageDispatch::DeliveryConfirmation(c) => {
                 proto::message_dispatch::Contents::DeliveryConfirmation(c.into())
             },

@@ -40,6 +40,8 @@ use minotari_wallet::{
     },
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
+    util::watch::Watch,
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -47,7 +49,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, FixedHash, PublicKey},
+    types::{ComAndPubSignature, CompressedPublicKey, FixedHash},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -62,17 +64,21 @@ use tari_core::{
     proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -88,7 +94,6 @@ use crate::support::{
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features},
 };
-
 fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
     Ok(TransactionWeight::latest().round_up_features_and_scripts_size(
         OutputFeatures::default().get_serialized_size()? + TariScript::default().get_serialized_size()?,
@@ -103,7 +108,7 @@ struct TestOmsService {
     pub mock_rpc_service: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     pub node_id: Arc<NodeIdentity>,
     pub base_node_wallet_rpc_mock_state: BaseNodeWalletRpcMockState,
-    pub node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
+    pub _node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
     pub key_manager_handle: MemoryDbKeyManager,
 }
 
@@ -158,6 +163,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let key_manager = create_memory_db_key_manager().unwrap();
 
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -170,6 +181,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         Network::LocalNet,
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
+        scanner_handle,
     )
     .await
     .unwrap();
@@ -185,7 +197,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         mock_rpc_service: mock_server,
         node_id: server_node_identity,
         base_node_wallet_rpc_mock_state: rpc_service_state,
-        node_event: event_publisher_bns,
+        _node_event: event_publisher_bns,
         key_manager_handle: key_manager,
     }
 }
@@ -222,6 +234,10 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
     let connectivity = create_wallet_connectivity_mock();
     let key_manager = create_memory_db_key_manager().unwrap();
+    let (event_sender, _) = broadcast::channel(200);
+    let recovery_message_watch = Watch::new("unset".to_string());
+    let one_sided_message_watch = Watch::new("unset".to_string());
+    let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -234,6 +250,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         Network::LocalNet,
         connectivity,
         key_manager.clone(),
+        scanner_handle,
     )
     .await
     .unwrap();
@@ -269,6 +286,7 @@ async fn generate_sender_transaction_message(
             Covenant::default(),
             MicroMinotari::zero(),
             amount,
+            TariAddress::default(),
         )
         .await
         .unwrap();
@@ -400,10 +418,11 @@ async fn test_utxo_selection_no_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap_err();
@@ -436,10 +455,11 @@ async fn test_utxo_selection_no_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            String::new(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -530,10 +550,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap_err();
@@ -612,10 +633,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -640,10 +662,11 @@ async fn test_utxo_selection_with_chain_metadata() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -735,10 +758,11 @@ async fn test_utxo_selection_with_tx_priority() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -781,10 +805,11 @@ async fn send_not_enough_funds() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
     {
@@ -848,10 +873,11 @@ async fn send_no_change() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -914,10 +940,11 @@ async fn send_not_enough_for_change() {
             OutputFeatures::default(),
             fee_per_gram,
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
     {
@@ -955,10 +982,11 @@ async fn cancel_transaction() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1060,10 +1088,11 @@ async fn test_get_balance() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1131,10 +1160,11 @@ async fn sending_transaction_persisted_while_offline() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1164,10 +1194,11 @@ async fn sending_transaction_persisted_while_offline() {
             OutputFeatures::default(),
             MicroMinotari::from(4),
             TransactionMetadata::default(),
-            "".to_string(),
             script!(Nop).unwrap(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1475,10 +1506,11 @@ async fn test_txo_validation() {
             OutputFeatures::default(),
             MicroMinotari::from(10),
             TransactionMetadata::default(),
-            "".to_string(),
             TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
+            TariAddress::default(),
+            PaymentId::Empty,
         )
         .await
         .unwrap();
@@ -1803,31 +1835,7 @@ async fn test_txo_validation() {
     oms.base_node_wallet_rpc_mock_state
         .set_query_deleted_response(query_deleted_response.clone());
 
-    // Trigger validation through a base_node_service event
-    oms.node_event
-        .send(Arc::new(BaseNodeEvent::NewBlockDetected(
-            (*block5_header_reorg.hash()).into(),
-            5,
-        )))
-        .unwrap();
-
-    let _result = oms
-        .base_node_wallet_rpc_mock_state
-        .wait_pop_get_header_by_height_calls(2, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    let _utxo_query_calls = oms
-        .base_node_wallet_rpc_mock_state
-        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    let _query_deleted_calls = oms
-        .base_node_wallet_rpc_mock_state
-        .wait_pop_query_deleted(1, Duration::from_secs(60))
-        .await
-        .unwrap();
+    oms.output_manager_handle.validate_txos().await.unwrap();
 
     // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next
     // step
@@ -1927,6 +1935,7 @@ async fn test_txo_validation() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_txo_revalidation() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
 
@@ -2184,7 +2193,7 @@ async fn scan_for_recovery_test() {
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
             .await
             .unwrap();
-        let script_key_id = KeyId::Derived {
+        let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask_key.key_id).into(),
         };
         let public_script_key = oms
@@ -2208,7 +2217,7 @@ async fn scan_for_recovery_test() {
             script!(Nop).unwrap(),
             inputs!(public_script_key),
             script_key_id,
-            PublicKey::default(),
+            CompressedPublicKey::default(),
             ComAndPubSignature::default(),
             0,
             Covenant::new(),

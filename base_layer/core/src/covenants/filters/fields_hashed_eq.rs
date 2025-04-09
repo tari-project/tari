@@ -57,7 +57,7 @@ mod test {
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
-        transactions::{key_manager::create_memory_db_key_manager, transaction_components::OutputFeatures},
+        transactions::{transaction_components::OutputFeatures, transaction_key_manager::create_memory_db_key_manager},
     };
 
     #[tokio::test]

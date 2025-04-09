@@ -407,13 +407,13 @@ pub struct LeafKeyBitIterator<'a> {
     // invariant pos.end == leaf_key_bytes.len() * 8;
 }
 
-impl<'a> DoubleEndedIterator for LeafKeyBitIterator<'a> {
+impl DoubleEndedIterator for LeafKeyBitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.pos.next_back().map(|x| self.get_bit(x))
     }
 }
 
-impl<'a> ExactSizeIterator for LeafKeyBitIterator<'a> {}
+impl ExactSizeIterator for LeafKeyBitIterator<'_> {}
 
 impl<'a> LeafKeyBitIterator<'a> {
     /// Constructs a new `LeafKeyBitIterator` using given `leaf_key_bytes`.
@@ -432,7 +432,7 @@ impl<'a> LeafKeyBitIterator<'a> {
     }
 }
 
-impl<'a> Iterator for LeafKeyBitIterator<'a> {
+impl Iterator for LeafKeyBitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -679,7 +679,7 @@ pub struct NibbleBitIterator<'a> {
     pos: Range<usize>,
 }
 
-impl<'a> Peekable for NibbleBitIterator<'a> {
+impl Peekable for NibbleBitIterator<'_> {
     /// Returns the `next()` value without advancing the iterator.
     fn peek(&self) -> Option<Self::Item> {
         if self.pos.start < self.pos.end {
@@ -691,7 +691,7 @@ impl<'a> Peekable for NibbleBitIterator<'a> {
 }
 
 /// BitIterator spits out a boolean each time. True/false denotes 1/0.
-impl<'a> Iterator for NibbleBitIterator<'a> {
+impl Iterator for NibbleBitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -700,7 +700,7 @@ impl<'a> Iterator for NibbleBitIterator<'a> {
 }
 
 /// Support iterating bits in reversed order.
-impl<'a> DoubleEndedIterator for NibbleBitIterator<'a> {
+impl DoubleEndedIterator for NibbleBitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.pos.next_back().map(|i| self.nibble_path.get_bit(i))
     }
@@ -725,7 +725,7 @@ pub struct NibbleIterator<'a> {
 }
 
 /// NibbleIterator spits out a byte each time. Each byte must be in range [0, 16).
-impl<'a> Iterator for NibbleIterator<'a> {
+impl Iterator for NibbleIterator<'_> {
     type Item = Nibble;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -733,7 +733,7 @@ impl<'a> Iterator for NibbleIterator<'a> {
     }
 }
 
-impl<'a> Peekable for NibbleIterator<'a> {
+impl Peekable for NibbleIterator<'_> {
     /// Returns the `next()` value without advancing the iterator.
     fn peek(&self) -> Option<Self::Item> {
         if self.pos.start < self.pos.end {

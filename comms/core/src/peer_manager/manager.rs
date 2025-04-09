@@ -381,13 +381,12 @@ mod test {
     use std::borrow::BorrowMut;
 
     use rand::{rngs::OsRng, Rng};
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
         let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
 

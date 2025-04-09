@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
+    sync::Arc,
 };
 
 use futures::{
@@ -55,7 +56,8 @@ use minotari_app_grpc::tari_rpc::{
     GetConnectivityRequest,
     GetIdentityRequest,
     GetIdentityResponse,
-    GetTemplateRegistrationFeeResponse,
+    GetStateRequest,
+    GetStateResponse,
     GetTransactionInfoRequest,
     GetTransactionInfoResponse,
     GetUnspentAmountsResponse,
@@ -86,7 +88,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -98,23 +100,30 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, UnblindedOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            OutputFeatures,
+            UnblindedOutput,
+        },
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
-use tokio::{sync::broadcast, task};
+use tokio::{
+    sync::{broadcast, Mutex},
+    task,
+};
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::{convert_to_transaction_event, TransactionWrapper},
+    grpc::{convert_to_transaction_event, wallet_debouncer::WalletDebouncer, TransactionWrapper},
     notifier::{CANCELLED, CONFIRMATION, MINED, QUEUED, RECEIVED, SENT},
 };
 
@@ -138,13 +147,25 @@ async fn send_transaction_event(
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
+    debouncer: Arc<Mutex<WalletDebouncer>>,
 }
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        Ok(Self { wallet, rules })
+        let debouncer = WalletDebouncer::new(
+            wallet.output_manager_service.clone(),
+            wallet.transaction_service.clone(),
+            wallet.wallet_connectivity.clone(),
+            wallet.utxo_scanner_service.clone(),
+            wallet.comms.shutdown_signal(),
+        );
+        Ok(Self {
+            wallet,
+            rules,
+            debouncer: Arc::new(Mutex::new(debouncer)),
+        })
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {
@@ -189,14 +210,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
         let mut connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
-        let grpc_connectivity = match status {
-            minotari_wallet::connectivity_service::OnlineStatus::Connecting => OnlineStatus::Connecting,
-            minotari_wallet::connectivity_service::OnlineStatus::Online => OnlineStatus::Online,
-            minotari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
-        };
-        Ok(Response::new(CheckConnectivityResponse {
-            status: grpc_connectivity as i32,
-        }))
+        Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
 
     async fn check_for_updates(
@@ -248,7 +262,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<SetBaseNodeRequest>,
     ) -> Result<Response<SetBaseNodeResponse>, Status> {
         let message = request.into_inner();
-        let public_key = PublicKey::from_hex(&message.public_key_hex)
+        let public_key = CompressedPublicKey::from_hex(&message.public_key_hex)
             .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
         let net_address = message
             .net_address
@@ -267,16 +281,55 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
-        let mut output_service = self.get_output_manager_service();
-        let balance = match output_service.get_balance().await {
-            Ok(b) => b,
-            Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
+        let start = std::time::Instant::now();
+        let balance = {
+            let mut get_balance = self.debouncer.lock().await;
+            match get_balance.get_balance().await {
+                Ok(b) => b,
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
+            }
         };
-        Ok(Response::new(GetBalanceResponse {
-            available_balance: balance.available_balance.0,
-            pending_incoming_balance: balance.pending_incoming_balance.0,
-            pending_outgoing_balance: balance.pending_outgoing_balance.0,
-            timelocked_balance: balance.time_locked_balance.unwrap_or_default().0,
+        trace!(target: LOG_TARGET, "'get_balance' completed in {:.2?}", start.elapsed());
+        Ok(Response::new(balance))
+    }
+
+    async fn get_state(&self, _request: Request<GetStateRequest>) -> Result<Response<GetStateResponse>, Status> {
+        let start = std::time::Instant::now();
+        let (balance, scanned_height) = {
+            let mut debouncer = self.debouncer.lock().await;
+            let balance = match debouncer.get_balance().await {
+                Ok(b) => b,
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
+            };
+            let scanned_height = debouncer.get_scanned_height().await;
+            (Some(balance), scanned_height)
+        };
+
+        let status = self
+            .comms()
+            .connectivity()
+            .get_connectivity_status()
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let mut base_node_service = self.wallet.base_node_service.clone();
+
+        let network = Some(tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: base_node_service
+                .get_base_node_latency()
+                .await
+                .map_err(|err| Status::internal(err.to_string()))?
+                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or_default(),
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
+        });
+
+        trace!(target: LOG_TARGET, "'get_state' completed in {:.2?}", start.elapsed());
+        Ok(Response::new(GetStateResponse {
+            scanned_height,
+            balance,
+            network,
         }))
     }
 
@@ -284,11 +337,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         let unspent_amounts = match output_service.get_unspent_outputs().await {
             Ok(uo) => uo,
             Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
         };
+        trace!(target: LOG_TARGET, "'get_unspent_amounts' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
@@ -302,6 +357,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         output_service
             .revalidate_all_outputs()
@@ -312,6 +368,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .revalidate_all_transactions()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
+        trace!(target: LOG_TARGET, "'revalidate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(RevalidateResponse {}))
     }
 
@@ -319,6 +376,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
+        let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         output_service
             .validate_txos()
@@ -329,6 +387,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .validate_transactions()
             .await
             .map_err(|e| Status::unknown(e.to_string()))?;
+        trace!(target: LOG_TARGET, "'validate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(ValidateResponse {}))
     }
 
@@ -350,7 +409,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                message.message,
+                PaymentId::from_bytes(&message.payment_id),
             )
             .await
         {
@@ -410,7 +469,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        "Claiming HTLC transaction with pre-image".to_string(),
+                        PaymentId::open("Claiming HTLC transaction with pre-image", TxType::ClaimAtomicSwap),
                     )
                     .await
                 {
@@ -461,7 +520,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         {
             Ok((tx_id, _fee, amount, tx)) => {
                 match transaction_service
-                    .submit_transaction(tx_id, tx, amount, "Creating HTLC refund transaction".to_string())
+                    .submit_transaction(
+                        tx_id,
+                        tx,
+                        amount,
+                        PaymentId::open("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
+                    )
                     .await
                 {
                     Ok(()) => TransferResult {
@@ -508,7 +572,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     address,
                     dest.amount,
                     dest.fee_per_gram,
-                    dest.message,
                     dest.payment_type,
                     dest.payment_id,
                 ))
@@ -517,10 +580,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, message, payment_type, payment_id) in recipients {
-            let payment_id = PaymentId::from_bytes(&payment_id)
-                .map_err(|_| "Invalid payment id".to_string())
-                .map_err(Status::invalid_argument)?;
+        for (hex_address, address, amount, fee_per_gram, payment_type, payment_id) in recipients {
+            let payment_id = PaymentId::from_bytes(&payment_id);
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
@@ -533,7 +594,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
+                                payment_id,
                             )
                             .await
                     } else if payment_type == PaymentType::OneSided as i32 {
@@ -544,7 +605,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
                                 payment_id,
                             )
                             .await
@@ -556,7 +616,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 UtxoSelectionCriteria::default(),
                                 OutputFeatures::default(),
                                 fee_per_gram.into(),
-                                message,
                                 payment_id,
                             )
                             .await
@@ -607,12 +666,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                message.message,
+                PaymentId::from_bytes(&message.payment_id),
                 if message.claim_public_key.is_empty() {
                     None
                 } else {
                     Some(
-                        PublicKey::from_canonical_bytes(&message.claim_public_key)
+                        CompressedPublicKey::from_canonical_bytes(&message.claim_public_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
@@ -694,61 +753,66 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
         let (mut sender, receiver) = mpsc::channel(100);
 
-        // let event_listener = self.events_channel.clone();
-
-        // let mut shutdown_signal = self.wallet;
+        let mut shutdown_signal = self.wallet.comms.shutdown_signal();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
 
         task::spawn(async move {
             loop {
                 tokio::select! {
-                        result = transaction_service_events.recv() => {
-                            match result {
-                                Ok(msg) => {
-                                    use minotari_wallet::transaction_service::handle::TransactionEvent::*;
-                                    match (*msg).clone() {
-                                        ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
-                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
-                                        TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
-                                        TransactionCancelled(tx_id, _) => {
-                                            match transaction_service.get_any_transaction(tx_id).await{
-                                                Ok(Some(wallet_tx)) => {
-                                                    use WalletTransaction::*;
-                                                    let transaction_event = match wallet_tx {
-                                                        Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
-                                                        PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
-                                                        PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
-                                                    };
-                                                    send_transaction_event(transaction_event, &mut sender).await;
-                                                },
-                                                Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                                                _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
-                                            }
-                                        },
-                                        TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
-                                        TransactionSendResult(tx_id, status) => {
-                                            let is_sent = status.direct_send_result || status.store_and_forward_send_result;
-                                            let event = if is_sent { SENT } else { QUEUED };
-                                            handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
-                                        },
-                                        TransactionValidationStateChanged(_t_operation_id) => {
-                                            send_transaction_event(simple_event("unknown"), &mut sender).await;
-                                        },
-                                        ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) | TransactionMinedRequestTimedOut(_) | TransactionImported(_) => {
-                                            send_transaction_event(simple_event("not_supported"), &mut sender).await;
-                                        },
-                                        // Only the above variants trigger state refresh
-                                        _ => (),
-                                    }
-                                },
-                                Err(broadcast::error::RecvError::Lagged(n)) => {
-                                    warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                    result = transaction_service_events.recv() => {
+                        match result {
+                            Ok(msg) => {
+                                use minotari_wallet::transaction_service::handle::TransactionEvent::*;
+                                match (*msg).clone() {
+                                    ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
+                                    TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
+                                    TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
+                                    TransactionCancelled(tx_id, _) => {
+                                        match transaction_service.get_any_transaction(tx_id).await{
+                                            Ok(Some(wallet_tx)) => {
+                                                use WalletTransaction::*;
+                                                let transaction_event = match wallet_tx {
+                                                    Completed(tx)  => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Completed(Box::new(tx))),
+                                                    PendingInbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Inbound(Box::new(tx))),
+                                                    PendingOutbound(tx) => convert_to_transaction_event(CANCELLED.to_string(), TransactionWrapper::Outbound(Box::new(tx))),
+                                                };
+                                                send_transaction_event(transaction_event, &mut sender).await;
+                                            },
+                                            Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                                            _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                                        }
+                                    },
+                                    TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
+                                    TransactionSendResult(tx_id, status) => {
+                                        let is_sent = status.direct_send_result || status.store_and_forward_send_result;
+                                        let event = if is_sent { SENT } else { QUEUED };
+                                        handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
+                                    },
+                                    TransactionValidationStateChanged(_t_operation_id) => {
+                                        send_transaction_event(simple_event("unknown"), &mut sender).await;
+                                    },
+                                    ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) => {
+                                        send_transaction_event(simple_event("not_supported"), &mut sender).await;
+                                    },
+                                    // Only the above variants trigger state refresh
+                                    _ => (),
                                 }
-                                Err(broadcast::error::RecvError::Closed) => {}
+                            },
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
                             }
-                }
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
                     }
+                    _ = shutdown_signal.wait() => {
+                        info!(
+                            target: LOG_TARGET,
+                            "gRPC stream_transaction_events shutting down because the shutdown signal was received"
+                        );
+                        break;
+                    },
+                }
             }
         });
         Ok(Response::new(receiver))
@@ -758,7 +822,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<GetCompletedTransactionsRequest>,
     ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
-        debug!(
+        let start = std::time::Instant::now();
+        trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
         );
@@ -775,7 +840,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
-            for (i, (_, txn)) in transactions.iter().enumerate() {
+            for (i, txn) in transactions.iter().enumerate() {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
@@ -793,13 +858,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
-                        message: txn.message.clone(),
-                        payment_id: txn.payment_id.as_ref().map(|id| id.to_bytes()).unwrap_or_default(),
+                        payment_id: txn.payment_id.to_bytes(),
+                        mined_in_block_height: txn.mined_height.unwrap_or(0),
                     }),
                 };
                 match sender.send(Ok(response)).await {
                     Ok(_) => {
-                        debug!(
+                        trace!(
                             target: LOG_TARGET,
                             "GetAllCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
@@ -820,6 +885,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
             }
         });
+        trace!(target: LOG_TARGET, "'get_completed_transactions' completed in {:.2?}", start.elapsed());
 
         Ok(Response::new(receiver))
     }
@@ -836,7 +902,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                message.message,
+                PaymentId::open("Creating coin-split transaction", TxType::CoinSplit),
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -866,7 +932,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        "Imported via gRPC".to_string(),
+                        PaymentId::from_bytes(&message.payment_id),
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
@@ -1032,8 +1098,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
-        let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
-            .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
+        let validator_node_claim_public_key =
+            CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
+                .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
         let sidechain_key = if request.sidechain_deployment_key.is_empty() {
             None
@@ -1058,7 +1125,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 sidechain_key,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                request.message,
+                PaymentId::from_bytes(&request.payment_id),
             )
             .await
         {
@@ -1077,62 +1144,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         };
         Ok(Response::new(response))
-    }
-
-    /// Returns the fee to register a template.
-    /// This method is needed by Tari CLI now, so it provides a better UX and tells the user instantly
-    /// how much a new template registration will cost.
-    async fn get_template_registration_fee(
-        &self,
-        request: Request<CreateTemplateRegistrationRequest>,
-    ) -> Result<Response<GetTemplateRegistrationFeeResponse>, Status> {
-        let message = request.into_inner();
-        let mut transaction_service = self.wallet.transaction_service.clone();
-        let fee_per_gram = message.fee_per_gram.into();
-        let fee = transaction_service
-            .code_template_fee(
-                message
-                    .template_name
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
-                message
-                    .template_version
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
-                if let Some(tt) = message.template_type {
-                    tt.try_into()
-                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("template type is missing"));
-                },
-                if let Some(bi) = message.build_info {
-                    bi.try_into()
-                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
-                } else {
-                    return Err(Status::invalid_argument("build info is missing"));
-                },
-                message
-                    .binary_sha
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
-                message
-                    .binary_url
-                    .try_into()
-                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
-                fee_per_gram,
-                if message.sidechain_deployment_key.is_empty() {
-                    None
-                } else {
-                    Some(
-                        RistrettoSecretKey::from_canonical_bytes(&message.sidechain_deployment_key)
-                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
-                    )
-                },
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(GetTemplateRegistrationFeeResponse { fee: fee.as_u64() }))
     }
 
     async fn submit_validator_eviction_proof(
@@ -1168,7 +1179,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 proof,
                 request.fee_per_gram.into(),
                 sidechain_key,
-                request.message,
+                PaymentId::Open {
+                    user_data: request.message.into_bytes(),
+                    tx_type: TxType::PaymentToSelf,
+                },
             )
             .await
         {
@@ -1204,15 +1218,17 @@ async fn handle_pending_outbound(
     transaction_service: &mut TransactionServiceHandle,
     sender: &mut Sender<Result<TransactionEventResponse, Status>>,
 ) {
-    match transaction_service.get_pending_outbound_transactions().await {
-        Ok(mut txs) => {
-            if let Some(tx) = txs.remove(&tx_id) {
+    use models::WalletTransaction::PendingOutbound;
+    match transaction_service.get_any_transaction(tx_id).await {
+        Ok(tx) => match tx {
+            Some(PendingOutbound(tx)) => {
                 let transaction_event =
-                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx)));
+                    convert_to_transaction_event(event.to_string(), TransactionWrapper::Outbound(Box::new(tx.clone())));
                 send_transaction_event(transaction_event, sender).await;
-            } else {
+            },
+            _ => {
                 error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
-            }
+            },
         },
         Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
     }
@@ -1227,7 +1243,6 @@ fn simple_event(event: &str) -> TransactionEvent {
         status: event.to_string(),
         direction: event.to_string(),
         amount: 0,
-        message: String::default(),
         payment_id: vec![],
     }
 }
@@ -1249,8 +1264,8 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: 0,
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            message: tx.message,
-            payment_id: vec![],
+            payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: 0,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1263,8 +1278,8 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: tx.fee.into(),
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            message: tx.message,
-            payment_id: vec![],
+            payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: 0,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -1281,8 +1296,8 @@ fn convert_wallet_transaction_into_transaction_info(
                 .first_kernel_excess_sig()
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
-            message: tx.message,
-            payment_id: tx.payment_id.map(|id| id.to_bytes()).unwrap_or_default(),
+            payment_id: tx.payment_id.to_bytes(),
+            mined_in_block_height: tx.mined_height.unwrap_or(0),
         },
     }
 }

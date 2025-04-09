@@ -147,7 +147,7 @@ pub unsafe extern "C" fn destroy_contacts_liveness_data(ptr: *mut ContactsLivene
 
 #[cfg(test)]
 mod test {
-    use chrono::NaiveDateTime;
+    use chrono::DateTime;
     use tari_contacts::contacts_service::service::{ContactMessageType, ContactOnlineStatus};
     use tari_utilities::epoch_time::EpochTime;
 
@@ -242,7 +242,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 None,
-                NaiveDateTime::from_timestamp_opt(i64::try_from(timestamp).unwrap(), 0),
+                DateTime::from_timestamp(i64::try_from(timestamp).unwrap(), 0),
                 ContactMessageType::Ping,
                 ContactOnlineStatus::Online,
             );

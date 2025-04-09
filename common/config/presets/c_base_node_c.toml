@@ -39,11 +39,14 @@
 # (min value = 30, default value = 1500).
 #buffer_size = 1500
 
-# Liveness meta data auto ping interval between peers (default = 30 s)
+# Liveness metadata auto ping interval between peers (default = 30 s)
 #metadata_auto_ping_interval = 30
 
 # Obscure GRPC error responses (default = false)
 #report_grpc_error = false
+
+# Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
+# tari_pulse_interval = 120
 
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
@@ -162,6 +165,10 @@ listener_self_liveness_check_interval = 15
 #rpc_max_simultaneous_sessions = 100
 # The maximum comms RPC sessions allowed per peer (default value = 10).
 #rpc_max_sessions_per_peer = 10
+# If true, and the maximum per peer RPC sessions is reached, the RPC server will close an old session and replace it
+# with a new session. If false, the RPC server will reject the new session and preserve the older session.
+# (default value = true).
+#pub cull_oldest_peer_rpc_connection_on_full = true
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------

@@ -86,7 +86,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
-                    debug!(target: LOG_TARGET, "Server accepted version: {}", version);
+                    debug!(target: LOG_TARGET, "Local server accepted version: {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
                         ..Default::default()
@@ -152,7 +152,7 @@ where T: AsyncRead + AsyncWrite + Unpin
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
-                debug!(target: LOG_TARGET, "Server accepted version {}", version);
+                debug!(target: LOG_TARGET, "Remote server accepted version {}", version);
                 Ok(())
             },
             Ok(Some(Err(err))) => {

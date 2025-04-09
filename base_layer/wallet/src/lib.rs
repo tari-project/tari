@@ -34,8 +34,10 @@ pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_core::transactions::key_manager::TransactionKeyManagerWrapper;
-use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
+use tari_core::transactions::transaction_key_manager::{
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+    TransactionKeyManagerWrapper,
+};
 pub use wallet::Wallet;
 
 use crate::{
@@ -54,5 +56,5 @@ pub type WalletSqlite = Wallet<
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase<WalletDbConnection>,
-    TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<WalletDbConnection>>,
+    TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>,
 >;

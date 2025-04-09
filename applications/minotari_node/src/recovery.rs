@@ -81,14 +81,27 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
-                .map_err(|e| {
-                    error!(target: LOG_TARGET, "Error opening db: {}", e);
-                    anyhow!("Could not open DB: {}", e)
-                })?;
+            let backend = create_lmdb_database(
+                &node_config.lmdb_path,
+                node_config.lmdb.clone(),
+                node_config.storage.pruning_interval,
+                node_config.storage.pruning_horizon,
+                rules.clone(),
+            )
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error opening db: {}", e);
+                anyhow!("Could not open DB: {}", e)
+            })?;
             let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone(), rules.clone()).map_err(|e| {
+            let temp = create_lmdb_database(
+                &temp_path,
+                node_config.lmdb.clone(),
+                node_config.storage.pruning_interval,
+                node_config.storage.pruning_horizon,
+                rules.clone(),
+            )
+            .map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
@@ -118,6 +131,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         difficulty_calculator,
         smt,
     )?;
+    db.start()?;
     do_recovery(db.into(), temp_db).await?;
 
     info!(
@@ -154,6 +168,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         DifficultyCalculator::new(rules, Default::default()),
         smt,
     )?;
+    source_database.start()?;
     let max_height = source_database
         .get_chain_metadata()
         .map_err(|e| anyhow!("Could not get max chain height: {}", e))?

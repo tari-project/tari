@@ -49,12 +49,19 @@ pub struct HeaderSyncState {
 impl HeaderSyncState {
     pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
         // Sort by latency lowest to highest
-        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
-            (None, None) => Ordering::Equal,
+        sync_peers.sort_by(|a, b| match a.claimed_difficulty().cmp(&b.claimed_difficulty()) {
+            Ordering::Less => Ordering::Less,
             // No latency goes to the end
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(la), Some(lb)) => la.cmp(&lb),
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => {
+                match (a.latency(), b.latency()) {
+                    (None, None) => Ordering::Equal,
+                    // No latency goes to the end
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (Some(la), Some(lb)) => la.cmp(&lb),
+                }
+            },
         });
         Self {
             sync_peers,
@@ -157,11 +164,8 @@ impl HeaderSyncState {
         });
 
         let timer = Instant::now();
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok((sync_peer, sync_result)) => {
-                log_mdc::extend(mdc);
                 info!(
                     target: LOG_TARGET,
                     "Headers synchronized from peer {} in {:.0?}",
@@ -188,12 +192,10 @@ impl HeaderSyncState {
                 match err {
                     BlockHeaderSyncError::SyncFailedAllPeers => {
                         error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {}", err);
-                        log_mdc::extend(mdc);
                         warn!(target: LOG_TARGET, "{}. Continuing...", err);
                         StateEvent::Continue
                     },
                     _ => {
-                        log_mdc::extend(mdc);
                         debug!(target: LOG_TARGET, "Header sync failed: {}", err);
                         StateEvent::HeaderSyncFailed(err.to_string())
                     },

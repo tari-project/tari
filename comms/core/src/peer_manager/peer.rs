@@ -348,18 +348,14 @@ impl Hash for Peer {
 #[cfg(test)]
 mod test {
     use serde_json::Value;
-    use tari_crypto::{
-        keys::PublicKey,
-        ristretto::RistrettoPublicKey,
-        tari_utilities::{hex::Hex, message_format::MessageFormat},
-    };
+    use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 
     use super::*;
 
     #[test]
     fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
         let addresses = MultiaddressesWithStats::from_addresses_with_source(
             vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],

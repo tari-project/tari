@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    sync::Arc,
+    sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
 
@@ -193,7 +193,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                             BanPeriod::Short => self.config.short_ban_period,
                             BanPeriod::Long => self.config.ban_period,
                         };
-                        warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
                             .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
@@ -228,7 +227,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         mut client: rpc::BaseNodeSyncRpcClient,
         max_latency: Duration,
     ) -> Result<(), BlockSyncError> {
-        info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer);
+        info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer.node_id());
 
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
@@ -365,10 +364,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
 
             let timer = Instant::now();
+            let allow_smt_change = Arc::new(AtomicBool::new(true));
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_tip_block_body(block.clone(), self.db.inner().smt())
+                .insert_tip_block_body(block.clone(), self.db.inner().smt(), allow_smt_change.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,
@@ -414,13 +414,31 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             current_block = Some(block);
             last_sync_timer = Instant::now();
         }
+        debug!(
+            "Sync peer claim at start  - height: {}, accumulated difficulty: {}",
+            sync_peer.claimed_chain_metadata().best_block_height(),
+            sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+        );
+        debug!(
+            "Our best header at start  - height: {}, accumulated difficulty: {}",
+            best_height,
+            chain_header.accumulated_data().total_accumulated_difficulty,
+        );
+        let metadata_after_sync = self.db.get_chain_metadata().await?;
+        debug!(
+            "Our best block after sync - height: {}, accumulated difficulty: {}",
+            metadata_after_sync.best_block_height(),
+            metadata_after_sync.accumulated_difficulty(),
+        );
 
-        let accumulated_difficulty = self.db.get_chain_metadata().await?.accumulated_difficulty();
-        if accumulated_difficulty < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
+        if metadata_after_sync.accumulated_difficulty() < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
             return Err(BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(format!(
-                "Their claimed difficulty: {}, our local difficulty after block sync: {}",
+                "Their claim - height: {}, accumulated difficulty: {}. Our status after block sync - height: {}, \
+                 accumulated difficulty: {}",
+                sync_peer.claimed_chain_metadata().best_block_height(),
                 sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                accumulated_difficulty
+                metadata_after_sync.best_block_height(),
+                metadata_after_sync.accumulated_difficulty(),
             )));
         }
 

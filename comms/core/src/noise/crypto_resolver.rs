@@ -28,15 +28,11 @@ use snow::{
     resolvers::{CryptoResolver, DefaultResolver},
     types::{Cipher, Dh, Hash, Random},
 };
-use tari_crypto::{
-    hashing::DomainSeparatedHasher,
-    keys::{PublicKey, SecretKey},
-    tari_utilities::ByteArray,
-};
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey, tari_utilities::ByteArray};
 use tari_utilities::safe_array::SafeArray;
 
 use super::CommsNoiseKey;
-use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey};
+use crate::types::{CommsCoreHashDomain, CommsDHKE, CommsPublicKey, CommsSecretKey, UncompressedCommsPublicKey};
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
@@ -121,7 +117,8 @@ impl Dh for CommsDiffieHellman {
     }
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
-        let pk = CommsPublicKey::from_canonical_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
+        let pk = UncompressedCommsPublicKey::from_canonical_bytes(&public_key[..self.pub_len()])
+            .map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash.reveal(), out);
@@ -161,7 +158,7 @@ mod test {
         };
 
         let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
-        let expected_shared = CommsDHKE::new(&secret_key2, &public_key);
+        let expected_shared = CommsDHKE::new(&secret_key2, &public_key.to_public_key().unwrap());
         let expected_shared = noise_kdf(&expected_shared);
 
         let mut out = [0; 32];

@@ -31,6 +31,7 @@ use callbacks::Callbacks;
 use indexmap::IndexMap;
 use libc::{c_ulonglong, c_void};
 use tari_common_types::tari_address::TariAddress;
+use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
 
 use super::{
     ffi_import::{
@@ -371,7 +372,7 @@ impl Wallet {
         dest: String,
         amount: u64,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         one_sided: bool,
     ) -> u64 {
         let tx_id;
@@ -383,9 +384,8 @@ impl Wallet {
                 amount,
                 null_mut(),
                 fee_per_gram,
-                CString::new(message).unwrap().into_raw(),
                 one_sided,
-                CString::new("").unwrap().into_raw(),
+                CString::new(payment_id.user_data_as_string()).unwrap().into_raw(),
                 &mut error,
             );
             if error > 0 {

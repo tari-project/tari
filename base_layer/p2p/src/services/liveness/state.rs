@@ -33,7 +33,6 @@ use super::LOG_TARGET;
 use crate::proto::liveness::MetadataKey;
 
 const LATENCY_SAMPLE_WINDOW_SIZE: usize = 25;
-const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(40);
 
 /// Represents metadata in a ping/pong message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -136,17 +135,17 @@ impl LivenessState {
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
-    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: NodeId) {
+    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: NodeId, max_inflight_ttl: Duration) {
         self.inflight_pings.insert(nonce, (node_id, Instant::now()));
-        self.clear_stale_inflight_pings();
+        self.clear_stale_inflight_pings(max_inflight_ttl);
     }
 
     /// Clears inflight ping requests which have not responded and adds them to failed_ping counter
-    fn clear_stale_inflight_pings(&mut self) {
+    fn clear_stale_inflight_pings(&mut self, max_inflight_ttl: Duration) {
         let (inflight, expired) = self
             .inflight_pings
             .drain()
-            .partition(|(_, (_, time))| time.elapsed() <= MAX_INFLIGHT_TTL);
+            .partition(|(_, (_, time))| time.elapsed() <= max_inflight_ttl);
 
         self.inflight_pings = inflight;
 
@@ -221,8 +220,10 @@ impl LivenessState {
         self.failed_pings.iter()
     }
 
-    pub fn clear_failed_pings(&mut self) {
-        self.failed_pings.clear();
+    pub fn clear_failed_pings(&mut self, node_ids: &[NodeId]) {
+        for node_id in node_ids {
+            self.failed_pings.remove(node_id);
+        }
     }
 }
 
@@ -265,6 +266,7 @@ impl AverageLatency {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::services::liveness::service::MAX_INFLIGHT_TTL;
 
     #[test]
     fn new() {
@@ -322,7 +324,7 @@ mod test {
         let mut state = LivenessState::new();
 
         let node_id = NodeId::default();
-        state.add_inflight_ping(123, node_id.clone());
+        state.add_inflight_ping(123, node_id.clone(), MAX_INFLIGHT_TTL);
 
         let latency = state.record_pong(123, &node_id).unwrap();
         assert!(latency < Duration::from_millis(50));
@@ -340,10 +342,10 @@ mod test {
         let mut state = LivenessState::new();
 
         let peer1 = NodeId::default();
-        state.add_inflight_ping(1, peer1.clone());
+        state.add_inflight_ping(1, peer1.clone(), MAX_INFLIGHT_TTL);
         let peer2 = NodeId::from_public_key(&Default::default());
-        state.add_inflight_ping(2, peer2.clone());
-        state.add_inflight_ping(3, peer2.clone());
+        state.add_inflight_ping(2, peer2.clone(), MAX_INFLIGHT_TTL);
+        state.add_inflight_ping(3, peer2.clone(), MAX_INFLIGHT_TTL);
 
         assert!(!state.failed_pings.contains_key(&peer1));
         assert!(!state.failed_pings.contains_key(&peer2));
@@ -354,7 +356,7 @@ mod test {
             *time = Instant::now() - (MAX_INFLIGHT_TTL + Duration::from_secs(1));
         }
 
-        state.clear_stale_inflight_pings();
+        state.clear_stale_inflight_pings(MAX_INFLIGHT_TTL);
         let n = state.failed_pings.get(&peer1).unwrap();
         assert_eq!(*n, 1);
         let n = state.failed_pings.get(&peer2).unwrap();

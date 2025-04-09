@@ -82,7 +82,7 @@ struct TerminalBranch<'a, H> {
     empty_siblings: Vec<bool>,
 }
 
-impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
+impl<H: Digest<OutputSize = U32>> TerminalBranch<'_, H> {
     /// Returns the terminal node of the branch
     pub fn terminal(&self) -> &Node<H> {
         let branch = self.parent.as_branch().unwrap();

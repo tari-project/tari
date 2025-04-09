@@ -534,7 +534,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 body.len()
             );
 
-            let shared_ephemeral_secret = CommsDHKE::new(node_identity.secret_key(), ephemeral_public_key);
+            let shared_ephemeral_secret = CommsDHKE::new(
+                node_identity.secret_key(),
+                &ephemeral_public_key
+                    .to_public_key()
+                    .map_err(|_| StoreAndForwardError::DecryptionFailed)?,
+            );
             let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
             let mut decrypted_bytes = BytesMut::from(body);
             crypt::decrypt_message(&key_message, &mut decrypted_bytes, masked_sender_public_key.as_bytes())?;
@@ -548,7 +553,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let mask = crypt::generate_key_mask(&shared_ephemeral_secret)
                 .map_err(|e| StoreAndForwardError::InvariantError(e.to_string()))?;
             let mask_inverse = mask.invert().ok_or(StoreAndForwardError::DecryptionFailed)?;
-            Ok((Some(mask_inverse * masked_sender_public_key), envelope_body))
+            Ok((
+                Some(CommsPublicKey::new_from_pk(
+                    mask_inverse *
+                        masked_sender_public_key
+                            .to_public_key()
+                            .map_err(|_| StoreAndForwardError::DecryptionFailed)?,
+                )),
+                envelope_body,
+            ))
         } else {
             let authenticated_pk = if header.message_signature.is_empty() {
                 None
@@ -570,12 +583,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let binding_message_representation = crypt::create_message_domain_separated_hash(header, body);
 
-        if message_signature.verify(&binding_message_representation) {
-            Ok(message_signature.into_signer_public_key())
-        } else {
-            Err(StoreAndForwardError::InvalidMessageSignature(
+        match message_signature.verify(&binding_message_representation) {
+            Ok(true) => Ok(message_signature.into_signer_public_key()),
+            _ => Err(StoreAndForwardError::InvalidMessageSignature(
                 MessageSignatureError::VerificationFailed,
-            ))
+            )),
         }
     }
 

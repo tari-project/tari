@@ -26,9 +26,15 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
+    types::{
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+    },
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
 pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
@@ -36,9 +42,9 @@ use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::*,
         transaction_components::{
+            encrypted_data::PaymentId,
             KernelBuilder,
             OutputFeatures,
             Transaction,
@@ -51,6 +57,7 @@ use crate::{
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
             recipient::RecipientSignedMessage,
             transaction_initializer::{RecipientDetails, SenderTransactionInitializer},
@@ -79,7 +86,7 @@ pub(super) struct RawTransactionInfo {
     /// The TransactionOutput received from the recipient.
     pub recipient_output: Option<TransactionOutput>,
     /// The partial kernel excess received from the recipient.
-    pub recipient_partial_kernel_excess: PublicKey,
+    pub recipient_partial_kernel_excess: CompressedPublicKey,
     /// The partial kernel signature received from the recipient.
     pub recipient_partial_kernel_signature: Signature,
     /// The partial kernel offset received from the recipient.
@@ -93,15 +100,14 @@ pub(super) struct RawTransactionInfo {
     // cached data
     /// The total excess for this transaction. Excess is outputs + change_output - inputs. This is calculated when
     /// sender sends single round message to receiver
-    pub total_sender_excess: PublicKey,
+    pub total_sender_excess: CompressedPublicKey,
     /// The total public nonce for the transaction signature. This is calculated when sender sends single round message
     /// to receiver.
-    pub total_sender_nonce: PublicKey,
-
+    pub total_sender_nonce: CompressedPublicKey,
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
-    /// A user message sent to the receiver
-    pub text_message: String,
+    /// A user payment ID for the sender/receiver
+    pub payment_id: PaymentId,
     /// The senders address
     pub sender_address: TariAddress,
 }
@@ -127,21 +133,21 @@ pub struct SingleRoundSenderData {
     /// The amount, in µT, being sent to the recipient
     pub amount: MicroMinotari,
     /// The offset public excess for this transaction
-    pub public_excess: PublicKey,
+    pub public_excess: CompressedPublicKey,
     /// The sender's public nonce
-    pub public_nonce: PublicKey,
+    pub public_nonce: CompressedPublicKey,
     /// Metadata used to construct the transaction kernel
     pub metadata: TransactionMetadata,
-    /// Plain text message to receiver
-    pub message: String,
+    /// A user payment ID for the sender/receiver
+    pub payment_id: PaymentId,
     /// The output's features
     pub features: OutputFeatures,
     /// Script
     pub script: TariScript,
     /// Script offset public key
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     /// The sender's ephemeral nonce
-    pub ephemeral_public_nonce: PublicKey,
+    pub ephemeral_public_nonce: CompressedPublicKey,
     /// Covenant
     pub covenant: Covenant,
     /// The minimum value of the commitment that is proven by the range proof
@@ -443,7 +449,7 @@ impl SenderTransactionProtocol {
                     public_nonce,
                     public_excess,
                     metadata: info.metadata.clone(),
-                    message: info.text_message.clone(),
+                    payment_id: info.payment_id.clone(),
                     features: recipient_output_features,
                     script: recipient_script,
                     sender_offset_public_key,
@@ -462,34 +468,52 @@ impl SenderTransactionProtocol {
     async fn calculate_total_nonce_and_total_public_excess<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
-    ) -> Result<(PublicKey, PublicKey), TPE> {
+    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TPE> {
         // lets calculate the total sender kernel signature nonce
-        let mut public_nonce = PublicKey::default();
+        let mut public_nonce = UncompressedPublicKey::default();
         // lets calculate the total sender kernel exess
-        let mut public_excess = PublicKey::default();
+        let mut public_excess = UncompressedPublicKey::default();
         for input in &info.inputs {
-            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&input.kernel_nonce).await?;
+            public_nonce = public_nonce +
+                key_manager
+                    .get_public_key_at_key_id(&input.kernel_nonce)
+                    .await?
+                    .to_public_key()?;
             public_excess = public_excess -
                 key_manager
                     .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
-                    .await?;
+                    .await?
+                    .to_public_key()?;
         }
         for output in &info.outputs {
-            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&output.kernel_nonce).await?;
+            public_nonce = public_nonce +
+                key_manager
+                    .get_public_key_at_key_id(&output.kernel_nonce)
+                    .await?
+                    .to_public_key()?;
             public_excess = public_excess +
                 key_manager
                     .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
-                    .await?;
+                    .await?
+                    .to_public_key()?;
         }
 
         if let Some(change) = &info.change_output {
-            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&change.kernel_nonce).await?;
+            public_nonce = public_nonce +
+                key_manager
+                    .get_public_key_at_key_id(&change.kernel_nonce)
+                    .await?
+                    .to_public_key()?;
             public_excess = public_excess +
                 key_manager
                     .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
-                    .await?;
+                    .await?
+                    .to_public_key()?;
         }
-        Ok((public_nonce, public_excess))
+        Ok((
+            CompressedPublicKey::new_from_pk(public_nonce),
+            CompressedPublicKey::new_from_pk(public_excess),
+        ))
     }
 
     /// Add partial signatures, add the recipient info to sender state and move to the Finalizing state
@@ -583,7 +607,10 @@ impl SenderTransactionProtocol {
             )
             .await?;
 
-        let metadata_signature = &received_output.metadata_signature + &sender_metadata_signature;
+        let metadata_signature = ComAndPubSignature::new_from_capk_signature(
+            &received_output.metadata_signature.to_capk_signature()? +
+                &sender_metadata_signature.to_capk_signature()?,
+        );
         Ok(metadata_signature)
     }
 
@@ -598,14 +625,20 @@ impl SenderTransactionProtocol {
             // we dont have a recipient and thus we have not yet calculated the sender_nonce and sender_offset_excess
             SenderTransactionProtocol::calculate_total_nonce_and_total_public_excess(info, key_manager).await?
         } else {
-            let total_public_nonce =
-                &info.total_sender_nonce + info.recipient_partial_kernel_signature.get_public_nonce();
-            let total_public_excess = &info.total_sender_excess + &info.recipient_partial_kernel_excess;
-            (total_public_nonce, total_public_excess)
+            let total_public_nonce = &info.total_sender_nonce.to_public_key()? +
+                info.recipient_partial_kernel_signature
+                    .get_compressed_public_nonce()
+                    .to_public_key()?;
+            let total_public_excess =
+                &info.total_sender_excess.to_public_key()? + &info.recipient_partial_kernel_excess.to_public_key()?;
+            (
+                CompressedPublicKey::new_from_pk(total_public_nonce),
+                CompressedPublicKey::new_from_pk(total_public_excess),
+            )
         };
 
         let mut offset = info.recipient_partial_kernel_offset.clone();
-        let mut signature = info.recipient_partial_kernel_signature.clone();
+        let mut signature = info.recipient_partial_kernel_signature.clone().to_schnorr_signature()?;
         let mut script_keys = Vec::new();
         let mut sender_offset_keys = Vec::new();
         let kernel_version = TransactionKernelVersion::get_current_version();
@@ -632,7 +665,8 @@ impl SenderTransactionProtocol {
                         &info.metadata.kernel_features,
                         TxoStage::Input,
                     )
-                    .await?;
+                    .await?
+                    .to_schnorr_signature()?;
             offset = offset -
                 &key_manager
                     .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
@@ -654,7 +688,8 @@ impl SenderTransactionProtocol {
                         &info.metadata.kernel_features,
                         TxoStage::Output,
                     )
-                    .await?;
+                    .await?
+                    .to_schnorr_signature()?;
             offset = offset +
                 &key_manager
                     .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
@@ -683,7 +718,8 @@ impl SenderTransactionProtocol {
                         &info.metadata.kernel_features,
                         TxoStage::Output,
                     )
-                    .await?;
+                    .await?
+                    .to_schnorr_signature()?;
             offset = offset +
                 &key_manager
                     .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
@@ -702,7 +738,7 @@ impl SenderTransactionProtocol {
 
         tx_builder.add_offset(offset);
         tx_builder.add_script_offset(script_offset);
-        let excess = PedersenCommitment::from_public_key(&total_public_excess);
+        let excess = CompressedCommitment::from_compressed_key(total_public_excess);
 
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
@@ -710,7 +746,7 @@ impl SenderTransactionProtocol {
             .with_lock_height(info.metadata.lock_height)
             .with_burn_commitment(info.metadata.burn_commitment.clone())
             .with_excess(&excess)
-            .with_signature(signature)
+            .with_signature(Signature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
         tx_builder.build().map_err(TPE::from)
@@ -870,9 +906,11 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress, types::PrivateKey};
-    use tari_crypto::signatures::CommitmentAndPublicKeySignature;
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_common_types::{
+        key_branches::TransactionKeyManagerBranch,
+        tari_address::TariAddress,
+        types::{ComAndPubSignature, PrivateKey},
+    };
     use tari_script::{inputs, script, ExecutionStack, TariScript};
     use tari_utilities::hex::Hex;
 
@@ -882,7 +920,6 @@ mod test {
         test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             crypto_factories::CryptoFactories,
-            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
@@ -893,6 +930,7 @@ mod test {
                 TransactionOutputVersion,
                 WalletOutput,
             },
+            transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -1038,7 +1076,10 @@ mod test {
             )
             .await
             .unwrap();
-        output.metadata_signature = &partial_metadata_signature + &partial_sender_metadata_signature;
+        output.metadata_signature = ComAndPubSignature::new_from_capk_signature(
+            &partial_metadata_signature.to_capk_signature().unwrap() +
+                &partial_sender_metadata_signature.to_capk_signature().unwrap(),
+        );
         assert!(output.verify_metadata_signature().is_ok());
     }
 
@@ -1047,7 +1088,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = TariScript::default();
         let output_features = OutputFeatures::default();
@@ -1111,7 +1152,7 @@ mod test {
         let a_change_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
@@ -1130,6 +1171,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(1200) - fee - MicroMinotari(10),
+                TariAddress::default(),
             )
             .await
             .unwrap()
@@ -1155,7 +1197,7 @@ mod test {
             ExecutionStack::default(),
             bob_key.script_key_id,
             bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -1221,7 +1263,7 @@ mod test {
         let alice_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop).unwrap();
@@ -1255,6 +1297,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1280,7 +1323,7 @@ mod test {
             ExecutionStack::default(),
             bob_key.script_key_id,
             bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -1334,9 +1377,9 @@ mod test {
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![]).await;
-        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![]).await;
-        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![]).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
         let consensus_constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop).unwrap();
@@ -1367,6 +1410,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1392,7 +1436,7 @@ mod test {
             ExecutionStack::default(),
             bob_key.script_key_id,
             bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),
@@ -1443,7 +1487,7 @@ mod test {
         // Alice's parameters
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
@@ -1467,6 +1511,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 amount,
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1482,7 +1527,7 @@ mod test {
         // Alice's parameters
         let key_manager = create_memory_db_key_manager().unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
-        let input = create_test_input(utxo_amount, 0, &key_manager, vec![]).await;
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let change = TestParams::new(&key_manager).await;
@@ -1507,6 +1552,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 amount,
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1525,7 +1571,7 @@ mod test {
         // Bob's parameters
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroMinotari(25000);
-        let input = create_test_input(alice_value, 0, &key_manager_alice, vec![]).await;
+        let input = create_test_input(alice_value, 0, &key_manager_alice, vec![], None).await;
         let script = script!(Nop).unwrap();
         let consensus_constants = create_consensus_constants(0);
 
@@ -1552,6 +1598,7 @@ mod test {
                 Covenant::default(),
                 0.into(),
                 MicroMinotari(5000),
+                TariAddress::default(),
             )
             .await
             .unwrap();
@@ -1582,7 +1629,7 @@ mod test {
             ExecutionStack::default(),
             bob_test_params.script_key_id,
             bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
+            ComAndPubSignature::default(),
             0,
             Covenant::default(),
             EncryptedData::default(),

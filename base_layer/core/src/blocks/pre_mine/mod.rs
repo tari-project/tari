@@ -29,21 +29,22 @@ use rand::{prelude::SliceRandom, rngs::OsRng, thread_rng};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{Commitment, PrivateKey, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
 };
-use tari_crypto::keys::{PublicKey as PkTrait, SecretKey as SkTrait};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
 use tari_utilities::ByteArray;
 
 use crate::{
     one_sided::public_key_to_output_encryption_key,
     transactions::{
-        key_manager::{
-            create_memory_db_key_manager,
-            SecretTransactionKeyManagerInterface,
-            TransactionKeyManagerInterface,
-        },
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::PaymentId,
@@ -58,6 +59,11 @@ use crate::{
             TransactionOutput,
             TransactionOutputVersion,
             WalletOutputBuilder,
+        },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            SecretTransactionKeyManagerInterface,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::TransactionMetadata,
     },
@@ -748,10 +754,10 @@ fn get_signature_threshold(number_of_keys: usize) -> Result<u8, String> {
 /// Verify that the script keys for the given index match the expected keys
 pub fn verify_script_keys_for_index(
     index: usize,
-    script_threshold_keys: &[PublicKey],
-    script_backup_key: &PublicKey,
-    expected_threshold_keys: &[PublicKey],
-    expected_backup_key: &PublicKey,
+    script_threshold_keys: &[CompressedPublicKey],
+    script_backup_key: &CompressedPublicKey,
+    expected_threshold_keys: &[CompressedPublicKey],
+    expected_backup_key: &CompressedPublicKey,
 ) -> Result<(), String> {
     let mut all_script_keys = script_threshold_keys
         .iter()
@@ -792,8 +798,8 @@ pub fn verify_script_keys_for_index(
 /// Create pre-mine genesis block info with the given pre-mine items and party public keys
 pub async fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
-    threshold_spend_keys: &[Vec<PublicKey>],
-    backup_spend_keys: &[PublicKey],
+    threshold_spend_keys: &[Vec<CompressedPublicKey>],
+    backup_spend_keys: &[CompressedPublicKey],
 ) -> Result<(Vec<TransactionOutput>, TransactionKernel), String> {
     let mut outputs = Vec::new();
     let mut total_private_key = PrivateKey::default();
@@ -804,9 +810,13 @@ pub async fn create_pre_mine_genesis_block_info(
         .enumerate()
     {
         let signature_threshold = get_signature_threshold(public_keys.len())?;
-        let total_script_key = public_keys.iter().fold(PublicKey::default(), |acc, x| acc + x);
+        let mut total_script_key = UncompressedPublicKey::default();
+        for key in public_keys {
+            total_script_key = total_script_key + key.to_public_key().unwrap();
+        }
         let key_manager = create_memory_db_key_manager().unwrap();
-        let view_key = public_key_to_output_encryption_key(&total_script_key).unwrap();
+        let view_key =
+            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key)).unwrap();
         let view_key_id = key_manager.import_key(view_key.clone()).await.unwrap();
         let address_len = u8::try_from(public_keys.len()).unwrap();
 
@@ -862,16 +872,24 @@ pub async fn create_pre_mine_genesis_block_info(
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
     let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::empty());
-    let total_public_key = PublicKey::from_secret_key(&total_private_key);
+    let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
         &TransactionKernelVersion::get_current_version(),
-        &PublicKey::from_secret_key(&r),
+        &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
         &tx_meta,
     );
-    let signature = Signature::sign_raw_uniform(&total_private_key, r, &e).unwrap();
-    let excess = Commitment::from_public_key(&total_public_key);
-    let kernel = TransactionKernel::new_current_version(KernelFeatures::empty(), 0.into(), 0, excess, signature, None);
+    let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).unwrap();
+    let compressed_signature = Signature::new_from_schnorr(signature);
+    let excess = CompressedCommitment::from_compressed_key(total_public_key);
+    let kernel = TransactionKernel::new_current_version(
+        KernelFeatures::empty(),
+        0.into(),
+        0,
+        excess,
+        compressed_signature,
+        None,
+    );
     Ok((outputs, kernel))
 }
 
@@ -880,7 +898,7 @@ mod test {
     use std::{fs, fs::File, io::Write, ops::Deref};
 
     use tari_common::configuration::Network;
-    use tari_common_types::{tari_address::TariAddress, types::PublicKey};
+    use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
 
     use crate::{
@@ -913,10 +931,10 @@ mod test {
     ) -> (
         Vec<TransactionOutput>,
         TransactionKernel,
-        Vec<Vec<PublicKey>>,
-        Vec<PublicKey>,
+        Vec<Vec<CompressedPublicKey>>,
+        Vec<CompressedPublicKey>,
     ) {
-        let threshold_addresses_for_index = vec![
+        let threshold_addresses_for_index = [
             TariAddress::from_base58(
                 "f4bYsv3sEMroDGKMMjhgm7cp1jDShdRWQzmV8wZiD6sJPpAEuezkiHtVhn7akK3YqswH5t3sUASW7rbvPSqMBDSCSp",
             )

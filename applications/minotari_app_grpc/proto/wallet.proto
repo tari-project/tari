@@ -33,6 +33,8 @@ import "network.proto";
 service Wallet {
   // This returns the current version
   rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+  // This returns the current state of the wallet
+  rpc GetState (GetStateRequest) returns (GetStateResponse);
   // This checks if the wallet is healthy and running
   rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
   // Check for new updates
@@ -47,7 +49,7 @@ service Wallet {
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
   // Returns all transactions' details
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
-  // Returns the balance
+  // Returns the balance, but uses a debouncer in the background to prevent spamming the wallet
   rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
   // Returns unspent amounts
   rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
@@ -81,8 +83,6 @@ service Wallet {
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
-  // Get calculated fees for a `CreateTemplateRegistrationRequest`
-  rpc GetTemplateRegistrationFee(CreateTemplateRegistrationRequest) returns (GetTemplateRegistrationFeeResponse);
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
 }
 
@@ -109,9 +109,9 @@ message SendShaAtomicSwapRequest {
 message CreateBurnTransactionRequest{
   uint64 amount = 1;
   uint64 fee_per_gram = 2;
-  string message = 3;
   bytes claim_public_key = 4;
-  bytes sidechain_deployment_key = 5;
+  bytes payment_id = 5;
+  bytes sidechain_deployment_key = 6;
 }
 
 
@@ -119,7 +119,6 @@ message PaymentRecipient {
   string address = 1;
   uint64 amount = 2;
   uint64 fee_per_gram = 3;
-  string message = 4;
   enum PaymentType {
     STANDARD_MIMBLEWIMBLE = 0;
     ONE_SIDED = 1;
@@ -196,8 +195,8 @@ message TransactionInfo {
   bool is_cancelled = 8;
   bytes excess_sig = 9;
   uint64 timestamp = 10;
-  string message = 11;
   bytes payment_id = 12;
+  uint64 mined_in_block_height = 13;
 }
 
 enum TransactionDirection {
@@ -247,11 +246,19 @@ message GetCompletedTransactionsResponse {
 
 message GetBalanceRequest {}
 
+message GetStateRequest {}
+
 message GetBalanceResponse {
   uint64 available_balance = 1;
   uint64 pending_incoming_balance = 2;
   uint64 pending_outgoing_balance = 3;
   uint64 timelocked_balance = 4;
+}
+
+message GetStateResponse {
+  uint64 scanned_height = 1;
+  GetBalanceResponse balance = 2;
+  NetworkStatusResponse network = 3;
 }
 
 message GetUnspentAmountsResponse {
@@ -262,8 +269,8 @@ message CoinSplitRequest {
   uint64 amount_per_split = 1;
   uint64 split_count = 2;
   uint64 fee_per_gram = 3;
-  string message = 4;
   uint64 lock_height = 5;
+  bytes payment_id = 6;
 }
 
 message CoinSplitResponse {
@@ -272,6 +279,7 @@ message CoinSplitResponse {
 
 message ImportUtxosRequest {
   repeated UnblindedOutput outputs = 1;
+  bytes payment_id = 2;
 }
 
 message ImportUtxosResponse {
@@ -292,10 +300,6 @@ message CreateTemplateRegistrationRequest {
 message CreateTemplateRegistrationResponse {
   uint64 tx_id = 1;
   bytes template_address = 2;
-}
-
-message GetTemplateRegistrationFeeResponse {
-  uint64 fee = 1;
 }
 
 message CancelTransactionRequest {
@@ -345,7 +349,6 @@ message TransactionEvent {
   string status = 5;
   string direction = 6;
   uint64 amount = 7;
-  string message = 8;
   bytes payment_id = 9;
 }
 
@@ -358,7 +361,7 @@ message RegisterValidatorNodeRequest {
   Signature validator_node_signature = 2;
   bytes validator_node_claim_public_key = 3;
   uint64 fee_per_gram = 4;
-  string message = 5;
+  bytes payment_id = 5;
   bytes sidechain_deployment_key = 6;
 }
 

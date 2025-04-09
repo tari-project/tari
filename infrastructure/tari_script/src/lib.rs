@@ -37,17 +37,20 @@ pub use script::{ScriptOpcodes, TariScript};
 pub use script_context::ScriptContext;
 pub use stack::{ExecutionStack, StackItem};
 use tari_crypto::{
+    compressed_key::CompressedKey,
     hash_domain,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-    signatures::SchnorrSignature,
+    signatures::{CompressedSchnorrSignature, SchnorrSignature},
 };
 
 hash_domain!(CheckSigHashDomain, "com.tari.script.check_sig", 1);
 
 /// The type used for `CheckSig`, `CheckMultiSig`, and related opcodes' signatures
 pub type CheckSigSchnorrSignature = SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, CheckSigHashDomain>;
+pub type CompressedCheckSigSchnorrSignature =
+    CompressedSchnorrSignature<RistrettoPublicKey, RistrettoSecretKey, CheckSigHashDomain>;
 
 /// The standard payment script to be used for one-sided payment to public addresses
-pub fn push_pubkey_script(destination_public_key: &RistrettoPublicKey) -> TariScript {
+pub fn push_pubkey_script(destination_public_key: &CompressedKey<RistrettoPublicKey>) -> TariScript {
     script!(PushPubKey(Box::new(destination_public_key.clone()))).expect("single opcode will not fail")
 }

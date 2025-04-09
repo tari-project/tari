@@ -23,7 +23,7 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
@@ -37,7 +37,7 @@ use crate::commands::parser::FromHex;
 #[derive(Debug, Parser)]
 pub struct Args {
     /// hex of nonce
-    public_nonce: FromHex<PublicKey>,
+    public_nonce: FromHex<CompressedPublicKey>,
     /// hex of signature
     signature: FromHex<PrivateKey>,
 }

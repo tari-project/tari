@@ -119,10 +119,10 @@ fn print_mr_values(block: &mut Block, print: bool) {
     block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
     block.header.validator_node_mr = vn_mmr;
     println!();
-    println!("kernel mr: {}", block.header.kernel_mr);
-    println!("input mr: {}", block.header.input_mr);
-    println!("output mr: {}", block.header.output_mr);
-    println!("vn mr: {}", block.header.validator_node_mr);
+    println!("kernel mr: {}", block.header.kernel_mr.to_hex());
+    println!("input mr: {}", block.header.input_mr.to_hex());
+    println!("output mr: {}", block.header.output_mr.to_hex());
+    println!("vn mr: {}", block.header.validator_node_mr.to_hex());
 }
 
 pub fn get_stagenet_genesis_block() -> ChainBlock {
@@ -188,10 +188,6 @@ fn get_stagenet_genesis_block_raw() -> Block {
 pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
-    // TODO: Fix this hack with the next nextnet reset!!
-    block.header.input_mr =
-        FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
-
     // Add pre-mine utxos - enable/disable as required
     let add_pre_mine_utxos = false;
     if add_pre_mine_utxos {
@@ -228,7 +224,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Sep 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -270,6 +266,8 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
+        block.header.block_output_mr =
+            FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
@@ -389,6 +387,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
         block.header.output_mr =
             FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
+        block.header.block_output_mr =
+            FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
@@ -407,7 +407,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Oct 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -482,7 +482,9 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+            output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::from_hex("622720a6571c33d6bf6138d9e737d3468c77f1193640698ad459953d24ec0812")
+                .unwrap(),
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
@@ -514,10 +516,11 @@ mod test {
     use std::convert::TryFrom;
 
     use serial_test::serial;
-    use tari_common_types::types::Commitment;
+    use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 
     use super::*;
     use crate::{
+        block_output_mr_hash_from_pruned_mmr,
         chain_storage::calculate_validator_node_mr,
         consensus::ConsensusManager,
         test_helpers::blockchain::create_new_blockchain_with_network,
@@ -527,8 +530,8 @@ mod test {
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
+        PrunedOutputMmr,
     };
-
     #[test]
     #[serial]
     fn esmeralda_genesis_sanity_check() {
@@ -661,9 +664,15 @@ mod test {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
         let mut output_smt = OutputSmt::new();
-
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
+            if o.features.is_coinbase() {
+                block_output_mmr.push(o.hash().to_vec()).unwrap();
+            } else {
+                normal_output_mmr.push(o.hash().to_vec()).unwrap();
+            }
             let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
             let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
             output_smt.insert(smt_key, smt_node).unwrap();
@@ -696,6 +705,32 @@ mod test {
             // }
         }
 
+        block_output_mmr
+            .push(normal_output_mmr.get_merkle_root().unwrap().to_vec())
+            .unwrap();
+
+        for i in block.block().body.inputs() {
+            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+            output_smt.delete(&smt_key).unwrap();
+            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = i
+            //         .features()
+            //         .unwrap()
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     let pos = vn_nodes
+            //         .iter()
+            //         .position(|v| {
+            //             v.public_key == *reg.public_key()
+            //                 && v.shard_key == reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash())
+            //         })
+            //         .unwrap();
+            //     vn_nodes.remove(pos);
+            // }
+        }
+
         let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
         for input in block.block().body.inputs() {
             input_mmr.push(input.canonical_hash().to_vec()).unwrap();
@@ -709,18 +744,29 @@ mod test {
             output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
             block.header().output_mr.to_vec().to_hex(),
         );
-        if network == Network::NextNet {
-            // TODO: Fix this hack with the next nextnet reset!!
-            assert_eq!(
-                FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
-                block.header().input_mr,
-            );
-        } else {
-            assert_eq!(
-                input_mr_hash_from_pruned_mmr(&input_mmr).unwrap(),
-                block.header().input_mr,
-            );
-        }
+
+        let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
+        let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+        assert_eq!(
+            AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+                .unwrap()
+                .to_vec()
+                .to_hex(),
+            block.header().block_output_mr.to_vec().to_hex(),
+        );
+        assert_eq!(
+            block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+                .unwrap()
+                .to_vec()
+                .to_hex(),
+            block.header().block_output_mr.to_vec().to_hex(),
+        );
+
+        assert_eq!(
+            input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
+            block.header().input_mr.to_vec().to_hex(),
+        );
+
         assert_eq!(
             calculate_validator_node_mr(&vn_nodes).unwrap(),
             block.header().validator_node_mr,
@@ -734,23 +780,37 @@ mod test {
             .body
             .inputs()
             .iter()
-            .map(|o| o.commitment().unwrap())
-            .sum::<Commitment>();
+            .map(|o| o.commitment().unwrap().to_commitment().unwrap())
+            .sum::<UncompressedCommitment>();
         let output_sum = block
             .block()
             .body
             .outputs()
             .iter()
-            .map(|o| &o.commitment)
-            .sum::<Commitment>();
+            .map(|o| o.commitment.to_commitment().unwrap())
+            .sum::<UncompressedCommitment>();
         let total_utxo_sum = &output_sum - &input_sum;
-        let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
+        let kernel_sum = CompressedCommitment::from_commitment(
+            block
+                .block()
+                .body
+                .kernels()
+                .iter()
+                .map(|k| k.excess.to_commitment().unwrap())
+                .sum(),
+        );
 
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &total_utxo_sum, &kernel_sum, &Commitment::default())
+            .validate(
+                &*lock,
+                0,
+                &CompressedCommitment::from_commitment(total_utxo_sum),
+                &kernel_sum,
+                &CompressedCommitment::default(),
+            )
             .unwrap();
     }
 

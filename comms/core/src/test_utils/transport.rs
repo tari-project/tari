@@ -23,7 +23,7 @@
 use futures::{future, StreamExt};
 
 use crate::{
-    connection_manager::ConnectionDirection,
+    connection_manager::{ConnectionDirection, PeerConnectionInfo},
     memsocket::MemorySocket,
     multiaddr::Multiaddr,
     multiplexing::Yamux,
@@ -39,7 +39,9 @@ pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket
 
 pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
     let (addr, socket_out, socket_in) = build_connected_sockets().await;
-    let muxer_out = Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound).unwrap();
-    let muxer_in = Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound).unwrap();
+    let muxer_out =
+        Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound, PeerConnectionInfo::default()).unwrap();
+    let muxer_in =
+        Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound, PeerConnectionInfo::default()).unwrap();
     (addr, muxer_out, muxer_in)
 }

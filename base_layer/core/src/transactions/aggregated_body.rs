@@ -19,6 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#[cfg(feature = "base_node")]
+use std::convert::TryFrom;
 use std::{
     cmp::max,
     fmt::{Display, Error, Formatter},
@@ -27,8 +30,12 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey};
+#[cfg(feature = "base_node")]
+use tari_common_types::types::FixedHash;
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, PrivateKey, UncompressedCommitment};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+#[cfg(feature = "base_node")]
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::hex::Hex;
 
 use crate::transactions::{
@@ -45,6 +52,8 @@ use crate::transactions::{
     },
     weight::TransactionWeight,
 };
+#[cfg(feature = "base_node")]
+use crate::{block_output_mr_hash_from_pruned_mmr, MrHashError, PrunedOutputMmr};
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
@@ -108,7 +117,7 @@ impl AggregateBody {
     /// Update an existing transaction input's script signature (found by matching commitment)
     pub fn update_script_signature(
         &mut self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         script_signature: ComAndPubSignature,
     ) -> Result<(), TransactionError> {
         let input = self
@@ -132,7 +141,7 @@ impl AggregateBody {
     /// Update an existing transaction output's metadata signature (found by matching commitment)
     pub fn update_metadata_signature(
         &mut self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
         metadata_signature: ComAndPubSignature,
     ) -> Result<(), TransactionError> {
         let output = self
@@ -285,8 +294,9 @@ impl AggregateBody {
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,
+        maximum_coinbase_count: u64,
     ) -> Result<(), TransactionError> {
-        let mut coinbase_utxo_sum = Commitment::default();
+        let mut coinbase_utxo_sum = UncompressedCommitment::default();
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0;
         for utxo in self.outputs() {
@@ -296,7 +306,7 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment;
+                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment.to_commitment()?;
             }
         }
 
@@ -308,6 +318,16 @@ impl AggregateBody {
             target: LOG_TARGET,
             "{} coinbases found in body.", coinbase_counter,
         );
+        if coinbase_counter > maximum_coinbase_count {
+            warn!(
+                target: LOG_TARGET,
+                "{} coinbases found in body. Only {} is permitted.", coinbase_counter, maximum_coinbase_count
+            );
+            return Err(TransactionError::TooManyCoinbaseKernels {
+                max: maximum_coinbase_count,
+                found: coinbase_counter,
+            });
+        }
 
         let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
@@ -319,14 +339,15 @@ impl AggregateBody {
         if coinbase_kernel.is_none() || coinbase_kernel_counter != 1 {
             warn!(
                 target: LOG_TARGET,
-                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
+                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_kernel_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbaseKernel);
         }
 
         let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
 
-        let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
+        let rhs = &coinbase_kernel.excess.to_commitment()? +
+            &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
         if rhs != coinbase_utxo_sum {
             warn!(
                 target: LOG_TARGET,
@@ -446,6 +467,30 @@ impl AggregateBody {
             .iter()
             .any(|k| k.features.output_type == OutputType::Coinbase)
     }
+
+    #[cfg(feature = "base_node")]
+    pub fn calculate_header_block_output_mr(
+        normal_output_mr: FixedHash,
+        coinbases: &Vec<TransactionOutput>,
+    ) -> Result<FixedHash, MrHashError> {
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in coinbases {
+            block_output_mmr.push(o.hash().to_vec())?;
+        }
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+    }
+
+    #[cfg(feature = "base_node")]
+    pub fn calculate_header_normal_output_mr(&self) -> Result<FixedHash, MrHashError> {
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in self.outputs() {
+            if !o.features.is_coinbase() {
+                normal_output_mmr.push(o.hash().to_vec())?;
+            }
+        }
+        Ok(FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?)
+    }
 }
 
 impl PartialEq for AggregateBody {
@@ -487,7 +532,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{FixedHash, PublicKey, Signature};
+    use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
@@ -504,7 +549,7 @@ mod test {
             KernelFeatures::default(),
             0.into(),
             0,
-            Commitment::default(),
+            CompressedCommitment::default(),
             Signature::default(),
             None,
         );
@@ -512,11 +557,11 @@ mod test {
         let input = TransactionInput::new_with_output_data(
             TransactionInputVersion::get_current_version(),
             OutputFeatures::default(),
-            Commitment::default(),
+            CompressedCommitment::default(),
             TariScript::default(),
             ExecutionStack::default(),
             ComAndPubSignature::default(),
-            PublicKey::default(),
+            CompressedPublicKey::default(),
             Covenant::default(),
             EncryptedData::default(),
             ComAndPubSignature::default(),

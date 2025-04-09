@@ -423,6 +423,29 @@ where
     Ok(result)
 }
 
+pub fn lmdb_all<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
+where V: DeserializeOwned {
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    let iter = CursorIter::new(
+        MaybeOwned::Borrowed(&mut cursor),
+        &access,
+        |c, a| c.first(a),
+        Cursor::next::<[u8], [u8]>,
+    )?;
+    let mut result = vec![];
+
+    for row in iter {
+        let (k, v) = row?;
+        result.push((k.to_vec(), deserialize::<V>(v)?));
+    }
+    Ok(result)
+}
+
 /// Fetches the size of all key/values in the given DB. Returns the number of entries, the total size of all the
 /// keys and values in bytes.
 pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result<(u64, u64, u64), ChainStorageError> {

@@ -35,6 +35,8 @@ use crate::proto::liveness::MetadataKey;
 pub enum LivenessRequest {
     /// Send a ping to the given node ID
     SendPing(NodeId),
+    /// Ping a list of peers
+    SendPings(Vec<NodeId>),
     /// Retrieve the total number of pings received
     GetPingCount,
     /// Retrieve the total number of pongs received
@@ -55,7 +57,7 @@ pub enum LivenessRequest {
 #[derive(Debug)]
 pub enum LivenessResponse {
     /// Indicates that the request succeeded
-    Ok,
+    Ok(Option<Vec<u64>>),
     /// Used to return a counter value from `GetPingCount` and `GetPongCount`
     Count(usize),
     /// Response for GetAvgLatency and GetNetworkAvgLatency
@@ -84,14 +86,17 @@ pub struct PingPongEvent {
     pub latency: Option<Duration>,
     /// Metadata of the corresponding node
     pub metadata: Metadata,
+    /// The nonce of the ping/pong message, for clients that want to match pings with pongs
+    pub nonce: u64,
 }
 
 impl PingPongEvent {
-    pub fn new(node_id: NodeId, latency: Option<Duration>, metadata: Metadata) -> Self {
+    pub fn new(node_id: NodeId, latency: Option<Duration>, metadata: Metadata, nonce: u64) -> Self {
         Self {
             node_id,
             latency,
             metadata,
+            nonce,
         }
     }
 }
@@ -122,9 +127,17 @@ impl LivenessHandle {
     }
 
     /// Send a ping to a given node ID
-    pub async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+    pub async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
         match self.handle.call(LivenessRequest::SendPing(node_id)).await?? {
-            LivenessResponse::Ok => Ok(()),
+            LivenessResponse::Ok(Some(nonces)) => Ok(nonces[0]),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Send pings to a list of peers
+    pub async fn send_pings(&mut self, node_ids: Vec<NodeId>) -> Result<Vec<u64>, LivenessError> {
+        match self.handle.call(LivenessRequest::SendPings(node_ids)).await?? {
+            LivenessResponse::Ok(Some(nonces)) => Ok(nonces),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
@@ -152,7 +165,7 @@ impl LivenessHandle {
             .call(LivenessRequest::SetMetadataEntry(key, value))
             .await??
         {
-            LivenessResponse::Ok => Ok(()),
+            LivenessResponse::Ok(_) => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
@@ -160,7 +173,7 @@ impl LivenessHandle {
     /// Add a monitored peer to the basic config if not present
     pub async fn check_add_monitored_peer(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
         match self.handle.call(LivenessRequest::AddMonitoredPeer(node_id)).await?? {
-            LivenessResponse::Ok => Ok(()),
+            LivenessResponse::Ok(_) => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }
@@ -172,7 +185,7 @@ impl LivenessHandle {
             .call(LivenessRequest::RemoveMonitoredPeer(node_id))
             .await??
         {
-            LivenessResponse::Ok => Ok(()),
+            LivenessResponse::Ok(_) => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }

@@ -63,6 +63,7 @@ const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
 const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
+const MAX_MEMPOOL_TIMEOUT: u64 = 150;
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
@@ -125,6 +126,14 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
             )),
+            NodeCommsRequest::GetTargetDifficultyNextBlock(algo) => {
+                let header = self.blockchain_db.fetch_tip_header().await?;
+                let constants = self.consensus_manager.consensus_constants(header.header().height);
+                let target_difficulty = self
+                    .get_target_difficulty_for_next_block(algo, constants, *header.hash())
+                    .await?;
+                Ok(NodeCommsResponse::TargetDifficulty(target_difficulty))
+            },
             NodeCommsRequest::FetchHeaders(range) => {
                 let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))
@@ -258,28 +267,35 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
-                let last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                if last_seen_hash != FixedHash::default() && best_block_header.hash() != &last_seen_hash {
+                let mut last_seen_hash = self.mempool.get_last_seen_hash().await?;
+                let mut is_mempool_synced = false;
+                let start = Instant::now();
+                // this will wait a max of 150ms by default before returning anyway with a potential broken template
+                // We need to ensure the mempool has seen the latest base node height before we can be confident the
+                // template is correct
+                while !is_mempool_synced && start.elapsed().as_millis() < u128::from(MAX_MEMPOOL_TIMEOUT) {
+                    if best_block_header.hash() == &last_seen_hash || last_seen_hash == FixedHash::default() {
+                        is_mempool_synced = true;
+                    } else {
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        last_seen_hash = self.mempool.get_last_seen_hash().await?;
+                    }
+                }
+
+                if !is_mempool_synced {
                     warn!(
                         target: LOG_TARGET,
                         "Mempool out of sync - last seen hash '{}' does not match the tip hash '{}'. This condition \
                          should auto correct with the next block template request",
                         last_seen_hash, best_block_header.hash()
                     );
-                    return Err(CommsInterfaceError::InternalError(
-                        "Mempool out of sync, blockchain db advanced passed current tip in mempool storage; this \
-                         should auto correct with the next block template request"
-                            .to_string(),
-                    ));
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
 
-                let constants_weight = constants
-                    .max_block_weight_excluding_coinbase()
-                    .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?;
+                let constants_weight = constants.max_block_transaction_weight();
                 let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
                     constants_weight
                 } else {
@@ -314,6 +330,7 @@ where B: BlockchainBackend + 'static
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
+                    is_mempool_synced,
                 )?;
 
                 debug!(target: LOG_TARGET,
@@ -460,7 +477,7 @@ where B: BlockchainBackend + 'static
                 let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
 
                 node_changes.extend(added_validators.into_iter().map(|vn| ValidatorNodeChange::Add {
-                    registration: vn.original_registration,
+                    registration: vn.original_registration.into(),
                     activation_epoch: vn.activation_epoch,
                     minimum_value_promise: vn.minimum_value_promise,
                     shard_key: vn.shard_key,
@@ -607,19 +624,20 @@ where B: BlockchainBackend + 'static
             );
             return Ok(true);
         }
-        let block_exist = self.blockchain_db.bad_block_exists(block).await?;
-        if block_exist.0 {
+        let (is_bad_block, reason) = self.blockchain_db.bad_block_exists(block).await?;
+        if is_bad_block {
             debug!(
                 target: LOG_TARGET,
-                "Block with hash `{}` already validated as a bad block due to {}",
-                block.to_hex(), block_exist.1
+                "Block with hash `{}` already validated as a bad block due to `{}`",
+                block.to_hex(), reason
             );
             return Err(CommsInterfaceError::ChainStorageError(
                 ChainStorageError::ValidationError {
                     source: ValidationError::BadBlockFound {
                         hash: block.to_hex(),
-                        reason: block_exist.1,
-                    },
+                        reason,
+                    }
+                    .into(),
                 },
             ));
         }
@@ -1021,7 +1039,7 @@ where B: BlockchainBackend + 'static
             constants.min_pow_difficulty(pow_algo),
             constants.max_pow_difficulty(pow_algo),
         );
-        debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
+        trace!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
     }
 

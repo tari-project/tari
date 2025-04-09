@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::*;
 use tari_common_types::{
@@ -179,7 +179,7 @@ where
         Ok(())
     }
 
-    async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
+    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
         debug!(
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
@@ -266,7 +266,7 @@ where
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
-                let birthday_height_hash = match self.resources.db.get_wallet_type()? {
+                let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(_)) => {
                         let header_proto = client.get_header_by_height(0).await?;
                         let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
@@ -275,14 +275,14 @@ where
                             header_hash: header.hash(),
                         }
                     },
-                    _ => self.get_birthday_header_height_hash(&mut client).await?,
+                    _ => self.get_scanning_start_header_height_hash(&mut client).await?,
                 };
 
                 ScannedBlock {
-                    height: birthday_height_hash.height,
+                    height: scanning_start_height_hash.height,
                     num_outputs: None,
                     amount: None,
-                    header_hash: birthday_height_hash.header_hash,
+                    header_hash: scanning_start_height_hash.header_hash,
                     timestamp: Utc::now().naive_utc(),
                 }
             };
@@ -333,7 +333,7 @@ where
         &mut self,
         peer: &NodeId,
     ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
-        let mut connection = self.connect_to_peer(peer.clone()).await?;
+        let mut connection = self.new_connection_to_peer(peer.clone()).await?;
         let client = connection
             .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
             .await?;
@@ -494,7 +494,7 @@ where
             let current_height = response.height;
             let current_header_hash = response.header_hash;
             let mined_timestamp =
-                NaiveDateTime::from_timestamp_opt(response.mined_timestamp as i64, 0).unwrap_or(NaiveDateTime::MIN);
+                DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0).unwrap_or(DateTime::<Utc>::MIN_UTC);
             let outputs = response
                 .outputs
                 .into_iter()
@@ -503,7 +503,7 @@ where
             total_scanned += outputs.len();
 
             let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs, current_height).await?;
+            let found_outputs = self.scan_for_outputs(outputs).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
             let (mut count, mut amount) = self
@@ -571,9 +571,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        height: u64,
-    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         let start = Instant::now();
         found_outputs.append(
             &mut self
@@ -583,18 +582,15 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let (message, status) = if ro.output.features.is_coinbase() {
-                        (
-                            format!("Coinbase for height: {}", height),
-                            ImportStatus::CoinbaseUnconfirmed,
-                        )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::CoinbaseUnconfirmed
                     } else {
-                        (self.resources.recovery_message.clone(), ImportStatus::Imported)
+                        ImportStatus::Imported
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -609,21 +605,15 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let (message, status) = if ro.output.features.is_coinbase() {
-                        (
-                            format!("Coinbase for height: {}", height),
-                            ImportStatus::CoinbaseUnconfirmed,
-                        )
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::CoinbaseUnconfirmed
                     } else {
-                        (
-                            self.resources.recovery_message.clone(),
-                            ImportStatus::OneSidedUnconfirmed,
-                        )
+                        ImportStatus::OneSidedUnconfirmed
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -639,19 +629,23 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>,
+        utxos: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>,
         current_height: u64,
-        mined_timestamp: NaiveDateTime,
+        mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        for (wo, message, import_status, tx_id, to) in utxos {
+        for (wo, import_status, tx_id, to) in utxos {
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
             } else {
                 match &wo.payment_id {
-                    PaymentId::AddressAndData(address, _) | PaymentId::Address(address) => address.clone(),
+                    PaymentId::AddressAndData {
+                        sender_address: address,
+                        ..
+                    } => address.clone(),
+                    PaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
                     _ => TariAddress::default(),
                 }
             };
@@ -659,7 +653,6 @@ where
                 .import_key_manager_utxo_to_transaction_service(
                     wo.clone(),
                     source_address,
-                    message,
                     import_status,
                     tx_id,
                     current_height,
@@ -718,11 +711,10 @@ where
         &mut self,
         wallet_output: WalletOutput,
         source_address: TariAddress,
-        message: String,
         import_status: ImportStatus,
         tx_id: TxId,
         current_height: u64,
-        mined_timestamp: NaiveDateTime,
+        mined_timestamp: DateTime<Utc>,
         scanned_output: TransactionOutput,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
@@ -731,7 +723,6 @@ where
             .import_utxo_with_status(
                 wallet_output.value,
                 source_address,
-                message,
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
@@ -755,37 +746,46 @@ where
         peer
     }
 
-    async fn get_birthday_header_height_hash(
+    async fn get_scanning_start_header_height_hash(
         &self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = self.resources.db.get_wallet_birthday()?;
+        let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
+        let block_height_birthday = client
+            .get_height_at_time(epoch_time_birthday)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+                0
+            });
         // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
-        let epoch_time = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
-
-        let block_height = match client.get_height_at_time(epoch_time).await {
-            Ok(b) => b,
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Problem requesting `height_at_time` from Base Node: {}", e
-                );
+        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+        let block_height_scanning_start = client
+            .get_height_at_time(epoch_time_scanning_start)
+            .await
+            .unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
-            },
-        };
-        let header = client.get_header_by_height(block_height).await?;
+            });
+        let header = client.get_header_by_height(block_height_scanning_start).await?;
         let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
-        let header_hash = header.hash();
+        let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,
-            "Fresh wallet recovery/scanning starting at Block {} (Header Hash: {})",
-            block_height,
-            header_hash.to_hex(),
+            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', scanning \
+            from epoch time '{}' at block height '{}' with header hash '{}'",
+            birthday,
+            epoch_time_birthday,
+            block_height_birthday,
+            epoch_time_scanning_start,
+            block_height_scanning_start,
+            header_hash_scanning_start.to_hex(),
         );
         Ok(HeightHash {
-            height: block_height,
-            header_hash,
+            height: block_height_scanning_start,
+            header_hash: header_hash_scanning_start,
         })
     }
 }

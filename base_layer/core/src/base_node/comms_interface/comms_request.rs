@@ -28,7 +28,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, Signature},
 };
 use tari_utilities::hex::Hex;
 
@@ -46,6 +46,7 @@ pub struct MmrStateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
+    GetTargetDifficultyNextBlock(PowAlgorithm),
     FetchHeaders(RangeInclusive<u64>),
     FetchHeadersByHashes(Vec<HashOutput>),
     FetchMatchingUtxos(Vec<HashOutput>),
@@ -54,7 +55,7 @@ pub enum NodeCommsRequest {
         compact: bool,
     },
     FetchBlocksByKernelExcessSigs(Vec<Signature>),
-    FetchBlocksByUtxos(Vec<Commitment>),
+    FetchBlocksByUtxos(Vec<CompressedCommitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
@@ -64,24 +65,24 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchValidatorNodesKeys {
-        height: u64,
-        validator_network: Option<PublicKey>,
-    },
-    FetchValidatorNodeChanges {
-        epoch: VnEpoch,
-        sidechain_id: Option<PublicKey>,
-    },
-    GetValidatorNode {
-        sidechain_id: Option<PublicKey>,
-        public_key: PublicKey,
-    },
     FetchTemplateRegistrations {
         start_height: u64,
         end_height: u64,
     },
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
+    },
+    FetchValidatorNodesKeys {
+        height: u64,
+        validator_network: Option<CompressedPublicKey>,
+    },
+    FetchValidatorNodeChanges {
+        epoch: VnEpoch,
+        sidechain_id: Option<CompressedPublicKey>,
+    },
+    GetValidatorNode {
+        sidechain_id: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
     },
 }
 
@@ -97,6 +98,7 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
+            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({:?})", algo),
             FetchHeaders(range) => {
                 write!(f, "FetchHeaders ({:?})", range)
             },
@@ -115,7 +117,7 @@ impl Display for NodeCommsRequest {
             FetchKernelByExcessSig(s) => write!(
                 f,
                 "FetchKernelByExcessSig (signature=({}, {}))",
-                s.get_public_nonce().to_hex(),
+                s.get_compressed_public_nonce().to_hex(),
                 s.get_signature().to_hex()
             ),
             FetchMempoolTransactionsByExcessSigs { .. } => {

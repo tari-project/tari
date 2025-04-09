@@ -125,7 +125,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                             warn!(
                                 target: LOG_TARGET,
                                 "Input not found in database or block, commitment: {}, hash: {}",
-                                input.commitment()?.as_public_key(), input_output_hash,
+                                input.commitment()?.to_hex(), input_output_hash,
                             );
                             return Err(ValidationError::UnknownInput);
                         }
@@ -160,7 +160,7 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
                 kernel.excess.to_hex(),
                 header_hash.to_hex(),
                 db_kernel.excess.to_hex(),
-                db_kernel.excess_sig.get_public_nonce().to_hex(),
+                db_kernel.excess_sig.get_compressed_public_nonce().to_hex(),
                 db_kernel.excess_sig.get_signature().to_hex(),
             );
             return Err(ValidationError::DuplicateKernelError(msg));

@@ -4,29 +4,27 @@ authors = ["The Tari Development Community"]
 description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.7.0-pre.3"
+version = "1.13.3-pre.0"
 edition = "2018"
 
 [dependencies]
 tari_core = { path = "../../base_layer/core", default-features = false }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
-tari_comms = { path = "../../comms/core" }
 tari_max_size = { path = "../../infrastructure/max_size" }
 minotari_app_utilities = { path = "../minotari_app_utilities", features = [
     "miner_input",
 ] }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_crypto = { version = "0.21.0" }
 tari_utilities = { version = "0.8" }
 
 base64 = "0.13.0"
-borsh = "1.2"
+borsh = "1.5"
 bufstream = "0.1"
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
-crossterm = { version = "0.25.0" }
+crossterm = { version = "0.28" }
 derivative = "2.2.0"
 futures = "0.3"
 hex = "0.4.2"
@@ -54,11 +52,12 @@ tonic = { version = "0.12.3", features = ["tls", "tls-roots"] }
 
 [dev-dependencies]
 prost-types = "0.13.3"
-chrono = { version = "0.4.19", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 config = "0.14.0"
 
 [package.metadata.cargo-machete]
 ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
     "log4rs",
+    "prost",
 ]

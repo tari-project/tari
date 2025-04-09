@@ -15,7 +15,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::ristretto::pedersen::PedersenCommitment;
+use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 
 use crate::HashValue;
 
@@ -28,11 +28,11 @@ pub struct ScriptContext {
     /// The hash of the previous block's hash
     prev_block_hash: HashValue,
     /// The commitment of the UTXO that is attached to this script
-    commitment: PedersenCommitment,
+    commitment: CompressedPedersenCommitment,
 }
 
 impl ScriptContext {
-    pub fn new(height: u64, prev_hash: &HashValue, com: &PedersenCommitment) -> Self {
+    pub fn new(height: u64, prev_hash: &HashValue, com: &CompressedPedersenCommitment) -> Self {
         ScriptContext {
             block_height: height,
             prev_block_hash: *prev_hash,
@@ -48,7 +48,7 @@ impl ScriptContext {
         &self.prev_block_hash
     }
 
-    pub fn commitment(&self) -> &PedersenCommitment {
+    pub fn commitment(&self) -> &CompressedPedersenCommitment {
         &self.commitment
     }
 }

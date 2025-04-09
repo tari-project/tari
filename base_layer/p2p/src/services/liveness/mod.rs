@@ -52,6 +52,7 @@ pub use handle::{
 
 mod message;
 mod service;
+pub use service::MAX_INFLIGHT_TTL;
 
 mod state;
 pub use state::Metadata;
@@ -87,7 +88,7 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
-    config: Option<LivenessConfig>,
+    pub(crate) config: Option<LivenessConfig>,
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
 }
 

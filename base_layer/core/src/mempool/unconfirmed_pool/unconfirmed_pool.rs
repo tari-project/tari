@@ -872,9 +872,9 @@ mod test {
         transactions::{
             aggregated_body::AggregateBody,
             fee::Fee,
-            key_manager::create_memory_db_key_manager,
             tari_amount::MicroMinotari,
             test_helpers::{TestParams, UtxoTestParams},
+            transaction_key_manager::create_memory_db_key_manager,
             weight::TransactionWeight,
             SenderTransactionProtocol,
         },

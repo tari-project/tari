@@ -48,7 +48,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -60,10 +60,14 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
-    transaction_components::{encrypted_data::PaymentId, OutputFeatures, TemplateType, TransactionError},
+    transaction_components::{
+        encrypted_data::{PaymentId, TxType},
+        OutputFeatures,
+        TemplateType,
+        TransactionError,
+    },
     weight::TransactionWeight,
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -295,7 +299,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -310,7 +314,7 @@ impl AppState {
             MicroMinotari::from(amount),
             selection_criteria,
             output_features,
-            message,
+            payment_id,
             fee_per_gram,
             tx_service_handle,
             result_tx,
@@ -325,18 +329,11 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
-        payment_id_str: String,
+        payment_id: PaymentId,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
         let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
-        let payment_id = if payment_id_str.is_empty() {
-            PaymentId::Empty
-        } else {
-            let bytes = payment_id_str.as_bytes().to_vec();
-            PaymentId::Open(bytes)
-        };
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -347,7 +344,6 @@ impl AppState {
             MicroMinotari::from(amount),
             selection_criteria,
             output_features,
-            message,
             fee_per_gram,
             payment_id,
             tx_service_handle,
@@ -364,7 +360,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        message: String,
+        payment_id: PaymentId,
         sidechain_deployment_key: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
@@ -387,26 +383,22 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         let claim_public_key = match claim_public_key {
             None => return Err(UiError::PublicKeyParseError),
-            Some(claim_public_key) => match PublicKey::from_hex(claim_public_key.as_str()) {
+            Some(claim_public_key) => match CompressedPublicKey::from_hex(claim_public_key.as_str()) {
                 Ok(claim_public_key) => Some(claim_public_key),
                 Err(_) => return Err(UiError::PublicKeyParseError),
             },
         };
 
-        let sidechain_deploy_key = match sidechain_deployment_key {
-            None => None,
-            Some(sidechain_id) => match PrivateKey::from_hex(sidechain_id.as_str()) {
-                Ok(s) => Some(s),
-                Err(_) => return Err(UiError::PublicKeyParseError),
-            },
-        };
+        let sidechain_deploy_key = sidechain_deployment_key
+            .map(|sidechain_id| PrivateKey::from_hex(sidechain_id.as_str()).map_err(|_| UiError::PublicKeyParseError))
+            .transpose()?;
 
         send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
             MicroMinotari::from(amount),
             selection_criteria,
-            message,
+            payment_id,
             fee_per_gram,
             sidechain_deploy_key,
             tx_service_handle,
@@ -429,7 +421,7 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
-        sidechain_id_key: Option<&RistrettoSecretKey>,
+        sidechain_id_key: Option<&PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -605,7 +597,7 @@ impl AppState {
     }
 
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
-        let pub_key = PublicKey::from_hex(public_key.as_str())?;
+        let pub_key = CompressedPublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
         let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(
@@ -743,7 +735,7 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_inbound_transactions()
                 .await?
-                .values()
+                .iter()
                 .map(|t| CompletedTransaction::from(t.clone()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
@@ -752,11 +744,10 @@ impl AppStateInner {
                 .transaction_service
                 .get_pending_outbound_transactions()
                 .await?
-                .values()
+                .iter()
                 .map(|t| CompletedTransaction::from(t.clone()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
-
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
             b.timestamp.partial_cmp(&a.timestamp).unwrap()
         });
@@ -769,26 +760,14 @@ impl AppStateInner {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
-        completed_transactions.extend(
-            self.wallet
-                .transaction_service
-                .get_completed_transactions()
-                .await?
-                .values()
-                .cloned()
-                .collect::<Vec<CompletedTransaction>>(),
-        );
+        completed_transactions.extend(self.wallet.transaction_service.get_completed_transactions().await?);
 
         completed_transactions.extend(
             self.wallet
                 .transaction_service
                 .get_cancelled_completed_transactions()
-                .await?
-                .values()
-                .cloned()
-                .collect::<Vec<CompletedTransaction>>(),
+                .await?,
         );
-
         completed_transactions.sort_by(|a, b| {
             b.timestamp
                 .partial_cmp(&a.timestamp)
@@ -1086,6 +1065,14 @@ impl AppStateInner {
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
         self.data.base_node_peer_custom = Some(peer.clone());
+        if let Some(pos) = self
+            .data
+            .base_node_list
+            .iter()
+            .position(|(s, _)| s == "Custom Base Node")
+        {
+            self.data.base_node_list.remove(pos);
+        }
         self.data
             .base_node_list
             .insert(0, ("Custom Base Node".to_string(), peer.clone()));
@@ -1196,7 +1183,6 @@ pub struct CompletedTransactionInfo {
     pub excess_signature: String,
     pub maturity: u64,
     pub status: TransactionStatus,
-    pub message: String,
     pub timestamp: NaiveDateTime,
     pub mined_timestamp: Option<NaiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,
@@ -1223,14 +1209,24 @@ impl CompletedTransactionInfo {
                 .unwrap_or_default(),
             tx.transaction
                 .first_kernel_excess_sig()
-                .map(|s| s.get_public_nonce().to_hex())
+                .map(|s| s.get_compressed_public_nonce().to_hex())
                 .unwrap_or_default()
         );
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
         let coinbase = tx.transaction.body.contains_coinbase();
-        let burn = tx.transaction.body.contains_burn();
+        // Faux transactions for scanned change outputs must correspond to the original transaction
+        let burn = if tx.transaction.body.contains_burn() {
+            true
+        } else if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        {
+            tx_type == TxType::Burn
+        } else {
+            false
+        };
 
         Ok(Self {
             tx_id: tx.tx_id,
@@ -1247,16 +1243,15 @@ impl CompletedTransactionInfo {
                 .map(|o| o.features.maturity)
                 .unwrap_or(0),
             status: tx.status,
-            message: tx.message,
-            timestamp: tx.timestamp,
-            mined_timestamp: tx.mined_timestamp,
+            timestamp: tx.timestamp.naive_utc(),
+            mined_timestamp: tx.mined_timestamp.map(|t| t.naive_utc()),
             cancelled: tx.cancelled,
             direction: tx.direction,
             mined_height: tx.mined_height,
             weight,
             inputs_count,
             outputs_count,
-            payment_id: tx.payment_id,
+            payment_id: Some(tx.payment_id),
             coinbase,
             burn,
         })

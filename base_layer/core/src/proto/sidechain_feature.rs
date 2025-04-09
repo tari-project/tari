@@ -26,7 +26,7 @@ use std::convert::{TryFrom, TryInto};
 
 use prost::Message;
 use tari_common::configuration::Network;
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, Signature};
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
     ChainLink,
@@ -129,9 +129,9 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
         let public_key =
-            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
-        let claim_public_key =
-            PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| format!("claim_public_key: {}", e))?;
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+        let claim_public_key = CompressedPublicKey::from_canonical_bytes(&value.claim_public_key)
+            .map_err(|e| format!("claim_public_key: {}", e))?;
 
         Ok(Self::new(
             ValidatorNodeSignature::new(
@@ -162,7 +162,8 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: CompressedPublicKey::from_canonical_bytes(&value.author_public_key)
+                .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)
@@ -207,7 +208,8 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
         Ok(ConfidentialOutputData {
-            claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            claim_public_key: CompressedPublicKey::from_canonical_bytes(&value.claim_public_key)
+                .map_err(|e| e.to_string())?,
         })
     }
 }
@@ -288,7 +290,7 @@ impl TryFrom<proto::types::SidechainId> for SideChainId {
     type Error = String;
 
     fn try_from(value: proto::types::SidechainId) -> Result<Self, Self::Error> {
-        let public_key = PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?;
+        let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?;
         let knowledge_proof = value
             .knowledge_proof
             .map(Signature::try_from)
@@ -416,7 +418,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
             height: value.height,
             epoch: value.epoch,
             shard_group: value.shard_group.ok_or("missing shard_group")?.try_into()?,
-            proposed_by: PublicKey::from_canonical_bytes(&value.proposed_by)
+            proposed_by: CompressedPublicKey::from_canonical_bytes(&value.proposed_by)
                 .map_err(|_| "Invalid proposed_by public key")?,
             total_leader_fee: value.total_leader_fee,
             state_merkle_root: value
@@ -596,7 +598,7 @@ impl TryFrom<proto::types::ValidatorSignature> for ValidatorQcSignature {
 
     fn try_from(value: proto::types::ValidatorSignature) -> Result<Self, Self::Error> {
         Ok(Self {
-            public_key: PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            public_key: CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
             signature: value.signature.ok_or("signature not provided")?.try_into()?,
         })
     }
@@ -618,7 +620,7 @@ impl TryFrom<proto::types::EvictAtom> for EvictNodeAtom {
 
     fn try_from(value: proto::types::EvictAtom) -> Result<Self, Self::Error> {
         Ok(Self::new(
-            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
         ))
     }
 }

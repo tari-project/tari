@@ -26,7 +26,7 @@ use std::sync::{
     RwLock,
 };
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -153,9 +153,9 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         &self,
         _backend: &B,
         _height: u64,
-        _total_utxo_sum: &Commitment,
-        _total_kernel_sum: &Commitment,
-        _total_burned_sum: &Commitment,
+        _total_utxo_sum: &CompressedCommitment,
+        _total_kernel_sum: &CompressedCommitment,
+        _total_burned_sum: &CompressedCommitment,
     ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

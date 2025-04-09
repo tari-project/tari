@@ -42,12 +42,13 @@ use grpc::{
 use minotari_app_grpc::tari_rpc::{self as grpc, TransactionStatus};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
+            encrypted_data::{PaymentId, TxType},
             CoinBaseExtra,
             EncryptedData,
             OutputFeatures,
@@ -58,7 +59,7 @@ use tari_core::{
         },
     },
 };
-use tari_crypto::commitment::HomomorphicCommitment;
+use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
@@ -497,17 +498,18 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 
     while let Some(tx) = completed_txs.next().await {
         let tx_info = tx.unwrap().transaction.unwrap();
-        if (tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "COINBASE") ||
-            (!tx_info.message.contains("Coinbase Transaction for Block ") && transaction_type == "NORMAL")
-        {
-            println!("Transaction with status COINBASE found for wallet {}: ", wallet);
-        } else {
+        let is_coinbase = tx_info.status == TransactionStatus::Coinbase as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseConfirmed as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseUnconfirmed as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseNotInBlockChain as i32;
+        if transaction_type == "COINBASE" && !is_coinbase || transaction_type == "NORMAL" && is_coinbase {
             continue;
         }
         println!("\n");
-        println!("TxId: {}", tx_info.tx_id);
-        println!("Status: {}", tx_info.status);
-        println!("IsCancelled: {}", tx_info.is_cancelled);
+        println!(
+            "TxId: {}, Status: {}, IsCancelled: {}, {}",
+            tx_info.tx_id, tx_info.status, tx_info.is_cancelled, transaction_type
+        );
     }
 }
 
@@ -702,14 +704,17 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
-        message: format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            source_wallet.as_str(),
-            dest_wallet.as_str()
-        ),
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                source_wallet.as_str(),
+                dest_wallet.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -763,14 +768,17 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
-        message: format!(
-            "One sided transfer amount {} from {} to {}",
-            amount,
-            source_wallet.as_str(),
-            dest_wallet.as_str()
-        ),
         payment_type: 1, // one sided transaction
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "One sided transfer amount {} from {} to {}",
+                amount,
+                source_wallet.as_str(),
+                dest_wallet.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -862,15 +870,18 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
         address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram,
-        message: format!(
-            "Transfer amount {} from {} to {} as fee {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str(),
-            fee_per_gram
-        ),
         payment_type: 0, // mimblewimble transaction
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "Transfer amount {} from {} to {} as fee {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str(),
+                fee_per_gram
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1293,14 +1304,17 @@ async fn send_num_transactions_to_wallets_at_fee(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            message: format!(
-                "transfer amount {} from {} to {}",
-                amount,
-                sender_wallet.as_str(),
-                receiver_wallet.as_str()
-            ),
             payment_type: 0, // standard mimblewimble transaction
-            payment_id: Vec::new(),
+            payment_id: PaymentId::open(
+                &format!(
+                    "transfer amount {} from {} to {}",
+                    amount,
+                    sender_wallet.as_str(),
+                    receiver_wallet.as_str()
+                ),
+                TxType::PaymentToOther,
+            )
+            .to_bytes(),
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
@@ -1435,14 +1449,17 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         address: receiver_wallet_address.clone(),
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
-        message: format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str()
-        ),
-        payment_type: 0, // normal mimblewimble payment type
-        payment_id: Vec::new(),
+        payment_type: 0,                // normal mimblewimble payment type
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1576,8 +1593,9 @@ async fn wallet_with_tari_connected_to_base_node(
     while reward < amount {
         current_height += 1;
         num_blocks += 1;
-        reward += world.consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000
-                                                                                                    // uT
+        reward += world.consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000;
+        // 1 T = 1_000_000
+        // uT
     }
 
     println!("Creating miner...");
@@ -1630,28 +1648,34 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         address: receiver1_address.clone(),
         amount,
         fee_per_gram,
-        message: format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver1.as_str()
-        ),
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver1.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
 
     let payment_recipient2 = PaymentRecipient {
         address: receiver2_address.clone(),
         amount,
         fee_per_gram,
-        message: format!(
-            "transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver2.as_str()
-        ),
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver2.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
@@ -1761,9 +1785,12 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         address: sender_wallet_address.clone(),
         amount,
         fee_per_gram,
-        message: format!("transfer amount {} from {} to self", amount, sender.as_str(),),
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!("transfer amount {} from {} to self", amount, sender.as_str()),
+            TxType::PaymentToSelf,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1841,15 +1868,18 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram,
-        message: format!(
-            "Atomic Swap from {} to {} with amount {} at fee {}",
-            sender.as_str(),
-            receiver.as_str(),
-            amount,
-            fee_per_gram
-        ),
         payment_type: 0, // normal mimblewimble transaction
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "Atomic Swap from {} to {} with amount {} at fee {}",
+                sender.as_str(),
+                receiver.as_str(),
+                amount,
+                fee_per_gram
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
 
     let atomic_swap_request = SendShaAtomicSwapRequest {
@@ -2132,14 +2162,17 @@ async fn send_one_sided_stealth_transaction(
         address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram,
-        message: format!(
-            "One sided stealth transfer amount {} from {} to {}",
-            amount,
-            sender.as_str(),
-            receiver.as_str()
-        ),
         payment_type: 2, // one sided stealth transaction
-        payment_id: Vec::new(),
+        payment_id: PaymentId::open(
+            &format!(
+                "One sided stealth transfer amount {} from {} to {}",
+                amount,
+                sender.as_str(),
+                receiver.as_str()
+            ),
+            TxType::PaymentToOther,
+        )
+        .to_bytes(),
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -2215,6 +2248,7 @@ async fn send_one_sided_stealth_transaction(
 }
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
+#[allow(clippy::too_many_lines)]
 async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
@@ -2235,7 +2269,15 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
 
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+    spawn_wallet(
+        world,
+        wallet_a.clone(),
+        Some(base_node.clone()),
+        seed_nodes,
+        None,
+        Some(cli),
+    )
+    .await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
@@ -2265,10 +2307,9 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2316,6 +2357,11 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
+        payment_id: PaymentId::open(
+            &format!("I import {} unspent outputs to {}", wallet_a, wallet_b),
+            TxType::ImportedUtxoNoneRewindable,
+        )
+        .to_bytes(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2327,6 +2373,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 }
 
 #[then(expr = "I import {word} spent outputs to {word}")]
+#[allow(clippy::too_many_lines)]
 async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
@@ -2346,7 +2393,15 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+    spawn_wallet(
+        world,
+        wallet_a.clone(),
+        Some(base_node.clone()),
+        seed_nodes,
+        None,
+        Some(cli),
+    )
+    .await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
@@ -2376,10 +2431,9 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2427,6 +2481,11 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
+        payment_id: PaymentId::open(
+            &format!("I import {} spent outputs to {}", wallet_a, wallet_b),
+            TxType::ImportedUtxoNoneRewindable,
+        )
+        .to_bytes(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2457,7 +2516,15 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+    spawn_wallet(
+        world,
+        wallet_a.clone(),
+        Some(base_node.clone()),
+        seed_nodes,
+        None,
+        Some(cli),
+    )
+    .await;
 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
@@ -2487,10 +2554,9 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = PublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment: HomomorphicCommitment<PublicKey> =
-            HomomorphicCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = PublicKey::from_hex(&output[14]).unwrap();
+        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
+        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
+        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
         let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
         let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
@@ -2538,6 +2604,14 @@ async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: Str
             .iter()
             .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
+        payment_id: PaymentId::open(
+            &format!(
+                "I import {} unspent outputs as pre_mine outputs to {}",
+                wallet_a, wallet_b
+            ),
+            TxType::ImportedUtxoNoneRewindable,
+        )
+        .to_bytes(),
     };
 
     world.last_imported_tx_ids = wallet_b_client
@@ -2623,15 +2697,18 @@ async fn multi_send_txs_from_wallet(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            message: format!(
-                "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
-                amount,
-                sender.as_str(),
-                receiver.as_str(),
-                fee_per_gram
-            ),
             payment_type: 0, // mimblewimble transaction
-            payment_id: Vec::new(),
+            payment_id: PaymentId::open(
+                &format!(
+                    "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
+                    amount,
+                    sender.as_str(),
+                    receiver.as_str(),
+                    fee_per_gram
+                ),
+                TxType::PaymentToOther,
+            )
+            .to_bytes(),
         };
 
         let transfer_req = TransferRequest {
@@ -2790,9 +2867,9 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
     let req = grpc::CreateBurnTransactionRequest {
         amount,
         fee_per_gram: fee,
-        message: "Burning some tari".to_string(),
         claim_public_key: identity.public_key,
         sidechain_deployment_key: vec![],
+        payment_id: PaymentId::open("Burning some tari", TxType::Burn).to_bytes(),
     };
 
     let result = client.create_burn_transaction(req).await.unwrap();

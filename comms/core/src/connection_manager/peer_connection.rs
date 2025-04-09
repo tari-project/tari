@@ -24,7 +24,7 @@ use std::{
     fmt,
     future::Future,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -33,6 +33,7 @@ use std::{
 use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
+use tari_shutdown::oneshot_trigger::OneshotTrigger;
 use tokio::{
     sync::{mpsc, oneshot},
     time,
@@ -137,6 +138,9 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
+    drop_notifier: OneshotTrigger<NodeId>,
+    number_of_rpc_clients: Arc<AtomicUsize>,
+    force_disconnect_rpc_clients_when_clone_drops: Arc<AtomicBool>,
 }
 
 impl PeerConnection {
@@ -159,6 +163,9 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
+            drop_notifier: OneshotTrigger::<NodeId>::new(),
+            number_of_rpc_clients: Arc::new(AtomicUsize::new(0)),
+            force_disconnect_rpc_clients_when_clone_drops: Arc::new(Default::default()),
         }
     }
 
@@ -254,11 +261,16 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
-        builder
+
+        let rpc_client = builder
             .with_protocol_id(protocol)
             .with_node_id(self.peer_node_id.clone())
+            .with_terminate_signal(self.drop_notifier.to_signal())
             .connect(framed)
-            .await
+            .await?;
+        self.number_of_rpc_clients.fetch_add(1, Ordering::Relaxed);
+
+        Ok(rpc_client)
     }
 
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
@@ -295,6 +307,39 @@ impl PeerConnection {
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
+    }
+
+    /// Forcefully disconnect all RPC clients when any clone is dropped - if not set (the default behaviour) all RPC
+    /// clients will be disconnected when the last instance is dropped. i.e. when `self.handle_counter == 1`
+    pub fn set_force_disconnect_rpc_clients_when_clone_drops(&mut self) {
+        self.force_disconnect_rpc_clients_when_clone_drops
+            .store(true, Ordering::Relaxed);
+    }
+}
+
+impl Drop for PeerConnection {
+    fn drop(&mut self) {
+        if self.handle_count() <= 1 ||
+            self.force_disconnect_rpc_clients_when_clone_drops
+                .load(Ordering::Relaxed)
+        {
+            let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
+            if number_of_rpc_clients > 0 {
+                self.drop_notifier.broadcast(self.peer_node_id.clone());
+                trace!(
+                    target: LOG_TARGET,
+                    "PeerConnection `{}` drop called, open sub-streams: {}, notified {} potential RPC clients to drop \
+                    connection",
+                    self.peer_node_id.clone(), self.substream_count(), number_of_rpc_clients,
+                );
+            } else {
+                trace!(
+                    target: LOG_TARGET,
+                    "PeerConnection `{}` drop called, open sub-streams: {}, RPC clients: {}",
+                    self.peer_node_id, self.substream_count(), number_of_rpc_clients
+                );
+            }
+        }
     }
 }
 

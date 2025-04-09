@@ -89,6 +89,7 @@ use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -98,10 +99,12 @@ pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
-use tari_common_types::types::Commitment;
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use tari_common_types::types::CompressedCommitment;
 
-use crate::transactions::transaction_components::KernelFeatures;
+use crate::transactions::{
+    transaction_components::KernelFeatures,
+    transaction_key_manager::error::KeyManagerServiceError,
+};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
@@ -125,8 +128,8 @@ pub enum TransactionProtocolError {
     RangeProofError(String),
     #[error("This set of parameters is currently not supported: `{0}`")]
     UnsupportedError(String),
-    #[error("There has been an error serializing or deserializing this structure")]
-    SerializationError,
+    #[error("There has been an error serializing or deserializing this structure: `{0}`")]
+    SerializationError(String),
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
     #[error("The script offset private key could not be found")]
@@ -157,6 +160,12 @@ impl From<KeyManagerServiceError> for TransactionProtocolError {
     }
 }
 
+impl From<ByteArrayError> for TransactionProtocolError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionProtocolError::SerializationError(err.to_string())
+    }
+}
+
 /// Transaction metadata, this includes all the fields that needs to be signed on the kernel
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
@@ -167,7 +176,7 @@ pub struct TransactionMetadata {
     /// The kernel features
     pub kernel_features: KernelFeatures,
     /// optional burn commitment if present
-    pub burn_commitment: Option<Commitment>,
+    pub burn_commitment: Option<CompressedCommitment>,
 }
 
 impl TransactionMetadata {

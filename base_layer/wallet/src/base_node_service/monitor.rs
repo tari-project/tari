@@ -106,6 +106,9 @@ where
                         latency: None,
                     })
                     .await;
+                    if let Some(node_id) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
+                        self.wallet_connectivity.disconnect_base_node(node_id).await;
+                    }
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
@@ -170,7 +173,7 @@ where
                     node_id: Some(base_node_id.clone()),
                     chain_metadata: Some(chain_metadata),
                     is_synced: Some(is_synced),
-                    updated: Some(Utc::now().naive_utc()),
+                    updated: Some(Utc::now()),
                     latency: Some(latency),
                 })
                 .await;
