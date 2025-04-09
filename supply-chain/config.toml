@@ -1383,6 +1383,10 @@ criteria = "safe-to-deploy"
 version = "0.9.105"
 criteria = "safe-to-deploy"
 
+[[exemptions.openssl-sys]]
+version = "0.9.107"
+criteria = "safe-to-deploy"
+
 [[exemptions.ordered-float]]
 version = "2.10.1"
 criteria = "safe-to-deploy"
@@ -2169,6 +2173,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tokio]]
 version = "1.42.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.tokio]]
+version = "1.44.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tokio-io-timeout]]
