@@ -51,7 +51,7 @@ use tari_comms::{
     NodeIdentity,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_comms_dht::Dht;
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     storage::database::ContactsBackend,
@@ -148,7 +148,6 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
-    pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
@@ -326,7 +325,6 @@ where
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
-        let store_and_forward_requester = dht.store_and_forward_requester();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
@@ -366,7 +364,6 @@ where
             network: config.network.into(),
             comms,
             dht_service: dht,
-            store_and_forward_requester,
             output_manager_service: output_manager_handle,
             key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,

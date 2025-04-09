@@ -41,6 +41,7 @@ use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
+    envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
     filter,
     inbound,
@@ -49,11 +50,8 @@ use crate::{
     network_discovery::DhtNetworkDiscovery,
     outbound,
     outbound::DhtOutboundRequest,
-    proto::envelope::DhtMessageType,
     rpc,
     storage::{DbConnection, StorageError},
-    store_forward,
-    store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
     DedupLayer,
     DhtActorError,
     DhtBuilder,
@@ -64,15 +62,12 @@ const LOG_TARGET: &str = "comms::dht";
 
 const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
-const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
 const DHT_EVENT_BROADCAST_CHANNEL_SIZE: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum DhtInitializationError {
     #[error("Database initialization failed: {0}")]
     DatabaseMigrationFailed(#[from] StorageError),
-    #[error("StoreAndForwardInitializationError: {0}")]
-    StoreAndForwardInitializationError(#[from] StoreAndForwardError),
     #[error("DhtActorInitializationError: {0}")]
     DhtActorInitializationError(#[from] DhtActorError),
     #[error("Builder error: no outbound message sender set")]
@@ -93,10 +88,6 @@ pub struct Dht {
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     /// Sender for DHT requests
     dht_sender: mpsc::Sender<DhtRequest>,
-    /// Sender for SAF requests
-    saf_sender: mpsc::Sender<StoreAndForwardRequest>,
-    /// Sender for SAF response signals
-    saf_response_signal_sender: mpsc::Sender<()>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connectivity actor requester
@@ -118,8 +109,6 @@ impl Dht {
     ) -> Result<Self, DhtInitializationError> {
         let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
-        let (saf_sender, saf_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
-        let (saf_response_signal_sender, saf_response_signal_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
         let metrics_collector = MetricsCollector::spawn();
@@ -131,8 +120,6 @@ impl Dht {
             config: Arc::new(config),
             outbound_tx,
             dht_sender,
-            saf_sender,
-            saf_response_signal_sender,
             connectivity,
             discovery_sender,
             event_publisher,
@@ -143,13 +130,6 @@ impl Dht {
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
         dht.connectivity_service(shutdown_signal.clone()).spawn();
-        dht.store_and_forward_service(
-            conn.clone(),
-            saf_receiver,
-            shutdown_signal.clone(),
-            saf_response_signal_receiver,
-        )
-        .spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
         dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
@@ -229,27 +209,6 @@ impl Dht {
         )
     }
 
-    fn store_and_forward_service(
-        &self,
-        conn: DbConnection,
-        request_rx: mpsc::Receiver<StoreAndForwardRequest>,
-        shutdown_signal: ShutdownSignal,
-        saf_response_signal_rx: mpsc::Receiver<()>,
-    ) -> StoreAndForwardService {
-        StoreAndForwardService::new(
-            self.config.saf.clone(),
-            conn,
-            self.peer_manager.clone(),
-            self.dht_requester(),
-            &self.connectivity.clone(),
-            self.outbound_requester(),
-            request_rx,
-            saf_response_signal_rx,
-            self.event_publisher.clone(),
-            shutdown_signal,
-        )
-    }
-
     /// Return a new OutboundMessageRequester connected to the receiver
     pub fn outbound_requester(&self) -> OutboundMessageRequester {
         OutboundMessageRequester::new(self.outbound_tx.clone())
@@ -263,11 +222,6 @@ impl Dht {
     /// Returns a requester for the DhtDiscoveryService associated with this instance
     pub fn discovery_service_requester(&self) -> DhtDiscoveryRequester {
         DhtDiscoveryRequester::new(self.discovery_sender.clone(), self.config.discovery_request_timeout)
-    }
-
-    /// Returns a requester for the StoreAndForwardService associated with this instance
-    pub fn store_and_forward_requester(&self) -> StoreAndForwardRequester {
-        StoreAndForwardRequester::new(self.saf_sender.clone())
     }
 
     /// Get a subscription to `DhtEvents`
@@ -315,24 +269,10 @@ impl Dht {
                 "Inbound [{}]",
                 self.node_identity.node_id().short_str()
             )))
-            .layer(store_forward::StoreLayer::new(
-                self.config.saf.clone(),
-                Arc::clone(&self.peer_manager),
-                Arc::clone(&self.node_identity),
-                self.store_and_forward_requester(),
-            ))
             .layer(ForwardLayer::new(
                 self.dht_requester(),
                 self.outbound_requester(),
                 self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
-            ))
-            .layer(store_forward::MessageHandlerLayer::new(
-                self.config.saf.clone(),
-                self.store_and_forward_requester(),
-                self.dht_requester(),
-                Arc::clone(&self.node_identity),
-                self.outbound_requester(),
-                self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
                 self.config.clone(),
@@ -384,23 +324,16 @@ impl Dht {
     /// Produces a filter predicate which disallows store and forward messages if that feature is not
     /// supported by the node.
     fn unsupported_saf_messages_filter(&self) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send {
-        let node_identity = Arc::clone(&self.node_identity);
-        move |msg: &DhtInboundMessage| {
-            if node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
-                return true;
-            }
-
-            match msg.dht_header.message_type {
-                DhtMessageType::SafRequestMessages => {
-                    warn!(
-                        "Received store and forward message from PublicKey={}. Store and forward feature is not \
-                         supported by this node. Discarding message.",
-                        msg.source_peer.public_key
-                    );
-                    false
-                },
-                _ => true,
-            }
+        move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
+            DhtMessageType::SafRequestMessages => {
+                warn!(
+                    "Received store and forward message from PublicKey={}. Store and forward feature is not supported \
+                     by this node. Discarding message.",
+                    msg.source_peer.public_key
+                );
+                false
+            },
+            _ => true,
         }
     }
 }
@@ -411,7 +344,7 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     // it isn't a duplicate (normal message), or
     let should_continue = !msg.is_duplicate() ||
         (
-            // it is a duplicate domain message (i.e. not DHT or SAF protocol message), and
+            // it is a duplicate domain message (i.e. not DHT protocol message), and
             msg.dht_header.message_type.is_domain_message() &&
                 // it has an unknown destination (e.g complete transactions, blocks, misc. encrypted
                 // messages) we allow it to proceed, which in turn, re-propagates it for another round.
@@ -471,7 +404,6 @@ mod test {
         outbound::mock::create_outbound_service_mock,
         test_utils::{
             build_peer_manager,
-            make_client_identity,
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
@@ -651,55 +583,6 @@ mod test {
         assert_eq!(params.dht_header.unwrap().message_signature, message_signature);
 
         // Check the next service was not called
-        assert_eq!(spy.call_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_stack_filter_saf_message() {
-        let node_identity = make_client_identity();
-        let peer_manager = build_peer_manager();
-        let (connectivity, _) = create_connectivity_mock();
-
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
-
-        // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
-
-        let shutdown = Shutdown::new();
-        let dht = Dht::builder()
-            .with_outbound_sender(out_tx)
-            .build(
-                Arc::clone(&node_identity),
-                peer_manager,
-                connectivity,
-                shutdown.to_signal(),
-            )
-            .await
-            .unwrap();
-
-        // SAF messages need to be requested before any response is accepted
-        dht.store_and_forward_requester()
-            .request_saf_messages_from_peer(node_identity.node_id().clone())
-            .await
-            .unwrap();
-
-        let spy = service_spy();
-        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
-
-        let msg = wrap_in_envelope_body!(b"secret".to_vec());
-        let mut dht_envelope = make_dht_envelope(
-            &node_identity,
-            &msg,
-            DhtMessageFlags::empty(),
-            false,
-            MessageTag::new(),
-            false,
-        )
-        .unwrap();
-        dht_envelope.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
-        let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
-
-        service.call(inbound_message).await.unwrap_err();
         assert_eq!(spy.call_count(), 0);
     }
 }

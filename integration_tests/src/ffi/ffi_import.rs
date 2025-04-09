@@ -398,7 +398,6 @@ extern "C" {
         database_name: *const c_char,
         datastore_path: *const c_char,
         discovery_timeout_in_secs: c_ulonglong,
-        saf_message_duration_in_secs: c_ulonglong,
         exclude_dial_test_addresses: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;

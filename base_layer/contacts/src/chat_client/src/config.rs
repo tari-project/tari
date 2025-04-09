@@ -33,7 +33,7 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
 use tari_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
@@ -167,10 +167,6 @@ impl ChatClientConfig {
                         enabled: true,
                         initial_peer_sync_delay: None,
                         ..NetworkDiscoveryConfig::default()
-                    },
-                    saf: SafConfig {
-                        auto_request: true,
-                        ..Default::default()
                     },
                     ..DhtConfig::default_local_test()
                 },

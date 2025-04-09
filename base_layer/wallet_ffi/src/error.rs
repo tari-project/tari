@@ -27,7 +27,6 @@ use minotari_wallet::{
 };
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::multiaddr;
-use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_core::transactions::transaction_key_manager::error::KeyManagerServiceError;
 use tari_crypto::{
@@ -247,10 +246,6 @@ impl From<WalletError> for LibWalletError {
             // Comms Stack errors
             WalletError::MultiaddrError(_) => Self {
                 code: 301,
-                message: format!("{:?}", w),
-            },
-            WalletError::StoreAndForwardError(_) => Self {
-                code: 302,
                 message: format!("{:?}", w),
             },
             WalletError::ContactsServiceError(ContactsServiceError::ContactNotFound) => Self {
@@ -497,15 +492,6 @@ impl From<SchnorrSignatureError> for LibWalletError {
     }
 }
 
-impl From<StoreAndForwardError> for LibWalletError {
-    fn from(err: StoreAndForwardError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
-        Self {
-            code: 902,
-            message: format!("{:?}", err),
-        }
-    }
-}
 #[derive(Debug, Error, PartialEq)]
 pub enum TransactionError {
     #[error("The transaction has an incorrect status: `{0}`")]

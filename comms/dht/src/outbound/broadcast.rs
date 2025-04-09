@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll, time::Duration};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -84,7 +84,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(config.saf.msg_validity)
+            message_validity_window: chrono::Duration::from_std(Duration::from_secs(3 * 60 * 60))
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }

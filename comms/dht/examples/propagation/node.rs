@@ -112,7 +112,6 @@ pub async fn create<P: AsRef<Path>>(
 
     let dht = tari_comms_dht::Dht::builder()
         .with_database_url(DbConnectionUrl::File(database_path.as_ref().join("dht.sqlite")))
-        .set_auto_store_and_forward_requests(false)
         .with_outbound_sender(outbound_tx)
         .enable_auto_join()
         .build(

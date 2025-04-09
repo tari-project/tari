@@ -162,7 +162,6 @@ impl DbConnection {
 
 #[cfg(test)]
 mod test {
-    use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
     use tari_test_utils::random;
 
     use super::*;
@@ -180,10 +179,6 @@ mod test {
         let conn = DbConnection::connect_memory(id.clone()).unwrap();
         conn.migrate().unwrap();
         let conn = DbConnection::connect_memory(id).unwrap();
-        let mut conn = conn.get_pooled_connection().unwrap();
-        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
-            .get_result(&mut conn)
-            .unwrap();
-        assert_eq!(count, 0);
+        assert!(conn.get_pooled_connection().is_ok());
     }
 }

@@ -33,9 +33,9 @@ bitflags! {
         const NONE = 0b0000_0000;
         /// Node is able to propagate messages
         const MESSAGE_PROPAGATION = 0b0000_0001;
-        /// Node offers store and forward functionality
+        /// Legacy compatibility for nodes that used to offer store and forward functionality; this is no longer used,
+        /// but it will change the node's public key if it is not present.
         const DHT_STORE_FORWARD = 0b0000_0010;
-
         /// Node is a communication node (typically a base layer node)
         const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits() | Self::DHT_STORE_FORWARD.bits();
         /// Node is a network client

@@ -138,13 +138,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{
-    store_forward::SafConfig,
-    DbConnectionUrl,
-    DhtConfig,
-    DhtConnectivityConfig,
-    NetworkDiscoveryConfig,
-};
+use tari_comms_dht::{DbConnectionUrl, DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
@@ -5840,7 +5834,6 @@ pub unsafe extern "C" fn comms_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
     discovery_timeout_in_secs: c_ulonglong,
-    saf_message_duration_in_secs: c_ulonglong,
     exclude_dial_test_addresses: bool,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
@@ -5944,12 +5937,6 @@ pub unsafe extern "C" fn comms_config_create(
                     discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                     database_url: DbConnectionUrl::File(dht_database_path),
                     auto_join: true,
-                    saf: SafConfig {
-                        msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                        // Ensure that SAF messages are requested automatically
-                        auto_request: true,
-                        ..Default::default()
-                    },
                     network_discovery: NetworkDiscoveryConfig {
                         min_desired_peers: 16,
                         initial_peer_sync_delay: Some(Duration::from_secs(25)),
@@ -8956,16 +8943,6 @@ pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, er
         return 0;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        *error_out = LibWalletError::from(e).code;
-        return 0;
-    }
-
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.validate_txos())
@@ -9006,16 +8983,6 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         return 0;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        *error_out = LibWalletError::from(e).code;
-        return 0;
-    }
-
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.transaction_service.validate_transactions())
@@ -9050,16 +9017,6 @@ pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariW
 
     if wallet.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        *error_out = LibWalletError::from(e).code;
         return false;
     }
 
@@ -11056,7 +11013,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11230,7 +11186,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11465,7 +11420,6 @@ mod test {
                 db_name_str,
                 db_path_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11533,7 +11487,6 @@ mod test {
                 db_name_str,
                 db_path_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11622,7 +11575,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11841,7 +11793,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -11985,7 +11936,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -12136,7 +12086,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -12408,7 +12357,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -12688,7 +12636,6 @@ mod test {
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -12953,7 +12900,6 @@ mod test {
                 db_name_str,
                 db_path_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -13338,7 +13284,6 @@ mod test {
                 alice_db_name_str,
                 alice_db_path_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );
@@ -13407,7 +13352,6 @@ mod test {
                 bob_db_name_str,
                 bob_db_path_str,
                 20,
-                10800,
                 false,
                 error_ptr,
             );

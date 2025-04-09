@@ -27,7 +27,7 @@ use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
+use tari_comms_dht::DhtConfig;
 use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::{ContactsServiceHandle, DEFAULT_MESSAGE_LIMIT, MAX_MESSAGE_LIMIT},
@@ -83,10 +83,6 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
-            saf: SafConfig {
-                auto_request: true,
-                ..Default::default()
-            },
             ..Default::default()
         },
         allow_test_addresses: true,

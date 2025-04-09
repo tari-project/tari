@@ -37,7 +37,7 @@ use crate::{
     DhtRequester,
 };
 
-const LOG_TARGET: &str = "comms::dht::storeforward::forward";
+const LOG_TARGET: &str = "comms::dht::forward";
 
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
@@ -184,7 +184,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             decryption_result,
             dht_header,
-            is_saf_stored,
             is_already_forwarded,
             ..
         } = message;
@@ -222,38 +221,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 return Ok(());
             }
         }
+
         let err_body = decryption_result
             .as_ref()
             .expect_err("previous check that decryption failed");
         let mut body = BytesMut::with_capacity(err_body.len());
         body.put(err_body.as_slice());
 
-        let excluded_peers = vec![source_peer.node_id.clone()];
-        let dest_node_id = dht_header.destination.to_derived_node_id();
-
         let mut send_params = SendMessageParams::new();
-        match (dest_node_id, is_saf_stored) {
-            (Some(node_id), Some(true)) => {
-                let debug_info = format!(
-                    "Forwarding SAF message directly to node: {}, {}",
-                    node_id, dht_header.message_tag
-                );
-                debug!(target: LOG_TARGET, "{}", &debug_info);
-                send_params
-                    .with_debug_info(debug_info)
-                    .direct_or_closest_connected(node_id, excluded_peers);
-            },
-            _ => {
-                let debug_info = format!(
-                    "Propagating SAF message for {}, propagating it. {}",
-                    dht_header.destination, dht_header.message_tag
-                );
-                debug!(target: LOG_TARGET, "{}", debug_info);
-                send_params
-                    .with_debug_info(debug_info)
-                    .propagate(dht_header.destination.clone(), excluded_peers);
-            },
-        };
 
         if !is_already_forwarded {
             send_params.with_dht_header(dht_header.clone());

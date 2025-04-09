@@ -34,9 +34,6 @@
 //!   [DecryptedDhtMessage](crate::inbound::DecryptedDhtMessage).
 //! * dedup: discards the message if previously received.
 //! * logging: message logging
-//! * SAF storage: stores certain messages for other peers in the SAF store.
-//! * message storage: forwards messages for other peers.
-//! * SAF message handler: handles SAF protocol messages (requests for SAF messages, SAF message responses).
 //! * DHT message handler: handles DHT protocol messages (discovery, join etc.)
 //!
 //! #### Outbound Message Flow
@@ -120,7 +117,6 @@ pub mod envelope;
 pub mod event;
 pub mod inbound;
 pub mod outbound;
-pub mod store_forward;
 
 use blake2::Blake2b;
 use digest::consts::{U32, U64};
