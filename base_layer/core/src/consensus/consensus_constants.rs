@@ -478,7 +478,7 @@ impl ConsensusConstants {
     /// *
     /// Esmeralda testnet has the following characteristics:
     /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
-    /// * 21 billion tXTR with a 2.76-year half-life
+    /// * 21 billion tXTM with a 2.76-year half-life
     /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn esmeralda() -> Vec<Self> {
@@ -535,7 +535,7 @@ impl ConsensusConstants {
     /// *
     /// Stagenet has the following characteristics:
     /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
-    /// * 21 billion tXTR with a 3-year half-life
+    /// * 21 billion tXTM with a 3-year half-life
     /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn stagenet() -> Vec<Self> {
