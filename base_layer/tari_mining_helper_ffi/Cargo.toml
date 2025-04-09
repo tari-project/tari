@@ -21,7 +21,7 @@ tari_utilities = { workspace = true }
 libc = "0.2.65"
 thiserror = "1.0.26"
 borsh = "1.5"
-tokio = { version = "1.36", features = ["rt"] }
+tokio = { version = "1.42", features = ["rt"] }
 
 [dev-dependencies]
 tari_core = { workspace = true, features = ["transactions", "base_node"] }
