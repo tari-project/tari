@@ -35,11 +35,12 @@ use crate::{
 /// us to keep the reading and writing API extremely simple. Extending the types of data that the backends can handle
 /// will entail adding to those enums, and the backends, while this trait can remain unchanged.
 #[allow(clippy::ptr_arg)]
+#[allow(async_fn_in_trait)]
 pub trait BlockchainBackend: Send + Sync {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
     /// the function will return `Ok(())`.
-    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError>;
+    async fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError>;
     /// Fetch a value from the backend corresponding to the given key. If the value is not found, `get` must return
     /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying backend.
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
@@ -149,7 +150,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
 
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
-    fn delete_oldest_orphans(
+    async fn delete_oldest_orphans(
         &mut self,
         horizon_height: u64,
         orphan_storage_capacity: usize,

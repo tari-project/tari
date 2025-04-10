@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+use futures::executor::block_on;
 use std::{
     convert::{TryFrom, TryInto},
     sync::{atomic::AtomicBool, Arc},
@@ -319,7 +319,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let db = self.db.inner().clone();
             let validator = self.block_validator.clone();
             let res = task::spawn_blocking(move || {
-                let txn = db.db_read_access()?;
+                let txn = block_on(db.db_read_access());
                 let smt = db.smt().clone();
                 validator.validate_body(&*txn, &task_block, smt)
             })

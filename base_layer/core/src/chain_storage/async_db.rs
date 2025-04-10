@@ -22,10 +22,10 @@
 use std::{
     mem,
     ops::RangeBounds,
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc},
     time::Instant,
 };
-
+use futures::executor::block_on;
 use log::*;
 use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
@@ -34,6 +34,7 @@ use tari_common_types::{
     types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
+use tokio::sync::RwLock;
 
 use super::TemplateRegistrationEntry;
 use crate::{
@@ -99,7 +100,7 @@ macro_rules! make_async_fn {
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
             tokio::task::spawn_blocking(move || {
-                    trace_log($name, move || db.$fn())
+                    trace_log($name, move || block_on(db.$fn()))
             })
             .await?
         }
@@ -113,7 +114,7 @@ macro_rules! make_async_fn {
         pub async fn $fn$(< $( $lt $( : $clt )? ),+ + Sync + Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
             tokio::task::spawn_blocking(move || {
-                trace_log($name, move || db.$fn($($param),+))
+                trace_log($name, move || block_on(db.$fn($($param),+)))
             })
             .await?
         }

@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use tokio::sync::RwLock;
 
 use log::*;
 use tari_common::{
@@ -71,8 +72,8 @@ pub struct BaseNodeContext {
 }
 
 impl BaseNodeContext {
-    pub fn start(&self) -> Result<(), ChainStorageError> {
-        self.blockchain_db.start()
+    pub async fn start(&self) -> Result<(), ChainStorageError> {
+        self.blockchain_db.start().await
     }
 
     /// Waits for shutdown of the base node state machine and comms.

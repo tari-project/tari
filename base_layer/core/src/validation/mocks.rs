@@ -23,11 +23,11 @@
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
-    RwLock,
 };
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
+use tokio::sync::RwLock;
 
 use super::{
     traits::CandidateBlockValidator,

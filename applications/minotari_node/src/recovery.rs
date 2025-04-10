@@ -25,8 +25,9 @@ use std::{
     env::temp_dir,
     fs,
     io::{self, Write},
-    sync::{Arc, RwLock},
+    sync::{Arc},
 };
+use tokio::sync::RwLock;
 
 use anyhow::anyhow;
 use log::*;
@@ -131,7 +132,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         difficulty_calculator,
         smt,
     )?;
-    db.start()?;
+    db.start().await?;
     do_recovery(db.into(), temp_db).await?;
 
     info!(
@@ -168,9 +169,9 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         DifficultyCalculator::new(rules, Default::default()),
         smt,
     )?;
-    source_database.start()?;
+    source_database.start().await?;
     let max_height = source_database
-        .get_chain_metadata()
+        .get_chain_metadata().await
         .map_err(|e| anyhow!("Could not get max chain height: {}", e))?
         .best_block_height();
     // we start at height 1
@@ -181,7 +182,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         io::stdout().flush().unwrap();
         trace!(target: LOG_TARGET, "Asking for block with height: {}", counter);
         let block = source_database
-            .fetch_block(counter, true)
+            .fetch_block(counter, true).await
             .map_err(|e| anyhow!("Could not get block from recovery db: {}", e))?
             .into_block();
         trace!(target: LOG_TARGET, "Adding block: {}", block);

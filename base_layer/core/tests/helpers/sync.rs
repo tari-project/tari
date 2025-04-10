@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::HashOutput;
@@ -63,7 +60,10 @@ use tari_core::{
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
-use tokio::sync::{broadcast, watch};
+use tokio::{
+    sync::{broadcast, watch},
+    Sync::Rwlock,
+};
 
 use crate::helpers::{
     block_builders::{append_block, create_genesis_block},

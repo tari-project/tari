@@ -38,14 +38,14 @@ pub struct Args {}
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.list_reorgs()
+        self.list_reorgs().await
     }
 }
 
 impl CommandContext {
-    pub fn list_reorgs(&self) -> Result<(), Error> {
+    pub async fn list_reorgs(&self) -> Result<(), Error> {
         if self.config.base_node.storage.track_reorgs {
-            let reorgs = self.blockchain_db.inner().fetch_all_reorgs()?;
+            let reorgs = self.blockchain_db.inner().fetch_all_reorgs().await?;
             let mut table = Table::new();
             table.set_titles(vec!["#", "New Tip", "Prev Tip", "Depth", "Timestamp"]);
 

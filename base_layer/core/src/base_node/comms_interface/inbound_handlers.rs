@@ -910,7 +910,7 @@ where B: BlockchainBackend + 'static
         let timer = Instant::now();
         let (header, mut inputs, outputs, kernels) = block.dissolve();
 
-        let db = self.blockchain_db.inner().db_read_access()?;
+        let db = self.blockchain_db.inner().db_read_access().await;
         for input in &mut inputs {
             if !input.is_compact() {
                 continue;

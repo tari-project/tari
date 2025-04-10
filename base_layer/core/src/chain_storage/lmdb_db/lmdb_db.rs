@@ -30,7 +30,6 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-        RwLock,
     },
     time::Instant,
 };
@@ -69,6 +68,7 @@ use tari_utilities::{
     hex::{from_hex, to_hex, Hex},
     ByteArray,
 };
+use tokio::sync::RwLock;
 
 use super::{cursors::KeyPrefixCursor, lmdb::lmdb_get_prefix_cursor};
 use crate::{
@@ -377,7 +377,7 @@ impl LMDBDatabase {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
+    async fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
         #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
 
@@ -401,7 +401,7 @@ impl LMDBDatabase {
                         block.block().body.clone(),
                         smt.clone(),
                         allow_smt_change.clone(),
-                    )?;
+                    ).await?;
                 },
                 InsertKernel {
                     header_hash,
@@ -445,7 +445,7 @@ impl LMDBDatabase {
                     )?;
                 },
                 DeleteTipBlock(hash, smt) => {
-                    self.delete_tip_block_body(&write_txn, hash, smt.clone())?;
+                    self.delete_tip_block_body(&write_txn, hash, smt.clone()).await?;
                 },
                 InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, *height)?;
@@ -977,7 +977,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn delete_tip_block_body(
+    async fn delete_tip_block_body(
         &self,
         write_txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
@@ -1005,13 +1005,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        let mut output_smt = smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "delete_tip_block_body could not get a write lock on the smt. {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?;
+        let mut output_smt = smt.write().await;
 
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut output_smt)?;
 
@@ -1263,7 +1257,7 @@ impl LMDBDatabase {
 
     // Break function up into smaller pieces
     #[allow(clippy::too_many_lines)]
-    fn insert_tip_block_body(
+    async fn insert_tip_block_body(
         &self,
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
@@ -1271,13 +1265,7 @@ impl LMDBDatabase {
         smt: Arc<RwLock<OutputSmt>>,
         allow_smt_change: Arc<AtomicBool>,
     ) -> Result<(), ChainStorageError> {
-        let mut output_smt = smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "insert_tip_block_body could not get a write lock on the smt. {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?;
+        let mut output_smt = smt.write().await;
         let can_we_change_smt = allow_smt_change.load(Ordering::SeqCst);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -1931,7 +1919,7 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
 }
 
 impl BlockchainBackend for LMDBDatabase {
-    fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
+    async fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         if txn.operations().is_empty() {
             return Ok(());
         }
@@ -1966,7 +1954,7 @@ impl BlockchainBackend for LMDBDatabase {
         let max_resizes = 1024 * BYTES_PER_MB / self.env_config.grow_size_bytes();
         for i in 0..max_resizes {
             let num_operations = txn.operations().len();
-            match self.apply_db_transaction(&txn) {
+            match self.apply_db_transaction(&txn).await {
                 Ok(_) => {
                     trace!(
                         target: LOG_TARGET,
@@ -2532,7 +2520,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn delete_oldest_orphans(
+    async fn delete_oldest_orphans(
         &mut self,
         horizon_height: u64,
         orphan_storage_capacity: usize,
@@ -2574,7 +2562,7 @@ impl BlockchainBackend for LMDBDatabase {
             );
             txn.delete_orphan(block_hash);
         }
-        self.write(txn)?;
+        self.write(txn).await?;
 
         Ok(())
     }

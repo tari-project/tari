@@ -38,13 +38,13 @@ pub struct Args {}
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.list_bad_blocks()
+        self.list_bad_blocks().await
     }
 }
 
 impl CommandContext {
-    pub fn list_bad_blocks(&self) -> Result<(), Error> {
-        let bad_blocks = self.blockchain_db.inner().fetch_bad_blocks()?;
+    pub async fn list_bad_blocks(&self) -> Result<(), Error> {
+        let bad_blocks = self.blockchain_db.inner().fetch_bad_blocks().await?;
         let mut table = Table::new();
         table.set_titles(vec!["#", "Height", "Hash", "Reason"]);
 

@@ -23,12 +23,13 @@
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use primitive_types::U256;
 use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
 use tari_utilities::hex::Hex;
+use tokio::sync::RwLock;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},

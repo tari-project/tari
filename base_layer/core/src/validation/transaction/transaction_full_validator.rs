@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::executor::block_on;
 use super::{TransactionChainLinkedValidator, TransactionInternalConsistencyValidator};
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -58,7 +59,7 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
 impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let tip = {
-            let db = self.db.db_read_access()?;
+            let db = block_on(self.db.db_read_access());
             db.fetch_chain_metadata()
         }?;
         self.internal_validator.validate_with_current_tip(tx, tip)?;

@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 // Copyright 2019. The Tari Project
 //
@@ -25,6 +25,7 @@ use std::sync::{Arc, RwLock};
 // DAMAGE.
 use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
+use tokio::sync::RwLock;
 
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::executor::block_on;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
@@ -43,7 +44,7 @@ impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
 
 impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let consensus_constants = self.db.consensus_constants()?;
+        let consensus_constants = block_on(self.db.consensus_constants())?;
         // validate maximum tx weight
         if tx
             .calculate_weight(consensus_constants.transaction_weight_params())
@@ -56,7 +57,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
         }
 
         {
-            let db = self.db.db_read_access()?;
+            let db = block_on(self.db.db_read_access());
             let tip_height = db.fetch_chain_metadata()?.best_block_height();
             self.aggregate_body_validator.validate(&tx.body, tip_height, &*db)?;
         };

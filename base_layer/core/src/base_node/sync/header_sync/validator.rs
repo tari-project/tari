@@ -120,7 +120,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         );
 
         let result = {
-            let txn = self.db.inner().db_read_access()?;
+            let txn = self.db.inner().db_read_access().await;
             self.validator.validate(
                 &*txn,
                 &header,

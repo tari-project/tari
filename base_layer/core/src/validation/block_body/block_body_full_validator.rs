@@ -20,16 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
-
-use log::error;
+use std::sync::Arc;
+use futures::executor::block_on;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
+use tokio::sync::RwLock;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
-    chain_storage::{self, BlockchainBackend, ChainStorageError},
+    chain_storage::{self, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
@@ -42,8 +42,6 @@ use crate::{
     },
     OutputSmt,
 };
-
-const LOG_TARGET: &str = "c::val::block_body_full_validator";
 
 pub struct BlockBodyFullValidator {
     consensus_manager: ConsensusManager,
@@ -64,7 +62,7 @@ impl BlockBodyFullValidator {
         }
     }
 
-    pub fn validate<B: BlockchainBackend>(
+    pub async fn validate<B: BlockchainBackend>(
         &self,
         backend: &B,
         block: &Block,
@@ -87,13 +85,7 @@ impl BlockBodyFullValidator {
         self.block_internal_validator.validate(&block)?;
 
         // validate the merkle mountain range roots+
-        let mut output_smt = smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Validator could not get a write lock on the smt {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?;
+        let mut output_smt = smt.write().await;
         let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt)?;
         check_mmr_roots(&block.header, &mmr_roots)?;
 
@@ -132,14 +124,14 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         metadata: &ChainMetadata,
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<(), ValidationError> {
-        self.validate(backend, block.block(), Some(metadata), smt)?;
+        block_on(self.validate(backend, block.block(), Some(metadata), smt))?;
         Ok(())
     }
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
     fn validate_body(&self, backend: &B, block: &Block, smt: Arc<RwLock<OutputSmt>>) -> Result<Block, ValidationError> {
-        self.validate(backend, block, None, smt)
+        block_on(self.validate(backend, block, None, smt))
     }
 }
 

@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-
+use futures::executor::block_on;
 use futures::StreamExt;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
@@ -303,13 +303,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(sync_peer.clone(), client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
-        let cloned_backup_smt = self.db.inner().smt_read_access()?.clone();
+        let cloned_backup_smt = self.db.inner().smt_read_access().await.clone();
         match self.synchronize_outputs(sync_peer, client, to_header).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 // We need to clean up the outputs
                 let _ = self.clean_up_failed_output_sync(to_header).await;
-                let mut smt = self.db.inner().smt_write_access()?;
+                let mut smt = self.db.inner().smt_write_access().await;
                 *smt = cloned_backup_smt;
                 Err(err)
             },
@@ -626,7 +626,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut utxo_counter = 0u64;
         let mut stxo_counter = 0u64;
         let timer = Instant::now();
-        let mut output_smt = (*db.inner().smt_write_access()?).clone();
+        let mut output_smt = (*db.inner().smt_write_access().await).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
 
@@ -775,7 +775,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 txn.commit().await?;
             }
         }
-        let mut writing_lock_output_smt = db.inner().smt_write_access()?;
+        let mut writing_lock_output_smt = db.inner().smt_write_access().await;
         *writing_lock_output_smt = output_smt;
         debug!(
             target: LOG_TARGET,
@@ -822,7 +822,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         self.final_state_validator
             .validate(
-                &*self.db().inner().db_read_access()?,
+                &*self.db().inner().db_read_access().await,
                 header.height(),
                 &calc_utxo_sum,
                 &calc_kernel_sum,
@@ -868,13 +868,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let header_hash = *header.hash();
         task::spawn_blocking(move || {
             for h in 0..=height {
-                let curr_header = db.fetch_chain_header(h)?;
+                let curr_header = block_on(db.fetch_chain_header(h))?;
                 trace!(
                     target: LOG_TARGET,
                     "Fetching utxos from db: height:{}",
                     curr_header.height(),
                 );
-                let utxos = db.fetch_outputs_in_block_with_spend_state(*curr_header.hash(), Some(header_hash))?;
+                let utxos = block_on(db.fetch_outputs_in_block_with_spend_state(*curr_header.hash(), Some(header_hash)))?;
                 debug!(
                     target: LOG_TARGET,
                     "{} output(s) loaded for height {}",
@@ -897,7 +897,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
                 }
 
-                let kernels = db.fetch_kernels_in_block(*curr_header.hash())?;
+                let kernels = block_on(db.fetch_kernels_in_block(*curr_header.hash()))?;
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
                     kernel_sum = &k.excess.to_commitment()? + &kernel_sum;

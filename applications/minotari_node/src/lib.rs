@@ -147,7 +147,7 @@ pub async fn run_base_node_with_cli(
         task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
     }
 
-    ctx.start()
+    ctx.start().await
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
 
     // Run, node, run!
