@@ -296,11 +296,11 @@ version = "0.9.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.borsh]]
-version = "1.5.3"
+version = "1.5.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.borsh-derive]]
-version = "1.5.3"
+version = "1.5.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.bs58]]
@@ -1640,6 +1640,10 @@ version = "0.13.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.protobuf]]
+version = "3.7.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.protobuf-support]]
 version = "3.7.2"
 criteria = "safe-to-deploy"
 
