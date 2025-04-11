@@ -28,7 +28,7 @@ minotari_wallet = { workspace = true, features = ["bundled_sqlite"] }
 tari_hashing = { workspace = true }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
-console-subscriber = "0.1.8"
+console-subscriber = "0.4"
 #tokio = { version = "1.36", features = ["signal", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.44", features = ["signal"] }

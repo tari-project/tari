@@ -29,7 +29,7 @@ tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
-#console-subscriber = "0.1.3"
+#console-subscriber = "0.4"
 #tokio = { version = "1.36", features = ["sync", "macros", "tracing"] }
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.44", features = ["sync", "macros"] }
