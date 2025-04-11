@@ -222,20 +222,37 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
         }
 
+        if *is_already_forwarded {
+            debug!(
+                target: LOG_TARGET,
+                "Message {} has already been forwarded. (Trace: {})",
+                message.tag,
+                dht_header.message_tag
+            );
+            return Ok(());
+        }
+
         let err_body = decryption_result
             .as_ref()
             .expect_err("previous check that decryption failed");
         let mut body = BytesMut::with_capacity(err_body.len());
         body.put(err_body.as_slice());
 
-        let mut send_params = SendMessageParams::new();
+        let excluded_peers = vec![source_peer.node_id.clone()];
 
-        if !is_already_forwarded {
-            send_params.with_dht_header(dht_header.clone());
-            self.outbound_service
-                .send_raw_no_wait(send_params.finish(), body)
-                .await?;
-        }
+        let debug_info = format!(
+            "Propagating message for {}, propagating it. {}",
+            dht_header.destination, dht_header.message_tag
+        );
+        debug!(target: LOG_TARGET, "{}", debug_info);
+        let mut send_params = SendMessageParams::new();
+        send_params
+            .with_debug_info(debug_info)
+            .propagate(dht_header.destination.clone(), excluded_peers)
+            .with_dht_header(dht_header.clone());
+        self.outbound_service
+            .send_raw_no_wait(send_params.finish(), body)
+            .await?;
 
         Ok(())
     }
