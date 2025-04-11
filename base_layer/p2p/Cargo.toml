@@ -29,7 +29,7 @@ reqwest = { version = "0.11", optional = true, default-features = false }
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.42", features = ["macros"] }
+tokio = { version = "1.44", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }

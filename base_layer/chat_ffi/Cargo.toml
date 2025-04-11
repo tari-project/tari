@@ -26,7 +26,7 @@ log4rs = { version = "1.3.0", features = [
     "yaml_format",
 ] }
 thiserror = "1.0.26"
-tokio = "1.42"
+tokio = "1.44"
 
 [target.'cfg(target_os="android")'.dependencies]
 openssl = { version = "0.10.72", features = ["vendored"] }

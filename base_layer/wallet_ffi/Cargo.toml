@@ -37,7 +37,7 @@ log4rs = { version = "1.3.0", features = [
 ] }
 rand = "0.8"
 thiserror = "1.0.26"
-tokio = "1.42"
+tokio = "1.44"
 num-traits = "0.2.15"
 itertools = "0.10.3"
 zeroize = "1"

@@ -47,7 +47,7 @@ serde_json = "1.0.64"
 tempfile = "3.3.0"
 thiserror = "^1.0.20"
 time = "0.3.36"
-tokio = { version = "1.42", features = ["macros", "time", "sync", "rt-multi-thread"] }
+tokio = { version = "1.44", features = ["macros", "time", "sync", "rt-multi-thread"] }
 tonic = "0.12.3"
 
 [package.metadata.cargo-machete]
