@@ -237,7 +237,8 @@ impl Display for DecryptedDhtMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, source_peer = {}, tag = {}",
+            "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, source_peer = {}, \
+             tag = {}",
             self.major_version(),
             self.authenticated_origin
                 .as_ref()

@@ -111,7 +111,7 @@ async fn test_dht_wallet_discover_propagation() {
         dht_config(),
         Some(client_D.to_peer()),
     )
-        .await;
+    .await;
     // Node B knows about Node C
     let node_B = make_node(
         "node_B",
@@ -119,7 +119,7 @@ async fn test_dht_wallet_discover_propagation() {
         dht_config(),
         Some(node_C.to_peer()),
     )
-        .await;
+    .await;
     // Node A knows about Node B
     let node_A = make_node(
         "node_A",
@@ -127,7 +127,7 @@ async fn test_dht_wallet_discover_propagation() {
         dht_config(),
         Some(node_B.to_peer()),
     )
-        .await;
+    .await;
     log::info!(
         "Node A = {}, Node B = {}, Node C = {}, Client D = {}",
         node_A.node_identity().node_id().short_str(),
@@ -188,7 +188,7 @@ async fn test_dht_node_discover_propagation() {
         dht_config(),
         Some(node_D.to_peer()),
     )
-        .await;
+    .await;
     // Node B knows about Node C
     let node_B = make_node(
         "node_B",
@@ -196,7 +196,7 @@ async fn test_dht_node_discover_propagation() {
         dht_config(),
         Some(node_C.to_peer()),
     )
-        .await;
+    .await;
     // Node A knows about Node B
     let node_A = make_node(
         "node_A",
@@ -204,7 +204,7 @@ async fn test_dht_node_discover_propagation() {
         dht_config(),
         Some(node_B.to_peer()),
     )
-        .await;
+    .await;
     log::info!(
         "Node A = {}, Node B = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
