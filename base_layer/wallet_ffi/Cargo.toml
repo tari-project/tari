@@ -59,7 +59,7 @@ tari_service_framework = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
     "base_node",
 ] }
-borsh = "1.5"
+borsh = "1.5.7"
 env_logger = "0.7.1"
 
 [build-dependencies]

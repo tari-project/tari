@@ -11,7 +11,7 @@ minotari_ledger_wallet_common = { path = "../common" }
 tari_utilities = { version = "0.8", default-features = false }
 
 blake2 = { version = "0.10", default-features = false }
-borsh = { version = "1.5", default-features = false }
+borsh = { version = "1.5.7", default-features = false }
 digest = { version = "0.10", default-features = false }
 include_gif = "1.2"
 ledger_device_sdk = "1.21"
