@@ -4183,7 +4183,6 @@ dependencies = [
  "minotari_app_grpc",
  "minotari_app_utilities",
  "nom",
- "prometheus",
  "qrcode",
  "rustyline",
  "rustyline-derive",

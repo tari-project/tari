@@ -39,7 +39,6 @@ crossterm = { version = "0.28.1", default-features = false, features = [
     "libc",
 ] }
 derive_more = "0.99.17"
-prometheus = {  version = "0.14.0", optional = true }
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
@@ -69,7 +68,7 @@ tari_metrics = { workspace = true, optional = true, features = ["server"] }
 
 [features]
 default = ["libtor"]
-metrics = ["tari_metrics", "tari_comms/metrics", "prometheus"]
+metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
 
