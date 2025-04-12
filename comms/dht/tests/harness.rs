@@ -23,6 +23,7 @@
 use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures},
@@ -37,7 +38,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},

@@ -12,6 +12,7 @@ license.workspace = true
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_common = { workspace = true }
+tari_common_sqlite = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }

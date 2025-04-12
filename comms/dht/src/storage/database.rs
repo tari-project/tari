@@ -21,13 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel_migrations::EmbeddedMigrations;
+use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_utilities::message_format::MessageFormat;
 
-use super::{dht_setting_entry::DhtMetadataEntry, DbConnection, StorageError};
+use super::dht_setting_entry::DhtMetadataEntry;
 use crate::{
     schema::dht_metadata,
     storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
 };
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
 /// DHT database containing DHT key/value metadata
 #[derive(Clone)]

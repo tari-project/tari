@@ -24,14 +24,10 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
-use crate::{
-    actor::OffenceSeverity,
-    network_discovery::NetworkDiscoveryConfig,
-    storage::DbConnectionUrl,
-    version::DhtProtocolVersion,
-};
+use crate::{actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, version::DhtProtocolVersion};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

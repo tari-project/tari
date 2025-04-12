@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use futures::Future;
 use log::*;
+use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     message::{InboundMessage, OutboundMessage},
@@ -51,7 +52,7 @@ use crate::{
     outbound,
     outbound::DhtOutboundRequest,
     rpc,
-    storage::{DbConnection, StorageError},
+    storage::MIGRATIONS,
     DedupLayer,
     DhtActorError,
     DhtBuilder,
@@ -125,7 +126,7 @@ impl Dht {
             event_publisher,
         };
 
-        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone())
+        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS)
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();

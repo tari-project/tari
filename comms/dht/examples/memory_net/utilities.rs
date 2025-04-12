@@ -32,6 +32,7 @@ use std::{
 use futures::future;
 use once_cell::sync::Lazy;
 use rand::{distributions, rngs::OsRng, Rng};
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
@@ -54,7 +55,6 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
-    DbConnectionUrl,
     Dht,
     DhtConfig,
 };
