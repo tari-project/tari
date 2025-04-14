@@ -61,7 +61,7 @@ jobs:
             -v ".:/app" \
             -w "/app/applications/minotari_ledger_wallet/wallet" \
             ${{env.DOCKER_IMAGE}} \
-            cargo ledger build ${{ matrix.ledger_target }}
+            cargo ledger build ${{ matrix.ledger_target }} -- --locked
 
       - name: env Setup
         env:
