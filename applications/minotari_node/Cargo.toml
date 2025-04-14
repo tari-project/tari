@@ -37,6 +37,7 @@ crossterm = { version = "0.28.1", default-features = false, features = [
     # we do not need libc feature however 0.28.1 has a bug that requires it
     # https://github.com/crossterm-rs/crossterm/issues/935
     "libc",
+    "windows",
 ] }
 derive_more = "0.99.17"
 either = "1.6.1"

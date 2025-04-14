@@ -22,14 +22,8 @@
 
 //! DHT storage maintains persistent DHT state and other DHT metadata.
 
-mod connection;
-pub use connection::{DbConnection, DbConnectionUrl};
-
-mod error;
-pub use error::StorageError;
-
 mod dht_setting_entry;
 pub use dht_setting_entry::DhtMetadataKey;
 
 mod database;
-pub use database::DhtDatabase;
+pub use database::{DhtDatabase, MIGRATIONS};

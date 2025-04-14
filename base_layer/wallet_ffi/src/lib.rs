@@ -117,6 +117,7 @@ use tari_common::{
     configuration::{DnsNameServerList, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
     tari_address::{TariAddress, TariAddressError},
@@ -138,7 +139,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
+use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,

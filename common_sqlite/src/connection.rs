@@ -133,7 +133,7 @@ impl DbConnection {
     pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate(migrations)?;
-        debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+        debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
     }
 

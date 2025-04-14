@@ -33,7 +33,8 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
+use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_comms_dht::{DhtConfig, NetworkDiscoveryConfig};
 use tari_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 

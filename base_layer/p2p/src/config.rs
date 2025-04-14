@@ -39,8 +39,9 @@ use tari_common::{
     },
     SubConfigPath,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 
 use crate::transport::TransportConfig;
 

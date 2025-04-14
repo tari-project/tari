@@ -95,7 +95,6 @@ mod network_discovery;
 pub use network_discovery::NetworkDiscoveryConfig;
 
 mod storage;
-pub use storage::DbConnectionUrl;
 
 mod dedup;
 pub use dedup::DedupLayer;

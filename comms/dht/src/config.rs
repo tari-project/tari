@@ -24,14 +24,10 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
 
-use crate::{
-    actor::OffenceSeverity,
-    network_discovery::NetworkDiscoveryConfig,
-    storage::DbConnectionUrl,
-    version::DhtProtocolVersion,
-};
+use crate::{actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, version::DhtProtocolVersion};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -170,8 +166,8 @@ impl Default for DhtConfig {
         // NB: please remember to update field comments to reflect these defaults
         Self {
             protocol_version: DhtProtocolVersion::latest(),
-            num_neighbouring_nodes: 8,
-            num_random_nodes: 4,
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,

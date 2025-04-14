@@ -24,23 +24,17 @@
 
 use std::{sync::Arc, time::Duration};
 
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
-use crate::{
-    dht::DhtInitializationError,
-    outbound::DhtOutboundRequest,
-    version::DhtProtocolVersion,
-    DbConnectionUrl,
-    Dht,
-    DhtConfig,
-};
+use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion, Dht, DhtConfig};
 
 /// Builder for the DHT.
 ///
 /// ```rust
-/// # use tari_comms_dht::{DbConnectionUrl, Dht};
+/// use tari_comms_dht::Dht;
 /// let builder = Dht::builder()
 ///     .mainnet()
 ///     .with_database_url(DbConnectionUrl::Memory);

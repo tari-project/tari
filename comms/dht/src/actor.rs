@@ -32,6 +32,7 @@ use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
+use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
@@ -59,7 +60,7 @@ use crate::{
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
-    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
+    storage::{DhtDatabase, DhtMetadataKey},
     DhtConfig,
     DhtDiscoveryRequester,
 };
@@ -970,6 +971,7 @@ mod test {
     use super::*;
     use crate::{
         envelope::NodeDestination,
+        storage::MIGRATIONS,
         test_utils::{
             build_peer_manager,
             create_dht_discovery_mock,
@@ -981,7 +983,7 @@ mod test {
 
     async fn db_connection() -> DbConnection {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        conn.migrate().unwrap();
+        conn.migrate(MIGRATIONS).unwrap();
         conn
     }
 
