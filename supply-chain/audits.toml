@@ -1,8 +1,42 @@
 
 # cargo-vet audits file
 
+[[audits.dhat]]
+who = "Hansie Odendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+version = "0.3.3"
+notes = """
+- `dhat` is a heap profiling crate for Rust, primarily used for debugging and profiling.
+- It has minimal, well-contained unsafe code, which is sound and not exploitable.
+- The crate does not perform file system operations, rely on ambient capabilities, or generate deployed code.
+- No vulnerabilities or unexpected behaviors were identified, and it aligns with its advertised functionality.
+"""
+
+[[audits.mintex]]
+who = "Hansie Odendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+version = "0.1.3"
+notes = """
+Notes:
+- The implementation is minimal and does not handle poisoning or fair locking. This is acceptable for a
+  lightweight mutex but should be documented.
+- The use of `unsafe` is sound and does not introduce security vulnerabilities.
+- Spinlock behavior may lead to performance issues under high contention and should be documented as a
+  limitation.
+"""
+
 [[audits.tari_core]]
 who = "Coinspect"
 criteria = "safe-to-deploy"
 violation = "<=0.52.0-pre.1"
 notes = "https://www.coinspect.com/blog/tari-security-audit/"
+
+[[audits.thousands]]
+who = "Hansie Odendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = """
+- The crate does not use `unsafe` code.
+- It is purely a string formatting library with no ambient capability usage.
+- Comprehensive tests ensure predictable and secure behavior.
+"""
