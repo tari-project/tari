@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{cmp::min, time::Duration};
-
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -31,7 +32,9 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time, time::MissedTickBehavior};
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms::peer_manager::NodeId;
+use tari_comms_dht::DhtDiscoveryRequester;
 use super::LocalNodeCommsInterface;
 use crate::base_node::comms_interface::CommsInterfaceError;
 
@@ -39,8 +42,8 @@ const LOG_TARGET: &str = "c::bn::tari_pulse";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TariPulseConfig {
-    pub check_interval: Duration,
-    pub liveness_internal: Duration,
+    pub dns_check_interval: Duration,
+    pub liveness_interval: Duration,
     pub network: Network,
 }
 
@@ -53,8 +56,8 @@ pub struct LivenessCheckResult{
 impl Default for TariPulseConfig {
     fn default() -> Self {
         Self {
-            check_interval: Duration::from_secs(120),
-            liveness_internal: Duration::from_secs(60 * 10),
+            dns_check_interval: Duration::from_secs(120),
+            liveness_interval: Duration::from_secs(60 * 10),
             network: Network::default(),
         }
     }
@@ -75,15 +78,19 @@ pub struct TariPulseService {
     dns_name: &'static str,
     config: TariPulseConfig,
     shutdown_signal: ShutdownSignal,
+    node_comms: ConnectivityRequester,
+    node_discovery: DhtDiscoveryRequester,
 }
 
 impl TariPulseService {
-    pub async fn new(config: TariPulseConfig, shutdown_signal: ShutdownSignal) -> Result<Self, anyhow::Error> {
+    pub async fn new(config: TariPulseConfig, node_comms: ConnectivityRequester, node_discovery: DhtDiscoveryRequester, shutdown_signal: ShutdownSignal) -> Result<Self, anyhow::Error> {
         let dns_name = get_network_dns_name(config.clone().network);
         info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
         Ok(Self {
             dns_name,
             config,
+            node_comms,
+            node_discovery,
             shutdown_signal,
         })
     }
@@ -97,21 +104,43 @@ impl TariPulseService {
         &mut self,
         mut base_node_service: LocalNodeCommsInterface,
         notify_passed_checkpoints: watch::Sender<bool>,
-
+        notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
     ) {
-        let mut interval = time::interval(self.config.check_interval);
-        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        tokio::pin!(interval);
+        let mut dns_check_interval = time::interval(self.config.dns_check_interval);
+        dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        tokio::pin!(dns_check_interval);
+
+        let mut health_check_interval = time::interval(self.config.liveness_interval);
+        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        tokio::pin!(health_check_interval);
+
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut count = 0u64;
         let mut skip_ticks = 0;
         let mut skipped_ticks = 0;
+        let health_check_in_progress = Arc::new(Mutex::new(()));
 
         loop {
             tokio::select! {
-                _ = interval.tick() => {
+                _ = health_check_in_progress.tick() => {
+                    tokio::spawn(async move {
+                        let mut h_check = health_check_in_progress.clone();
+                        let mut _lock = match h_check.try_lock() {
+                            Ok(val) => val,
+                            _ => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Could not acquire lock for health check, skipping this tick"
+                                );
+                                return;
+                            },
+                        };
+
+                    });
+                }
+                _ = dns_check_interval.tick() => {
                     count += 1;
-                    trace!(target: LOG_TARGET, "Interval tick: {}", count);
+                    trace!(target: LOG_TARGET, "DNS Checkpoint interval tick: {}", count);
                     if skipped_ticks < skip_ticks {
                         skipped_ticks += 1;
                         debug!(target: LOG_TARGET, "Skipping {} of {} ticks", skipped_ticks, skip_ticks);
@@ -222,6 +251,12 @@ impl TariPulseServiceInitializer {
     pub fn new(interval: Duration, network: Network) -> Self {
         Self { interval, network }
     }
+}
+
+fn check_health (node_comms: ConnectivityRequester, node_discovery: DhtDiscoveryRequester, notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>)
+{
+    let peers = node_comms.dial_peer()
+
 }
 
 #[async_trait]

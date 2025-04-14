@@ -104,6 +104,7 @@ pub enum ConnectivityRequest {
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
     GetAllowList(oneshot::Sender<Vec<NodeId>>),
+    GetSeeds(oneshot::Sender<Vec<NodeId>>),
     GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
     GetNodeIdentity(oneshot::Sender<NodeIdentity>),
 }
@@ -295,6 +296,15 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    pub async fn get_seeds(&mut self) -> Result<Vec<NodeId>, ConnectivityError> {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    self.sender
+    .send(ConnectivityRequest::GetSeeds(reply_tx))
+    .await
+    .map_err(|_| ConnectivityError::ActorDisconnected)?;
+    reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Retrieve self's node identity.

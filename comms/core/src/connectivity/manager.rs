@@ -332,6 +332,10 @@ impl ConnectivityManagerActor {
                 let allow_list = self.allow_list.clone();
                 let _result = reply.send(allow_list);
             },
+            GetSeeds(reply) => {
+                let allow_list = self.allow_list.clone();
+                888let _result = reply.send(allow_list);
+            },
             GetActiveConnections(reply) => {
                 let _result = reply.send(
                     self.pool
