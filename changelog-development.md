@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.13.4-pre.0](https://github.com/tari-project/tari/compare/v1.13.3-pre.0...v1.13.4-pre.0) (2025-04-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove saf (#6936)
+
+### Features
+
+* change default random/dht split ([#6946](https://github.com/tari-project/tari/issues/6946)) ([37da7f6](https://github.com/tari-project/tari/commit/37da7f65389117ebc403fd82bf1d5c372304bbef))
+* delete stale peers for the peer database ([#6924](https://github.com/tari-project/tari/issues/6924)) ([9a475f3](https://github.com/tari-project/tari/commit/9a475f3812ec4daefa3ff03f5f81b4f5c298f94a))
+* handle outbound pipeline interlock due to connection cleanup ([#6921](https://github.com/tari-project/tari/issues/6921)) ([d9620b0](https://github.com/tari-project/tari/commit/d9620b0da59721c0d42baac0e9c5b4a8b5f15cf8))
+* remove dht sql db connection ([#6943](https://github.com/tari-project/tari/issues/6943)) ([ee7c680](https://github.com/tari-project/tari/commit/ee7c680bca6c7fa02ba7ec3c67dbbd12a07b9e18))
+* remove saf ([#6936](https://github.com/tari-project/tari/issues/6936)) ([22e7b7c](https://github.com/tari-project/tari/commit/22e7b7cc825e0ed6b36d9210ba7663b63e57742f))
+* upgrade min fee ([#6935](https://github.com/tari-project/tari/issues/6935)) ([ace5d27](https://github.com/tari-project/tari/commit/ace5d275d4ccb2fd9d90f326beb489859f882460)), closes [#6890](https://github.com/tari-project/tari/issues/6890)
+
+
+### Bug Fixes
+
+* **p2p/dns:** greatly simplify DNS TXT lookup ([#6922](https://github.com/tari-project/tari/issues/6922)) ([acb7e6e](https://github.com/tari-project/tari/commit/acb7e6e2d03a58b6312216a9f33e8aeb570a0b0a))
+
 ### [1.13.3-pre.0](https://github.com/tari-project/tari/compare/v1.13.2-pre.0...v1.13.3-pre.0) (2025-04-03)
 
 
