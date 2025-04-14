@@ -287,7 +287,7 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,

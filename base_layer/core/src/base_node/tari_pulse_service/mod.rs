@@ -30,8 +30,8 @@ use tari_p2p::{dns::DnsClient, Network};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::{sync::watch, time, time::MissedTickBehavior};
-
+use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time, time::MissedTickBehavior};
+use tari_comms::peer_manager::NodeId;
 use super::LocalNodeCommsInterface;
 use crate::base_node::comms_interface::CommsInterfaceError;
 
@@ -40,13 +40,21 @@ const LOG_TARGET: &str = "c::bn::tari_pulse";
 #[serde(deny_unknown_fields)]
 pub struct TariPulseConfig {
     pub check_interval: Duration,
+    pub liveness_internal: Duration,
     pub network: Network,
+}
+
+pub struct LivenessCheckResult{
+    pub peer: NodeId,
+    pub discovery_latency: Option<Duration>,
+    pub ping_latency: Option<Duration>,
 }
 
 impl Default for TariPulseConfig {
     fn default() -> Self {
         Self {
             check_interval: Duration::from_secs(120),
+            liveness_internal: Duration::from_secs(60 * 10),
             network: Network::default(),
         }
     }
@@ -89,6 +97,7 @@ impl TariPulseService {
         &mut self,
         mut base_node_service: LocalNodeCommsInterface,
         notify_passed_checkpoints: watch::Sender<bool>,
+
     ) {
         let mut interval = time::interval(self.config.check_interval);
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
