@@ -344,6 +344,13 @@ where DS: KeyValueStore<PeerId, Peer>
         self.perform_query(query)
     }
 
+    pub fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_db
+            .filter(|(_, peer)| peer.is_seed())
+            .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
+            .map_err(PeerManagerError::DatabaseError)
+    }
+
     /// Delete all stale peers, removing them from the database and returning their node_ids
     /// - Stale Nodes:
     ///   - A node is considered stale if all its addresses have failed or if it has not been seen for more than the
@@ -936,6 +943,38 @@ mod test {
 
         let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
         assert!(!is_in_region);
+    }
+
+    #[test]
+    fn get_just_seeds() {
+        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
+
+        let seeds = repeat_with(|| {
+            let mut peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+            peer.add_flags(PeerFlags::SEED);
+            peer
+        })
+        .take(5)
+        .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
+        .collect::<Vec<_>>();
+
+        for p in &seeds {
+            peer_storage.add_peer(p.clone()).unwrap();
+        }
+
+        let nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
+            .take(5)
+            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
+            .collect::<Vec<_>>();
+
+        for p in &nodes {
+            peer_storage.add_peer(p.clone()).unwrap();
+        }
+        let retrieved_seeds = peer_storage.get_seed_peers().unwrap();
+        assert_eq!(retrieved_seeds.len(), seeds.len());
+        for seed in seeds {
+            assert!(retrieved_seeds.iter().any(|p| p.node_id == seed.node_id));
+        }
     }
 
     #[test]

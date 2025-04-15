@@ -119,6 +119,11 @@ impl PeerManager {
         self.peer_storage.read().await.find_by_node_id(node_id)
     }
 
+    /// gets all seed peers
+    pub async fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.get_seed_peers()
+    }
+
     /// Find the peer with the provided PublicKey
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
         self.peer_storage.read().await.find_by_public_key(public_key)

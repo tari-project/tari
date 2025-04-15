@@ -19,22 +19,29 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    cmp::min,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use std::{cmp::min, time::Duration};
-use std::sync::{Arc};
-use tokio::sync::Mutex;
 use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_p2p::{dns::DnsClient, Network};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::{net::TcpStream as TokioTcpStream, sync::watch, time, time::MissedTickBehavior};
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_comms::peer_manager::NodeId;
-use tari_comms_dht::DhtDiscoveryRequester;
+use tokio::{
+    sync::{watch, Mutex, RwLock},
+    task,
+    time,
+    time::MissedTickBehavior,
+};
+
 use super::LocalNodeCommsInterface;
 use crate::base_node::comms_interface::CommsInterfaceError;
 
@@ -47,7 +54,8 @@ pub struct TariPulseConfig {
     pub network: Network,
 }
 
-pub struct LivenessCheckResult{
+#[derive(Debug, Clone)]
+pub struct LivenessCheckResult {
     pub peer: NodeId,
     pub discovery_latency: Option<Duration>,
     pub ping_latency: Option<Duration>,
@@ -83,7 +91,12 @@ pub struct TariPulseService {
 }
 
 impl TariPulseService {
-    pub async fn new(config: TariPulseConfig, node_comms: ConnectivityRequester, node_discovery: DhtDiscoveryRequester, shutdown_signal: ShutdownSignal) -> Result<Self, anyhow::Error> {
+    pub async fn new(
+        config: TariPulseConfig,
+        node_comms: ConnectivityRequester,
+        node_discovery: DhtDiscoveryRequester,
+        shutdown_signal: ShutdownSignal,
+    ) -> Result<Self, anyhow::Error> {
         let dns_name = get_network_dns_name(config.clone().network);
         info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
         Ok(Self {
@@ -122,9 +135,12 @@ impl TariPulseService {
 
         loop {
             tokio::select! {
-                _ = health_check_in_progress.tick() => {
+                _ = health_check_interval.tick() => {
+                    let h_check = health_check_in_progress.clone();
+                    let comms = self.node_comms.clone();
+                    let discovery = self.node_discovery.clone();
+                    let notify_channel = notify_comms_health.clone();
                     tokio::spawn(async move {
-                        let mut h_check = health_check_in_progress.clone();
                         let mut _lock = match h_check.try_lock() {
                             Ok(val) => val,
                             _ => {
@@ -135,7 +151,7 @@ impl TariPulseService {
                                 return;
                             },
                         };
-
+                    check_health(comms, discovery, notify_channel).await;
                     });
                 }
                 _ = dns_check_interval.tick() => {
@@ -155,7 +171,7 @@ impl TariPulseService {
                             },
                             Err(err) => {
                                 warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {}", err);
-                                skip_ticks = min(skip_ticks + 1, 30 * 60 / self.config.check_interval.as_secs());
+                                skip_ticks = min(skip_ticks + 1, 30 * 60 / self.config.dns_check_interval.as_secs());
                                 skipped_ticks = 0;
                                 continue;
                             },
@@ -234,6 +250,7 @@ impl TariPulseService {
 pub struct TariPulseHandle {
     pub shutdown_signal: ShutdownSignal,
     pub failed_checkpoints_notifier: watch::Receiver<bool>,
+    pub liveness_checks: watch::Receiver<Vec<LivenessCheckResult>>,
 }
 
 impl TariPulseHandle {
@@ -243,20 +260,60 @@ impl TariPulseHandle {
 }
 
 pub struct TariPulseServiceInitializer {
-    interval: Duration,
+    dns_interval: Duration,
+    liveness_interval: Duration,
     network: Network,
+    discovery_service: DhtDiscoveryRequester,
 }
 
 impl TariPulseServiceInitializer {
-    pub fn new(interval: Duration, network: Network) -> Self {
-        Self { interval, network }
+    pub fn new(dns_interval: Duration, liveness_interval: Duration,discovery_service: DhtDiscoveryRequester, network: Network) -> Self {
+        Self { dns_interval, liveness_interval, network, discovery_service }
     }
 }
 
-fn check_health (node_comms: ConnectivityRequester, node_discovery: DhtDiscoveryRequester, notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>)
-{
-    let peers = node_comms.dial_peer()
+async fn check_health(
+    mut node_comms: ConnectivityRequester,
+    node_discovery: DhtDiscoveryRequester,
+    notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
+) {
+    let results = Arc::new(RwLock::new(Vec::new()));
+    let peers = node_comms.get_seeds().await.unwrap_or_else(|_| vec![]);
+    let mut handles = vec![];
+    for peer in peers {
+        let result_clone = results.clone();
+        let mut result = LivenessCheckResult {
+            peer: peer.node_id.clone(),
+            discovery_latency: None,
+            ping_latency: None,
+        };
+        let dest_key = peer.public_key.clone();
+        let mut discovery = node_discovery.clone();
+        let comms = node_comms.clone();
+        handles.push(task::spawn(async move {
+            let start = Instant::now();
+            println!("🌎 Peer discovery started.");
+            if let Ok(_) = discovery
+                .discover_peer(
+                    dest_key.clone(),
+                    NodeDestination::PublicKey(dest_key.into()),
+                )
+                .await
+            {
+                result.discovery_latency = Some(start.elapsed());
+            }
+            let start = Instant::now();
+            println!("☎️  Dialing peer...");
 
+            if let Ok(_) = comms.dial_peer(result.peer.clone()).await {
+                result.ping_latency = Some(start.elapsed());
+            };
+            (*result_clone).write().await.push(result);
+        }));
+    }
+    futures::future::join_all(handles).await;
+    let inner_result = (*(*results).read().await).clone();
+    notify_comms_health.send(inner_result).expect("Channel should be open");
 }
 
 #[async_trait]
@@ -264,22 +321,27 @@ impl ServiceInitializer for TariPulseServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Initializing Tari Pulse Service");
         let shutdown_signal = context.get_shutdown_signal();
-        let (sender, receiver) = watch::channel(false);
+        let (dns_sender, dns_receiver) = watch::channel(false);
+        let (liveness_sender, liveness_receiver) = watch::channel(vec![]);
         context.register_handle(TariPulseHandle {
             shutdown_signal: shutdown_signal.clone(),
-            failed_checkpoints_notifier: receiver,
+            failed_checkpoints_notifier: dns_receiver,
+            liveness_checks: liveness_receiver,
         });
         let config = TariPulseConfig {
-            check_interval: self.interval,
+            dns_check_interval: self.dns_interval,
+            liveness_interval: self.liveness_interval,
             network: self.network,
         };
+        let node_discovery = self.discovery_service.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-            let mut tari_pulse_service = TariPulseService::new(config, shutdown_signal.clone())
+            let node_comms = handles.expect_handle::<ConnectivityRequester>();
+            let mut tari_pulse_service = TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
                 .await
                 .expect("Should be able to get the service");
-            let tari_pulse_service = tari_pulse_service.run(base_node_service, sender);
+            let tari_pulse_service = tari_pulse_service.run(base_node_service, dns_sender, liveness_sender);
             futures::pin_mut!(tari_pulse_service);
             future::select(tari_pulse_service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Tari Pulse Service shutdown");
