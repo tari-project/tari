@@ -154,8 +154,8 @@ impl Default for P2pConfig {
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 4,
-            max_concurrent_outbound_tasks: 4,
+            max_concurrent_inbound_tasks: 100,
+            max_concurrent_outbound_tasks: 100,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("dht.sqlite"),
                 auto_join: true,
