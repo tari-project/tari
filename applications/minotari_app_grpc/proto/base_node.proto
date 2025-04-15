@@ -542,6 +542,16 @@ message GetNetworkStateResponse {
     uint64 randomx_estimated_hash_rate = 7;
     // number of connections
     uint64 num_connections = 8;
+    //liveness results
+    repeated LivenessResult liveness_results = 9;
+}
 
+message LivenessResult{
+    // node id
+    bytes peer_node_id = 1;
+    // time to discover
+    uint64 discover_latency = 2;
+    // Dial latency
+    uint64 dial_latency = 3;
 }
 

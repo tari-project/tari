@@ -955,7 +955,6 @@ mod test {
             peer
         })
         .take(5)
-        .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
         .collect::<Vec<_>>();
 
         for p in &seeds {
@@ -964,7 +963,6 @@ mod test {
 
         let nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
             .take(5)
-            .chain(repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_CLIENT, false)).take(4))
             .collect::<Vec<_>>();
 
         for p in &nodes {

@@ -30,7 +30,7 @@ use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
+use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
 use tari_p2p::{dns::DnsClient, Network};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
@@ -257,18 +257,59 @@ impl TariPulseHandle {
     pub fn get_failed_checkpoints_notifier(&self) -> watch::Ref<'_, bool> {
         self.failed_checkpoints_notifier.borrow()
     }
+
+    pub fn get_liveness_checks(&self) -> watch::Ref<'_, Vec<LivenessCheckResult>> {
+        self.liveness_checks.borrow()
+    }
 }
 
 pub struct TariPulseServiceInitializer {
     dns_interval: Duration,
     liveness_interval: Duration,
     network: Network,
-    discovery_service: DhtDiscoveryRequester,
 }
 
 impl TariPulseServiceInitializer {
-    pub fn new(dns_interval: Duration, liveness_interval: Duration,discovery_service: DhtDiscoveryRequester, network: Network) -> Self {
-        Self { dns_interval, liveness_interval, network, discovery_service }
+    pub fn new(dns_interval: Duration, liveness_interval: Duration, network: Network) -> Self {
+        Self { dns_interval, liveness_interval, network }
+    }
+}
+
+
+
+#[async_trait]
+impl ServiceInitializer for TariPulseServiceInitializer {
+    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        info!(target: LOG_TARGET, "Initializing Tari Pulse Service");
+        let shutdown_signal = context.get_shutdown_signal();
+        let (dns_sender, dns_receiver) = watch::channel(false);
+        let (liveness_sender, liveness_receiver) = watch::channel(vec![]);
+        context.register_handle(TariPulseHandle {
+            shutdown_signal: shutdown_signal.clone(),
+            failed_checkpoints_notifier: dns_receiver,
+            liveness_checks: liveness_receiver,
+        });
+        let config = TariPulseConfig {
+            dns_check_interval: self.dns_interval,
+            liveness_interval: self.liveness_interval,
+            network: self.network,
+        };
+
+        context.spawn_when_ready(move |handles| async move {
+            let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
+            let node_comms = handles.expect_handle::<ConnectivityRequester>();
+            let base_node_dht = handles.expect_handle::<Dht>();
+            let node_discovery =  base_node_dht.discovery_service_requester();
+            let mut tari_pulse_service = TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
+                .await
+                .expect("Should be able to get the service");
+            let tari_pulse_service = tari_pulse_service.run(base_node_service, dns_sender, liveness_sender);
+            futures::pin_mut!(tari_pulse_service);
+            future::select(tari_pulse_service, shutdown_signal).await;
+            info!(target: LOG_TARGET, "Tari Pulse Service shutdown");
+        });
+        info!(target: LOG_TARGET, "Tari Pulse Service initialized");
+        Ok(())
     }
 }
 
@@ -313,40 +354,6 @@ async fn check_health(
     }
     futures::future::join_all(handles).await;
     let inner_result = (*(*results).read().await).clone();
+    dbg!(&inner_result);
     notify_comms_health.send(inner_result).expect("Channel should be open");
-}
-
-#[async_trait]
-impl ServiceInitializer for TariPulseServiceInitializer {
-    async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        info!(target: LOG_TARGET, "Initializing Tari Pulse Service");
-        let shutdown_signal = context.get_shutdown_signal();
-        let (dns_sender, dns_receiver) = watch::channel(false);
-        let (liveness_sender, liveness_receiver) = watch::channel(vec![]);
-        context.register_handle(TariPulseHandle {
-            shutdown_signal: shutdown_signal.clone(),
-            failed_checkpoints_notifier: dns_receiver,
-            liveness_checks: liveness_receiver,
-        });
-        let config = TariPulseConfig {
-            dns_check_interval: self.dns_interval,
-            liveness_interval: self.liveness_interval,
-            network: self.network,
-        };
-        let node_discovery = self.discovery_service.clone();
-
-        context.spawn_when_ready(move |handles| async move {
-            let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-            let node_comms = handles.expect_handle::<ConnectivityRequester>();
-            let mut tari_pulse_service = TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
-                .await
-                .expect("Should be able to get the service");
-            let tari_pulse_service = tari_pulse_service.run(base_node_service, dns_sender, liveness_sender);
-            futures::pin_mut!(tari_pulse_service);
-            future::select(tari_pulse_service, shutdown_signal).await;
-            info!(target: LOG_TARGET, "Tari Pulse Service shutdown");
-        });
-        info!(target: LOG_TARGET, "Tari Pulse Service initialized");
-        Ok(())
-    }
 }

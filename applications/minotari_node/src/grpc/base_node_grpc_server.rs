@@ -462,6 +462,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|err| obscure_error_if_true(report_error_flag, Status::internal(err.to_string())))?;
 
+        let liveness_results = (*self.tari_pulse.get_liveness_checks()).clone();
+        let mut liveness = Vec::new();
+        for data in liveness_results {
+            let liveness_check = tari_rpc::LivenessResult {
+                peer_node_id: data.peer.to_string().into_bytes(),
+                discover_latency: data.discovery_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
+                dial_latency: data.ping_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
+            };
+            liveness.push(liveness_check);
+        }
+
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
@@ -471,6 +482,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             sha3x_estimated_hash_rate,
             randomx_estimated_hash_rate,
             num_connections: connected_peers.len() as u64,
+            liveness_results: liveness,
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))

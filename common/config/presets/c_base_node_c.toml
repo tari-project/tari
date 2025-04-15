@@ -48,6 +48,9 @@
 # Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
 # tari_pulse_interval = 120
 
+# Interval which the node will use to discover and dial the seed peers.
+# tari_pulse_health_check = 600 # 10 mins
+
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024
