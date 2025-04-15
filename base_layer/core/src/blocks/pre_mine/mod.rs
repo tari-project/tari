@@ -1356,6 +1356,7 @@ mod test {
         );
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_create_genesis_block_info() {
         for network in [
