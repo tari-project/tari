@@ -58,7 +58,7 @@ pub struct TariPulseConfig {
 pub struct LivenessCheckResult {
     pub peer: NodeId,
     pub discovery_latency: Option<Duration>,
-    pub ping_latency: Option<Duration>,
+    pub dial_latency: Option<Duration>,
 }
 
 impl Default for TariPulseConfig {
@@ -271,11 +271,13 @@ pub struct TariPulseServiceInitializer {
 
 impl TariPulseServiceInitializer {
     pub fn new(dns_interval: Duration, liveness_interval: Duration, network: Network) -> Self {
-        Self { dns_interval, liveness_interval, network }
+        Self {
+            dns_interval,
+            liveness_interval,
+            network,
+        }
     }
 }
-
-
 
 #[async_trait]
 impl ServiceInitializer for TariPulseServiceInitializer {
@@ -299,10 +301,11 @@ impl ServiceInitializer for TariPulseServiceInitializer {
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
             let node_comms = handles.expect_handle::<ConnectivityRequester>();
             let base_node_dht = handles.expect_handle::<Dht>();
-            let node_discovery =  base_node_dht.discovery_service_requester();
-            let mut tari_pulse_service = TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
-                .await
-                .expect("Should be able to get the service");
+            let node_discovery = base_node_dht.discovery_service_requester();
+            let mut tari_pulse_service =
+                TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
+                    .await
+                    .expect("Should be able to get the service");
             let tari_pulse_service = tari_pulse_service.run(base_node_service, dns_sender, liveness_sender);
             futures::pin_mut!(tari_pulse_service);
             future::select(tari_pulse_service, shutdown_signal).await;
@@ -326,28 +329,27 @@ async fn check_health(
         let mut result = LivenessCheckResult {
             peer: peer.node_id.clone(),
             discovery_latency: None,
-            ping_latency: None,
+            dial_latency: None,
         };
         let dest_key = peer.public_key.clone();
         let mut discovery = node_discovery.clone();
         let comms = node_comms.clone();
         handles.push(task::spawn(async move {
             let start = Instant::now();
-            println!("🌎 Peer discovery started.");
             if let Ok(_) = discovery
-                .discover_peer(
-                    dest_key.clone(),
-                    NodeDestination::PublicKey(dest_key.into()),
-                )
+                .discover_peer(dest_key.clone(), NodeDestination::PublicKey(dest_key.into()))
                 .await
             {
                 result.discovery_latency = Some(start.elapsed());
+            } else {
+                dbg!("failed discovery");
             }
-            let start = Instant::now();
-            println!("☎️  Dialing peer...");
+            let start2 = Instant::now();
 
             if let Ok(_) = comms.dial_peer(result.peer.clone()).await {
-                result.ping_latency = Some(start.elapsed());
+                result.dial_latency = Some(start2.elapsed());
+            } else {
+                dbg!("failed dial");
             };
             (*result_clone).write().await.push(result);
         }));
