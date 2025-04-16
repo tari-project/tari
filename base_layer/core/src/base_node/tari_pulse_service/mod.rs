@@ -341,21 +341,16 @@ async fn check_health(
                 .await
             {
                 result.discovery_latency = Some(start.elapsed());
-            } else {
-                dbg!("failed discovery");
             }
             let start2 = Instant::now();
 
             if let Ok(_) = comms.dial_peer(result.peer.clone()).await {
                 result.dial_latency = Some(start2.elapsed());
-            } else {
-                dbg!("failed dial");
-            };
+            }
             (*result_clone).write().await.push(result);
         }));
     }
     futures::future::join_all(handles).await;
     let inner_result = (*(*results).read().await).clone();
-    dbg!(&inner_result);
     notify_comms_health.send(inner_result).expect("Channel should be open");
 }
