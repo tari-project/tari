@@ -29,7 +29,7 @@ use futures::future;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, Minimized};
 use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
 use tari_p2p::{
     dns::DnsClient,
@@ -344,6 +344,7 @@ async fn check_health(
         let mut discovery = node_discovery.clone();
         let mut liveness_events = liveness_handle.get_event_stream();
         let mut liveness = liveness_handle.clone();
+        let mut comms = node_comms.clone();
         handles.push(task::spawn(async move {
             let start = Instant::now();
             if discovery
@@ -370,6 +371,11 @@ async fn check_health(
                         },
                         Err(RecvError::Lagged(_)) => {},
                     }
+                }
+            }
+            if let Ok(Some(mut conn)) = comms.get_connection(result.peer.clone()).await {
+                if let Err(err) = conn.disconnect(Minimized::No).await {
+                    warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", result.peer, err);
                 }
             }
             (*result_clone).write().await.push(result);
