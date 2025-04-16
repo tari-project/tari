@@ -23,12 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_core::transactions::transaction_components::{
-    CoinBaseExtra,
-    OutputFeatures,
-    OutputFeaturesVersion,
-    OutputType,
-    RangeProofType,
-    SideChainFeature,
+    CoinBaseExtra, OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, SideChainFeature,
 };
 use tari_utilities::ByteArray;
 
@@ -71,7 +66,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra.to_vec(),
-            sidechain_feature: features.sidechain_feature.map(Into::into),
+            sidechain_feature: features.sidechain_feature.as_ref().map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }

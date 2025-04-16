@@ -30,9 +30,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block,
-        default_coinbase_entities,
-        BlockSpec,
+        create_block, default_coinbase_entities, BlockSpec,
     },
     transactions::{
         tari_amount::T,
@@ -616,7 +614,7 @@ mod validator_node_merkle_root {
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
         let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
-        let signature = ValidatorNodeSignature::sign(&sk, None, &public_key, VnEpoch::zero());
+        let signature = ValidatorNodeSignature::sign_for_registration(&sk, None, &public_key, VnEpoch::zero());
         let features = OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None);
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
@@ -657,7 +655,8 @@ mod validator_node_merkle_root {
 
         let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut OsRng);
-        let signature = ValidatorNodeSignature::sign(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
+        let signature =
+            ValidatorNodeSignature::sign_for_registration(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
         let features =
             OutputFeatures::for_validator_node_registration(signature, public_key.clone(), Some(&sidechain_private));
         let (tx, _outputs) = schema_to_transaction(

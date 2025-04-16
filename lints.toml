@@ -70,6 +70,10 @@ allow = [
     # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
     'clippy::bool-assert-comparison',
     'clippy::blocks_in_conditions',
-    # TODO remove
+]
+
+warn = [
+    # TODO: remove - to avoid conflicts in the feature branch, we'll ignore this for now
+    "clippy::manual_repeat_n",
     "clippy::large_enum_variant",
 ]

@@ -32,15 +32,10 @@ use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 use tari_max_size::MaxSizeBytes;
 use tari_sidechain::EvictionProof;
 
-use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId};
+use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transactions::transaction_components::{
-    range_proof_type::RangeProofType,
-    side_chain::SideChainFeature,
-    CodeTemplateRegistration,
-    ConfidentialOutputData,
-    OutputType,
-    ValidatorNodeRegistration,
-    ValidatorNodeSignature,
+    range_proof_type::RangeProofType, side_chain::SideChainFeature, CodeTemplateRegistration, ConfidentialOutputData,
+    OutputType, ValidatorNodeRegistration, ValidatorNodeSignature,
 };
 
 /// Coinbase outputs are allowed to have metadata, but it has the following length limit
@@ -173,7 +168,24 @@ impl OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::ValidatorNodeRegistration(vn_reg),
+                data: SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg)),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_exit(
+        signature: ValidatorNodeSignature,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let exit = ValidatorNodeExit::new(signature);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
+
+        OutputFeatures {
+            output_type: OutputType::ValidatorNodeExit,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeExit(exit),
                 sidechain_id,
             }),
             ..Default::default()
@@ -189,7 +201,7 @@ impl OutputFeatures {
         OutputFeatures {
             output_type: OutputType::SidechainProof,
             sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::EvictionProof(eviction_proof),
+                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
                 sidechain_id,
             }),
             ..Default::default()

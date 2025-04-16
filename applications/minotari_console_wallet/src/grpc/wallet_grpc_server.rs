@@ -28,64 +28,23 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    GetAddressResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest,
+    GetBalanceResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest,
+    GetIdentityRequest, GetIdentityResponse, GetStateRequest, GetStateResponse, GetTransactionInfoRequest,
+    GetTransactionInfoResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse, ImportUtxosRequest,
+    ImportUtxosResponse, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, RevalidateRequest,
+    RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse,
+    SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse, SubmitValidatorNodeExitRequest,
+    SubmitValidatorNodeExitResponse, TransactionDirection, TransactionEvent, TransactionEventRequest,
+    TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult,
+    ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -109,8 +68,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            OutputFeatures,
-            UnblindedOutput,
+            OutputFeatures, UnblindedOutput,
         },
     },
 };
@@ -1137,6 +1095,63 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(e) => {
                 error!(target: LOG_TARGET, "Transaction service error: {}", e);
                 RegisterValidatorNodeResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_node_exit(
+        &self,
+        request: Request<SubmitValidatorNodeExitRequest>,
+    ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        let validator_node_signature = request
+            .validator_node_signature
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+            .try_into()
+            .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_node_exit(
+                constants.validator_node_registration_min_deposit_amount(),
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_key,
+                UtxoSelectionCriteria::default(),
+                request.fee_per_gram.into(),
+                PaymentId::from_bytes(&request.payment_id),
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorNodeExitResponse {
+                transaction_id: tx.as_u64(),
+                is_success: true,
+                failure_message: Default::default(),
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                SubmitValidatorNodeExitResponse {
                     transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),

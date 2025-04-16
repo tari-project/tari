@@ -26,14 +26,8 @@ use log::{trace, warn};
 use tari_common_types::{
     epoch::VnEpoch,
     types::{
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        HashOutput,
-        PrivateKey,
-        RangeProofService,
-        UncompressedCommitment,
-        UncompressedPublicKey,
+        CommitmentFactory, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, RangeProofService,
+        UncompressedCommitment, UncompressedPublicKey,
     },
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
@@ -46,27 +40,16 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelSum,
-            SideChainFeature,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
+            transaction_output::batch_verify_range_proofs, KernelSum, SideChainFeature, TransactionError,
+            TransactionInput, TransactionKernel, TransactionOutput,
         },
         CryptoFactories,
     },
     validation::{
         helpers::{
-            check_covenant_length,
-            check_permitted_output_types,
-            check_permitted_range_proof_types,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
-            is_all_unique_and_sorted,
-            validate_input_version,
-            validate_kernel_version,
-            validate_output_version,
+            check_covenant_length, check_permitted_output_types, check_permitted_range_proof_types,
+            check_tari_encrypted_data_byte_size, check_tari_script_byte_size, is_all_unique_and_sorted,
+            validate_input_version, validate_kernel_version, validate_output_version,
         },
         ValidationError,
     },
@@ -431,6 +414,7 @@ fn check_sidechain_features(constants: &ConsensusConstants, output: &Transaction
     check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
     check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
     check_template_registration_utxo(sidechain_feature)?;
+    check_validator_node_exit_utxo(sidechain_feature)?;
 
     Ok(())
 }
@@ -441,6 +425,7 @@ fn check_sidechain_id_proof_of_knowledge(sidechain_feature: &SideChainFeature) -
 
     Ok(())
 }
+
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
@@ -463,9 +448,26 @@ fn check_validator_node_registration_utxo(
         });
     }
 
-    // TODO: some additional "single use data" e.g. epoch should be used to prevent replay
+    // TODO: some additional "single use data" e.g. epoch could be used to prevent replay
     //       (assuming that we disallow the same validator node to register multiple times).
     if !reg.is_valid_signature_for(
+        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
+        VnEpoch::zero(),
+    ) {
+        return Err(ValidationError::InvalidValidatorNodeSignature);
+    }
+
+    Ok(())
+}
+
+fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    let Some(exit) = sidechain_feature.validator_node_exit() else {
+        return Ok(());
+    };
+
+    // TODO: some additional "single use data" e.g. epoch should be used to prevent replay
+    //       (assuming that we disallow the same validator node to register multiple times).
+    if !exit.is_valid_signature_for(
         sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
         VnEpoch::zero(),
     ) {
@@ -607,10 +609,11 @@ mod test {
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
-            kernel1.clone(),
-            kernel2.clone(),
-        ]);
+        let mut body = AggregateBody::new(
+            Vec::new(),
+            vec![output1.clone(), output2.clone()],
+            vec![kernel1.clone(), kernel2.clone()],
+        );
         assert!(check_total_burned(&body).is_ok());
         // lets add an extra kernel
         body.add_kernels([kernel3]);

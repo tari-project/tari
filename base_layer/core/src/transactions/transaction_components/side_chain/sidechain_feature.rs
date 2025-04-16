@@ -27,12 +27,10 @@ use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
 use tari_sidechain::EvictionProof;
 
+use crate::transactions::transaction_components::side_chain::validator_node_exit::ValidatorNodeExit;
 use crate::transactions::transaction_components::{
-    side_chain::confidential_output::ConfidentialOutputData,
-    CodeTemplateRegistration,
-    ValidatorNodeRegistration,
+    side_chain::confidential_output::ConfidentialOutputData, CodeTemplateRegistration, ValidatorNodeRegistration,
 };
-
 // NOTE: tari_mining_helper_ffi makes use of borsh encoding (not serde/bincode), therefore we need to
 // implement BorshDeserialize on all types
 
@@ -53,6 +51,7 @@ impl SideChainFeature {
             SideChainFeatureData::CodeTemplateRegistration(reg) => sidechain_id.is_valid(reg.sidechain_id_message()),
             SideChainFeatureData::ConfidentialOutput(output) => sidechain_id.is_valid(output.sidechain_id_message()),
             SideChainFeatureData::EvictionProof(proof) => sidechain_id.is_valid(proof.sidechain_id_message()),
+            SideChainFeatureData::ValidatorNodeExit(exit) => sidechain_id.is_valid(exit.sidechain_id_message()),
         }
     }
 
@@ -82,6 +81,13 @@ impl SideChainFeature {
         }
     }
 
+    pub fn validator_node_exit(&self) -> Option<&ValidatorNodeExit> {
+        match &self.data {
+            SideChainFeatureData::ValidatorNodeExit(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn eviction_proof(&self) -> Option<&EvictionProof> {
         match &self.data {
             SideChainFeatureData::EvictionProof(v) => Some(v),
@@ -99,10 +105,11 @@ impl SideChainFeature {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum SideChainFeatureData {
-    ValidatorNodeRegistration(ValidatorNodeRegistration),
+    ValidatorNodeRegistration(Box<ValidatorNodeRegistration>),
     CodeTemplateRegistration(CodeTemplateRegistration),
     ConfidentialOutput(ConfidentialOutputData),
-    EvictionProof(EvictionProof),
+    EvictionProof(Box<EvictionProof>),
+    ValidatorNodeExit(ValidatorNodeExit),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]

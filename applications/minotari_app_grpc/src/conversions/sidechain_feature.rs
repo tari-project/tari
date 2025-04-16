@@ -22,52 +22,36 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use crate::tari_rpc as grpc;
 use prost::Message;
 use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, Signature},
 };
+use tari_core::transactions::transaction_components::ValidatorNodeExit;
 use tari_core::{
     base_node::comms_interface::ValidatorNodeChange,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            BuildInfo,
-            CodeTemplateRegistration,
-            ConfidentialOutputData,
-            SideChainFeature,
-            SideChainFeatureData,
-            SideChainId,
-            TemplateType,
-            ValidatorNodeRegistration,
-            ValidatorNodeSignature,
+            BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
+            SideChainId, TemplateType, ValidatorNodeRegistration, ValidatorNodeSignature,
         },
     },
 };
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink,
-    CommandCommitProof,
-    CommandCommitProofV1,
-    CommitProofElement,
-    EvictNodeAtom,
-    EvictionProof,
-    QuorumCertificate,
-    QuorumDecision,
-    ShardGroup,
-    SidechainBlockCommitProof,
-    SidechainBlockHeader,
+    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
+    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
-
 //---------------------------------- SideChainFeature --------------------------------------------//
-impl From<SideChainFeature> for grpc::SideChainFeature {
-    fn from(value: SideChainFeature) -> Self {
+impl From<&SideChainFeature> for grpc::SideChainFeature {
+    fn from(value: &SideChainFeature) -> Self {
         Self {
-            feature: Some(value.data.into()),
+            feature: Some((&value.data).into()),
             sidechain_id: value.sidechain_id.as_ref().map(Into::into),
         }
     }
@@ -84,11 +68,11 @@ impl TryFrom<grpc::SideChainFeature> for SideChainFeature {
     }
 }
 
-impl From<SideChainFeatureData> for grpc::side_chain_feature::Feature {
-    fn from(value: SideChainFeatureData) -> Self {
+impl From<&SideChainFeatureData> for grpc::side_chain_feature::Feature {
+    fn from(value: &SideChainFeatureData) -> Self {
         match value {
-            SideChainFeatureData::ValidatorNodeRegistration(template_reg) => {
-                grpc::side_chain_feature::Feature::ValidatorNodeRegistration(template_reg.into())
+            SideChainFeatureData::ValidatorNodeRegistration(reg) => {
+                grpc::side_chain_feature::Feature::ValidatorNodeRegistration(reg.as_ref().into())
             },
             SideChainFeatureData::CodeTemplateRegistration(template_reg) => {
                 grpc::side_chain_feature::Feature::TemplateRegistration(template_reg.into())
@@ -97,7 +81,10 @@ impl From<SideChainFeatureData> for grpc::side_chain_feature::Feature {
                 grpc::side_chain_feature::Feature::ConfidentialOutput(output_data.into())
             },
             SideChainFeatureData::EvictionProof(proof) => {
-                grpc::side_chain_feature::Feature::EvictionProof(grpc::EvictionProof::from(&proof))
+                grpc::side_chain_feature::Feature::EvictionProof(grpc::EvictionProof::from(&**proof))
+            },
+            SideChainFeatureData::ValidatorNodeExit(exit) => {
+                grpc::side_chain_feature::Feature::ValidatorNodeExit(exit.into())
             },
         }
     }
@@ -108,9 +95,9 @@ impl TryFrom<grpc::side_chain_feature::Feature> for SideChainFeatureData {
 
     fn try_from(features: grpc::side_chain_feature::Feature) -> Result<Self, Self::Error> {
         match features {
-            grpc::side_chain_feature::Feature::ValidatorNodeRegistration(vn_reg) => {
-                Ok(SideChainFeatureData::ValidatorNodeRegistration(vn_reg.try_into()?))
-            },
+            grpc::side_chain_feature::Feature::ValidatorNodeRegistration(vn_reg) => Ok(
+                SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg.try_into()?)),
+            ),
             grpc::side_chain_feature::Feature::TemplateRegistration(template_reg) => {
                 Ok(SideChainFeatureData::CodeTemplateRegistration(template_reg.try_into()?))
             },
@@ -118,7 +105,10 @@ impl TryFrom<grpc::side_chain_feature::Feature> for SideChainFeatureData {
                 Ok(SideChainFeatureData::ConfidentialOutput(output_data.try_into()?))
             },
             grpc::side_chain_feature::Feature::EvictionProof(proof) => {
-                Ok(SideChainFeatureData::EvictionProof(proof.try_into()?))
+                Ok(SideChainFeatureData::EvictionProof(Box::new(proof.try_into()?)))
+            },
+            grpc::side_chain_feature::Feature::ValidatorNodeExit(exit) => {
+                Ok(SideChainFeatureData::ValidatorNodeExit(exit.try_into()?))
             },
         }
     }
@@ -191,6 +181,40 @@ impl From<ValidatorNodeRegistration> for grpc::ValidatorNodeRegistration {
         Self::from(&value)
     }
 }
+// -------------------------------- ValidatorNodeExit -------------------------------- //
+impl TryFrom<grpc::ValidatorNodeExit> for ValidatorNodeExit {
+    type Error = String;
+
+    fn try_from(value: grpc::ValidatorNodeExit) -> Result<Self, Self::Error> {
+        let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| format!("Invalid public key: {}", e))?;
+
+        Ok(ValidatorNodeExit::new(ValidatorNodeSignature::new(
+            public_key,
+            value
+                .signature
+                .map(TryInto::try_into)
+                .ok_or("signature not provided")??,
+        )))
+    }
+}
+impl From<&ValidatorNodeExit> for crate::tari_rpc::ValidatorNodeExit {
+    fn from(exit: &ValidatorNodeExit) -> Self {
+        Self {
+            public_key: exit.public_key().to_vec(),
+            signature: Some(crate::tari_rpc::Signature {
+                public_nonce: exit.signature().get_compressed_public_nonce().to_vec(),
+                signature: exit.signature().get_signature().to_vec(),
+            }),
+        }
+    }
+}
+
+impl From<ValidatorNodeExit> for grpc::ValidatorNodeExit {
+    fn from(value: ValidatorNodeExit) -> Self {
+        Self::from(&value)
+    }
+}
 
 // -------------------------------- TemplateRegistration -------------------------------- //
 impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
@@ -223,15 +247,15 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
     }
 }
 
-impl From<CodeTemplateRegistration> for grpc::TemplateRegistration {
-    fn from(value: CodeTemplateRegistration) -> Self {
+impl From<&CodeTemplateRegistration> for grpc::TemplateRegistration {
+    fn from(value: &CodeTemplateRegistration) -> Self {
         Self {
             author_public_key: value.author_public_key.to_vec(),
-            author_signature: Some(value.author_signature.into()),
+            author_signature: Some(value.author_signature().into()),
             template_name: value.template_name.to_string(),
             template_version: u32::from(value.template_version),
             template_type: Some(value.template_type.into()),
-            build_info: Some(value.build_info.into()),
+            build_info: Some(value.build_info().into()),
             binary_sha: value.binary_sha.to_vec(),
             binary_url: value.binary_url.to_string(),
         }
@@ -250,8 +274,8 @@ impl TryFrom<grpc::ConfidentialOutputData> for ConfidentialOutputData {
     }
 }
 
-impl From<ConfidentialOutputData> for grpc::ConfidentialOutputData {
-    fn from(value: ConfidentialOutputData) -> Self {
+impl From<&ConfidentialOutputData> for grpc::ConfidentialOutputData {
+    fn from(value: &ConfidentialOutputData) -> Self {
         Self {
             claim_public_key: value.claim_public_key.to_vec(),
         }
@@ -305,11 +329,11 @@ impl TryFrom<grpc::BuildInfo> for BuildInfo {
     }
 }
 
-impl From<BuildInfo> for grpc::BuildInfo {
-    fn from(value: BuildInfo) -> Self {
+impl From<&BuildInfo> for grpc::BuildInfo {
+    fn from(value: &BuildInfo) -> Self {
         Self {
-            repo_url: value.repo_url.into_string(),
-            commit_hash: value.commit_hash.into_vec(),
+            repo_url: value.repo_url.as_str().to_string(),
+            commit_hash: value.commit_hash.as_bytes().to_vec(),
         }
     }
 }

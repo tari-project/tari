@@ -23,6 +23,7 @@
 use std::convert::TryFrom;
 
 use log::*;
+use tari_common_types::epoch::VnEpoch;
 use tari_common_types::types::{CompressedPublicKey, FixedHash};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
@@ -35,19 +36,11 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
-        randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        AchievedTargetDifficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
+        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, AchievedTargetDifficulty, Difficulty,
+        PowAlgorithm, PowError,
     },
     transactions::transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        EncryptedData,
-        TransactionInput,
-        TransactionKernel,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL, EncryptedData, TransactionInput, TransactionKernel,
         TransactionOutput,
     },
     validation::ValidationError,
@@ -265,7 +258,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 
     Ok(())
 }
-/// This function checks the validity of the validator node registration if appliable
+/// This function checks the validity of the validator node registration if applicable
 pub fn check_validator_node_registration<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
@@ -287,7 +280,30 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
     Ok(())
 }
 
-/// This function checks the validity of the eviction proof if appliable
+/// Checks the validity of the validator node exit if applicable
+pub fn check_validator_node_exit<B: BlockchainBackend>(
+    db: &B,
+    output: &TransactionOutput,
+    epoch: VnEpoch,
+) -> Result<(), ValidationError> {
+    let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    let Some(exit) = sidechain_features.validator_node_exit() else {
+        return Ok(());
+    };
+
+    if !db.validator_node_is_active(sidechain_features.sidechain_public_key(), epoch, exit.public_key())? {
+        return Err(ValidationError::ValidatorNodeNotRegistered {
+            public_key: exit.public_key().to_string(),
+            details: format!("exit invalid for validator node that is not active/registered in {epoch}"),
+        });
+    }
+
+    Ok(())
+}
+
+/// This function checks the validity of the eviction proof if applicable
 pub fn check_eviction_proof<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,

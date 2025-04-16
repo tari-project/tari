@@ -60,6 +60,8 @@ pub enum OutputType {
     SidechainCheckpoint = 5,
     /// Output containing a sidechain proof.
     SidechainProof = 6,
+    /// Output containing a validator node exit
+    ValidatorNodeExit = 7,
 }
 
 impl OutputType {
@@ -83,16 +85,18 @@ impl OutputType {
             OutputType::CodeTemplateRegistration,
             OutputType::SidechainCheckpoint,
             OutputType::SidechainProof,
+            OutputType::ValidatorNodeExit,
         ]
     }
 
     pub fn is_sidechain_type(&self) -> bool {
         matches!(
             self,
-            OutputType::ValidatorNodeRegistration |
-                OutputType::CodeTemplateRegistration |
-                OutputType::SidechainCheckpoint |
-                OutputType::SidechainProof
+            OutputType::ValidatorNodeRegistration
+                | OutputType::CodeTemplateRegistration
+                | OutputType::SidechainCheckpoint
+                | OutputType::SidechainProof
+                | OutputType::ValidatorNodeExit
         )
     }
 
@@ -138,9 +142,10 @@ mod tests {
                 OutputType::CodeTemplateRegistration => variant_bits |= mask,
                 OutputType::SidechainCheckpoint => variant_bits |= mask,
                 OutputType::SidechainProof => variant_bits |= mask,
+                OutputType::ValidatorNodeExit => variant_bits |= mask,
             }
         }
-        assert_eq!(variant_bits, 0b1111111);
+        assert_eq!(variant_bits, 0b11111111);
     }
     #[test]
     fn it_converts_from_byte_to_output_type() {
@@ -151,6 +156,7 @@ mod tests {
         assert_eq!(OutputType::from_byte(4), Some(OutputType::CodeTemplateRegistration));
         assert_eq!(OutputType::from_byte(5), Some(OutputType::SidechainCheckpoint));
         assert_eq!(OutputType::from_byte(6), Some(OutputType::SidechainProof));
+        assert_eq!(OutputType::from_byte(7), Some(OutputType::ValidatorNodeExit));
         for i in 7..=255 {
             assert_eq!(OutputType::from_byte(i), None);
         }

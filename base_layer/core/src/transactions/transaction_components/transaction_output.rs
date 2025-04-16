@@ -33,18 +33,9 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{
-        ComAndPubSignature,
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        PrivateKey,
-        RangeProof,
-        RangeProofService,
-    },
+use tari_common_types::types::{
+    ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey,
+    RangeProof, RangeProofService,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -66,13 +57,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionError,
-            TransactionInput,
-            WalletOutput,
+            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInput, WalletOutput,
         },
     },
 };
@@ -335,27 +320,6 @@ impl TransactionOutput {
         Ok(())
     }
 
-    pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
-        let Some(sidechain_features) = self.features.sidechain_feature.as_ref() else {
-            return Ok(());
-        };
-
-        let Some(validator_node_reg) = sidechain_features.validator_node_registration() else {
-            return Ok(());
-        };
-
-        if !validator_node_reg.is_valid_signature_for(
-            sidechain_features.sidechain_id.as_ref().map(|id| id.public_key()),
-            // TODO: use actual epoch
-            VnEpoch::zero(),
-        ) {
-            return Err(TransactionError::InvalidSignatureError(
-                "Validator node signature is not valid!".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
     pub fn verify_mask(
         &self,
@@ -508,10 +472,10 @@ impl TransactionOutput {
     }
 
     pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()? +
-            self.encrypted_data.get_payment_id_size())
+        Ok(self.features.get_serialized_size()?
+            + self.script.get_serialized_size()?
+            + self.covenant.get_serialized_size()?
+            + self.encrypted_data.get_payment_id_size())
     }
 }
 

@@ -20,64 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::consts::U32;
-use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, FixedHash, Signature},
+    types::{CompressedPublicKey, Signature},
 };
-use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
 
-use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction_components::ValidatorNodeSignature};
+use crate::transactions::transaction_components::ValidatorNodeSignature;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-pub struct ValidatorNodeRegistration {
+pub struct ValidatorNodeExit {
     signature: ValidatorNodeSignature,
-    claim_public_key: CompressedPublicKey,
 }
 
-impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature, claim_public_key: CompressedPublicKey) -> Self {
-        Self {
-            signature,
-            claim_public_key,
-        }
+impl ValidatorNodeExit {
+    pub fn new(signature: ValidatorNodeSignature) -> Self {
+        Self { signature }
     }
 
     pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> bool {
-        self.signature
-            .is_valid_registration_signature_for(sidechain_pk, &self.claim_public_key, epoch)
-    }
-
-    pub fn derive_shard_key(
-        &self,
-        prev_shard_key: Option<[u8; 32]>,
-        epoch: VnEpoch,
-        interval: VnEpoch,
-        block_hash: &FixedHash,
-    ) -> [u8; 32] {
-        match prev_shard_key {
-            Some(prev) => {
-                if does_require_new_shard_key(self.public_key(), epoch, interval) {
-                    generate_shard_key(self.public_key(), block_hash)
-                } else {
-                    prev
-                }
-            },
-            None => generate_shard_key(self.public_key(), block_hash),
-        }
+        self.signature.is_valid_exit_signature_for(sidechain_pk, epoch)
     }
 
     pub fn public_key(&self) -> &CompressedPublicKey {
         self.signature.public_key()
-    }
-
-    pub fn claim_public_key(&self) -> &CompressedPublicKey {
-        &self.claim_public_key
     }
 
     pub fn signature(&self) -> &Signature {
@@ -89,21 +57,6 @@ impl ValidatorNodeRegistration {
     }
 }
 
-fn does_require_new_shard_key(public_key: &CompressedPublicKey, epoch: VnEpoch, interval: VnEpoch) -> bool {
-    let pk = U256::from_big_endian(public_key.as_bytes());
-    let epoch = U256::from(epoch.as_u64());
-    let interval = U256::from(interval.as_u64());
-    (pk + epoch) % interval == U256::zero()
-}
-
-fn generate_shard_key(public_key: &CompressedPublicKey, entropy: &[u8; 32]) -> [u8; 32] {
-    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node_shard_key")
-        .chain(public_key)
-        .chain(entropy)
-        .finalize()
-        .into()
-}
-
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
@@ -111,16 +64,11 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
-    use crate::test_helpers::new_public_key;
 
-    fn create_instance() -> ValidatorNodeRegistration {
+    fn create_instance() -> ValidatorNodeExit {
         let sk = PrivateKey::random(&mut OsRng);
-        let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
 
-        ValidatorNodeRegistration::new(
-            ValidatorNodeSignature::sign_for_registration(&sk, None, &claim_public_key, VnEpoch(1)),
-            claim_public_key,
-        )
+        ValidatorNodeExit::new(ValidatorNodeSignature::sign_for_exit(&sk, None, VnEpoch(1)))
     }
 
     mod is_valid_signature_for {
@@ -141,27 +89,11 @@ mod test {
         #[test]
         fn it_returns_false_for_invalid_signature() {
             let mut reg = create_instance();
-            reg = ValidatorNodeRegistration::new(
-                ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
-                Default::default(),
-            );
+            reg = ValidatorNodeExit::new(ValidatorNodeSignature::new(
+                reg.public_key().clone(),
+                Signature::default(),
+            ));
             assert!(!reg.is_valid_signature_for(None, VnEpoch(1)));
-        }
-    }
-
-    mod does_require_new_shard_key {
-        use super::*;
-
-        #[test]
-        fn it_returns_true_a_set_number_of_times_over_a_range_of_epochs() {
-            const INTERVAL: VnEpoch = VnEpoch(100);
-            const NUM_EPOCHS: u64 = 1000;
-            let pk = new_public_key();
-            let count = (0u64..NUM_EPOCHS)
-                .filter(|e| does_require_new_shard_key(&pk, VnEpoch(*e), INTERVAL))
-                .count() as u64;
-
-            assert_eq!(count, NUM_EPOCHS / INTERVAL.as_u64());
         }
     }
 }

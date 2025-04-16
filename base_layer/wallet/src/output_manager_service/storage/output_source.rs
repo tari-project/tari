@@ -41,6 +41,7 @@ pub enum OutputSource {
     CodeTemplateRegistration,
     SidechainCheckpoint,
     SidechainProof,
+    ValidatorNodeExit,
 }
 
 impl TryFrom<i32> for OutputSource {
@@ -60,6 +61,7 @@ impl TryFrom<i32> for OutputSource {
             9 => OutputSource::CodeTemplateRegistration,
             10 => OutputSource::SidechainCheckpoint,
             11 => OutputSource::SidechainProof,
+            12 => OutputSource::ValidatorNodeExit,
             _ => {
                 return Err(OutputManagerStorageError::ConversionError {
                     reason: "Was expecting value between 0 and 7 for OutputSource".to_string(),

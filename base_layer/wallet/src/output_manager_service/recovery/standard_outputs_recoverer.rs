@@ -30,11 +30,7 @@ use tari_common_types::{
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
-        OutputType,
-        TransactionError,
-        TransactionOutput,
-        WalletOutput,
+        encrypted_data::PaymentId, OutputType, TransactionError, TransactionOutput, WalletOutput,
     },
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
@@ -83,9 +79,9 @@ where
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
         for (output, tx_id) in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
-            if output.script != script!(Nop)? &&
-                known_script_index.is_none() &&
-                !output.script.pattern_match(&push_pub_key_script)
+            if output.script != script!(Nop)?
+                && known_script_index.is_none()
+                && !output.script.pattern_match(&push_pub_key_script)
             {
                 continue;
             }
@@ -195,6 +191,7 @@ where
             OutputType::CodeTemplateRegistration => OutputSource::CodeTemplateRegistration,
             OutputType::SidechainCheckpoint => OutputSource::SidechainCheckpoint,
             OutputType::SidechainProof => OutputSource::SidechainProof,
+            OutputType::ValidatorNodeExit => OutputSource::ValidatorNodeExit,
         }
     }
 

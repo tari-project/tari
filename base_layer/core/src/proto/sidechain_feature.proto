@@ -13,8 +13,9 @@ message SideChainFeature {
     TemplateRegistration template_registration = 2;
     ConfidentialOutputData confidential_output = 3;
     EvictionProof eviction_proof = 4;
+    ValidatorNodeExit validator_node_exit = 5;
   }
-  SidechainId sidechain_id = 5;
+  SidechainId sidechain_id = 6;
 }
 
 message SidechainId {
@@ -26,6 +27,11 @@ message ValidatorNodeRegistration {
   bytes public_key = 1;
   Signature signature = 2;
   bytes claim_public_key = 3;
+}
+
+message ValidatorNodeExit {
+  bytes public_key = 1;
+  Signature signature = 2;
 }
 
 message TemplateRegistration {

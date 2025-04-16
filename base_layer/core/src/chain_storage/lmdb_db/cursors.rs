@@ -39,7 +39,8 @@ pub struct KeyPrefixCursor<'a, V> {
 }
 
 impl<'a, V> KeyPrefixCursor<'a, V>
-where V: DeserializeOwned
+where
+    V: DeserializeOwned,
 {
     pub(super) fn new(cursor: Cursor<'a, 'a>, access: ConstAccessor<'a>, prefix_key: &'a [u8]) -> Self {
         Self {
@@ -190,7 +191,7 @@ impl<'a, K: FromKeyBytes, V: DeserializeOwned> LmdbReadCursor<'a, K, V> {
     }
 
     /// Positions the cursor at the first item whose key is greater than or equal to key.
-    /// If there is such a key, true is returned and calling [LmdbReadCursor::next] is guaranteed to return Some.
+    /// If there is such a key (>= provided key), true is returned and calling [LmdbReadCursor::next] is guaranteed to return Some.
     /// Conversely, if false is returned, calling [LmdbReadCursor::next] is guaranteed to return None.
     pub fn seek_range(&mut self, key: &[u8]) -> Result<bool, ChainStorageError> {
         if let Some((k, v)) = convert_result_kv(self.cursor.seek_range_k(&self.access, key))? {
@@ -203,12 +204,15 @@ impl<'a, K: FromKeyBytes, V: DeserializeOwned> LmdbReadCursor<'a, K, V> {
 
 pub trait FromKeyBytes {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
-    where Self: Sized;
+    where
+        Self: Sized;
 }
 
 impl FromKeyBytes for u64 {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
-    where Self: Sized {
+    where
+        Self: Sized,
+    {
         if bytes.len() != 8 {
             return Err(ChainStorageError::FromKeyBytesFailed(
                 "Invalid byte length for u64 key".to_string(),
@@ -222,7 +226,9 @@ impl FromKeyBytes for u64 {
 
 impl<const SZ: usize> FromKeyBytes for CompositeKey<SZ> {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
-    where Self: Sized {
+    where
+        Self: Sized,
+    {
         if bytes.len() > SZ {
             return Err(ChainStorageError::FromKeyBytesFailed(format!(
                 "Invalid byte length for CompositeKey<{}> key. Byte len: {}",
@@ -238,7 +244,9 @@ impl<const SZ: usize> FromKeyBytes for CompositeKey<SZ> {
 
 impl FromKeyBytes for Vec<u8> {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
-    where Self: Sized {
+    where
+        Self: Sized,
+    {
         Ok(bytes.to_vec())
     }
 }

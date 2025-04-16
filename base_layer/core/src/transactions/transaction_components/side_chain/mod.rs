@@ -25,6 +25,7 @@ pub use sidechain_feature::*;
 
 mod confidential_output;
 mod template_registration;
+mod validator_node_exit;
 mod validator_node_registration;
 mod validator_node_signature;
 
@@ -33,6 +34,7 @@ pub use confidential_output::*;
 use digest::consts::U32;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 pub use template_registration::*;
+pub use validator_node_exit::*;
 pub use validator_node_registration::*;
 pub use validator_node_signature::*;
 

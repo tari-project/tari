@@ -37,11 +37,7 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            TransactionInputVersion,
-            TransactionKernelVersion,
+            OutputFeaturesVersion, OutputType, RangeProofType, TransactionInputVersion, TransactionKernelVersion,
             TransactionOutputVersion,
         },
         weight::TransactionWeight,
@@ -126,6 +122,8 @@ pub struct ConsensusConstants {
     vn_registration_max_vns_initial_epoch: u32,
     /// Maximum number of validator nodes activated in an epoch.
     vn_registration_max_vns_per_epoch: u32,
+    /// Maximum number of validator nodes that can exit per epoch
+    vn_registration_max_exits_per_epoch: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -362,6 +360,10 @@ impl ConsensusConstants {
         self.vn_registration_max_vns_per_epoch
     }
 
+    pub fn vn_registration_max_exits_per_epoch(&self) -> u32 {
+        self.vn_registration_max_exits_per_epoch
+    }
+
     pub fn epoch_length(&self) -> u64 {
         self.vn_epoch_length
     }
@@ -369,16 +371,22 @@ impl ConsensusConstants {
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 240,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 240,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 240,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 240,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
@@ -414,6 +422,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -429,18 +438,24 @@ impl ConsensusConstants {
         let future_time_limit = target_time * difficulty_block_window / 20;
 
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            // (target_time x 200_000/3) ... for easy testing
-            min_difficulty: Difficulty::from_u64(sha3x_target_time * 67_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: sha3x_target_time,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            // (target_time x 300/3)     ... for easy testing
-            min_difficulty: Difficulty::from_u64(randomx_target_time * 100).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: randomx_target_time,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                // (target_time x 200_000/3) ... for easy testing
+                min_difficulty: Difficulty::from_u64(sha3x_target_time * 67_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: sha3x_target_time,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                // (target_time x 300/3)     ... for easy testing
+                min_difficulty: Difficulty::from_u64(randomx_target_time * 100).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: randomx_target_time,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
@@ -480,6 +495,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -492,16 +508,22 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants1 = ConsensusConstants {
             effective_from_height: 0,
@@ -537,6 +559,8 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+
+            vn_registration_max_exits_per_epoch: 5,
         };
         let consensus_constants = vec![consensus_constants1];
         consensus_constants
@@ -550,16 +574,22 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
@@ -595,22 +625,30 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
 
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let con_1 = ConsensusConstants {
             effective_from_height: 0,
@@ -646,6 +684,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         };
 
         let consensus_constants = vec![con_1];
@@ -656,16 +695,22 @@ impl ConsensusConstants {
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
-            max_difficulty: Difficulty::max(),
-            target_time: 240,
-        });
+        algos.insert(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
+        algos.insert(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+                max_difficulty: Difficulty::max(),
+                target_time: 240,
+            },
+        );
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
@@ -701,6 +746,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -712,17 +758,19 @@ impl ConsensusConstants {
     const fn current_permitted_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {
         &[
             (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
-            (OutputType::Coinbase, &[
-                RangeProofType::BulletProofPlus,
-                RangeProofType::RevealedValue,
-            ]),
+            (
+                OutputType::Coinbase,
+                &[RangeProofType::BulletProofPlus, RangeProofType::RevealedValue],
+            ),
             (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
-            (OutputType::ValidatorNodeRegistration, &[
-                RangeProofType::BulletProofPlus,
-            ]),
+            (
+                OutputType::ValidatorNodeRegistration,
+                &[RangeProofType::BulletProofPlus],
+            ),
             (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
             (OutputType::SidechainCheckpoint, &[RangeProofType::BulletProofPlus]),
             (OutputType::SidechainProof, &[RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeExit, &[RangeProofType::BulletProofPlus]),
         ]
     }
 
@@ -735,6 +783,7 @@ impl ConsensusConstants {
             (OutputType::CodeTemplateRegistration, RangeProofType::all()),
             (OutputType::SidechainCheckpoint, RangeProofType::all()),
             (OutputType::SidechainProof, RangeProofType::all()),
+            (OutputType::ValidatorNodeExit, RangeProofType::all()),
         ];
         RP_TYPES
     }
