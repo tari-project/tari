@@ -29,8 +29,8 @@ export DEBIAN_FRONTEND=noninteractive && \
 apt-get update && \
 apt-get --assume-yes --no-install-recommends install \
  curl unzip && \
-curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v26.1/protoc-26.1-linux-x86_64.zip && \
-unzip -o protoc-26.1-linux-x86_64.zip -d /usr/ && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip && \
+unzip -o protoc-30.2-linux-x86_64.zip -d /usr/ && \
 /usr/bin/protoc --version
 """ ]
 
@@ -46,8 +46,8 @@ export DEBIAN_FRONTEND=noninteractive && \
 apt-get update && \
 apt-get --assume-yes --no-install-recommends install \
  curl unzip && \
-curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v26.1/protoc-26.1-linux-x86_64.zip && \
-unzip -o protoc-26.1-linux-x86_64.zip -d /usr/ && \
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip && \
+unzip -o protoc-30.2-linux-x86_64.zip -d /usr/ && \
 /usr/bin/protoc --version
 """ ]
 

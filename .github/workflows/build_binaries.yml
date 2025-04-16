@@ -45,7 +45,8 @@ concurrency:
   group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   matrix-prep:
@@ -54,8 +55,6 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: false
 
       - name: Set Matrix
         id: set-matrix
@@ -111,19 +110,15 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Declare TestNet for tags
+      - name: Declare TestNet for tags/branches
         id: set-tari-network
-        # Don't forget to comment out the below if, when force testing with GHA_NETWORK
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ ( startsWith(github.ref, 'refs/tags/v') ) || ( startsWith(github.ref, 'refs/heads/build-') ) }}
         env:
           GHA_NETWORK: ${{ github.ref_name }}
-          # GHA_NETWORK: "v1.0.0-rc.4"
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
+          source ./buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
           echo ${TARI_NETWORK}
           echo ${TARI_TARGET_NETWORK}
           echo ${TARI_NETWORK_DIR}
@@ -172,12 +167,15 @@ jobs:
             TARGET_LIBS+="--package ${LIB_FILE} "
           done
           echo "TARGET_LIBS=${TARGET_LIBS}" >> $GITHUB_ENV
-          TARI_BUILD_ISA_CPU=${{ matrix.builds.target }}
-          # Strip unknown part
-          TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//-unknown-linux-gnu}
-          # Strip gc used by rust
-          TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//gc}
-          echo "TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU}" >> $GITHUB_ENV
+          if [[ "${{ matrix.builds.target }}" == *linux* ]]; then
+            TARI_BUILD_ISA_CPU=${{ matrix.builds.target }}
+            # Strip unknown part
+            TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//-unknown-linux-gnu}
+            # Strip gc used by rust
+            TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU//gc}
+            echo "TARI_BUILD_ISA_CPU=${TARI_BUILD_ISA_CPU}" >> $GITHUB_ENV
+            echo "TARI_HOST_ISA_CPU=$(uname -m)" >> $GITHUB_ENV
+          fi
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
@@ -198,8 +196,8 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-      - name: Install Linux dependencies - Ubuntu - cross-compiled ${{ env.TARI_BUILD_ISA_CPU }} on x86-64
-        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name != 'linux-x86_64' }}
+      - name: Install Linux dependencies - Ubuntu - cross-compiling ${{ env.TARI_BUILD_ISA_CPU }} on ${{ env.TARI_HOST_ISA_CPU }}
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && ( env.TARI_BUILD_ISA_CPU != env.TARI_HOST_ISA_CPU ) }}
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies-cross_compile.sh ${{ env.TARI_BUILD_ISA_CPU }}
@@ -430,14 +428,21 @@ jobs:
           MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
           MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
         run: |
-          echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
-          echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
-          security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          # set -xo pipefail
+          echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
+          echo "${MACOS_INSTALLER_CERT}" | base64 --decode > installer.p12
+          security create-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
           security default-keychain -s build.keychain
-          security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
-          security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
-          security import installer.p12 -k build.keychain -P $MACOS_INSTALLER_PASS -T /usr/bin/pkgbuild
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
+          security unlock-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
+          security import application.p12 -k build.keychain \
+            -t cert -f pkcs12 \
+            -P ${MACOS_APPLICATION_PASS} \
+            -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain \
+            -t cert -f pkcs12 \
+            -P ${MACOS_INSTALLER_PASS} \
+            -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${MACOS_KEYCHAIN_PASS} build.keychain
           if [[ "${{ matrix.builds.name }}" == "macos-arm64" ]]; then
             echo "Add codesign extra args for ${{ matrix.builds.name }}"
             OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
@@ -571,6 +576,7 @@ jobs:
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         shell: powershell
+        working-directory: ${{ github.workspace }}/buildtools/Output
         run: |
           # Get the Program Files (x86) directory dynamically
           $programFilesX86 = [System.Environment]::GetFolderPath("ProgramFilesX86")
@@ -596,7 +602,15 @@ jobs:
 
           Write-Output "Found signtool.exe at: $signtoolPath"
 
-          cd buildtools\Output
+          $Signature = Get-AuthenticodeSignature "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe"
+
+          # Display results
+          Write-Host "File: ${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe"
+          Write-Host "  - Status: $($Signature.Status)"
+          Write-Host "  - Status Message: $($Signature.StatusMessage)"
+          Write-Host "  - Signer: $($Signature.SignerCertificate.Subject)"
+          Write-Host "  - Issuer: $($Signature.SignerCertificate.Issuer)"
+          Write-Host "---------------------------------------------"
 
           & $signtoolPath verify /pa "${{ env.TS_FILENAME }}-${{ env.TARI_VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe"
           if ($LASTEXITCODE -ne 0) {
@@ -624,13 +638,13 @@ jobs:
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Audit tree and feedback for binaries
-        # if: ${{ ( ! matrix.builds.cross ) }}
+        if: ${{ ( ! matrix.builds.cross ) }}
         continue-on-error: true
         shell: bash
+        working-directory: ${{ env.MTS_SOURCE }}
         run: |
-          cd "${{ env.MTS_SOURCE }}"
           echo "Audit binaries ..."
-          cargo audit bin *minotari*
+          cargo audit bin *minotari*${{ env.TS_EXT }}
 
       - name: Archive and Checksum Binaries
         shell: bash
@@ -774,14 +788,20 @@ jobs:
           MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
           MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
         run: |
-          echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
-          echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
-          security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
+          echo "${MACOS_INSTALLER_CERT}" | base64 --decode > installer.p12
+          security create-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
           security default-keychain -s build.keychain
-          security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
-          security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
-          security import installer.p12 -k build.keychain -P $MACOS_INSTALLER_PASS -T /usr/bin/pkgbuild
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
+          security unlock-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
+          security import application.p12 -k build.keychain \
+            -t cert -f pkcs12 \
+            -P ${MACOS_APPLICATION_PASS} \
+            -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain \
+            -t cert -f pkcs12 \
+            -P ${MACOS_INSTALLER_PASS} \
+            -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${MACOS_KEYCHAIN_PASS} build.keychain
           OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
           cd buildtools
           # export target_release="target/${{ matrix.builds.target }}/${{ env.TS_BUILD }}"
