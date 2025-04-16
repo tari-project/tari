@@ -468,7 +468,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let liveness_check = tari_rpc::LivenessResult {
                 peer_node_id: data.peer.to_string().into_bytes(),
                 discover_latency: data.discovery_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
-                dial_latency: data.dial_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
+                ping_latency: data.ping_latency.map(|v| v.as_secs()).unwrap_or_else(|| u64::MAX),
             };
             liveness.push(liveness_check);
         }

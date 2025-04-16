@@ -31,12 +31,16 @@ use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
-use tari_p2p::{dns::DnsClient, Network};
+use tari_p2p::{
+    dns::DnsClient,
+    services::liveness::{LivenessEvent, LivenessHandle},
+    Network,
+};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{watch, Mutex, RwLock},
+    sync::{broadcast::error::RecvError, watch, Mutex, RwLock},
     task,
     time,
     time::MissedTickBehavior,
@@ -44,7 +48,6 @@ use tokio::{
 
 use super::LocalNodeCommsInterface;
 use crate::base_node::comms_interface::CommsInterfaceError;
-
 const LOG_TARGET: &str = "c::bn::tari_pulse";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,7 +61,7 @@ pub struct TariPulseConfig {
 pub struct LivenessCheckResult {
     pub peer: NodeId,
     pub discovery_latency: Option<Duration>,
-    pub dial_latency: Option<Duration>,
+    pub ping_latency: Option<Duration>,
 }
 
 impl Default for TariPulseConfig {
@@ -87,6 +90,7 @@ pub struct TariPulseService {
     config: TariPulseConfig,
     shutdown_signal: ShutdownSignal,
     node_comms: ConnectivityRequester,
+    liveness_handle: LivenessHandle,
     node_discovery: DhtDiscoveryRequester,
 }
 
@@ -94,6 +98,7 @@ impl TariPulseService {
     pub async fn new(
         config: TariPulseConfig,
         node_comms: ConnectivityRequester,
+        liveness_handle: LivenessHandle,
         node_discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, anyhow::Error> {
@@ -103,6 +108,7 @@ impl TariPulseService {
             dns_name,
             config,
             node_comms,
+            liveness_handle,
             node_discovery,
             shutdown_signal,
         })
@@ -137,6 +143,7 @@ impl TariPulseService {
             tokio::select! {
                 _ = health_check_interval.tick() => {
                     let h_check = health_check_in_progress.clone();
+                    let liveness_handle = self.liveness_handle.clone();
                     let comms = self.node_comms.clone();
                     let discovery = self.node_discovery.clone();
                     let notify_channel = notify_comms_health.clone();
@@ -151,7 +158,7 @@ impl TariPulseService {
                                 return;
                             },
                         };
-                    check_health(comms, discovery, notify_channel).await;
+                        check_health(comms, liveness_handle, discovery, notify_channel).await;
                     });
                 }
                 _ = dns_check_interval.tick() => {
@@ -300,10 +307,11 @@ impl ServiceInitializer for TariPulseServiceInitializer {
         context.spawn_when_ready(move |handles| async move {
             let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
             let node_comms = handles.expect_handle::<ConnectivityRequester>();
+            let liveness = handles.expect_handle::<LivenessHandle>();
             let base_node_dht = handles.expect_handle::<Dht>();
             let node_discovery = base_node_dht.discovery_service_requester();
             let mut tari_pulse_service =
-                TariPulseService::new(config, node_comms, node_discovery, shutdown_signal.clone())
+                TariPulseService::new(config, node_comms, liveness, node_discovery, shutdown_signal.clone())
                     .await
                     .expect("Should be able to get the service");
             let tari_pulse_service = tari_pulse_service.run(base_node_service, dns_sender, liveness_sender);
@@ -318,6 +326,7 @@ impl ServiceInitializer for TariPulseServiceInitializer {
 
 async fn check_health(
     mut node_comms: ConnectivityRequester,
+    liveness_handle: LivenessHandle,
     node_discovery: DhtDiscoveryRequester,
     notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
 ) {
@@ -329,11 +338,12 @@ async fn check_health(
         let mut result = LivenessCheckResult {
             peer: peer.node_id.clone(),
             discovery_latency: None,
-            dial_latency: None,
+            ping_latency: None,
         };
         let dest_key = peer.public_key.clone();
         let mut discovery = node_discovery.clone();
-        let comms = node_comms.clone();
+        let mut liveness_events = liveness_handle.get_event_stream();
+        let mut liveness = liveness_handle.clone();
         handles.push(task::spawn(async move {
             let start = Instant::now();
             if discovery
@@ -344,8 +354,23 @@ async fn check_health(
                 result.discovery_latency = Some(start.elapsed());
             }
             let start2 = Instant::now();
-            if comms.dial_peer(result.peer.clone()).await.is_ok() {
-                result.dial_latency = Some(start2.elapsed());
+            if let Ok(nonce) = liveness.send_ping(result.peer.clone()).await {
+                loop {
+                    match liveness_events.recv().await {
+                        Ok(event) => {
+                            if let LivenessEvent::ReceivedPong(pong) = &*event {
+                                if pong.node_id == result.peer && pong.nonce == nonce {
+                                    result.ping_latency = Some(start2.elapsed());
+                                    break;
+                                }
+                            }
+                        },
+                        Err(RecvError::Closed) => {
+                            break;
+                        },
+                        Err(RecvError::Lagged(_)) => {},
+                    }
+                }
             }
             (*result_clone).write().await.push(result);
         }));

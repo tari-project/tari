@@ -552,6 +552,6 @@ message LivenessResult{
     // time to discover
     uint64 discover_latency = 2;
     // Dial latency
-    uint64 dial_latency = 3;
+    uint64 ping_latency = 3;
 }
 
