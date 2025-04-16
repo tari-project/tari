@@ -349,9 +349,9 @@ network_discovery.min_desired_peers = 16
 network_discovery.initial_peer_sync_delay = 25
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
-#ban_duration = 21_600 # 6 * 60 * 60
+ban_duration = 120 # 2 mins
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
-#ban_duration_short = 3_600 # 60 * 60
+ban_duration_short = 60 # 1 min
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
