@@ -38,13 +38,7 @@ use crate::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
             states::{
-                BlockSync,
-                DecideNextSync,
-                HeaderSyncState,
-                StateEvent,
-                StateEvent::FatalError,
-                StateInfo,
-                SyncStatus,
+                BlockSync, DecideNextSync, HeaderSyncState, StateEvent, StateEvent::FatalError, StateInfo, SyncStatus,
                 Waiting,
             },
             BaseNodeStateMachine,
@@ -158,6 +152,7 @@ impl Listening {
         }
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
+        let mut ahead_of_peers_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
@@ -192,6 +187,7 @@ impl Listening {
                             return FatalError(format!("Error checking if peer is banned: {}", e));
                         },
                     }
+
                     let peer_data = PeerMetadata {
                         metadata: peer_metadata.claimed_chain_metadata().clone(),
                         last_updated: EpochTime::now(),
@@ -260,8 +256,13 @@ impl Listening {
                     }
 
                     if !self.is_synced && sync_mode.is_up_to_date() {
-                        self.set_synced_response(shared);
-                        debug!(target: LOG_TARGET, "Initial sync achieved");
+                        ahead_of_peers_counter += 1;
+                        if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
+                            self.set_synced_response(shared);
+                            debug!(target: LOG_TARGET, "Initial sync achieved");
+                        } else {
+                            debug!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", initial_sync_counter);
+                        }
                     }
 
                     // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
@@ -392,8 +393,8 @@ fn determine_sync_mode(
         // we only require some data from it, we need to ensure that they can supply the data we need, as in their
         // effective pruned horizon is greater than our local current chain tip.
         let pruned_mode = local.pruning_horizon() > 0;
-        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
-            network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
+        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0
+            && network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
         let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.best_block_height();
         let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
             (true, true, _) => {
@@ -428,8 +429,8 @@ fn determine_sync_mode(
         if blocks_behind_before_considered_lagging > 0 {
             // Otherwise, only wait when the tip is above us, otherwise
             // chains with a lower height will never be reorged to.
-            if network_tip_height > local_tip_height &&
-                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
+            if network_tip_height > local_tip_height
+                && local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
             {
                 info!(
                     target: LOG_TARGET,
@@ -462,6 +463,21 @@ fn determine_sync_mode(
             sync_peers: vec![network.clone().into()],
         }
     } else {
+        if local_tip_accum_difficulty / 2 > network_tip_accum_difficulty {
+            // We are ahead of the network, but not by much. We should be in listening mode.
+            info!(
+                target: LOG_TARGET,
+                "Received a metadata update from a peer that is very far behind us. Disregarding. We are at block #{} with an \
+                 accumulated difficulty of {} and the network chain tip is at #{} with an accumulated difficulty of {}",
+                local.best_block_height(),
+                local_tip_accum_difficulty,
+                network.claimed_chain_metadata().best_block_height(),
+                network_tip_accum_difficulty,
+            );
+            return SyncStatus::SyncNotPossible {
+                peers: vec![network.clone().into()],
+            };
+        }
         debug!(
             target: LOG_TARGET,
             "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
