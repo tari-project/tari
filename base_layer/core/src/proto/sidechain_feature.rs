@@ -29,18 +29,34 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedPublicKey, Signature};
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
-    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
+    ChainLink,
+    CommandCommitProof,
+    CommandCommitProofV1,
+    CommitProofElement,
+    EvictNodeAtom,
+    EvictionProof,
+    QuorumCertificate,
+    QuorumDecision,
+    ShardGroup,
+    SidechainBlockCommitProof,
+    SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;
 
-use crate::transactions::transaction_components::ValidatorNodeExit;
 use crate::{
     proto,
     transactions::transaction_components::{
-        BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
-        SideChainId, TemplateType, ValidatorNodeRegistration, ValidatorNodeSignature,
+        BuildInfo,
+        CodeTemplateRegistration,
+        ConfidentialOutputData,
+        SideChainFeature,
+        SideChainFeatureData,
+        SideChainId,
+        TemplateType,
+        ValidatorNodeExit,
+        ValidatorNodeRegistration,
+        ValidatorNodeSignature,
     },
 };
 

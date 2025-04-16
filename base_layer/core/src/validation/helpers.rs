@@ -23,8 +23,10 @@
 use std::convert::TryFrom;
 
 use log::*;
-use tari_common_types::epoch::VnEpoch;
-use tari_common_types::types::{CompressedPublicKey, FixedHash};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, FixedHash},
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 use tari_sidechain::SidechainProofValidationError;
@@ -36,11 +38,19 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
-        randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, AchievedTargetDifficulty, Difficulty,
-        PowAlgorithm, PowError,
+        randomx_difficulty,
+        randomx_factory::RandomXFactory,
+        sha3x_difficulty,
+        AchievedTargetDifficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
     },
     transactions::transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL, EncryptedData, TransactionInput, TransactionKernel,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        EncryptedData,
+        TransactionInput,
+        TransactionKernel,
         TransactionOutput,
     },
     validation::ValidationError,

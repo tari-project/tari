@@ -22,30 +22,47 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use crate::tari_rpc as grpc;
 use prost::Message;
 use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, Signature},
 };
-use tari_core::transactions::transaction_components::ValidatorNodeExit;
 use tari_core::{
     base_node::comms_interface::ValidatorNodeChange,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
-            SideChainId, TemplateType, ValidatorNodeRegistration, ValidatorNodeSignature,
+            BuildInfo,
+            CodeTemplateRegistration,
+            ConfidentialOutputData,
+            SideChainFeature,
+            SideChainFeatureData,
+            SideChainId,
+            TemplateType,
+            ValidatorNodeExit,
+            ValidatorNodeRegistration,
+            ValidatorNodeSignature,
         },
     },
 };
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
-    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
+    ChainLink,
+    CommandCommitProof,
+    CommandCommitProofV1,
+    CommitProofElement,
+    EvictNodeAtom,
+    EvictionProof,
+    QuorumCertificate,
+    QuorumDecision,
+    ShardGroup,
+    SidechainBlockCommitProof,
+    SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;
+
+use crate::tari_rpc as grpc;
 
 //---------------------------------- SideChainFeature --------------------------------------------//
 impl From<&SideChainFeature> for grpc::SideChainFeature {

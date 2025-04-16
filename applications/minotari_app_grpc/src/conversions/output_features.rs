@@ -23,7 +23,12 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_core::transactions::transaction_components::{
-    CoinBaseExtra, OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, SideChainFeature,
+    CoinBaseExtra,
+    OutputFeatures,
+    OutputFeaturesVersion,
+    OutputType,
+    RangeProofType,
+    SideChainFeature,
 };
 use tari_utilities::ByteArray;
 

@@ -27,9 +27,10 @@ use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
 use tari_sidechain::EvictionProof;
 
-use crate::transactions::transaction_components::side_chain::validator_node_exit::ValidatorNodeExit;
 use crate::transactions::transaction_components::{
-    side_chain::confidential_output::ConfidentialOutputData, CodeTemplateRegistration, ValidatorNodeRegistration,
+    side_chain::{confidential_output::ConfidentialOutputData, validator_node_exit::ValidatorNodeExit},
+    CodeTemplateRegistration,
+    ValidatorNodeRegistration,
 };
 // NOTE: tari_mining_helper_ffi makes use of borsh encoding (not serde/bincode), therefore we need to
 // implement BorshDeserialize on all types

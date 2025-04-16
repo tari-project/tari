@@ -38,7 +38,8 @@ use crate::chain_storage::{
         cursors::{FromKeyBytes, LmdbReadCursor},
         lmdb::{lmdb_delete, lmdb_delete_key_value, lmdb_exists, lmdb_get, lmdb_insert, lmdb_insert_dup, lmdb_len},
     },
-    ChainStorageError, ValidatorNodeEntry,
+    ChainStorageError,
+    ValidatorNodeEntry,
 };
 
 const LOG_TARGET: &str = "c::cs::lmdb_db::validator_node_store";
@@ -156,8 +157,9 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         // Search through the epochs, from the min until we have no more records
         let (exit_key, vn) = loop {
             {
-                // This is to check if there are possibly more records for the next epoch - if not we exit early with an error.
-                // If we didnt do this, the loop would be endless if min_epoch/exit_node do not exist.
+                // This is to check if there are possibly more records for the next epoch - if not we exit early with an
+                // error. If we didnt do this, the loop would be endless if min_epoch/exit_node do not
+                // exist.
                 let mut cursor = self.exit_queue_read_cursor()?;
                 let epoch_prefix = create_exit_queue_prefix_key(sidechain_pk, epoch);
                 cursor.seek_range(&epoch_prefix)?;

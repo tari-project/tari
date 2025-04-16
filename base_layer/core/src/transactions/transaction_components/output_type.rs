@@ -92,11 +92,11 @@ impl OutputType {
     pub fn is_sidechain_type(&self) -> bool {
         matches!(
             self,
-            OutputType::ValidatorNodeRegistration
-                | OutputType::CodeTemplateRegistration
-                | OutputType::SidechainCheckpoint
-                | OutputType::SidechainProof
-                | OutputType::ValidatorNodeExit
+            OutputType::ValidatorNodeRegistration |
+                OutputType::CodeTemplateRegistration |
+                OutputType::SidechainCheckpoint |
+                OutputType::SidechainProof |
+                OutputType::ValidatorNodeExit
         )
     }
 
