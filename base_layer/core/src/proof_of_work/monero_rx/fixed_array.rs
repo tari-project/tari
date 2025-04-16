@@ -25,7 +25,7 @@ use std::{convert::TryFrom, io, io::Write, ops::Deref};
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_utilities::{ByteArray, ByteArrayError};
 
-const MAX_ARR_SIZE: usize = 63;
+const MAX_ARR_SIZE: usize = 60;
 
 /// A fixed size byte array for RandomX that can be serialized and deserialized using Borsh.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl BorshDeserialize for FixedByteArray {
         if len > MAX_ARR_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("length exceeded maximum of 63-bytes for FixedByteArray: {}", len),
+                format!("length exceeded maximum of 60-bytes for FixedByteArray: {}", len),
             ));
         }
         let mut bytes = Vec::with_capacity(len);
@@ -158,8 +158,8 @@ mod test {
         }
         assert!(used);
 
-        let arr = FixedByteArray::from_canonical_bytes(&[1u8; 63][..]).unwrap();
-        assert_eq!(arr.len(), 63);
+        let arr = FixedByteArray::from_canonical_bytes(&[1u8; 60][..]).unwrap();
+        assert_eq!(arr.len(), 60);
         assert!(arr.iter().all(|b| *b == 1));
 
         FixedByteArray::from_canonical_bytes(&[1u8; 64][..]).unwrap_err();
