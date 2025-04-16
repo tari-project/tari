@@ -23,6 +23,7 @@
 use std::collections::HashSet;
 
 use log::warn;
+use tari_common_types::epoch::VnEpoch;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -31,7 +32,14 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput},
+        transaction_components::{
+            OutputType,
+            SideChainId,
+            SpentOutput,
+            TransactionError,
+            TransactionInput,
+            ValidatorNodeRegistration,
+        },
     },
     validation::{
         helpers::{
@@ -93,7 +101,7 @@ impl AggregateBodyChainLinkedValidator {
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
         validate_input_maturity(&body, header.height)?;
-        check_inputs_are_utxos(db, &body)?;
+        check_inputs_are_spendable(db, constants, header.height, &body)?;
         check_outputs(db, constants, &body, header.height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
         check_total_burned(&body)?;
@@ -171,7 +179,12 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent
-fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
+fn check_inputs_are_spendable<B: BlockchainBackend>(
+    db: &B,
+    constants: &ConsensusConstants,
+    current_height: u64,
+    body: &AggregateBody,
+) -> Result<(), ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
 
@@ -201,6 +214,8 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) ->
                 return Err(err);
             },
         }
+
+        check_output_feature_rules_for_input(db, constants, current_height, input)?;
     }
 
     if !not_found_inputs.is_empty() {
@@ -289,6 +304,87 @@ fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), Val
             "AggregateBody has a min spend height higher than the current tip"
         );
         return Err(ValidationError::MaturityError);
+    }
+    Ok(())
+}
+
+/// If applicable, check any spend rules for output features including sidechain features
+fn check_output_feature_rules_for_input<B: BlockchainBackend>(
+    db: &B,
+    constants: &ConsensusConstants,
+    current_height: u64,
+    input: &TransactionInput,
+) -> Result<(), ValidationError> {
+    match &input.spent_output {
+        SpentOutput::OutputHash(_) => unreachable!("check_output_feature_rules_for_input: SpentOutput not hydrated"),
+        SpentOutput::OutputData { features, .. } => {
+            match features.output_type {
+                OutputType::Standard | OutputType::Coinbase => {
+                    // no special spend rules
+                },
+
+                OutputType::ValidatorNodeRegistration => {
+                    // Prevents validator node registration output from being spent if the validator is still active.
+                    // Effectively locking the funds in the UTXO until the validator exits/is evicted.
+                    let reg = features.validator_node_registration().ok_or_else(|| {
+                        ValidationError::OutputTypeNotMatchSidechainData {
+                            output_type: features.output_type,
+                            details: "Expected OutputType::ValidatorNodeRegistration to have validator node \
+                                      registration sidechain data"
+                                .to_string(),
+                        }
+                    })?;
+                    let epoch = constants.block_height_to_epoch(current_height);
+                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), epoch)?
+                },
+                OutputType::ValidatorNodeExit => {
+                    // should we disallow this? Since this UTXO has been processed w.r.t the active validator set, there
+                    // is no reason to keep it in the UTXO set
+                },
+                OutputType::Burn => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "Burn outputs cannot be spent".to_string(),
+                    });
+                },
+                OutputType::CodeTemplateRegistration => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "CodeTemplateRegistration cannot be spent".to_string(),
+                    });
+                },
+                OutputType::SidechainCheckpoint => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "SidechainCheckpoint cannot be spent".to_string(),
+                    });
+                },
+                OutputType::SidechainProof => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "SidechainProof cannot be spent".to_string(),
+                    });
+                },
+            }
+        },
+    }
+    Ok(())
+}
+
+fn check_validator_node_registration_spend<B: BlockchainBackend>(
+    db: &B,
+    reg: &ValidatorNodeRegistration,
+    sidechain_id: Option<&SideChainId>,
+    epoch: VnEpoch,
+) -> Result<(), ValidationError> {
+    if db.validator_node_is_active(sidechain_id.map(|id| id.public_key()), epoch, reg.public_key())? {
+        return Err(ValidationError::OutputSpendRuleDisallow {
+            output_type: OutputType::ValidatorNodeRegistration,
+            details: format!(
+                "Validator node registration {} is active and cannot be spent",
+                reg.public_key()
+            ),
+        });
     }
     Ok(())
 }

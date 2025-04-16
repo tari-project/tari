@@ -213,6 +213,10 @@ impl OutputFeatures {
         }
     }
 
+    pub fn sidechain_id(&self) -> Option<&SideChainId> {
+        self.sidechain_feature.as_ref().and_then(|s| s.sidechain_id())
+    }
+
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
         self.sidechain_feature
             .as_ref()
