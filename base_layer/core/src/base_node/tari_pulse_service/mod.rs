@@ -336,15 +336,15 @@ async fn check_health(
         let comms = node_comms.clone();
         handles.push(task::spawn(async move {
             let start = Instant::now();
-            if let Ok(_) = discovery
+            if discovery
                 .discover_peer(dest_key.clone(), NodeDestination::PublicKey(dest_key.into()))
                 .await
+                .is_ok()
             {
                 result.discovery_latency = Some(start.elapsed());
             }
             let start2 = Instant::now();
-
-            if let Ok(_) = comms.dial_peer(result.peer.clone()).await {
+            if comms.dial_peer(result.peer.clone()).await.is_ok() {
                 result.dial_latency = Some(start2.elapsed());
             }
             (*result_clone).write().await.push(result);
