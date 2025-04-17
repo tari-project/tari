@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.14.0-pre.0](https://github.com/tari-project/tari/compare/v1.13.4-pre.0...v1.14.0-pre.0) (2025-04-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* limit randomx key size (#6958)
+
+### Features
+
+*  peer health check ([#6951](https://github.com/tari-project/tari/issues/6951)) ([484ce45](https://github.com/tari-project/tari/commit/484ce45d51d8931c26f921d2f1818793e3d9bef0))
+* add dhat profiling feature ([#6929](https://github.com/tari-project/tari/issues/6929)) ([609f07d](https://github.com/tari-project/tari/commit/609f07d82767ed3aaad6e09e06873a25a2dce437))
+* increase pipeline concurrency ([#6952](https://github.com/tari-project/tari/issues/6952)) ([1b77152](https://github.com/tari-project/tari/commit/1b77152784c56bdc6eccd1e26a1c4cccf6484960))
+* reduce default wallet bans ([#6959](https://github.com/tari-project/tari/issues/6959)) ([258560e](https://github.com/tari-project/tari/commit/258560e1348cc622cc498b26798bb199d2b8f834))
+
+
+### Bug Fixes
+
+* **dns:** off by one error when reading TXT record ([#6965](https://github.com/tari-project/tari/issues/6965)) ([3e0cec1](https://github.com/tari-project/tari/commit/3e0cec11dd8f3c2bef2088ab87c87ff8966925ee))
+* fix crossterm compile for windows ([#6949](https://github.com/tari-project/tari/issues/6949)) ([2a8ea56](https://github.com/tari-project/tari/commit/2a8ea56e6da3ff5e8fdf05e7f3baa98293e7a4ac))
+* limit randomx key size ([#6958](https://github.com/tari-project/tari/issues/6958)) ([f1664f5](https://github.com/tari-project/tari/commit/f1664f5c4b47ab7b3b589f821492f0301b5d9b3b))
+* wait until higher than initial_sync_load_peers before marking up-to-date ([#6960](https://github.com/tari-project/tari/issues/6960)) ([6b64b85](https://github.com/tari-project/tari/commit/6b64b855b677e4e1ed3cb970babf794fdc27433c)), closes [#21999](https://github.com/tari-project/tari/issues/21999) [#25927](https://github.com/tari-project/tari/issues/25927) [#25927](https://github.com/tari-project/tari/issues/25927) [#25927](https://github.com/tari-project/tari/issues/25927)
+
 ### [1.13.4-pre.0](https://github.com/tari-project/tari/compare/v1.13.3-pre.0...v1.13.4-pre.0) (2025-04-14)
 
 
