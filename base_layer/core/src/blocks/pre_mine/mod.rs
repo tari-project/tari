@@ -853,7 +853,7 @@ pub async fn create_pre_mine_genesis_block_info(
                 RangeProofType::RevealedValue,
             ))
             .with_script(script)
-            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U64(i.try_into().unwrap()))
+            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U256(i.try_into().unwrap()))
             .await
             .unwrap()
             .with_input_data(ExecutionStack::default())

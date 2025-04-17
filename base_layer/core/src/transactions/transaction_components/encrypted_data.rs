@@ -26,7 +26,7 @@
 //! Encrypted data using the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::{TryFrom},
     fmt,
     fmt::{Display, Formatter},
     mem::size_of,
@@ -42,7 +42,7 @@ use chacha20poly1305::{
     XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
-use num_traits::{FromPrimitive, ToBytes};
+use num_traits::{FromPrimitive};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -159,8 +159,6 @@ pub enum PaymentId {
     /// No payment ID.
     #[default]
     Empty,
-    /// A u64 number.
-    U64(u64),
     /// A u256 number.
     U256(U256),
     /// Open - the user optionally specifies 'user_data' ('tx_type' is added by the system).
@@ -191,21 +189,19 @@ pub enum PaymentId {
 
 enum PTag {
     Empty = 0,
-    U64 = 1,
-    U256 = 2,
-    Open = 3,
-    AddressAndData = 4,
-    TransactionInfo = 5,
+    U256 = 1,
+    Open = 2,
+    AddressAndData = 3,
+    TransactionInfo = 4,
 }
 
 impl PTag {
     fn from_u8(value: u8) -> Self {
         match value {
-            1 => PTag::U64,
-            2 => PTag::U256,
-            3 => PTag::Open,
-            4 => PTag::AddressAndData,
-            5 => PTag::TransactionInfo,
+            1 => PTag::U256,
+            2 => PTag::Open,
+            3 => PTag::AddressAndData,
+            4 => PTag::TransactionInfo,
             _ => PTag::Empty,
         }
     }
@@ -218,7 +214,6 @@ impl PaymentId {
     fn to_tag(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => vec![],
-            PaymentId::U64(_) => vec![PTag::U64 as u8],
             PaymentId::U256(_) => vec![PTag::U256 as u8],
             PaymentId::Open { .. } => vec![PTag::Open as u8],
             PaymentId::AddressAndData { .. } => vec![PTag::AddressAndData as u8],
@@ -229,7 +224,6 @@ impl PaymentId {
     pub fn get_size(&self) -> usize {
         match self {
             PaymentId::Empty => 0,
-            PaymentId::U64(_) => 1 + SIZE_VALUE,
             PaymentId::U256(_) => 1 + SIZE_U256,
             PaymentId::Open { user_data, .. } => 1 + user_data.len() + 1,
             PaymentId::AddressAndData {
@@ -367,7 +361,6 @@ impl PaymentId {
     pub fn user_data_as_bytes(&self) -> Vec<u8> {
         match &self {
             PaymentId::Empty => vec![],
-            PaymentId::U64(v) => v.to_le_bytes().to_vec(),
             PaymentId::U256(v) => {
                 let bytes: &mut [u8] = &mut [0; SIZE_U256];
                 v.to_little_endian(bytes);
@@ -382,11 +375,6 @@ impl PaymentId {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => Vec::new(),
-            PaymentId::U64(v) => {
-                let mut bytes = self.to_tag();
-                bytes.extend_from_slice(&(*v).to_le_bytes());
-                bytes
-            },
             PaymentId::U256(v) => {
                 let mut bytes = self.to_tag();
                 let mut value = vec![0; 32];
@@ -437,11 +425,6 @@ impl PaymentId {
         let bytes = if bytes.len() > 1 { &bytes[1..] } else { &[] };
         match (p_tag, bytes.len()) {
             (PTag::Empty, 0) => return PaymentId::Empty,
-            (PTag::U64, SIZE_VALUE) => {
-                let bytes: [u8; SIZE_VALUE] = bytes.try_into().expect("Cannot fail, as we already test the length");
-                let v = u64::from_le_bytes(bytes);
-                return PaymentId::U64(v);
-            },
             (PTag::U256, SIZE_U256) => {
                 let v = U256::from_little_endian(bytes);
                 return PaymentId::U256(v);
@@ -552,7 +535,6 @@ impl PaymentId {
     pub fn user_data_as_string(&self) -> String {
         match self {
             PaymentId::Empty => self.to_string(),
-            PaymentId::U64(v) => format!("{}", v),
             PaymentId::U256(v) => format!("{}", v),
             PaymentId::Open { user_data, .. } => PaymentId::stringify_bytes(user_data),
             PaymentId::AddressAndData { user_data, .. } => PaymentId::stringify_bytes(user_data),
@@ -573,7 +555,6 @@ impl Display for PaymentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             PaymentId::Empty => write!(f, "None"),
-            PaymentId::U64(v) => write!(f, "u64({v})"),
             PaymentId::U256(v) => write!(f, "u256({v})"),
             PaymentId::Open { user_data, tx_type } => {
                 write!(f, "type({}), data({})", tx_type, PaymentId::stringify_bytes(user_data))
@@ -888,8 +869,8 @@ mod test {
     fn it_encrypts_and_decrypts_correctly() {
         for payment_id in [
             PaymentId::Empty,
-            PaymentId::U64(1),
-            PaymentId::U64(156486946518564),
+            PaymentId::U256(1.into()),
+            PaymentId::U256(156486946518564u64.into()),
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
@@ -1044,8 +1025,8 @@ mod test {
     fn it_converts_correctly() {
         for payment_id in [
             PaymentId::Empty,
-            PaymentId::U64(1),
-            PaymentId::U64(156486946518564),
+            PaymentId::U256(1.into()),
+            PaymentId::U256(156486946518564u64.into()),
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
             ),
@@ -1211,7 +1192,7 @@ mod test {
     #[test]
     fn payment_id_display() {
         assert_eq!(PaymentId::Empty.to_string(), "None");
-        assert_eq!(PaymentId::U64(1235678).to_string(), "u64(1235678)");
+        assert_eq!(PaymentId::U256(1235678.into()).to_string(), "u64(1235678)");
         assert_eq!(
             PaymentId::U256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail")
@@ -1359,7 +1340,7 @@ mod test {
         let payment_id = PaymentId::Empty;
         assert_eq!("", PaymentId::stringify_bytes(&payment_id.user_data_as_bytes()));
 
-        let payment_id = PaymentId::U64(12345);
+        let payment_id = PaymentId::U256(12345.into());
         assert_eq!(
             "12345",
             u64::from_le_bytes(payment_id.user_data_as_bytes().try_into().unwrap()).to_string()
