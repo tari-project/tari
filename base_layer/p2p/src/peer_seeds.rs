@@ -27,6 +27,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{
@@ -39,6 +40,8 @@ use tari_utilities::hex::Hex;
 
 use super::dns::DnsClientError;
 use crate::dns::DnsClient;
+
+const LOG_TARGET: &str = "tari::p2p::dns::client";
 
 #[derive(Clone)]
 pub struct DnsSeedResolver {
@@ -73,7 +76,19 @@ impl DnsSeedResolver {
     /// ```
     pub async fn resolve(&mut self, addr: &str) -> Result<Vec<SeedPeer>, DnsClientError> {
         let records = self.client.query_txt(addr).await?;
-        let peers = records.into_iter().filter_map(|txt| txt.parse().ok()).collect();
+        let peers = records
+            .into_iter()
+            .filter_map(|txt| {
+                txt.parse()
+                    .inspect(|err| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
         Ok(peers)
     }
 }

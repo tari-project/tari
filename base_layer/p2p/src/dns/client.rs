@@ -103,7 +103,7 @@ impl DnsClient {
                     if len == 0 {
                         return None;
                     }
-                    if len > txt.len() {
+                    if len >= txt.len() {
                         warn!(
                             target: LOG_TARGET,
                             "Length byte {} is greater than the length of the TXT record {}",
@@ -113,7 +113,7 @@ impl DnsClient {
                         return None;
                     }
                     // Exclude the first length byte from the string result
-                    Some(String::from_utf8_lossy(&txt[1..len]).to_string())
+                    Some(String::from_utf8_lossy(&txt[1..=len]).to_string())
                 })
                 .transpose()
             })
