@@ -54,12 +54,12 @@ Then we can start installing components that will be needed to compile the ```Ta
 ## Install Visual Studio BuildTools 2022
 To install, run the following command:
 ```Powershell
-winget install "Visual Studio BuildTools 2022"
+winget install "Visual Studio BuildTools 2022 installer"
 ```
 Sample output would look something like:
 
 ```powershell
-PS C:\Users\leet> winget install "Visual Studio BuildTools 2022"
+PS C:\Users\leet> winget install "Visual Studio BuildTools 2022 installer"
 Found Visual Studio BuildTools 2022 [Microsoft.VisualStudio.2022.BuildTools] Version 17.11.5
 This application is licensed to you by its owner.
 Microsoft is not responsible for, nor does it grant any licenses to, third-party packages.
@@ -76,10 +76,12 @@ This will save a ```setup.exe``` file to ```C:\Program Files (x86)\Microsoft Vis
 
 In this step, we will be installing several components required by Visual Studio for the build
 
+- ### 🚨 Ensure that all Visual Studio applications are closed and not running when performing the below command.
+
 To install, run the following command: 
 
 ```powershell
-& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe" install --passive --norestart --productId Microsoft.VisualStudio.Product.BuildTools --channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.Component.Windows11SDK.26100 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.CoreBuildTools --add Microsoft.VisualStudio.Component.VC.CoreIde --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core
+& "C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe" install --passive  --force --focusedUi --productId Microsoft.VisualStudio.Product.BuildTools --channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.Component.Windows11SDK.26100 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.CoreBuildTools --add Microsoft.VisualStudio.Component.VC.CoreIde --add Microsoft.VisualStudio.ComponentGroup.NativeDesktop.Core
 ```
 A sample of the beginning of the expected output:
 ```powershell
@@ -94,6 +96,23 @@ PS C:\Users\leet> [1d44:0001][2024-11-05T02:37:56] Saving the current locale (en
 [1d44:0004][2024-11-05T02:37:56] Creating new ExperimentationService
 ```
 Visual Studio Installer should download and install components requested.
+
+### Dealing with errors during installation of Visual Studio Components
+If the installer fails, you'll often see error codes or failure messages in the PowerShell output. Look for lines like:
+     ```PowerShell
+     Install failed with exit code ...
+     Component ... could not be installed
+     ```
+
+Logs are saved under `C:\ProgramData\Microsoft\VisualStudio\Packages\_Instances\` or `C:\Users\<YourUser>\AppData\Local\Temp\dd_installer_*`
+
+3. **Exit codes** (common ones):
+   - `0`: Success
+   - `1603`: Fatal install error (common if prerequisites fail)
+   - `3010`: Success but requires reboot
+
+
+
 
 ## Install ```git``` 
 
@@ -256,10 +275,30 @@ openssl is compatible with built-in CMake targets:
 Once installed, you'll need to also set the OpenSSL environmental path. Use the following command to set an system-wide environmental path for OpenSSL:
 
 ```powershell
-setx /m PATH "$Env:Path;C:\vcpkg\installed\x64-windows-static\bin"
+setx /m PATH "C:\vcpkg\installed\x64-windows-static\bin;$Env:Path"
 ```
 
-## Install Rust
+Now verify that the installation has been done correctly with the following command:
+
+```PowerShell
+echo $env:OPENSSL_CONF $env:OPENSSL_DIR  
+```
+
+- C:\vcpkg\installed\x64-windows-static\bin\openssl.cfg
+- C:\vcpkg\installed\x64-windows-static
+
+This must show where OpenSSL is installed. The one installed here must be listed first if multiple versions are installed.
+
+```PowerShell
+Get-Command openssl -All
+
+CommandType     Name                                               Version    Source  
+-----------     ----                                               -------    ------  
+Application     openssl.exe                                        3.4.0.0    C:\vcpkg\installed\x64-windows-static\bin\openssl.exe  
+Application     openssl.exe                                        1.1.1.9    C:\Strawberry\c\bin\openssl.exe  
+```
+
+# Install Rust
 
 Next, we need to install support for the Rust language 
 
@@ -288,15 +327,21 @@ git clone https://github.com/tari-project/tari.git
 cd tari
 ```
 
-## Build Tari Tools
+## Basic Test Build Tari Tools
 Finally, you should be able to build the Tari tools. In previous steps, we've set the environmental variables for vcpkg and OpenSSL so while the below steps aren't necessary, setting them locally prior to the run will ensure you are pointing to the correct paths.
 
 Again, either via the IDE terminal or Powershell, run the following commands (making sure you are currently in the ```tari``` repo folder created in the previous step):
 
 ```PowerShell
-$Env:VCPKG_ROOT = 'C:\vcpkg'
-$Env:OPENSSL_DIR = 'C:\vcpkg\packages\openssl_x64-windows-static'
-cargo build --release --bin minotari_miner
+setx /m VCPKG_ROOT "C:\vcpkg"
+setx /m OPENSSL_DIR "C:\vcpkg\packages\openssl_x64-windows-static"
+```
+
+Once you've set your environment variables, we can build the tools:
+
+```Powershell
+"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+cargo build --release
 ```
 
 This will build the Minotari miner executable in your ```releases``` folder for the repo. Note that the ```minotari_miner``` is just one of several tools that are available. Others include the ```minotari_node``` and ```minotari_console_wallet```. You can review the project for more details on each of these.
