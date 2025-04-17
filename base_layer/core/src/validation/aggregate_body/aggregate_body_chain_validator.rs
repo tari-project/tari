@@ -242,7 +242,7 @@ pub fn check_outputs<B: BlockchainBackend>(
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
-        check_validator_node_registration(db, output, height)?;
+        check_validator_node_registration(db, output, epoch)?;
         check_validator_node_exit(db, output, epoch)?;
         check_eviction_proof(db, output, constants)?;
     }

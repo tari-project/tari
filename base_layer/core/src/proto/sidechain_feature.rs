@@ -149,6 +149,7 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
+            value.max_epoch.into(),
         ))
     }
 }
@@ -159,6 +160,7 @@ impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
             claim_public_key: value.claim_public_key().to_vec(),
+            max_epoch: value.max_epoch().as_u64(),
         }
     }
 }
@@ -171,13 +173,16 @@ impl TryFrom<proto::types::ValidatorNodeExit> for ValidatorNodeExit {
         let public_key =
             CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
 
-        Ok(Self::new(ValidatorNodeSignature::new(
-            public_key,
-            value
-                .signature
-                .map(Signature::try_from)
-                .ok_or("signature not provided")??,
-        )))
+        Ok(Self::new(
+            ValidatorNodeSignature::new(
+                public_key,
+                value
+                    .signature
+                    .map(Signature::try_from)
+                    .ok_or("signature not provided")??,
+            ),
+            value.max_epoch.into(),
+        ))
     }
 }
 
@@ -186,6 +191,7 @@ impl From<&ValidatorNodeExit> for proto::types::ValidatorNodeExit {
         Self {
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
+            max_epoch: value.max_epoch().as_u64(),
         }
     }
 }

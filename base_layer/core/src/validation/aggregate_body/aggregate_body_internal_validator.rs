@@ -23,18 +23,15 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        HashOutput,
-        PrivateKey,
-        RangeProofService,
-        UncompressedCommitment,
-        UncompressedPublicKey,
-    },
+use tari_common_types::types::{
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    RangeProofService,
+    UncompressedCommitment,
+    UncompressedPublicKey,
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
@@ -465,12 +462,7 @@ fn check_validator_node_registration_utxo(
         });
     }
 
-    // TODO: some additional "single use data" e.g. epoch could be used to prevent replay
-    //       (assuming that we disallow the same validator node to register multiple times).
-    if !reg.is_valid_signature_for(
-        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
-        VnEpoch::zero(),
-    ) {
+    if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
         return Err(ValidationError::InvalidValidatorNodeSignature);
     }
 
@@ -482,12 +474,7 @@ fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Resul
         return Ok(());
     };
 
-    // TODO: some additional "single use data" e.g. epoch should be used to prevent replay
-    //       (assuming that we disallow the same validator node to register multiple times).
-    if !exit.is_valid_signature_for(
-        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
-        VnEpoch::zero(),
-    ) {
+    if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
         return Err(ValidationError::InvalidValidatorNodeSignature);
     }
 

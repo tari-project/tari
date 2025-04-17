@@ -1125,6 +1125,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_signature,
                 validator_node_claim_public_key,
                 sidechain_key,
+                request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 PaymentId::from_bytes(&request.payment_id),
@@ -1182,9 +1183,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_public_key,
                 validator_node_signature,
                 sidechain_key,
+                request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::from_bytes(&request.payment_id),
+                PaymentId::Open {
+                    // TODO: should this be its own TxType?
+                    tx_type: TxType::PaymentToSelf,
+                    user_data: request.message,
+                },
             )
             .await
         {

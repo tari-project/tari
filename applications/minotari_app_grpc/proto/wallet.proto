@@ -361,9 +361,10 @@ message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
   bytes validator_node_claim_public_key = 3;
-  uint64 fee_per_gram = 4;
-  bytes payment_id = 5;
-  bytes sidechain_deployment_key = 6;
+  uint64 max_epoch = 4;
+  uint64 fee_per_gram = 5;
+  bytes payment_id = 6;
+  bytes sidechain_deployment_key = 7;
 }
 
 message RegisterValidatorNodeResponse {
@@ -386,9 +387,10 @@ message SubmitValidatorEvictionProofResponse {
 message SubmitValidatorNodeExitRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
-  uint64 fee_per_gram = 3;
-  bytes payment_id = 4;
-  bytes sidechain_deployment_key = 5;
+  uint64 max_epoch = 3;
+  uint64 fee_per_gram = 4;
+  bytes message = 5;
+  bytes sidechain_deployment_key = 6;
 }
 
 message SubmitValidatorNodeExitResponse {

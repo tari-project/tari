@@ -27,11 +27,13 @@ message ValidatorNodeRegistration {
   bytes public_key = 1;
   Signature signature = 2;
   bytes claim_public_key = 3;
+  uint64 max_epoch = 4;
 }
 
 message ValidatorNodeExit {
   bytes public_key = 1;
   Signature signature = 2;
+  uint64 max_epoch = 3;
 }
 
 message TemplateRegistration {

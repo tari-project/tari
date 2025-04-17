@@ -617,7 +617,8 @@ mod validator_node_merkle_root {
 
         let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign_for_registration(&sk, None, &public_key, VnEpoch::zero());
-        let features = OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None);
+        let features =
+            OutputFeatures::for_validator_node_registration(signature, public_key.clone(), None, VnEpoch::zero());
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
                 from: vec![outputs[0].clone()],
@@ -659,8 +660,12 @@ mod validator_node_merkle_root {
         let (sidechain_private, sidechain_public) = CompressedPublicKey::random_keypair(&mut OsRng);
         let signature =
             ValidatorNodeSignature::sign_for_registration(&sk, Some(&sidechain_public), &public_key, VnEpoch::zero());
-        let features =
-            OutputFeatures::for_validator_node_registration(signature, public_key.clone(), Some(&sidechain_private));
+        let features = OutputFeatures::for_validator_node_registration(
+            signature,
+            public_key.clone(),
+            Some(&sidechain_private),
+            VnEpoch::zero(),
+        );
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
                 from: vec![outputs[0].clone()],

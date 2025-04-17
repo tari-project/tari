@@ -61,6 +61,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
@@ -365,6 +366,7 @@ pub async fn register_validator_node(
     validator_node_signature: Signature,
     validator_node_claim_public_key: CompressedPublicKey,
     sidechain_deployment_key: Option<PrivateKey>,
+    epoch: VnEpoch,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
@@ -376,6 +378,7 @@ pub async fn register_validator_node(
             validator_node_signature,
             validator_node_claim_public_key,
             sidechain_deployment_key,
+            epoch,
             selection_criteria,
             fee_per_gram,
             payment_id,
@@ -2392,6 +2395,7 @@ pub async fn command_runner(
                             &args.sidechain_deployment_key[0],
                         )?)
                     },
+                    args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     PaymentId::open(&args.payment_id, TxType::ValidatorNodeRegistration),

@@ -21,7 +21,7 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use newtype_ops::newtype_ops;
@@ -66,11 +66,17 @@ newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }
 newtype_ops! { [VnEpoch] {add sub mul div} {:=} &Self &Self }
 newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self &Self }
 
+impl From<u64> for VnEpoch {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 impl FromStr for VnEpoch {
-    type Err = String;
+    type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(VnEpoch(s.parse::<u64>().map_err(|e| e.to_string())?))
+        Ok(VnEpoch(s.parse::<u64>()?))
     }
 }
 

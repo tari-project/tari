@@ -272,7 +272,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 pub fn check_validator_node_registration<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
-    height: u64,
+    current_epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
     let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
         return Ok(());
@@ -281,7 +281,19 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
         return Ok(());
     };
 
-    if db.validator_node_exists(sidechain_features.sidechain_public_key(), height, vn_reg.public_key())? {
+    if vn_reg.max_epoch() < current_epoch {
+        return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+            public_key: vn_reg.public_key().to_string(),
+            max_epoch: vn_reg.max_epoch(),
+            current_epoch,
+        });
+    }
+
+    if db.validator_node_exists(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        vn_reg.public_key(),
+    )? {
         return Err(ValidationError::ValidatorNodeAlreadyRegistered {
             public_key: vn_reg.public_key().to_string(),
         });
@@ -294,7 +306,7 @@ pub fn check_validator_node_registration<B: BlockchainBackend>(
 pub fn check_validator_node_exit<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
-    epoch: VnEpoch,
+    current_epoch: VnEpoch,
 ) -> Result<(), ValidationError> {
     let Some(sidechain_features) = output.features.sidechain_feature.as_ref() else {
         return Ok(());
@@ -303,10 +315,22 @@ pub fn check_validator_node_exit<B: BlockchainBackend>(
         return Ok(());
     };
 
-    if !db.validator_node_is_active(sidechain_features.sidechain_public_key(), epoch, exit.public_key())? {
+    if exit.max_epoch() < current_epoch {
+        return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+            public_key: exit.public_key().to_string(),
+            max_epoch: exit.max_epoch(),
+            current_epoch,
+        });
+    }
+
+    if !db.validator_node_is_active(
+        sidechain_features.sidechain_public_key(),
+        current_epoch,
+        exit.public_key(),
+    )? {
         return Err(ValidationError::ValidatorNodeNotRegistered {
             public_key: exit.public_key().to_string(),
-            details: format!("exit invalid for validator node that is not active/registered in {epoch}"),
+            details: format!("exit invalid for validator node that is not active/registered in {current_epoch}"),
         });
     }
 

@@ -2958,15 +2958,13 @@ impl BlockchainBackend for LMDBDatabase {
     fn validator_node_exists(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        height: u64,
+        end_epoch: VnEpoch,
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
-        let constants = self.consensus_manager.consensus_constants(height);
 
         // Get the current epoch for the height
-        let end_epoch = constants.block_height_to_epoch(height);
         let is_active = vn_store.vn_exists(sidechain_pk, validator_node_pk, end_epoch)?;
         Ok(is_active)
     }

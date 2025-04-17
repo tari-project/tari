@@ -24,7 +24,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, Signature},
+    types::{CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_utilities::ByteArray;
 
@@ -33,19 +33,33 @@ use crate::transactions::transaction_components::ValidatorNodeSignature;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeExit {
     signature: ValidatorNodeSignature,
+    /// The maximum epoch for which this registration is valid. Base nodes will reject any registration that is
+    /// submitted after max_epoch. Assuming the epoch is selected sensibly, this mitigates against replay attacks.
+    max_epoch: VnEpoch,
 }
 
 impl ValidatorNodeExit {
-    pub fn new(signature: ValidatorNodeSignature) -> Self {
-        Self { signature }
+    pub fn new(signature: ValidatorNodeSignature, max_epoch: VnEpoch) -> Self {
+        Self { signature, max_epoch }
     }
 
-    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> bool {
-        self.signature.is_valid_exit_signature_for(sidechain_pk, epoch)
+    pub fn signed(secret_key: &PrivateKey, sidechain_pk: Option<&CompressedPublicKey>, max_epoch: VnEpoch) -> Self {
+        Self {
+            signature: ValidatorNodeSignature::sign_for_exit(secret_key, sidechain_pk, max_epoch),
+            max_epoch,
+        }
+    }
+
+    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
+        self.signature.is_valid_exit_signature_for(sidechain_pk, self.max_epoch)
     }
 
     pub fn public_key(&self) -> &CompressedPublicKey {
         self.signature.public_key()
+    }
+
+    pub fn max_epoch(&self) -> VnEpoch {
+        self.max_epoch
     }
 
     pub fn signature(&self) -> &Signature {
@@ -65,35 +79,32 @@ mod test {
 
     use super::*;
 
-    fn create_instance() -> ValidatorNodeExit {
-        let sk = PrivateKey::random(&mut OsRng);
-
-        ValidatorNodeExit::new(ValidatorNodeSignature::sign_for_exit(&sk, None, VnEpoch(1)))
-    }
-
     mod is_valid_signature_for {
         use super::*;
 
         #[test]
         fn it_returns_true_for_valid_signature() {
-            let reg = create_instance();
-            assert!(reg.is_valid_signature_for(None, VnEpoch(1)));
+            let sk = PrivateKey::random(&mut OsRng);
+            let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
+            assert!(exit.is_valid_signature_for(None));
         }
 
         #[test]
-        fn it_returns_false_for_invalid_challenge() {
-            let reg = create_instance();
-            assert!(!reg.is_valid_signature_for(None, VnEpoch(2)));
+        fn it_returns_false_if_epoch_is_malleated() {
+            let sk = PrivateKey::random(&mut OsRng);
+            let exit = ValidatorNodeExit::new(ValidatorNodeSignature::sign_for_exit(&sk, None, VnEpoch(1)), VnEpoch(2));
+            assert!(!exit.is_valid_signature_for(None));
         }
 
         #[test]
-        fn it_returns_false_for_invalid_signature() {
-            let mut reg = create_instance();
-            reg = ValidatorNodeExit::new(ValidatorNodeSignature::new(
-                reg.public_key().clone(),
-                Signature::default(),
-            ));
-            assert!(!reg.is_valid_signature_for(None, VnEpoch(1)));
+        fn it_returns_false_for_zero_signature() {
+            let sk = PrivateKey::random(&mut OsRng);
+            let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
+            let exit = ValidatorNodeExit::new(
+                ValidatorNodeSignature::new(exit.public_key().clone(), Signature::default()),
+                VnEpoch(1),
+            );
+            assert!(!exit.is_valid_signature_for(None));
         }
     }
 }

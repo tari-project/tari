@@ -158,6 +158,12 @@ pub enum ValidationError {
     ValidatorNodeAlreadyRegistered { public_key: String },
     #[error("Validator node {public_key} not registered: {details}")]
     ValidatorNodeNotRegistered { public_key: String, details: String },
+    #[error("Validator registration {public_key} invalid: max epoch {max_epoch} < current epoch {current_epoch}")]
+    ValidatorNodeRegistrationMaxEpoch {
+        public_key: String,
+        current_epoch: VnEpoch,
+        max_epoch: VnEpoch,
+    },
     #[error("{output_type} output rule disallows the spend: {details}")]
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
@@ -227,6 +233,7 @@ impl ValidationError {
             err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
             err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
+            err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
             err @ ValidationError::CovenantTooLarge { .. } |
             err @ ValidationError::OutputSpendRuleDisallow { .. } |

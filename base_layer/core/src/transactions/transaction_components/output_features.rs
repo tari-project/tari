@@ -28,7 +28,10 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, PrivateKey},
+};
 use tari_max_size::MaxSizeBytes;
 use tari_sidechain::EvictionProof;
 
@@ -167,8 +170,9 @@ impl OutputFeatures {
         signature: ValidatorNodeSignature,
         claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<&PrivateKey>,
+        vn_epoch: VnEpoch,
     ) -> OutputFeatures {
-        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key);
+        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key, vn_epoch);
         let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, vn_reg.sidechain_id_message()));
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
@@ -183,8 +187,9 @@ impl OutputFeatures {
     pub fn for_validator_node_exit(
         signature: ValidatorNodeSignature,
         sidechain_deployment_key: Option<&PrivateKey>,
+        max_epoch: VnEpoch,
     ) -> OutputFeatures {
-        let exit = ValidatorNodeExit::new(signature);
+        let exit = ValidatorNodeExit::new(signature, max_epoch);
         let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
 
         OutputFeatures {

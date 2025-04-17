@@ -177,6 +177,7 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
+            value.max_epoch.into(),
         ))
     }
 }
@@ -189,6 +190,7 @@ impl From<&ValidatorNodeRegistration> for crate::tari_rpc::ValidatorNodeRegistra
                 signature: registration.signature().get_signature().to_vec(),
             }),
             claim_public_key: registration.claim_public_key().to_vec(),
+            max_epoch: registration.max_epoch().as_u64(),
         }
     }
 }
@@ -206,13 +208,16 @@ impl TryFrom<grpc::ValidatorNodeExit> for ValidatorNodeExit {
         let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key)
             .map_err(|e| format!("Invalid public key: {}", e))?;
 
-        Ok(ValidatorNodeExit::new(ValidatorNodeSignature::new(
-            public_key,
-            value
-                .signature
-                .map(TryInto::try_into)
-                .ok_or("signature not provided")??,
-        )))
+        Ok(ValidatorNodeExit::new(
+            ValidatorNodeSignature::new(
+                public_key,
+                value
+                    .signature
+                    .map(TryInto::try_into)
+                    .ok_or("signature not provided")??,
+            ),
+            value.max_epoch.into(),
+        ))
     }
 }
 impl From<&ValidatorNodeExit> for crate::tari_rpc::ValidatorNodeExit {
@@ -223,6 +228,7 @@ impl From<&ValidatorNodeExit> for crate::tari_rpc::ValidatorNodeExit {
                 public_nonce: exit.signature().get_compressed_public_nonce().to_vec(),
                 signature: exit.signature().get_signature().to_vec(),
             }),
+            max_epoch: exit.max_epoch().as_u64(),
         }
     }
 }
