@@ -26,37 +26,21 @@ use digest::consts::U64;
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
-    ledger_get_dh_shared_secret,
-    ledger_get_one_sided_metadata_signature,
-    ledger_get_public_key,
-    ledger_get_raw_schnorr_signature,
-    ledger_get_script_offset,
-    ledger_get_script_schnorr_signature,
-    ledger_get_script_signature,
-    ScriptSignatureKey,
+    ledger_get_dh_shared_secret, ledger_get_one_sided_metadata_signature, ledger_get_public_key,
+    ledger_get_raw_schnorr_signature, ledger_get_script_offset, ledger_get_script_schnorr_signature,
+    ledger_get_script_signature, ScriptSignatureKey,
 };
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     key_branches::{
-        TransactionKeyManagerBranch,
-        KERNEL_NONCE,
-        METADATA_EPHEMERAL_NONCE,
-        NONCE,
-        ONE_SIDED_SENDER_OFFSET,
-        RANDOM_KEY,
-        SENDER_OFFSET,
+        TransactionKeyManagerBranch, KERNEL_NONCE, METADATA_EPHEMERAL_NONCE, NONCE, ONE_SIDED_SENDER_OFFSET,
+        RANDOM_KEY, SENDER_OFFSET,
     },
     tari_address::TariAddress,
     types::{
-        ComAndPubSignature,
-        CompressedCommitment,
-        CompressedPublicKey,
-        PrivateKey,
-        RangeProof,
-        Signature,
-        UncompressedComAndPubSignature,
-        UncompressedSignature,
+        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, RangeProof, Signature,
+        UncompressedComAndPubSignature, UncompressedSignature,
     },
     wallet_types::WalletType,
 };
@@ -65,12 +49,13 @@ use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
     extended_range_proof::ExtendedRangeProofService,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
-    keys::SecretKey,
+    keys::{PublicKey, SecretKey},
     range_proof::RangeProofService as RPService,
     ristretto::{
         bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
-        RistrettoComSig,
+        RistrettoComSig, RistrettoPublicKey, RistrettoSecretKey,
     },
+    signatures::SchnorrSignatureError,
 };
 use tari_hashing::KeyManagerTransactionsHashDomain;
 use tari_key_manager::{
@@ -81,11 +66,12 @@ use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, 
 use tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 
-use crate::transactions::transaction_key_manager::{
-    error::KeyManagerServiceError,
-    interface::TariKeyAndId,
-    key_manager::TariKeyManager,
-    storage::database::KeyManagerState,
+use crate::transactions::{
+    crypto_factories,
+    transaction_key_manager::{
+        error::KeyManagerServiceError, interface::TariKeyAndId, key_manager::TariKeyManager,
+        storage::database::KeyManagerState,
+    },
 };
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
@@ -100,16 +86,8 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
-            EncryptedData,
-            KernelFeatures,
-            RangeProofType,
-            TransactionError,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
+            encrypted_data::PaymentId, EncryptedData, KernelFeatures, RangeProofType, TransactionError,
+            TransactionInput, TransactionInputVersion, TransactionKernel, TransactionKernelVersion, TransactionOutput,
             TransactionOutputVersion,
         },
         transaction_key_manager::{
@@ -130,7 +108,8 @@ pub struct TransactionKeyManagerInner<TBackend> {
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
-where TBackend: TransactionKeyManagerBackend + 'static
+where
+    TBackend: TransactionKeyManagerBackend + 'static,
 {
     // -----------------------------------------------------------------------------------------------------------------
     // Key manager section
@@ -191,12 +170,12 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn get_next_key(&self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
         let index = {
             match branch {
-                METADATA_EPHEMERAL_NONCE |
-                NONCE |
-                KERNEL_NONCE |
-                SENDER_OFFSET |
-                ONE_SIDED_SENDER_OFFSET |
-                RANDOM_KEY => OsRng.next_u64(),
+                METADATA_EPHEMERAL_NONCE
+                | NONCE
+                | KERNEL_NONCE
+                | SENDER_OFFSET
+                | ONE_SIDED_SENDER_OFFSET
+                | RANDOM_KEY => OsRng.next_u64(),
                 _ => {
                     let mut km = self
                         .key_managers
@@ -306,9 +285,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 WalletType::DerivedKeys => {},
                 WalletType::Ledger(ledger) => {
                     match TransactionKeyManagerBranch::from_key(branch) {
-                        TransactionKeyManagerBranch::OneSidedSenderOffset |
-                        TransactionKeyManagerBranch::RandomKey |
-                        TransactionKeyManagerBranch::PreMine => {
+                        TransactionKeyManagerBranch::OneSidedSenderOffset
+                        | TransactionKeyManagerBranch::RandomKey
+                        | TransactionKeyManagerBranch::PreMine => {
                             #[cfg(not(feature = "ledger"))]
                             {
                                 return Err(KeyManagerServiceError::LedgerError(format!(
@@ -408,10 +387,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         }
 
                         // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch ||
-                            &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch
+                            || &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch
+                            || &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch
+                            || &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
                         {
                             return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()));
                         }
@@ -546,10 +525,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
             key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
-        Ok((commitment_mask, TariKeyAndId {
-            key_id: script_key_id,
-            pub_key: script_public_key,
-        }))
+        Ok((
+            commitment_mask,
+            TariKeyAndId {
+                key_id: script_key_id,
+                pub_key: script_public_key,
+            },
+        ))
     }
 
     pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
@@ -1023,8 +1005,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
-        if self.crypto_factories.range_proof.range() < 64 &&
-            value >= 1u64.shl(&self.crypto_factories.range_proof.range())
+        if self.crypto_factories.range_proof.range() < 64
+            && value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
             return Err(TransactionError::BuilderError(
                 "Value provided is outside the range allowed by the range proof".into(),
@@ -1097,10 +1079,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         match script_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend |
-                                    TransactionKeyManagerBranch::PreMine |
-                                    TransactionKeyManagerBranch::RandomKey |
-                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
+                                    TransactionKeyManagerBranch::Spend
+                                    | TransactionKeyManagerBranch::PreMine
+                                    | TransactionKeyManagerBranch::RandomKey
+                                    | TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         script_key_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
@@ -1132,10 +1114,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         match sender_offset_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend |
-                                    TransactionKeyManagerBranch::PreMine |
-                                    TransactionKeyManagerBranch::RandomKey |
-                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
+                                    TransactionKeyManagerBranch::Spend
+                                    | TransactionKeyManagerBranch::PreMine
+                                    | TransactionKeyManagerBranch::RandomKey
+                                    | TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         sender_offset_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
@@ -1291,8 +1273,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                 branch: nonce_branch,
                                 index: nonce_index,
                             } => {
-                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch) &&
-                                    TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
+                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch)
+                                    && TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
                                 {
                                     let signature = ledger_get_raw_schnorr_signature(
                                         ledger.account,
@@ -1378,8 +1360,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
             )
             .await?;
         let metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &receiver_partial_metadata_signature.to_capk_signature()? +
-                &sender_partial_metadata_signature.to_capk_signature()?,
+            &receiver_partial_metadata_signature.to_capk_signature()?
+                + &sender_partial_metadata_signature.to_capk_signature()?,
         );
         Ok(metadata_signature)
     }
@@ -1458,35 +1440,46 @@ where TBackend: TransactionKeyManagerBackend + 'static
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        let ephemeral_commitment_nonce = self
-            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
-            .await?;
-        let (nonce_a, nonce_b) = self
-            .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)
-            .await?;
-        let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
-        let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
-        let commitment = self.crypto_factories.commitment.commit(&commitment_private_key, value);
-        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
-            txo_version,
-            sender_offset_public_key,
-            &(CompressedCommitment::from_commitment(ephemeral_commitment)),
-            ephemeral_pubkey,
-            &(CompressedCommitment::from_commitment(commitment)),
-            metadata_signature_message,
-        );
-
-        let metadata_signature = UncompressedComAndPubSignature::sign(
+        let commitment_mask_key = self.get_private_key(commitment_mask_key_id).await?;
+        get_receiver_partial_metadata_signature(
+            &self.crypto_factories,
+            &commitment_mask_key,
             value,
-            &commitment_private_key,
-            &PrivateKey::default(),
-            &nonce_a,
-            &nonce_b,
-            &PrivateKey::default(),
-            &challenge,
-            &*self.crypto_factories.commitment,
-        )?;
-        Ok(ComAndPubSignature::new_from_capk_signature(metadata_signature))
+            sender_offset_public_key,
+            ephemeral_pubkey,
+            txo_version,
+            metadata_signature_message,
+            range_proof_type,
+        )
+        // let ephemeral_commitment_nonce = self
+        //     .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+        //     .await?;
+        // let (nonce_a, nonce_b) = self
+        //     .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)
+        //     .await?;
+        // let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_b, &nonce_a);
+        // let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
+        // let commitment = self.crypto_factories.commitment.commit(&commitment_private_key, value);
+        // let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+        //     txo_version,
+        //     sender_offset_public_key,
+        //     &(CompressedCommitment::from_commitment(ephemeral_commitment)),
+        //     ephemeral_pubkey,
+        //     &(CompressedCommitment::from_commitment(commitment)),
+        //     metadata_signature_message,
+        // );
+
+        // let metadata_signature = UncompressedComAndPubSignature::sign(
+        //     value,
+        //     &commitment_private_key,
+        //     &PrivateKey::default(),
+        //     &nonce_a,
+        //     &nonce_b,
+        //     &PrivateKey::default(),
+        //     &challenge,
+        //     &*self.crypto_factories.commitment,
+        // )?;
+        // Ok(ComAndPubSignature::new_from_capk_signature(metadata_signature))
     }
 
     // In the case where the sender is an aggregated signer, we need to parse in the total public key shares, this is
@@ -1501,6 +1494,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
+        // Note: This method is repeated below in `get_sender_partial_metadata_signature` because this method
+        // Also supports ledger, and the other does not.
         let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
         let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
 
@@ -1571,8 +1566,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let private_signing_key = if kernel_features.is_coinbase() {
             private_key
         } else {
-            private_key -
-                &self
+            private_key
+                - &self
                     .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
                     .await?
         };
@@ -1701,4 +1696,186 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let public_key = spend_key.to_public_key()? + &public_key.to_public_key()?;
         Ok(CompressedPublicKey::new_from_pk(public_key))
     }
+}
+
+pub fn get_metadata_signature(
+    crypto_factories: &CryptoFactories,
+    spending_key: &RistrettoSecretKey,
+    value_as_private_key: &PrivateKey,
+    sender_offset_secret_key: &RistrettoSecretKey,
+    sender_offset_public_key: &CompressedPublicKey,
+    txo_version: &TransactionOutputVersion,
+    metadata_signature_message: &[u8; 32],
+    range_proof_type: RangeProofType,
+) -> Result<ComAndPubSignature, TransactionError> {
+    // let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
+    // Use the pubkey, but generate the nonce on ledger
+    let (empheral_private_key, ephemeral_pubkey) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    // self
+    // .get_next_key(&TransactionKeyManagerBranch::MetadataEphemeralNonce.get_branch_key())
+    // .await?;
+    let compressed_ephemeral_pubkey = CompressedPublicKey::new_from_pk(ephemeral_pubkey);
+    let receiver_partial_metadata_signature = get_receiver_partial_metadata_signature(
+        crypto_factories,
+        spending_key,
+        value_as_private_key,
+        &sender_offset_public_key,
+        &compressed_ephemeral_pubkey,
+        txo_version,
+        metadata_signature_message,
+        range_proof_type,
+    )?;
+    let commitment =
+        CompressedCommitment::from_commitment(crypto_factories.commitment.commit(spending_key, value_as_private_key));
+
+    let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
+    let sender_partial_metadata_signature = get_sender_partial_metadata_signature(
+        empheral_private_key,
+        &compressed_ephemeral_pubkey,
+        sender_offset_secret_key,
+        &sender_offset_public_key,
+        &commitment,
+        ephemeral_commitment,
+        txo_version,
+        metadata_signature_message,
+    )?;
+    let metadata_signature = ComAndPubSignature::new_from_capk_signature(
+        &receiver_partial_metadata_signature.to_capk_signature()?
+            + &sender_partial_metadata_signature.to_capk_signature()?,
+    );
+    Ok(metadata_signature)
+}
+
+pub fn get_receiver_partial_metadata_signature(
+    crypto_factories: &CryptoFactories,
+    commitment_mask_key: &RistrettoSecretKey,
+    value: &PrivateKey,
+    sender_offset_public_key: &CompressedPublicKey,
+    ephemeral_pubkey: &CompressedPublicKey,
+    txo_version: &TransactionOutputVersion,
+    metadata_signature_message: &[u8; 32],
+    range_proof_type: RangeProofType,
+) -> Result<ComAndPubSignature, TransactionError> {
+    let (ephemeral_commitment_nonce_secret, _) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    let (nonce_a, nonce_b) =
+        get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce_secret, range_proof_type)?;
+    let ephemeral_commitment = crypto_factories.commitment.commit(&nonce_b, &nonce_a);
+    // let commitment_private_key = self.get_private_key(commitment_mask_key_id).await?;
+    let commitment = crypto_factories.commitment.commit(&commitment_mask_key, value);
+    let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+        txo_version,
+        sender_offset_public_key,
+        &(CompressedCommitment::from_commitment(ephemeral_commitment)),
+        ephemeral_pubkey,
+        &(CompressedCommitment::from_commitment(commitment)),
+        metadata_signature_message,
+    );
+
+    let metadata_signature = UncompressedComAndPubSignature::sign(
+        value,
+        &commitment_mask_key,
+        &PrivateKey::default(),
+        &nonce_a,
+        &nonce_b,
+        &PrivateKey::default(),
+        &challenge,
+        &*crypto_factories.commitment,
+    )?;
+    Ok(ComAndPubSignature::new_from_capk_signature(metadata_signature))
+}
+
+fn get_metadata_signature_ephemeral_private_key_pair(
+    nonce_private_key: &RistrettoSecretKey,
+    range_proof_type: RangeProofType,
+) -> Result<(PrivateKey, PrivateKey), TransactionError> {
+    // let nonce_private_key = self.get_private_key(nonce_id).await?;
+    // With BulletProofPlus type range proofs, the nonce is a secure random value
+    // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
+    let nonce_a = match range_proof_type {
+        RangeProofType::BulletProofPlus => {
+            let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+                "metadata_signature_ephemeral_nonce_a",
+            );
+            let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
+            PrivateKey::from_uniform_bytes(a_hash.as_ref()).map_err(|_| {
+                TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
+            })
+        },
+        RangeProofType::RevealedValue => Ok(PrivateKey::default()),
+    }?;
+
+    let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
+        "metadata_signature_ephemeral_nonce_b",
+    );
+    let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
+    let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref()).map_err(|_| {
+        TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
+    })?;
+    Ok((nonce_a, nonce_b))
+}
+
+pub fn get_sender_partial_metadata_signature(
+    ephemeral_private_nonce: RistrettoSecretKey,
+    ephemeral_pubkey: &CompressedPublicKey,
+    sender_offset_key_secret: &RistrettoSecretKey,
+    sender_offset_public_key: &CompressedPublicKey,
+    commitment: &CompressedCommitment,
+    ephemeral_commitment: &CompressedCommitment,
+    txo_version: &TransactionOutputVersion,
+    metadata_signature_message: &[u8; 32],
+) -> Result<ComAndPubSignature, TransactionError> {
+    // let ephemeral_pubkey = self.get_public_key_at_key_id(ephemeral_private_nonce_id).await?;
+    // let sender_offset_public_key = self.get_public_key_at_key_id(sender_offset_key_id).await?;
+
+    let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+        txo_version,
+        &sender_offset_public_key,
+        ephemeral_commitment,
+        &ephemeral_pubkey,
+        commitment,
+        metadata_signature_message,
+    );
+
+    // let sender_partial_metadata_signature_self = self
+    // .sign_with_nonce_and_challenge(sender_offset_key_id, ephemeral_private_nonce_id, &challenge)
+    // .await?;
+    let private_key = sender_offset_key_secret;
+    // let private_nonce = ephemeral_private_nonce;
+    let signature = UncompressedSignature::sign_raw_uniform(&private_key, ephemeral_private_nonce, &challenge)?;
+
+    let sender_partial_metadata_signature_self = Signature::new_from_schnorr(signature);
+
+    let metadata_signature = ComAndPubSignature::new(
+        Default::default(),
+        sender_partial_metadata_signature_self
+            .get_compressed_public_nonce()
+            .clone(),
+        Default::default(),
+        Default::default(),
+        sender_partial_metadata_signature_self.get_signature().clone(),
+    );
+
+    Ok(metadata_signature)
+}
+
+pub fn get_partial_txo_kernel_signature_for_coinbase(
+    commitment_mask_key: &RistrettoSecretKey,
+    private_nonce: RistrettoSecretKey,
+    total_nonce: &CompressedPublicKey,
+    total_excess: &CompressedPublicKey,
+    kernel_version: &TransactionKernelVersion,
+    kernel_message: &[u8; 32],
+    // _kernel_features: &KernelFeatures,
+) -> Result<Signature, SchnorrSignatureError> {
+    let private_key = commitment_mask_key;
+    let private_signing_key = private_key;
+    let final_signing_key = private_signing_key;
+    let challenge = TransactionKernel::finalize_kernel_signature_challenge(
+        kernel_version,
+        total_nonce,
+        total_excess,
+        kernel_message,
+    );
+    let signature = UncompressedSignature::sign_raw_uniform(&final_signing_key, private_nonce, &challenge)?;
+    Ok(Signature::new_from_schnorr(signature))
 }

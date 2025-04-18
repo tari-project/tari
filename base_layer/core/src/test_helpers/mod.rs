@@ -35,7 +35,7 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_comms::PeerManager;
-use tari_crypto::keys::SecretKey;
+use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -71,17 +71,17 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
+pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> TariAddress {
     let wallet_private_spend_key = PrivateKey::random(&mut OsRng);
     let wallet_private_view_key = PrivateKey::random(&mut OsRng);
     let _key = key_manager.import_key(wallet_private_view_key.clone()).await.unwrap();
-    let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
+    // let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
     let wallet_payment_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
         CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
         Network::LocalNet,
     );
-    (script_key_id, wallet_payment_address)
+    wallet_payment_address
 }
 
 pub async fn create_block(
@@ -89,10 +89,9 @@ pub async fn create_block(
     prev_block: &Block,
     spec: BlockSpec,
     km: &MemoryDbKeyManager,
-    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,
-) -> (Block, WalletOutput) {
+) -> (Block, RistrettoSecretKey) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = rules.consensus_constants(header.height).blockchain_version();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
@@ -110,13 +109,12 @@ pub async fn create_block(
             .unwrap()
     });
 
-    let (coinbase_transaction, _, _, coinbase_wallet_output) = generate_coinbase_with_wallet_output(
+    let (coinbase_transaction, _, _, coinbase_secret) = generate_coinbase_with_wallet_output(
         MicroMinotari::from(0),
         reward,
         header.height,
         &CoinBaseExtra::default(),
         km,
-        script_key_id,
         wallet_payment_address,
         false,
         rules.consensus_constants(header.height),
@@ -146,7 +144,7 @@ pub async fn create_block(
     block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
-    (block, coinbase_wallet_output)
+    (block, coinbase_secret)
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {

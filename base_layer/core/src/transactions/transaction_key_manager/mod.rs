@@ -25,13 +25,8 @@ pub use wrapper::TransactionKeyManagerWrapper;
 
 mod interface;
 pub use interface::{
-    SecretTransactionKeyManagerInterface,
-    SerializedKeyString,
-    TariKeyAndId,
-    TariKeyId,
-    TransactionKeyManagerInterface,
-    TransactionKeyManagerLabel,
-    TxoStage,
+    SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface,
+    TransactionKeyManagerLabel, TxoStage,
 };
 
 mod initializer;
@@ -41,12 +36,10 @@ mod inner;
 pub use inner::LEDGER_NOT_SUPPORTED;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
 mod memory_db_key_manager;
-pub use inner::TransactionKeyManagerInner;
+pub use inner::{get_metadata_signature, get_partial_txo_kernel_signature_for_coinbase, TransactionKeyManagerInner};
 pub use memory_db_key_manager::{
-    create_memory_db_key_manager,
-    create_memory_db_key_manager_from_seed,
-    create_memory_db_key_manager_with_range_proof_size,
-    MemoryDbKeyManager,
+    create_memory_db_key_manager, create_memory_db_key_manager_from_seed,
+    create_memory_db_key_manager_with_range_proof_size, MemoryDbKeyManager,
 };
 
 pub mod error;

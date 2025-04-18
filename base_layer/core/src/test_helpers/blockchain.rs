@@ -34,6 +34,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -43,36 +44,16 @@ use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        create_lmdb_database,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        InputMinedInfo,
-        LMDBDatabase,
-        MmrTree,
-        OutputMinedInfo,
-        Reorg,
-        TemplateRegistrationEntry,
-        Validators,
+        create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
+        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
+        LMDBDatabase, MmrTree, OutputMinedInfo, Reorg, TemplateRegistrationEntry, Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
         transaction_components::{
-            RangeProofType,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            WalletOutput,
+            RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
@@ -451,7 +432,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
     let km = create_memory_db_key_manager().unwrap();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
-    let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
+    let wallet_payment_address = default_coinbase_entities(&km).await;
     for block_spec in blocks {
         let prev_block = block_hashes
             .get(block_spec.parent)
@@ -463,7 +444,6 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             prev_block.block(),
             block_spec,
             &km,
-            &script_key_id,
             &wallet_payment_address,
             None,
         )
@@ -548,7 +528,6 @@ pub struct TestBlockchain {
     chain: Vec<(&'static str, Arc<ChainBlock>, OutputSmt)>,
     rules: ConsensusManager,
     pub km: MemoryDbKeyManager,
-    script_key_id: TariKeyId,
     wallet_payment_address: TariAddress,
     range_proof_type: RangeProofType,
 }
@@ -562,13 +541,12 @@ impl TestBlockchain {
             .map(Arc::new)
             .unwrap();
         let km = create_memory_db_key_manager().unwrap();
-        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
+        let wallet_payment_address = default_coinbase_entities(&km).await;
         let mut blockchain = Self {
             db,
             chain: Default::default(),
             rules,
             km,
-            script_key_id,
             wallet_payment_address,
             range_proof_type: RangeProofType::BulletProofPlus,
         };
@@ -585,7 +563,7 @@ impl TestBlockchain {
     pub async fn append_chain(
         &mut self,
         block_specs: BlockSpecs,
-    ) -> Result<Vec<(Arc<ChainBlock>, WalletOutput)>, ChainStorageError> {
+    ) -> Result<Vec<(Arc<ChainBlock>, RistrettoSecretKey)>, ChainStorageError> {
         let mut blocks = Vec::with_capacity(block_specs.len());
         for spec in block_specs {
             blocks.push(self.append(spec).await?);
@@ -593,7 +571,7 @@ impl TestBlockchain {
         Ok(blocks)
     }
 
-    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, WalletOutput)> {
+    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, RistrettoSecretKey)> {
         let mut result = Vec::new();
         for spec in block_specs {
             result.push(self.create_chained_block(spec).await);
@@ -626,7 +604,7 @@ impl TestBlockchain {
     pub async fn add_block(
         &mut self,
         block_spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, RistrettoSecretKey), ChainStorageError> {
         let name = block_spec.name;
         let (block, coinbase) = self.create_chained_block(block_spec).await;
         let result = self.append_block(name, block.clone())?;
@@ -637,7 +615,7 @@ impl TestBlockchain {
     pub async fn add_next_tip(
         &mut self,
         spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, RistrettoSecretKey), ChainStorageError> {
         let name = spec.name;
         let (block, coinbase) = self.create_next_tip(spec).await;
         let result = self.append_block(name, block.clone())?;
@@ -667,7 +645,7 @@ impl TestBlockchain {
         self.chain.last().cloned().unwrap()
     }
 
-    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
+    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, RistrettoSecretKey) {
         let (parent, mut parent_smt) = self
             .get_block_and_smt_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
@@ -678,7 +656,6 @@ impl TestBlockchain {
             parent.block(),
             block_spec,
             &self.km,
-            &self.script_key_id,
             &self.wallet_payment_address,
             Some(self.range_proof_type),
         )
@@ -688,7 +665,7 @@ impl TestBlockchain {
         (block, coinbase)
     }
 
-    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, WalletOutput) {
+    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, RistrettoSecretKey) {
         let (parent, mut parent_smt) = self
             .get_block_and_smt_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
@@ -698,7 +675,6 @@ impl TestBlockchain {
             parent.block(),
             block_spec,
             &self.km,
-            &self.script_key_id,
             &self.wallet_payment_address,
             Some(self.range_proof_type),
         )
@@ -714,7 +690,7 @@ impl TestBlockchain {
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 
-    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
+    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, RistrettoSecretKey) {
         let (name, _, _) = self.get_tip_block();
         self.create_chained_block(spec.with_parent_block(name)).await
     }
@@ -722,12 +698,15 @@ impl TestBlockchain {
     pub async fn append_to_tip(
         &mut self,
         spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, RistrettoSecretKey), ChainStorageError> {
         let (tip, _, _) = self.get_tip_block();
         self.append(spec.with_parent_block(tip)).await
     }
 
-    pub async fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
+    pub async fn append(
+        &mut self,
+        spec: BlockSpec,
+    ) -> Result<(Arc<ChainBlock>, RistrettoSecretKey), ChainStorageError> {
         let name = spec.name;
         let (block, outputs) = self.create_chained_block(spec).await;
         self.append_block(name, block.clone())?;

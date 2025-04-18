@@ -23,11 +23,7 @@
 use std::{convert::TryFrom, time::Duration};
 
 use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
-    Block,
-    NewBlockTemplate,
-    NewBlockTemplateRequest,
-    PowAlgo,
+    pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo,
     TransactionOutput as GrpcTransactionOutput,
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
@@ -45,6 +41,7 @@ use tari_core::{
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
 };
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -261,7 +258,7 @@ async fn create_block_template_with_coinbase(
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
-) -> (NewBlockTemplate, WalletOutput) {
+) -> (NewBlockTemplate, RistrettoSecretKey) {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
         algo: Some(PowAlgo {
@@ -291,7 +288,6 @@ async fn create_block_template_with_coinbase(
         height,
         &CoinBaseExtra::default(),
         key_manager,
-        script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_manager.consensus_constants(height),
@@ -328,7 +324,8 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         &world.consensus_manager.clone(),
     )
     .await;
-    world.utxos.insert(coinbase_name, wallet_output);
+    // world.utxos.insert(coinbase_name, wallet_output);
+    todo!("No longer implemented ^");
     mine_block_without_wallet_with_template(&mut client, template).await;
 }
 

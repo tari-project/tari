@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Instant;
+
 use log::*;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_utilities::SafePassword;
@@ -78,12 +80,17 @@ impl ServerAuthenticationInterceptor {
 
 impl Interceptor for ServerAuthenticationInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        let timer = Instant::now();
         match &self.auth {
             GrpcAuthentication::None => Ok(request),
             GrpcAuthentication::Basic {
                 username,
                 password: phc_password,
-            } => self.handle_basic_auth(request, username, phc_password),
+            } => {
+                let res = self.handle_basic_auth(request, username, phc_password);
+                debug!(target: LOG_TARGET, "GRPC authentication took {:?}", timer.elapsed());
+                res
+            },
         }
     }
 }

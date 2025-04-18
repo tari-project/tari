@@ -20,14 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-
+use blake2::Blake2b;
+use digest::consts::U64;
 use log::*;
+use rand::rngs::OsRng;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
-    types::{CompressedCommitment, PrivateKey},
+    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
 };
+use tari_comms::types::CommsDHKE;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as _};
+use tari_crypto::{
+    hashing::DomainSeparatedHasher,
+    keys::PublicKey,
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    signatures::SchnorrSignatureError,
+};
+use tari_hashing::KeyManagerTransactionsHashDomain;
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -39,32 +51,19 @@ use crate::{
     covenants::Covenant,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
+        crypto_factories,
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            encrypted_data::PaymentId,
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionBuilder,
-            TransactionError,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
+            encrypted_data::PaymentId, CoinBaseExtra, EncryptedData, KernelBuilder, KernelFeatures, OutputFeatures,
+            RangeProofType, Transaction, TransactionBuilder, TransactionError, TransactionKernel,
+            TransactionKernelVersion, TransactionOutput, TransactionOutputVersion, WalletOutput,
         },
         transaction_key_manager::{
-            error::KeyManagerServiceError,
-            CoreKeyManagerError,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
+            error::KeyManagerServiceError, get_metadata_signature, get_partial_txo_kernel_signature_for_coinbase,
+            CoreKeyManagerError, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage,
         },
         transaction_protocol::TransactionMetadata,
+        CryptoFactories,
     },
 };
 
@@ -72,6 +71,8 @@ pub const LOG_TARGET: &str = "c::tx::coinbase_builder";
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum CoinbaseBuildError {
+    #[error("Unable to create a signature for the coinbase transaction")]
+    CouldNotCreateSignature,
     #[error("The block height for this coinbase transaction wasn't provided")]
     MissingBlockHeight,
     #[error("The value for the coinbase transaction is missing")]
@@ -128,34 +129,30 @@ impl From<KeyManagerServiceError> for CoinbaseBuildError {
     }
 }
 
-pub struct CoinbaseBuilder<TKeyManagerInterface> {
-    key_manager: TKeyManagerInterface,
+pub struct CoinbaseBuilder {
     block_height: Option<u64>,
     fees: Option<MicroMinotari>,
-    commitment_mask_key_id: Option<TariKeyId>,
-    script_key_id: Option<TariKeyId>,
-    encryption_key_id: Option<TariKeyId>,
-    sender_offset_key_id: Option<TariKeyId>,
+    commitment_mask_key: Option<RistrettoSecretKey>,
+    // script_key: Option<RistrettoSecretKey>,
+    encryption_key: Option<RistrettoSecretKey>,
+    sender_offset_key: Option<RistrettoSecretKey>,
     script: Option<TariScript>,
     covenant: Covenant,
     extra: Option<CoinBaseExtra>,
     range_proof_type: Option<RangeProofType>,
 }
 
-impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
-where TKeyManagerInterface: TransactionKeyManagerInterface
-{
+impl CoinbaseBuilder {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods.
-    pub fn new(key_manager: TKeyManagerInterface) -> Self {
+    pub fn new() -> Self {
         CoinbaseBuilder {
-            key_manager,
             block_height: None,
             fees: None,
-            commitment_mask_key_id: None,
-            script_key_id: None,
-            encryption_key_id: None,
-            sender_offset_key_id: None,
+            commitment_mask_key: None,
+            // script_key: None,
+            encryption_key: None,
+            sender_offset_key: None,
             script: None,
             covenant: Covenant::default(),
             extra: None,
@@ -175,30 +172,30 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self
     }
 
-    /// Provides the commitment mask key ID for this transaction.
-    pub fn with_commitment_mask_id(mut self, key: TariKeyId) -> Self {
-        self.commitment_mask_key_id = Some(key);
+    /// Provides the commitment mask key for this transaction.
+    pub fn with_commitment_mask_key(mut self, key: RistrettoSecretKey) -> Self {
+        self.commitment_mask_key = Some(key);
         self
     }
 
-    /// Provides the script key ID for this transaction. This will usually be provided by a miner's wallet
+    /// Provides the script key for this transaction. This will usually be provided by a miner's wallet
     /// instance.
-    pub fn with_script_key_id(mut self, key: TariKeyId) -> Self {
-        self.script_key_id = Some(key);
-        self
-    }
+    // pub fn with_script_key(mut self, key: RistrettoSecretKey) -> Self {
+    // self.script_key = Some(key);
+    // self
+    // }
 
-    /// Provides the encryption key ID for this transaction. This will usually be provided by a Diffie-Hellman shared
+    /// Provides the encryption key for this transaction. This will usually be provided by a Diffie-Hellman shared
     /// secret.
-    pub fn with_encryption_key_id(mut self, key: TariKeyId) -> Self {
-        self.encryption_key_id = Some(key);
+    pub fn with_encryption_key(mut self, key: RistrettoSecretKey) -> Self {
+        self.encryption_key = Some(key);
         self
     }
 
-    /// Provides the sender offset key ID for this transaction. This will usually be provided by a miner's wallet
+    /// Provides the sender offset key for this transaction. This will usually be provided by a miner's wallet
     /// instance.
-    pub fn with_sender_offset_key_id(mut self, key: TariKeyId) -> Self {
-        self.sender_offset_key_id = Some(key);
+    pub fn with_sender_offset_key(mut self, key: RistrettoSecretKey) -> Self {
+        self.sender_offset_key = Some(key);
         self
     }
 
@@ -237,10 +234,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
         payment_id: PaymentId,
-    ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
+    ) -> Result<Transaction, CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward, payment_id).await
+        self.build_with_reward(constants, reward, payment_id).await.map(|x| x.0)
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -254,15 +251,16 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
         payment_id: PaymentId,
-    ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
+    ) -> Result<(Transaction, RistrettoSecretKey), CoinbaseBuildError> {
+        let crypto_factories = &crypto_factories::CryptoFactories::default();
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
-        let commitment_mask_key_id = self.commitment_mask_key_id.ok_or(CoinbaseBuildError::MissingSpendKey)?;
-        let script_key_id = self.script_key_id.ok_or(CoinbaseBuildError::MissingScriptKey)?;
-        let encryption_key_id = self.encryption_key_id.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
-        let sender_offset_key_id = self
-            .sender_offset_key_id
+        let commitment_mask_key = self.commitment_mask_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
+        let script_key = RistrettoSecretKey::default(); // self.script_key.ok_or(CoinbaseBuildError::MissingScriptKey)?;
+        let encryption_key = self.encryption_key.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
+        let sender_offset_key = self
+            .sender_offset_key
             .ok_or(CoinbaseBuildError::MissingSenderOffsetKey)?;
         let covenant = self.covenant;
         let script = self.script.ok_or(CoinbaseBuildError::MissingScript)?;
@@ -279,44 +277,67 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &metadata.kernel_features,
             &metadata.burn_commitment,
         );
-        let public_nonce = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
+        let (private_nonce, public_nonce) = RistrettoPublicKey::random_keypair(&mut OsRng);
 
-        let public_commitment_mask_key = self
-            .key_manager
-            .get_public_key_at_key_id(&commitment_mask_key_id)
-            .await?;
+        let public_commitment_mask_key = RistrettoPublicKey::from_secret_key(&commitment_mask_key);
 
-        let kernel_signature = self
-            .key_manager
-            .get_partial_txo_kernel_signature(
-                &commitment_mask_key_id,
-                &public_nonce.key_id,
-                &public_nonce.pub_key,
-                &public_commitment_mask_key,
-                &kernel_version,
-                &kernel_message,
-                &metadata.kernel_features,
-                TxoStage::Output,
-            )
-            .await?;
+        let compressed_public_commitment_mask_key =
+            CompressedPublicKey::new_from_pk(public_commitment_mask_key.clone());
+        let kernel_signature = get_partial_txo_kernel_signature_for_coinbase(
+            &commitment_mask_key,
+            private_nonce,
+            &CompressedPublicKey::new_from_pk(public_nonce),
+            &compressed_public_commitment_mask_key,
+            &kernel_version,
+            &kernel_message,
+            // &metadata.kernel_features,
+            // TxoStage::Output,
+        )
+        .map_err(|e| CoinbaseBuildError::CouldNotCreateSignature)?;
 
-        let excess = CompressedCommitment::from_compressed_key(public_commitment_mask_key);
+        let excess = CompressedCommitment::from_compressed_key(compressed_public_commitment_mask_key);
         // generate tx details
         let value: u64 = total_reward.into();
         let output_features =
             OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra, range_proof_type);
-        let encrypted_data = self
-            .key_manager
-            .encrypt_data_for_recovery(
-                &commitment_mask_key_id,
-                Some(&encryption_key_id),
-                total_reward.into(),
-                payment_id.clone(),
-            )
-            .await?;
+        fn encrypt_data_for_recovery(
+            crypto_factories: &CryptoFactories,
+            commitment_mask_key: &RistrettoSecretKey,
+            recovery_key: &RistrettoSecretKey,
+            value: u64,
+            payment_id: PaymentId,
+        ) -> Result<EncryptedData, TransactionError> {
+            // let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            //     self.get_private_key(key_id).await?
+            // } else {
+            //     self.get_private_view_key().await?
+            // };
+            // let value_key = value.into();
+
+            // let commitment = self.get_commitment(commitment_mask_key_id, &value_key).await?;
+            let commitment = CompressedCommitment::from_commitment(
+                crypto_factories.commitment.commit_value(&commitment_mask_key, value),
+            );
+            // let commitment_private_key = commitment_mask_key;
+            let data = EncryptedData::encrypt_data(
+                &recovery_key,
+                &commitment,
+                value.into(),
+                &commitment_mask_key,
+                payment_id,
+            )?;
+            Ok(data)
+        }
+        let encrypted_data =
+        // .key_manager
+        encrypt_data_for_recovery(
+        crypto_factories,
+        &commitment_mask_key,
+        &encryption_key,
+        total_reward.into(),
+        payment_id.clone(),
+        )?;
+        // .await?;
         let minimum_value_promise = match range_proof_type {
             RangeProofType::BulletProofPlus => MicroMinotari::zero(),
             RangeProofType::RevealedValue => MicroMinotari(value),
@@ -332,42 +353,57 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &minimum_value_promise,
         );
 
-        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key_id).await?;
+        let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_key);
+        let compressed_sender_offset_public_key = CompressedPublicKey::new_from_pk(sender_offset_public_key.clone());
 
-        let metadata_sig = self
-            .key_manager
-            .get_metadata_signature(
-                &commitment_mask_key_id,
-                &value.into(),
-                &sender_offset_key_id,
-                &output_version,
-                &metadata_message,
-                output_features.range_proof_type,
-            )
-            .await?;
+        let metadata_sig = get_metadata_signature(
+            &crypto_factories,
+            &commitment_mask_key,
+            &value.into(),
+            &sender_offset_key,
+            &compressed_sender_offset_public_key,
+            &output_version,
+            &metadata_message,
+            output_features.range_proof_type,
+        )?;
 
-        let wallet_output = WalletOutput::new(
+        // let commitment_mask_key_id = TariKeyId::Imported {
+        //     key: compressed_public_commitment_mask_key.clone(),
+        // };
+        // let script_key_id = TariKeyId::Imported {
+        //     key: CompressedPublicKey::new_from_pk(script_key.clone()),
+        // };
+
+        let range_proof = if output_features.range_proof_type == RangeProofType::BulletProofPlus {
+            todo!("Bulletproofs range proof not implemented yet")
+            // Some(
+            //     key_manager
+            //         .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
+            //         .await?,
+            // )
+        } else {
+            None
+        };
+
+        let commitment = CompressedCommitment::from_commitment(
+            crypto_factories.commitment.commit_value(&commitment_mask_key, value),
+        );
+        let output = TransactionOutput::new(
             output_version,
-            total_reward,
-            commitment_mask_key_id,
             output_features,
+            commitment,
+            range_proof,
             script,
-            ExecutionStack::default(),
-            script_key_id,
-            sender_offset_public_key,
+            compressed_sender_offset_public_key,
             metadata_sig,
-            0,
             covenant,
             encrypted_data,
             minimum_value_promise,
-            payment_id,
-            &self.key_manager,
-        )
-        .await?;
-        let output = wallet_output
-            .to_transaction_output(&self.key_manager)
-            .await
-            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        );
+        // let output = wallet_output
+        // .to_transaction_output(&self.key_manager)
+        // .await
+        // .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
             .with_features(kernel_features)
@@ -389,7 +425,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let tx = builder
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
-        Ok((tx, wallet_output))
+        Ok((tx, commitment_mask_key))
     }
 }
 
@@ -408,14 +444,14 @@ pub async fn generate_coinbase(
     payment_id: PaymentId,
 ) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
     // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
-    let script_key_id = TariKeyId::default();
+    // let script_key_id = TariKeyId::default();
     let (_, coinbase_output, coinbase_kernel, _) = generate_coinbase_with_wallet_output(
         fee,
         reward,
         height,
         extra,
         key_manager,
-        &script_key_id,
+        // &script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_constants,
@@ -434,13 +470,13 @@ pub async fn generate_coinbase_with_wallet_output(
     height: u64,
     extra: &CoinBaseExtra,
     key_manager: &MemoryDbKeyManager,
-    script_key_id: &TariKeyId,
+    // script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
     range_proof_type: RangeProofType,
     payment_id: PaymentId,
-) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
+) -> Result<(Transaction, TransactionOutput, TransactionKernel, PrivateKey), CoinbaseBuildError> {
     if !wallet_payment_address
         .features()
         .contains(TariAddressFeatures::create_one_sided_only())
@@ -449,38 +485,62 @@ pub async fn generate_coinbase_with_wallet_output(
             "Invalid address, address must be one-sided enabled".to_string(),
         ));
     }
-    let sender_offset = key_manager
-        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-        .await?;
-    let shared_secret = key_manager
-        .get_diffie_hellman_shared_secret(
-            &sender_offset.key_id,
-            wallet_payment_address
-                .public_view_key()
-                .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
-        )
-        .await?;
-    let commitment_mask = shared_secret_to_output_spending_key(&shared_secret)?;
-    let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
+    // let sender_offset = key_manager
+    // .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+    // .await?;
+
+    let (sender_offset_sk, sender_offset_pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    let shared_secret = CommsDHKE::new(
+        &sender_offset_sk,
+        &wallet_payment_address
+            .public_view_key()
+            .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?
+            .to_public_key()?,
+    );
+    // let shared_secret = key_manager
+    //     .get_diffie_hellman_shared_secret(
+    //         &sender_offset.key_id,
+    //         wallet_payment_address
+    //             .public_view_key()
+    //             .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?,
+    //     )
+    //     .await?;
+    let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+    // let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
 
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-    let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
+    // let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
+
+    fn stealth_address_script_spending_key(
+        private_key: &RistrettoSecretKey,
+        spend_key: &RistrettoPublicKey,
+    ) -> Result<CompressedPublicKey, TransactionError> {
+        // let private_key = self.get_private_key(commitment_mask_key_id).await?;
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
+        let hasher = hasher.chain(private_key.as_bytes()).finalize();
+        let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())
+            .map_err(|_| KeyManagerServiceError::UnknownError("Invalid commitment mask private key".to_string()))?;
+        let public_key = RistrettoPublicKey::from_secret_key(&private_key);
+        let public_key = spend_key + &public_key;
+        Ok(CompressedPublicKey::new_from_pk(public_key))
+    }
 
     let script_spending_pubkey = if stealth_payment {
-        key_manager
-            .stealth_address_script_spending_key(&commitment_mask_key_id, wallet_payment_address.public_spend_key())
-            .await?
+        stealth_address_script_spending_key(
+            &commitment_mask_private_key,
+            &wallet_payment_address.public_spend_key().to_public_key()?,
+        )?
     } else {
         wallet_payment_address.public_spend_key().clone()
     };
     let script = push_pubkey_script(&script_spending_pubkey);
-    let (transaction, wallet_output) = CoinbaseBuilder::new(key_manager.clone())
+    let (transaction, private_key) = CoinbaseBuilder::new()
         .with_block_height(height)
         .with_fees(fee)
-        .with_commitment_mask_id(commitment_mask_key_id)
-        .with_encryption_key_id(encryption_key_id)
-        .with_sender_offset_key_id(sender_offset.key_id)
-        .with_script_key_id(script_key_id.clone())
+        .with_commitment_mask_key(commitment_mask_private_key)
+        .with_encryption_key(encryption_private_key)
+        .with_sender_offset_key(sender_offset_sk)
         .with_script(script)
         .with_extra(extra.clone())
         .with_range_proof_type(range_proof_type)
@@ -500,7 +560,7 @@ pub async fn generate_coinbase_with_wallet_output(
 
     trace!(target: LOG_TARGET, "Coinbase kernel: {}", kernel.clone());
     trace!(target: LOG_TARGET, "Coinbase output: {}", output.clone());
-    Ok((transaction.clone(), output.clone(), kernel.clone(), wallet_output))
+    Ok((transaction.clone(), output.clone(), kernel.clone(), private_key))
 }
 
 #[cfg(test)]
@@ -783,11 +843,7 @@ mod test {
         aggregated_body::AggregateBody,
         transaction_components::{encrypted_data::PaymentId, KernelBuilder, RangeProofType, TransactionKernelVersion},
         transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
+            create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage,
         },
     };
 
@@ -1043,8 +1099,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature +
-            &key_manager
+        kernel_signature = &kernel_signature
+            + &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
@@ -1171,8 +1227,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature +
-            &key_manager
+        kernel_signature = &kernel_signature
+            + &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
