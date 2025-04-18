@@ -84,6 +84,7 @@ use minotari_app_grpc::tari_rpc::{
     TransferResult,
     ValidateRequest,
     ValidateResponse,
+    GetCompleteAddressResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -255,6 +256,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),
+        }))
+    }
+
+    async fn get_complete_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetCompleteAddressResponse>, Status> {
+        let interactive_address = self
+            .wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        let one_sided_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(GetCompleteAddressResponse {
+            interactive_address: interactive_address.to_vec(),
+            one_sided_address: one_sided_address.to_vec(),
+            interactive_address_base58: interactive_address.to_base58(),
+            one_sided_address_base58: one_sided_address.to_base58(),
+            interactive_address_emoji: interactive_address.to_emoji_string(),
+            one_sided_address_emoji: one_sided_address.to_emoji_string(),
         }))
     }
 

@@ -43,6 +43,8 @@ service Wallet {
   rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
   // This returns the tari address
   rpc GetAddress (Empty) returns (GetAddressResponse);
+  // Returns the address in multiple formats (binary, base58, and emoji)
+  rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
   // Send Minotari to a number of recipients
   rpc Transfer (TransferRequest)  returns (TransferResponse);
   // Returns the transaction details for the given transaction IDs
@@ -94,6 +96,18 @@ message GetVersionResponse {
 message GetAddressResponse {
   bytes interactive_address = 1;
   bytes one_sided_address = 2;
+}
+
+message GetCompleteAddressResponse {
+  // Binary format addresses
+  bytes interactive_address = 1;
+  bytes one_sided_address = 2;
+  // Base58 encoded addresses
+  string interactive_address_base58 = 3;
+  string one_sided_address_base58 = 4;
+  // Emoji encoded addresses
+  string interactive_address_emoji = 5;
+  string one_sided_address_emoji = 6;
 }
 
 message TransferRequest {
