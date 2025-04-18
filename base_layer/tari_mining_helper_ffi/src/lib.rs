@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
-        transaction_key_manager::create_memory_db_key_manager,
+        CryptoFactories,
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -356,14 +356,6 @@ pub unsafe extern "C" fn inject_coinbase(
             return;
         },
     };
-    let key_manager = match create_memory_db_key_manager() {
-        Ok(v) => v,
-        Err(e) => {
-            error = MiningHelperError::from(InterfaceError::KeyManager(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return;
-        },
-    };
 
     let consensus_manager = match ConsensusManager::builder(network).build() {
         Ok(v) => v,
@@ -387,15 +379,16 @@ pub unsafe extern "C" fn inject_coinbase(
         RangeProofType::BulletProofPlus
     };
     let height = block_template.header.height;
+    let crypto_factory = CryptoFactories::default();
     let (coinbase_output, coinbase_kernel) = match runtime.block_on(async {
         // we dont count the fee or the reward here, we assume the caller has calculated the amount to be the exact
         // value for the coinbase(s) they want.
         generate_coinbase(
+            &crypto_factory,
             0.into(),
             coibase_value.into(),
             height,
             &coinbase_extra,
-            &key_manager,
             &wallet_address,
             stealth_payment,
             consensus_manager.consensus_constants(height),

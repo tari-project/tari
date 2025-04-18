@@ -39,6 +39,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
+        CryptoFactories,
     },
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -283,11 +284,11 @@ async fn create_block_template_with_coinbase(
 
     // add the coinbase outputs and kernels to the block template
     let (_, coinbase_output, coinbase_kernel, coinbase_wallet_output) = generate_coinbase_with_wallet_output(
+        &CryptoFactories::default(),
         MicroMinotari::from(fee),
         MicroMinotari::from(reward),
         height,
         &CoinBaseExtra::default(),
-        key_manager,
         wallet_payment_address,
         stealth_payment,
         consensus_manager.consensus_constants(height),

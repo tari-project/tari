@@ -48,6 +48,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
+        CryptoFactories,
     },
 };
 
@@ -92,6 +93,7 @@ pub async fn create_block(
     wallet_payment_address: &TariAddress,
     range_proof_type: Option<RangeProofType>,
 ) -> (Block, RistrettoSecretKey) {
+    let crypto_factory = CryptoFactories::default();
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = rules.consensus_constants(header.height).blockchain_version();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
@@ -110,11 +112,11 @@ pub async fn create_block(
     });
 
     let (coinbase_transaction, _, _, coinbase_secret) = generate_coinbase_with_wallet_output(
+        &crypto_factory,
         MicroMinotari::from(0),
         reward,
         header.height,
         &CoinBaseExtra::default(),
-        km,
         wallet_payment_address,
         false,
         rules.consensus_constants(header.height),

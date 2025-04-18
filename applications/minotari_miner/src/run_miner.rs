@@ -27,29 +27,18 @@ use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
-        base_node_client::BaseNodeClient,
-        pow_algo::PowAlgos,
-        sha_p2_pool_client::ShaP2PoolClient,
-        Block,
-        GetNewBlockRequest,
-        PowAlgo,
-        SubmitBlockRequest,
-        SubmitBlockResponse,
+        base_node_client::BaseNodeClient, pow_algo::PowAlgos, sha_p2_pool_client::ShaP2PoolClient, Block,
+        GetNewBlockRequest, PowAlgo, SubmitBlockRequest, SubmitBlockResponse,
         TransactionOutput as GrpcTransactionOutput,
     },
 };
 use minotari_app_utilities::parse_miner_input::{
-    prompt_for_base_node_address,
-    prompt_for_p2pool_address,
-    verify_base_node_grpc_mining_responses,
-    wallet_payment_address,
-    BaseNodeGrpcClient,
-    ShaP2PoolGrpcClient,
+    prompt_for_base_node_address, prompt_for_p2pool_address, verify_base_node_grpc_mining_responses,
+    wallet_payment_address, BaseNodeGrpcClient, ShaP2PoolGrpcClient,
 };
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
-    load_configuration,
-    DefaultConfigLoader,
+    load_configuration, DefaultConfigLoader,
 };
 use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
@@ -60,6 +49,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra},
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        CryptoFactories,
     },
 };
 use tari_utilities::hex::Hex;
@@ -425,12 +415,13 @@ async fn get_new_block_base_node(
     let miner_data = template_response.miner_data.ok_or_else(|| err_empty("miner_data"))?;
     let fee = MicroMinotari::from(miner_data.total_fees);
     let reward = MicroMinotari::from(miner_data.reward);
+    let crypto_factories = CryptoFactories::default();
     let (coinbase_output, coinbase_kernel) = generate_coinbase(
+        &crypto_factories,
         fee,
         reward,
         height,
         &CoinBaseExtra::try_from(config.coinbase_extra.as_bytes().to_vec())?,
-        key_manager,
         wallet_payment_address,
         true,
         consensus_manager.consensus_constants(height),

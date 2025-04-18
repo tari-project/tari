@@ -30,11 +30,15 @@ use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
     consensus::ConsensusManager,
-    proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
+    proof_of_work::{
+        monero_rx::{self, FixedByteArray},
+        Difficulty,
+    },
     transactions::{
         generate_coinbase,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, TransactionKernel, TransactionOutput},
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+        CryptoFactories,
     },
     AuxChainHashes,
 };
@@ -58,6 +62,7 @@ pub(crate) struct BlockTemplateManager<'a> {
     key_manager: MemoryDbKeyManager,
     wallet_payment_address: TariAddress,
     consensus_manager: ConsensusManager,
+    crypto_factory: CryptoFactories,
 }
 
 impl<'a> BlockTemplateManager<'a> {
@@ -76,6 +81,7 @@ impl<'a> BlockTemplateManager<'a> {
             key_manager,
             wallet_payment_address,
             consensus_manager,
+            crypto_factory: CryptoFactories::default(),
         })
     }
 }
@@ -237,11 +243,11 @@ impl BlockTemplateManager<'_> {
         let total_fees = miner_data.total_fees;
 
         let (coinbase_output, coinbase_kernel) = generate_coinbase(
+            &self.crypto_factory,
             total_fees.into(),
             block_reward.into(),
             tari_height,
             &CoinBaseExtra::try_from(self.config.coinbase_extra.as_bytes().to_vec())?,
-            &self.key_manager,
             &self.wallet_payment_address,
             true,
             self.consensus_manager.consensus_constants(tari_height),

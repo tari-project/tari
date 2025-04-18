@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -229,15 +231,17 @@ impl CoinbaseBuilder {
     /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
     /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
     /// on the output and kernel, and the maturity schedule is set from the consensus rules.
-    pub async fn build(
+    pub fn build(
         self,
+        crypto_factories: &CryptoFactories,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
         payment_id: PaymentId,
     ) -> Result<Transaction, CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward, payment_id).await.map(|x| x.0)
+        self.build_with_reward(crypto_factories, constants, reward, payment_id)
+            .map(|x| x.0)
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -246,18 +250,20 @@ impl CoinbaseBuilder {
     /// set from the consensus rules.
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub async fn build_with_reward(
+    pub fn build_with_reward(
         self,
+        crypto_factories: &CryptoFactories,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
         payment_id: PaymentId,
     ) -> Result<(Transaction, RistrettoSecretKey), CoinbaseBuildError> {
-        let crypto_factories = &crypto_factories::CryptoFactories::default();
+        let timer = Instant::now();
+        const LOG_TARGET: &str = "minotari::base_node::grpc"; // For now
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
         let commitment_mask_key = self.commitment_mask_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
-        let script_key = RistrettoSecretKey::default(); // self.script_key.ok_or(CoinbaseBuildError::MissingScriptKey)?;
         let encryption_key = self.encryption_key.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
         let sender_offset_key = self
             .sender_offset_key
@@ -277,12 +283,14 @@ impl CoinbaseBuilder {
             &metadata.kernel_features,
             &metadata.burn_commitment,
         );
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let (private_nonce, public_nonce) = RistrettoPublicKey::random_keypair(&mut OsRng);
-
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let public_commitment_mask_key = RistrettoPublicKey::from_secret_key(&commitment_mask_key);
-
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let compressed_public_commitment_mask_key =
             CompressedPublicKey::new_from_pk(public_commitment_mask_key.clone());
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let kernel_signature = get_partial_txo_kernel_signature_for_coinbase(
             &commitment_mask_key,
             private_nonce,
@@ -294,8 +302,9 @@ impl CoinbaseBuilder {
             // TxoStage::Output,
         )
         .map_err(|e| CoinbaseBuildError::CouldNotCreateSignature)?;
-
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let excess = CompressedCommitment::from_compressed_key(compressed_public_commitment_mask_key);
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         // generate tx details
         let value: u64 = total_reward.into();
         let output_features =
@@ -337,6 +346,7 @@ impl CoinbaseBuilder {
         total_reward.into(),
         payment_id.clone(),
         )?;
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         // .await?;
         let minimum_value_promise = match range_proof_type {
             RangeProofType::BulletProofPlus => MicroMinotari::zero(),
@@ -355,7 +365,7 @@ impl CoinbaseBuilder {
 
         let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_key);
         let compressed_sender_offset_public_key = CompressedPublicKey::new_from_pk(sender_offset_public_key.clone());
-
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let metadata_sig = get_metadata_signature(
             &crypto_factories,
             &commitment_mask_key,
@@ -367,6 +377,7 @@ impl CoinbaseBuilder {
             output_features.range_proof_type,
         )?;
 
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         // let commitment_mask_key_id = TariKeyId::Imported {
         //     key: compressed_public_commitment_mask_key.clone(),
         // };
@@ -384,6 +395,7 @@ impl CoinbaseBuilder {
         } else {
             None
         };
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
 
         let commitment = CompressedCommitment::from_commitment(
             crypto_factories.commitment.commit_value(&commitment_mask_key, value),
@@ -413,6 +425,7 @@ impl CoinbaseBuilder {
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         let mut builder = TransactionBuilder::new();
         builder
             .add_output(output)
@@ -425,6 +438,7 @@ impl CoinbaseBuilder {
         let tx = builder
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        debug!(target: LOG_TARGET, "build coinbase 1 {:?}", timer.elapsed());
         Ok((tx, commitment_mask_key))
     }
 }
@@ -432,11 +446,11 @@ impl CoinbaseBuilder {
 /// Clients that do not need to spend the wallet output must call this function to generate a coinbase transaction,
 /// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
 pub async fn generate_coinbase(
+    crypto_factories: &CryptoFactories,
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
     extra: &CoinBaseExtra,
-    key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
@@ -446,11 +460,11 @@ pub async fn generate_coinbase(
     // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
     // let script_key_id = TariKeyId::default();
     let (_, coinbase_output, coinbase_kernel, _) = generate_coinbase_with_wallet_output(
+        crypto_factories,
         fee,
         reward,
         height,
         extra,
-        key_manager,
         // &script_key_id,
         wallet_payment_address,
         stealth_payment,
@@ -465,11 +479,11 @@ pub async fn generate_coinbase(
 /// Clients that need to spend the wallet output must call this function to generate a coinbase transaction,
 /// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
 pub async fn generate_coinbase_with_wallet_output(
+    crypto_factories: &CryptoFactories,
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
     extra: &CoinBaseExtra,
-    key_manager: &MemoryDbKeyManager,
     // script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
@@ -477,6 +491,7 @@ pub async fn generate_coinbase_with_wallet_output(
     range_proof_type: RangeProofType,
     payment_id: PaymentId,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, PrivateKey), CoinbaseBuildError> {
+    let timer = Instant::now();
     if !wallet_payment_address
         .features()
         .contains(TariAddressFeatures::create_one_sided_only())
@@ -497,6 +512,8 @@ pub async fn generate_coinbase_with_wallet_output(
             .ok_or(CoinbaseBuildError::MissingWalletPublicViewKey)?
             .to_public_key()?,
     );
+    const LOG_TARGET: &str = "minotari::base_node::grpc"; // For now
+    debug!(target: LOG_TARGET, "gen coinbase 1 {:?}", timer.elapsed());
     // let shared_secret = key_manager
     //     .get_diffie_hellman_shared_secret(
     //         &sender_offset.key_id,
@@ -508,9 +525,11 @@ pub async fn generate_coinbase_with_wallet_output(
     let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
     // let commitment_mask_key_id = key_manager.import_key(commitment_mask.clone()).await?;
 
+    debug!(target: LOG_TARGET, "gen coinbase 2 {:?}", timer.elapsed());
+
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
     // let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
-
+    debug!(target: LOG_TARGET, "gen coinbase 2 {:?}", timer.elapsed());
     fn stealth_address_script_spending_key(
         private_key: &RistrettoSecretKey,
         spend_key: &RistrettoPublicKey,
@@ -534,6 +553,8 @@ pub async fn generate_coinbase_with_wallet_output(
     } else {
         wallet_payment_address.public_spend_key().clone()
     };
+
+    debug!(target: LOG_TARGET, "gen coinbase 2 {:?}", timer.elapsed());
     let script = push_pubkey_script(&script_spending_pubkey);
     let (transaction, private_key) = CoinbaseBuilder::new()
         .with_block_height(height)
@@ -544,8 +565,9 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_script(script)
         .with_extra(extra.clone())
         .with_range_proof_type(range_proof_type)
-        .build_with_reward(consensus_constants, reward, payment_id)
-        .await?;
+        .build_with_reward(crypto_factories, consensus_constants, reward, payment_id)?;
+
+    debug!(target: LOG_TARGET, "gen coinbase 2 {:?}", timer.elapsed());
 
     let output = transaction
         .body()

@@ -67,6 +67,7 @@ use tari_core::{
             create_memory_db_key_manager, get_partial_txo_kernel_signature_for_coinbase, TariKeyId,
             TransactionKeyManagerInterface, TxoStage,
         },
+        CryptoFactories,
     },
 };
 use tari_crypto::keys::PublicKey as _;
@@ -120,6 +121,7 @@ pub struct BaseNodeGrpcServer {
     tari_pulse: TariPulseHandle,
     config: BaseNodeConfig,
     data_cache: DataCache,
+    crypto_factories: CryptoFactories,
 }
 
 impl BaseNodeGrpcServer {
@@ -137,6 +139,7 @@ impl BaseNodeGrpcServer {
             tari_pulse: ctx.tari_pulse(),
             config,
             data_cache: DataCache::new(),
+            crypto_factories: CryptoFactories::default(),
         }
     }
 
@@ -1079,14 +1082,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             } else {
                 RangeProofType::BulletProofPlus
             };
+            debug!(target: LOG_TARGET, "Timing profile 2.0: get_new_block_template_with_coinbases: {:?}", timer.elapsed());
             let (_, coinbase_output, coinbase_kernel, wallet_output_spending_key) =
                 generate_coinbase_with_wallet_output(
+                    &self.crypto_factories,
                     0.into(),
                     coinbase.value.into(),
                     height,
                     &CoinBaseExtra::try_from(coinbase.coinbase_extra)
                         .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?,
-                    &key_manager,
                     &address,
                     coinbase.stealth_payment,
                     self.consensus_rules.consensus_constants(height),
