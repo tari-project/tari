@@ -80,7 +80,7 @@ impl DnsSeedResolver {
             .into_iter()
             .filter_map(|txt| {
                 txt.parse()
-                    .inspect(|err| {
+                    .inspect_err(|err| {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
@@ -241,6 +241,7 @@ mod test {
     }
 
     mod peer_seed_resolver {
+
         use super::*;
 
         #[tokio::test]
