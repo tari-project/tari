@@ -94,7 +94,25 @@ impl BlockBodyFullValidator {
             );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
-        let mmr_roots = chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt)?;
+        let mmr_roots =
+            match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt) {
+                Ok(mmr_roots) => mmr_roots,
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
+                    );
+                    match e {
+                        ChainStorageError::CannotCalculateNonTipMmr(ref _e) => {
+                            return Err(e.into());
+                        },
+                        _ => {},
+                    }
+                    // Recalculate SMT as it might have been altered.
+                    *output_smt = backend.calculate_tip_smt()?;
+                    return Err(e.into());
+                },
+            };
         check_mmr_roots(&block.header, &mmr_roots)?;
 
         BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
