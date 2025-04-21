@@ -76,7 +76,10 @@ use tari_storage::{
     LMDBWrapper,
 };
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time::timeout,
+};
 use tower::ServiceBuilder;
 
 use crate::{
@@ -508,7 +511,20 @@ impl P2pInitializer {
             P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
         let resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
-            async move { (resolver.resolve(addr).await, addr) }
+            async move {
+                let timer = Instant::now();
+                let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
+                    Ok(res) => res,
+                    Err(_) => {
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{}`", addr);
+                        Err(DnsClientError::Timeout)
+                    },
+                };
+                // let res = (resolver.resolve(addr).await, addr);
+                let res = (seeds_res, addr.clone());
+                info!(target: LOG_TARGET, "Resolved DNS seed `{}` in {:.0?}", addr, timer.elapsed());
+                res
+            }
         });
 
         let peers = future::join_all(resolving)
@@ -549,26 +565,38 @@ impl P2pInitializer {
         }
         let mut dns_errors = Vec::new();
         for dns in dns_seed_name_servers {
+            info!(target: LOG_TARGET, "Connecting to DNS name server: {}", dns);
             let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
-                (true, false) => DnsSeedResolver::connect_secure(dns.clone()).await,
-                (_, _) => DnsSeedResolver::connect(dns.clone()).await,
+                (true, false) => timeout(Duration::from_secs(5), DnsSeedResolver::connect_secure(dns.clone())).await,
+                (_, _) => timeout(Duration::from_secs(5), DnsSeedResolver::connect(dns.clone())).await,
             };
             match res {
-                Ok(val) => {
-                    trace!(target: LOG_TARGET, "Found DNS client at '{}'", dns);
-                    return Ok(val);
-                },
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in \
-                        the config file. (Error: {})",
-                        dns,
-                        err.to_string(),
-                    );
+                Ok(Ok(resolver)) => return Ok(resolver),
+                Ok(Err(err)) => {
+                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {}", err);
                     dns_errors.push(err.to_string())
                 },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "Timed out connecting to DNS name server: {}", dns);
+                    dns_errors.push("Timeout".to_string())
+                },
             }
+            // match res {
+            //     Ok(val) => {
+            //         trace!(target: LOG_TARGET, "Found DNS client at '{}'", dns);
+            //         return Ok(val);
+            //     },
+            //     Err(err) => {
+            //         warn!(
+            //             target: LOG_TARGET,
+            //             "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in
+            // \             the config file. (Error: {})",
+            //             dns,
+            //             err.to_string(),
+            //         );
+            //         dns_errors.push(err.to_string())
+            //     },
+            // }
         }
         Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
             "{:?}",

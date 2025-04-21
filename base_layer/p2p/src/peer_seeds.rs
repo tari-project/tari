@@ -80,7 +80,7 @@ impl DnsSeedResolver {
             .into_iter()
             .filter_map(|txt| {
                 txt.parse()
-                    .inspect(|err| {
+                    .inspect_err(|err| {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
@@ -124,15 +124,13 @@ impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split("::").map(|s| s.trim());
-        let public_key = parts
-            .next()
-            .and_then(|s| UncompressedCommsPublicKey::from_hex(s).ok())
+        let (mut part_a, mut part_b) = s
+            .split_once("::")
+            .ok_or_else(|| anyhow!("Invalid seed peer string, missing '::' delimiter"))?;
+        let public_key = UncompressedCommsPublicKey::from_hex(part_a)
+            .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
-        if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
-            return Err(anyhow!("Empty or invalid address in seed peer string"));
-        }
+        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{}", e))?];
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,

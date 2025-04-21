@@ -35,7 +35,12 @@ tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
 tower = "0.4.11"
-hickory-resolver = { version = "=0.25.0-alpha.4", features = ["tokio-runtime", "dns-over-tls", "dns-over-rustls"] }
+hickory-resolver = { version = "=0.25.0-alpha.4", features = [
+    "tokio-runtime",
+    "dns-over-tls",
+    "dns-over-rustls",
+    "native-certs",
+] }
 hickory-proto = { version = "=0.25.0-alpha.4" }
 
 [dev-dependencies]
