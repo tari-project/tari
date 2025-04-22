@@ -25,8 +25,7 @@
 use std::convert::TryInto;
 
 use bytes::BytesMut;
-use hyper::{header, header::HeaderValue, http::response, Body, Response, StatusCode, Version};
-use hyper::body::HttpBody;
+use hyper::{body::HttpBody, header, header::HeaderValue, http::response, Body, Response, StatusCode, Version};
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 
