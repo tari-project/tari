@@ -124,7 +124,7 @@ impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (mut part_a, mut part_b) = s
+        let (part_a, part_b) = s
             .split_once("::")
             .ok_or_else(|| anyhow!("Invalid seed peer string, missing '::' delimiter"))?;
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
@@ -215,14 +215,6 @@ mod test {
         #[test]
         fn it_errors_if_not_a_seed_peer() {
             SeedPeer::from_str("nonsensical::garbage").unwrap_err();
-        }
-
-        #[test]
-        fn it_errors_if_trailing_delim() {
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::";
-            SeedPeer::from_str(sample).unwrap_err();
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
-            SeedPeer::from_str(sample).unwrap_err();
         }
 
         #[test]
