@@ -1532,8 +1532,14 @@ where
         let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
-        let payment_id =
-            PaymentId::add_sender_address(payment_id, self.resources.interactive_tari_address.clone(), None);
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee_per_gram,
+            None,
+        );
         let mut stp = self
             .resources
             .output_manager_service
@@ -1748,6 +1754,9 @@ where
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
                 self.resources.interactive_tari_address.clone(),
+                true,
+                amount,
+                fee_per_gram,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address
                 {
@@ -1989,11 +1998,6 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = PaymentId::AddressAndData {
-            sender_address: self.resources.interactive_tari_address.clone(),
-            tx_type: TxType::PaymentToOther,
-            user_data: vec![],
-        };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Prepare sender part of the transaction
@@ -2084,6 +2088,14 @@ where
         let amount = stp.get_amount_to_recipient()?;
 
         let minimum_value_promise = MicroMinotari::zero();
+        let payment_id = PaymentId::AddressAndData {
+            sender_address: self.resources.interactive_tari_address.clone(),
+            sender_one_sided: true,
+            amount,
+            fee: stp.get_fee_amount().unwrap_or_default(),
+            tx_type: TxType::PaymentToOther,
+            user_data: vec![],
+        };
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -2239,6 +2251,9 @@ where
         let payment_id = PaymentId::add_sender_address(
             payment_id,
             self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee_per_gram,
             Some(TxType::Burn),
         );
         trace!(
@@ -3143,6 +3158,7 @@ where
                                         sender_address: address,
                                         tx_type: _,
                                         user_data: _,
+                                        ..
                                     } => {
                                         source_address = Some(address.clone());
                                         destination_address = Some(self.resources.one_sided_tari_address.clone());

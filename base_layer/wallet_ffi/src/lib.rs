@@ -12053,6 +12053,9 @@ mod test {
                     PaymentId::AddressAndData {
                         sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
                             .unwrap(),
+                        sender_one_sided: false,
+                        amount: MicroMinotari::from(123456),
+                        fee: MicroMinotari::from(123),
                         tx_type: tx_type.clone(),
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                     },
@@ -12062,9 +12065,6 @@ mod test {
                         sender_one_sided: false,
                         amount: MicroMinotari::from(123456),
                         fee: MicroMinotari::from(123),
-                        weight: 19000,
-                        inputs_count: 712,
-                        outputs_count: 3,
                         tx_type: tx_type.clone(),
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                     },
