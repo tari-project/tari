@@ -28,6 +28,7 @@ use hickory_proto::{
 use hickory_resolver::{
     config::{NameServerConfig, ResolverConfig, ResolverOpts},
     name_server::TokioConnectionProvider,
+    system_conf::read_system_conf,
     TokioResolver,
 };
 use log::*;
@@ -45,8 +46,25 @@ pub struct DnsClient {
 impl DnsClient {
     pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
-            DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::Tls),
+            DnsNameServer::System => {
+                let (conf, opts) = read_system_conf()?;
+                TokioResolver::builder_with_config(conf, TokioConnectionProvider::default())
+                    .with_options(opts)
+                    .build()
+            },
+            DnsNameServer::Custom { addr, dns_name } => {
+                let mut conf = ResolverConfig::new();
+                conf.add_name_server(NameServerConfig {
+                    socket_addr: addr,
+                    protocol: Protocol::Tls,
+                    tls_dns_name: dns_name,
+                    http_endpoint: None,
+                    trust_negative_responses: false,
+                    bind_addr: None,
+                });
+
+                Self::create_resolver(conf)
+            },
         };
 
         Ok(Self { resolver })
@@ -54,34 +72,46 @@ impl DnsClient {
 
     pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
-            DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::default()),
+            DnsNameServer::System => {
+                let (conf, opts) = read_system_conf()?;
+                TokioResolver::builder_with_config(conf, TokioConnectionProvider::default())
+                    .with_options(opts)
+                    .build()
+            },
+            DnsNameServer::Custom { addr, dns_name } => {
+                let mut conf = ResolverConfig::new();
+                conf.add_name_server(NameServerConfig {
+                    socket_addr: addr,
+                    protocol: Protocol::Udp,
+                    tls_dns_name: dns_name.clone(),
+                    http_endpoint: None,
+                    trust_negative_responses: false,
+                    bind_addr: None,
+                });
+                conf.add_name_server(NameServerConfig {
+                    socket_addr: addr,
+                    protocol: Protocol::Tcp,
+                    tls_dns_name: dns_name,
+                    http_endpoint: None,
+                    trust_negative_responses: false,
+                    bind_addr: None,
+                });
+
+                Self::create_resolver(conf)
+            },
         };
 
         Ok(Self { resolver })
     }
 
-    fn create_resolver(
-        socket_addr: std::net::SocketAddr,
-        tls_dns_name: Option<String>,
-        protocol: Protocol,
-    ) -> TokioResolver {
-        let mut conf = ResolverConfig::new();
-        conf.add_name_server(NameServerConfig {
-            socket_addr,
-            protocol,
-            tls_dns_name,
-            http_endpoint: None,
-            trust_negative_responses: false,
-            bind_addr: None,
-            tls_config: None,
-        });
-
+    fn create_resolver(conf: ResolverConfig) -> TokioResolver {
         let mut opts = ResolverOpts::default();
         opts.edns0 = true;
         opts.try_tcp_on_error = true;
         opts.timeout = std::time::Duration::from_secs(1);
-        TokioResolver::tokio(conf, opts)
+        TokioResolver::builder_with_config(conf, TokioConnectionProvider::default())
+            .with_options(opts)
+            .build()
     }
 
     pub async fn query_txt<T: IntoName>(&mut self, name: T) -> Result<Vec<String>, DnsClientError> {
@@ -90,8 +120,9 @@ impl DnsClient {
         let records = lookup
             .iter()
             .map(|answer| {
-                // pub key + onion is 136 bytes
-                let mut buf = Vec::with_capacity(136);
+                // BinEncoder pre-allocates 512 bytes on buf, so setting the capacity to less than that results in an
+                // extra allocation.
+                let mut buf = Vec::new();
                 let mut decoder = BinEncoder::new(&mut buf);
                 answer.emit(&mut decoder)?;
                 Ok(buf)

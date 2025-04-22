@@ -508,7 +508,7 @@ impl P2pInitializer {
         let start = Instant::now();
 
         let resolver =
-            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
+            P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers)?;
         let resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
             async move {
@@ -554,7 +554,7 @@ impl P2pInitializer {
         Ok(peers)
     }
 
-    async fn get_dns_seed_resolver(
+    fn get_dns_seed_resolver(
         dns_seeds_use_dnssec: bool,
         dns_seed_name_servers: &DnsNameServerList,
     ) -> Result<DnsSeedResolver, ServiceInitializationError> {
