@@ -87,13 +87,17 @@ impl Default for PeerSeedsConfig {
                     "ip6.seeds.{}.tari.com",
                     Network::get_current_or_user_setting_or_default().as_key_str()
                 ),
+                format!(
+                    "tor.seeds.{}.tari.com",
+                    Network::get_current_or_user_setting_or_default().as_key_str()
+                ),
             ]
             .into(),
             dns_seed_name_servers: DnsNameServerList::from_str(
                 "system, 1.1.1.1:853/cloudflare-dns.com, 8.8.8.8:853/dns.google, 9.9.9.9:853/dns.quad9.net",
             )
             .expect("string is valid"),
-            dns_seeds_use_dnssec: true,
+            dns_seeds_use_dnssec: false,
         }
     }
 }

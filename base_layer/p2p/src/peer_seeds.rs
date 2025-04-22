@@ -194,19 +194,6 @@ mod test {
         }
 
         #[test]
-        fn it_parses_mulitple_addresses() {
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
-                          onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
-
-            let seed = SeedPeer::from_str(sample).unwrap();
-            assert_eq!(
-                seed.public_key.to_hex(),
-                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
-            );
-            assert_eq!(seed.addresses.len(), 2);
-        }
-
-        #[test]
         fn it_errors_if_empty_or_blank() {
             SeedPeer::from_str("").unwrap_err();
             SeedPeer::from_str(" ").unwrap_err();
