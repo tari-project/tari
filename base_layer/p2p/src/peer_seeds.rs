@@ -236,8 +236,8 @@ mod test {
         #[tokio::test]
         #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]
         async fn it_returns_seeds_from_real_address() {
-            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).await.unwrap();
-            let seeds = resolver.resolve("seeds.esmeralda.tari.com").await.unwrap();
+            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).unwrap();
+            let seeds = resolver.resolve("seeds.nextnet.tari.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }

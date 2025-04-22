@@ -117,6 +117,12 @@ impl DnsClient {
                     // Exclude the first length byte from the string result
                     Some(String::from_utf8_lossy(&txt[1..=len]).to_string())
                 })
+                .inspect_err(|e| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to parse DNS TXT record. Error: {}", e
+                    );
+                })
                 .transpose()
             })
             .collect::<Result<_, DnsClientError>>()?;
