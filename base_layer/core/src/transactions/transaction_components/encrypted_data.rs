@@ -396,6 +396,13 @@ impl PaymentId {
 
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Self {
+        // edge case for premine:
+        if bytes.len() == SIZE_VALUE {
+            let bytes: [u8; SIZE_VALUE] = bytes.try_into().expect("Cannot fail, as we already test the length");
+            let v = u64::from_le_bytes(bytes);
+            return PaymentId::U256(v.into());
+        }
+
         let p_tag = if bytes.is_empty() {
             PTag::Empty
         } else {
