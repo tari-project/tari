@@ -1329,14 +1329,12 @@ mod test {
         assert_eq!(
             payment_id_1.to_string(),
             "recipient_address(f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb), \
-            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967295 T), weight(65535), inputs_count(32767), \
-            outputs_count(4095), type(PaymentToOther), data(Hello World!!! 11-22-33)"
+            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967295 T), type(PaymentToOther), data(Hello World!!! 11-22-33)"
         );
         assert_eq!(
             payment_id_2.to_string(),
             "recipient_address(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk), sender_one_sided(false), \
-             amount(18446744073709.551615 T), fee(4294.967295 T), weight(65535), inputs_count(32767), \
-             outputs_count(4095), type(PaymentToSelf), data(Hello World!!! 11-22-33)"
+             amount(18446744073709.551615 T), fee(4294.967295 T), type(PaymentToSelf), data(Hello World!!! 11-22-33)"
         );
 
         let payment_id_1_bytes = payment_id_1.to_bytes();
@@ -1379,12 +1377,6 @@ mod test {
     fn it_gets_useable_payment_id_data() {
         let payment_id = PaymentId::Empty;
         assert_eq!("", PaymentId::stringify_bytes(&payment_id.user_data_as_bytes()));
-
-        let payment_id = PaymentId::U256(12345.into());
-        assert_eq!(
-            "12345",
-            u64::from_le_bytes(payment_id.user_data_as_bytes().try_into().unwrap()).to_string()
-        );
 
         let payment_id = PaymentId::U256(U256::from_dec_str("123456789").unwrap());
         assert_eq!(
