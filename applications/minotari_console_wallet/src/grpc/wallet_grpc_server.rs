@@ -51,6 +51,7 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetBalanceRequest,
     GetBalanceResponse,
+    GetCompleteAddressResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
@@ -84,7 +85,6 @@ use minotari_app_grpc::tari_rpc::{
     TransferResult,
     ValidateRequest,
     ValidateResponse,
-    GetCompleteAddressResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -259,7 +259,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn get_complete_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetCompleteAddressResponse>, Status> {
+    async fn get_complete_address(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<GetCompleteAddressResponse>, Status> {
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
