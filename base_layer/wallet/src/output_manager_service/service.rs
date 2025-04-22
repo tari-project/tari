@@ -1277,25 +1277,33 @@ where
         payment_id: PaymentId,
         tx_id: TxId,
     ) -> Result<TariKeyAndId, OutputManagerError> {
-        if let PaymentId::U256(index) = payment_id {
-            let script_key_id = TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                index: u64::try_from(index).expect("we dont go over u64"),
-            };
-            Ok(TariKeyAndId {
-                pub_key: self
-                    .resources
-                    .key_manager
-                    .get_public_key_at_key_id(&script_key_id)
-                    .await?,
-                key_id: script_key_id,
-            })
-        } else {
-            Err(OutputManagerError::ServiceError(format!(
-                "Invalid payment id (TxId: {}): expected 'PaymentId::U64(_)', received {:?}",
-                tx_id, payment_id
-            )))
-        }
+        let index = match payment_id {
+            PaymentId::U256(index) => u64::try_from(index).expect("we dont go over u64"),
+            PaymentId::Open { user_data: data, .. } => {
+                let bytes: [u8; size_of::<u64>()] = data.try_into().map_err(|_| {
+                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
+                })?;
+                u64::from_le_bytes(bytes)
+            },
+            _ => {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
+                    tx_id, payment_id
+                )))
+            },
+        };
+        let script_key_id = TariKeyId::Managed {
+            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+            index: u64::try_from(index).expect("we dont go over u64"),
+        };
+        Ok(TariKeyAndId {
+            pub_key: self
+                .resources
+                .key_manager
+                .get_public_key_at_key_id(&script_key_id)
+                .await?,
+            key_id: script_key_id,
+        })
     }
 
     /// Create a partial transaction in order to prepare output

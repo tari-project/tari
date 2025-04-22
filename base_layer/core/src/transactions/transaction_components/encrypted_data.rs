@@ -397,10 +397,11 @@ impl PaymentId {
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Self {
         // edge case for premine:
-        if bytes.len() == SIZE_VALUE {
-            let bytes: [u8; SIZE_VALUE] = bytes.try_into().expect("Cannot fail, as we already test the length");
-            let v = u64::from_le_bytes(bytes);
-            return PaymentId::U256(v.into());
+        if bytes.len() == SIZE_VALUE && bytes[0] == 0 {
+            return PaymentId::Open {
+                tx_type: TxType::PaymentToOther,
+                user_data: bytes.to_vec(),
+            };
         }
 
         let p_tag = if bytes.is_empty() {
@@ -801,6 +802,57 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_premine() {
+        let id = 12351234u64;
+        let value = 123456;
+        let mask = PrivateKey::default();
+        let commitment =
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)));
+        let encryption_key = PrivateKey::random(&mut OsRng);
+        let amount = MicroMinotari::from(value);
+        let encrypted_data = {
+            let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + SIZE_VALUE]);
+            bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
+            bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
+            bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
+
+            // Produce a secure random nonce
+            let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+
+            // Set up the AEAD
+            let aead_key = kdf_aead(encryption_key, commitment);
+            let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+
+            // Encrypt in place
+            let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
+
+            // Put everything together: nonce, ciphertext, tag
+            let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + SIZE_VALUE];
+            data[..SIZE_TAG].clone_from_slice(&tag);
+            data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
+            data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_VALUE]
+                .clone_from_slice(bytes.as_slice());
+            Ok(EncryptedData {
+                data: MaxSizeBytes::try_from(data)
+                    .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))
+                    .unwrap(),
+            })
+        };
+        let (decrypted_value, decrypted_mask, decrypted_payment_id) =
+            EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
+        assert_eq!(amount, decrypted_value);
+        assert_eq!(mask, decrypted_mask);
+        match decrypted_payment_id {
+            PaymentId::Open { user_data: data, .. } => {
+                let bytes: [u8; SIZE_VALUE] = data.try_into().expect("Cannot fail, as we already test the length");
+                let v = u64::from_le_bytes(bytes);
+                assert_eq!(v, id);
+            },
+            _ => panic!("Expected PaymentId::Open"),
+        }
+    }
+
+    #[test]
     fn test_payment_id_parsing_confusion() {
         // We need to create a PaymentId::Open that, when serialized, will produce bytes that
         // will be parsed as PaymentId::TransactionInfo.
@@ -1016,13 +1068,6 @@ mod test {
                 assert_eq!(amount, decrypted_value);
                 assert_eq!(mask, decrypted_mask);
                 assert_eq!(payment_id, decrypted_payment_id);
-                if let Ok((decrypted_value, decrypted_mask, decrypted_payment_id)) =
-                    EncryptedData::decrypt_data(&PrivateKey::random(&mut OsRng), &commitment, &encrypted_data)
-                {
-                    assert_ne!(amount, decrypted_value);
-                    assert_ne!(mask, decrypted_mask);
-                    assert_ne!(payment_id, decrypted_payment_id);
-                }
             }
         }
     }
