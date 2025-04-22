@@ -812,7 +812,7 @@ mod test {
         let amount = MicroMinotari::from(value);
         let encrypted_data = {
             let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + SIZE_VALUE]);
-            bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
+            bytes[..SIZE_VALUE].clone_from_slice(value.to_le_bytes().as_ref());
             bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
             bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
 
@@ -820,11 +820,13 @@ mod test {
             let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
 
             // Set up the AEAD
-            let aead_key = kdf_aead(encryption_key, commitment);
+            let aead_key = kdf_aead(&encryption_key, &commitment);
             let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
 
             // Encrypt in place
-            let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
+            let tag = cipher
+                .encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())
+                .unwrap();
 
             // Put everything together: nonce, ciphertext, tag
             let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + SIZE_VALUE];
@@ -832,11 +834,11 @@ mod test {
             data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
             data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_VALUE]
                 .clone_from_slice(bytes.as_slice());
-            Ok(EncryptedData {
+            EncryptedData {
                 data: MaxSizeBytes::try_from(data)
                     .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))
                     .unwrap(),
-            })
+            }
         };
         let (decrypted_value, decrypted_mask, decrypted_payment_id) =
             EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
