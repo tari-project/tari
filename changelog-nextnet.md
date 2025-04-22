@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.14.1-rc.0](https://github.com/tari-project/tari/compare/v1.14.0-rc.0...v1.14.1-rc.0) (2025-04-22)
+
+
+### Features
+
+* add getCompleteAddress to GRPC ([#6969](https://github.com/tari-project/tari/issues/6969)) ([aa0ce64](https://github.com/tari-project/tari/commit/aa0ce646d92d17ae65301c617d88f03df541dc98))
+* add optional birthday ([#6975](https://github.com/tari-project/tari/issues/6975)) ([264f646](https://github.com/tari-project/tari/commit/264f64639b7ac7bf436043aa21d696064d5fb246))
+
+
+### Bug Fixes
+
+* add timeout for DNS failures ([#6972](https://github.com/tari-project/tari/issues/6972)) ([6dfff45](https://github.com/tari-project/tari/commit/6dfff455452206435488040cc97ff22bd91ef6a6))
+* add timeout to dns check ([#6977](https://github.com/tari-project/tari/issues/6977)) ([18b6193](https://github.com/tari-project/tari/commit/18b619392f1229f43723051384ae79664592dd3b))
+* don't recalc smt on height change ([#6973](https://github.com/tari-project/tari/issues/6973)) ([08fb189](https://github.com/tari-project/tari/commit/08fb189757539e759c5dfdab598eb78fd2811619))
+* force coinbase fee = 0 ([#6954](https://github.com/tari-project/tari/issues/6954)) ([db1719a](https://github.com/tari-project/tari/commit/db1719a7d5d78c3faddab182f5c445d991172168))
+
+
 ### [1.14.0-rc.0](https://github.com/tari-project/tari/compare/v1.13.4-rc.0...v1.14.0-rc.0) (2025-04-17)
 
 
