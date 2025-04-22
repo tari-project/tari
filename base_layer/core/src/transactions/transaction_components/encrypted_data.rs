@@ -229,12 +229,7 @@ impl PaymentId {
                 sender_address,
                 user_data,
                 ..
-            } => {
-                dbg!(user_data.len());
-                dbg!(sender_address.get_size());
-                dbg!(PaymentId::SIZE_VALUE_AND_META_DATA);
-                1 + sender_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + user_data.len()
-            },
+            } => 1 + sender_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + user_data.len(),
             PaymentId::TransactionInfo {
                 recipient_address,
                 user_data,
@@ -398,11 +393,11 @@ impl PaymentId {
         // }
     }
 
-    fn unpack_meta_data(bytes: &[u8; 5]) -> (MicroMinotari, bool, TxType) {
+    fn unpack_meta_data(bytes: [u8; 5]) -> (MicroMinotari, bool, TxType) {
         // Extract fee from the first 4 bytes
         let fee = u64::from(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
         let tx_type_packed = bytes[4];
-        let tx_type = TxType::from_u8((tx_type_packed & 0b00001111) as u8);
+        let tx_type = TxType::from_u8(tx_type_packed & 0b00001111);
         let sender_one_sided = (tx_type_packed & 0b10000000) != 0;
         (MicroMinotari::from(fee), sender_one_sided, tx_type)
     }
@@ -486,7 +481,7 @@ impl PaymentId {
                 let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
                 let mut meta_data_bytes = [0u8; PaymentId::SIZE_META_DATA];
                 meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..PaymentId::SIZE_VALUE_AND_META_DATA]);
-                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(&meta_data_bytes);
+                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(meta_data_bytes);
                 // Amount + fee + Single/Dual
                 if let Ok(sender_address) = TariAddress::from_bytes(&bytes[PaymentId::SIZE_VALUE_AND_META_DATA..]) {
                     return PaymentId::AddressAndData {
@@ -539,7 +534,7 @@ impl PaymentId {
                 let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
                 let mut meta_data_bytes = [0u8; PaymentId::SIZE_META_DATA];
                 meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..PaymentId::SIZE_VALUE_AND_META_DATA]);
-                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(&meta_data_bytes);
+                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(meta_data_bytes);
                 // Amount + fee + Single/Dual
                 if let Ok(recipient_address) = TariAddress::from_bytes(&bytes[PaymentId::SIZE_VALUE_AND_META_DATA..]) {
                     return PaymentId::TransactionInfo {
