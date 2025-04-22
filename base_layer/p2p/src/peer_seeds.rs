@@ -54,8 +54,8 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect_secure(name_server).await?;
+    pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+        let client = DnsClient::connect_secure(name_server)?;
         Ok(Self { client })
     }
 
@@ -63,8 +63,8 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect(name_server).await?;
+    pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+        let client = DnsClient::connect(name_server)?;
         Ok(Self { client })
     }
 

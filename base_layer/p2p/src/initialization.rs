@@ -567,18 +567,14 @@ impl P2pInitializer {
         for dns in dns_seed_name_servers {
             info!(target: LOG_TARGET, "Connecting to DNS name server: {}", dns);
             let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
-                (true, false) => timeout(Duration::from_secs(5), DnsSeedResolver::connect_secure(dns.clone())).await,
-                (_, _) => timeout(Duration::from_secs(5), DnsSeedResolver::connect(dns.clone())).await,
+                (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
+                (_, _) => DnsSeedResolver::connect(dns.clone()),
             };
             match res {
-                Ok(Ok(resolver)) => return Ok(resolver),
-                Ok(Err(err)) => {
+                Ok(resolver) => return Ok(resolver),
+                Err(err) => {
                     warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {}", err);
                     dns_errors.push(err.to_string())
-                },
-                Err(_) => {
-                    warn!(target: LOG_TARGET, "Timed out connecting to DNS name server: {}", dns);
-                    dns_errors.push("Timeout".to_string())
                 },
             }
         }

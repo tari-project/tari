@@ -43,7 +43,7 @@ pub struct DnsClient {
 }
 
 impl DnsClient {
-    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+    pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
             DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::Tls),
@@ -52,7 +52,7 @@ impl DnsClient {
         Ok(Self { resolver })
     }
 
-    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+    pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
             DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::default()),

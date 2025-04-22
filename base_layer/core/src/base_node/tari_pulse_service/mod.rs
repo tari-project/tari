@@ -114,8 +114,8 @@ impl TariPulseService {
         })
     }
 
-    async fn get_dns_client(&self) -> Result<DnsClient, anyhow::Error> {
-        let client = DnsClient::connect(DnsNameServer::System).await?;
+    fn get_dns_client(&self) -> Result<DnsClient, anyhow::Error> {
+        let client = DnsClient::connect(DnsNameServer::System)?;
         Ok(client)
     }
 
@@ -239,7 +239,7 @@ impl TariPulseService {
     }
 
     async fn fetch_checkpoints(&mut self) -> Result<Vec<(u64, String)>, anyhow::Error> {
-        let mut client = self.get_dns_client().await?;
+        let mut client = self.get_dns_client()?;
         let response = client.query_txt(self.dns_name).await?;
         let checkpoints: Vec<(u64, String)> = response
             .iter()
