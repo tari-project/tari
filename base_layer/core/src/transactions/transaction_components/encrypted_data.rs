@@ -315,82 +315,15 @@ impl PaymentId {
                 } else {
                     fee.as_u64()
                 };
-                // // - Use 2 bytes for 'weight', max value: 65,535
-                // let weight = if *weight > 2u64.pow(16) - 1 { 0 } else { *weight };
-                // // - Use 2 bytes less 1 bit for 'inputs_count', max value: 32,767, and 1 bit for 'sender_one_sided'
-                // let inputs_count = if *inputs_count > 2usize.pow(15) - 1 {
-                //     0
-                // } else {
-                //     *inputs_count
-                // };
-                // // - Use 2 bytes less 4 bits for 'outputs_count', max value: 4,095, and 3 bits for 'tx_meta_data'
-                // let outputs_count = if *outputs_count > 2usize.pow(12) - 1 {
-                //     0
-                // } else {
-                //     *outputs_count
-                // };
                 // Pack
                 bytes.extend_from_slice(&fee.to_be_bytes()[4..]);
                 let tx_type = tx_type.as_u8() & 0b00001111 | (u8::from(*sender_one_sided) << 7);
 
-                // bytes.extend_from_slice(&weight.to_be_bytes()[6..]);
-                // let inputs_count_packed = (u16::from_usize(inputs_count).unwrap_or_default() & 0b0111111111111111) |
-                //     (u16::from(*sender_one_sided) << 15);
-                // bytes.extend_from_slice(&inputs_count_packed.to_be_bytes());
-                // let outputs_count_packed = (u16::from_usize(outputs_count).unwrap_or_default() & 0b0000111111111111)
-                // |     (u16::from(tx_type.as_u8()) << 12);
-                // bytes.extend_from_slice(&outputs_count_packed.to_be_bytes());
                 bytes.push(tx_type);
                 bytes
             },
             _ => vec![],
         }
-        // if let PaymentId::TransactionInfo {
-        //     fee,
-        //     sender_one_sided,
-        //     tx_type,
-        //     ..
-        // } = self
-        // {
-        //     let mut bytes = Vec::with_capacity(5);
-        //     // Zero out-of-bound values
-        //     // - Use 4 bytes for 'fee', max value: 4,294,967,295
-        //     let fee = if fee.as_u64() > 2u64.pow(32) - 1 {
-        //         0
-        //     } else {
-        //         fee.as_u64()
-        //     };
-        //     // // - Use 2 bytes for 'weight', max value: 65,535
-        //     // let weight = if *weight > 2u64.pow(16) - 1 { 0 } else { *weight };
-        //     // // - Use 2 bytes less 1 bit for 'inputs_count', max value: 32,767, and 1 bit for 'sender_one_sided'
-        //     // let inputs_count = if *inputs_count > 2usize.pow(15) - 1 {
-        //     //     0
-        //     // } else {
-        //     //     *inputs_count
-        //     // };
-        //     // // - Use 2 bytes less 4 bits for 'outputs_count', max value: 4,095, and 3 bits for 'tx_meta_data'
-        //     // let outputs_count = if *outputs_count > 2usize.pow(12) - 1 {
-        //     //     0
-        //     // } else {
-        //     //     *outputs_count
-        //     // };
-        //     // Pack
-        //     bytes.extend_from_slice(&fee.to_be_bytes()[4..]);
-        //     let tx_type = tx_type.as_u8() & 0b00001111|
-        //             (u8::from(*sender_one_sided) << 7);
-        //
-        //     // bytes.extend_from_slice(&weight.to_be_bytes()[6..]);
-        //     // let inputs_count_packed = (u16::from_usize(inputs_count).unwrap_or_default() & 0b0111111111111111) |
-        //     //     (u16::from(*sender_one_sided) << 15);
-        //     // bytes.extend_from_slice(&inputs_count_packed.to_be_bytes());
-        //     // let outputs_count_packed = (u16::from_usize(outputs_count).unwrap_or_default() & 0b0000111111111111) |
-        //     //     (u16::from(tx_type.as_u8()) << 12);
-        //     // bytes.extend_from_slice(&outputs_count_packed.to_be_bytes());
-        //     bytes.push(tx_type);
-        //     bytes
-        // } else {
-        //     vec![]
-        // }
     }
 
     fn unpack_meta_data(bytes: [u8; 5]) -> (MicroMinotari, bool, TxType) {
@@ -584,12 +517,8 @@ impl PaymentId {
             (_, _) => {},
         }
         PaymentId::Open {
-            user_data: if bytes.len() > 1 {
-                bytes[1..].to_vec()
-            } else {
-                Vec::new()
-            },
-            tx_type: TxType::from_u8(bytes[0]),
+            tx_type: TxType::from_u8(*bytes.get(0).unwrap_or(&0)),
+            user_data: bytes.get(1..).unwrap_or_default().to_vec(),
         }
     }
 
