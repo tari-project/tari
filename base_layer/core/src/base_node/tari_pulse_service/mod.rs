@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    cmp::min,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -42,8 +41,7 @@ use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast::error::RecvError, watch, Mutex, RwLock},
     task,
-    time,
-    time::MissedTickBehavior,
+    time::{self, timeout, MissedTickBehavior},
 };
 
 use super::LocalNodeCommsInterface;
@@ -126,17 +124,15 @@ impl TariPulseService {
         notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
     ) {
         let mut dns_check_interval = time::interval(self.config.dns_check_interval);
-        dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(dns_check_interval);
 
         let mut health_check_interval = time::interval(self.config.liveness_interval);
-        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(health_check_interval);
 
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut count = 0u64;
-        let mut skip_ticks = 0;
-        let mut skipped_ticks = 0;
         let health_check_in_progress = Arc::new(Mutex::new(()));
 
         loop {
@@ -164,30 +160,22 @@ impl TariPulseService {
                 _ = dns_check_interval.tick() => {
                     count += 1;
                     trace!(target: LOG_TARGET, "DNS Checkpoint interval tick: {}", count);
-                    if skipped_ticks < skip_ticks {
-                        skipped_ticks += 1;
-                        debug!(target: LOG_TARGET, "Skipping {} of {} ticks", skipped_ticks, skip_ticks);
-                        continue;
-                    }
                     let passed_checkpoints = {
                         match self.passed_checkpoints(&mut base_node_service).await {
                             Ok(passed) => {
-                                skip_ticks = 0;
-                                skipped_ticks = 0;
                                 passed
                             },
                             Err(err) => {
                                 warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {}", err);
-                                skip_ticks = min(skip_ticks + 1, 30 * 60 / self.config.dns_check_interval.as_secs());
-                                skipped_ticks = 0;
                                 continue;
                             },
                         }
                     };
 
-                    notify_passed_checkpoints
-                        .send(!passed_checkpoints)
-                        .expect("Channel should be open");
+                    let _unused = notify_passed_checkpoints
+                        .send(!passed_checkpoints).inspect_err(|e| {
+                            warn!(target: LOG_TARGET, "Failed to send passed checkpoints notification: {}", e);
+                        });
                 },
                 _ = shutdown_signal.wait() => {
                     info!(
@@ -204,7 +192,18 @@ impl TariPulseService {
         &mut self,
         base_node_service: &mut LocalNodeCommsInterface,
     ) -> Result<bool, anyhow::Error> {
-        let dns_checkpoints = self.fetch_checkpoints().await?;
+        let dns_checkpoints = match timeout(Duration::from_secs(1), self.fetch_checkpoints()).await {
+            Ok(Ok(checkpoints)) => checkpoints,
+            Ok(Err(err)) => {
+                warn!(target: LOG_TARGET, "Failed to fetch DNS checkpoints: {}", err);
+                return Err(err.into());
+            },
+            Err(_) => {
+                warn!(target: LOG_TARGET, "Timeout fetching DNS checkpoints. We can't tell whether our blockchain has the correct data or not.");
+                // We can't connect to DNS, so can't tell if we are behind or not.
+                return Ok(true);
+            },
+        };
 
         let max_height_block = dns_checkpoints
             .iter()

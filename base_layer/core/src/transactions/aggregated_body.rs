@@ -332,6 +332,13 @@ impl AggregateBody {
         let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
+                if kernel.fee != 0.into() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Coinbase kernel {} found with fee set to {}. This should be 0", kernel, kernel.fee
+                    );
+                    return Err(TransactionError::InvalidCoinbase);
+                }
                 coinbase_kernel_counter += 1;
                 coinbase_kernel = Some(kernel);
             }
