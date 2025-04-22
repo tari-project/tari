@@ -195,6 +195,7 @@ where
             OutputType::CodeTemplateRegistration => OutputSource::CodeTemplateRegistration,
             OutputType::SidechainCheckpoint => OutputSource::SidechainCheckpoint,
             OutputType::SidechainProof => OutputSource::SidechainProof,
+            OutputType::ValidatorNodeExit => OutputSource::ValidatorNodeExit,
         }
     }
 

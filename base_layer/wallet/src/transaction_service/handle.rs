@@ -30,6 +30,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use tari_common_types::{
     burnt_proof::BurntProof,
+    epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
@@ -138,6 +139,17 @@ pub enum TransactionServiceRequest {
         validator_node_signature: Signature,
         validator_node_claim_public_key: CommsPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    },
+    SubmitValidatorNodeExit {
+        amount: MicroMinotari,
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -341,8 +353,23 @@ impl fmt::Display for TransactionServiceRequest {
             Self::RegisterValidatorNode {
                 validator_node_public_key,
                 payment_id,
+                max_epoch,
                 ..
-            } => write!(f, "Registering VN ({}, {})", validator_node_public_key, payment_id),
+            } => write!(
+                f,
+                "Registering VN ({}, {}, {})",
+                validator_node_public_key, payment_id, max_epoch
+            ),
+            Self::SubmitValidatorNodeExit {
+                validator_node_public_key,
+                payment_id,
+                max_epoch,
+                ..
+            } => write!(
+                f,
+                "Submit VN Exit ({}, {}, {})",
+                validator_node_public_key, payment_id, max_epoch
+            ),
             Self::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -681,6 +708,7 @@ impl TransactionServiceHandle {
         validator_node_signature: Signature,
         validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -693,6 +721,37 @@ impl TransactionServiceHandle {
                 validator_node_signature,
                 validator_node_claim_public_key,
                 sidechain_deployment_key,
+                max_epoch,
+                selection_criteria,
+                fee_per_gram,
+                payment_id,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_validator_node_exit(
+        &mut self,
+        amount: MicroMinotari,
+        validator_node_public_key: CompressedPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitValidatorNodeExit {
+                amount,
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_deployment_key,
+                max_epoch,
                 selection_criteria,
                 fee_per_gram,
                 payment_id,

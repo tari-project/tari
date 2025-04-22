@@ -28,11 +28,14 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, PrivateKey},
+};
 use tari_max_size::MaxSizeBytes;
 use tari_sidechain::EvictionProof;
 
-use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId};
+use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transactions::transaction_components::{
     range_proof_type::RangeProofType,
     side_chain::SideChainFeature,
@@ -167,13 +170,32 @@ impl OutputFeatures {
         signature: ValidatorNodeSignature,
         claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<&PrivateKey>,
+        vn_epoch: VnEpoch,
     ) -> OutputFeatures {
-        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key);
+        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key, vn_epoch);
         let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, vn_reg.sidechain_id_message()));
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
             sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::ValidatorNodeRegistration(vn_reg),
+                data: SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg)),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn for_validator_node_exit(
+        signature: ValidatorNodeSignature,
+        sidechain_deployment_key: Option<&PrivateKey>,
+        max_epoch: VnEpoch,
+    ) -> OutputFeatures {
+        let exit = ValidatorNodeExit::new(signature, max_epoch);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
+
+        OutputFeatures {
+            output_type: OutputType::ValidatorNodeExit,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeExit(exit),
                 sidechain_id,
             }),
             ..Default::default()
@@ -189,11 +211,15 @@ impl OutputFeatures {
         OutputFeatures {
             output_type: OutputType::SidechainProof,
             sidechain_feature: Some(SideChainFeature {
-                data: SideChainFeatureData::EvictionProof(eviction_proof),
+                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
                 sidechain_id,
             }),
             ..Default::default()
         }
+    }
+
+    pub fn sidechain_id(&self) -> Option<&SideChainId> {
+        self.sidechain_feature.as_ref().and_then(|s| s.sidechain_id())
     }
 
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {

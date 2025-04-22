@@ -190,8 +190,8 @@ impl<'a, K: FromKeyBytes, V: DeserializeOwned> LmdbReadCursor<'a, K, V> {
     }
 
     /// Positions the cursor at the first item whose key is greater than or equal to key.
-    /// If there is such a key, true is returned and calling [LmdbReadCursor::next] is guaranteed to return Some.
-    /// Conversely, if false is returned, calling [LmdbReadCursor::next] is guaranteed to return None.
+    /// If there is such a key (>= provided key), true is returned and calling [LmdbReadCursor::next] is guaranteed to
+    /// return Some. Conversely, if false is returned, calling [LmdbReadCursor::next] is guaranteed to return None.
     pub fn seek_range(&mut self, key: &[u8]) -> Result<bool, ChainStorageError> {
         if let Some((k, v)) = convert_result_kv(self.cursor.seek_range_k(&self.access, key))? {
             self.seek_value = Some((k, v));

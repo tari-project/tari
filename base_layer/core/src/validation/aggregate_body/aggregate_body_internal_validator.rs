@@ -23,18 +23,15 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        HashOutput,
-        PrivateKey,
-        RangeProofService,
-        UncompressedCommitment,
-        UncompressedPublicKey,
-    },
+use tari_common_types::types::{
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    RangeProofService,
+    UncompressedCommitment,
+    UncompressedPublicKey,
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
@@ -431,6 +428,7 @@ fn check_sidechain_features(constants: &ConsensusConstants, output: &Transaction
     check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
     check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
     check_template_registration_utxo(sidechain_feature)?;
+    check_validator_node_exit_utxo(sidechain_feature)?;
 
     Ok(())
 }
@@ -441,6 +439,7 @@ fn check_sidechain_id_proof_of_knowledge(sidechain_feature: &SideChainFeature) -
 
     Ok(())
 }
+
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
@@ -463,12 +462,19 @@ fn check_validator_node_registration_utxo(
         });
     }
 
-    // TODO: some additional "single use data" e.g. epoch should be used to prevent replay
-    //       (assuming that we disallow the same validator node to register multiple times).
-    if !reg.is_valid_signature_for(
-        sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key()),
-        VnEpoch::zero(),
-    ) {
+    if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+        return Err(ValidationError::InvalidValidatorNodeSignature);
+    }
+
+    Ok(())
+}
+
+fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    let Some(exit) = sidechain_feature.validator_node_exit() else {
+        return Ok(());
+    };
+
+    if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
         return Err(ValidationError::InvalidValidatorNodeSignature);
     }
 

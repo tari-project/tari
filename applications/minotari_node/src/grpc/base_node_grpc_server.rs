@@ -2633,7 +2633,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
 
             for template_registration in template_registrations {
-                let registration = template_registration.registration_data.into();
+                let registration = template_registration.registration_data().into();
 
                 let resp = tari_rpc::GetTemplateRegistrationResponse {
                     utxo_hash: template_registration.output_hash.to_vec(),

@@ -455,13 +455,13 @@ impl BlockchainBackend for TempDatabase {
     fn validator_node_exists(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        height: u64,
+        end_epoch: VnEpoch,
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .validator_node_exists(sidechain_pk, height, validator_node_pk)
+            .validator_node_exists(sidechain_pk, end_epoch, validator_node_pk)
     }
 
     fn validator_node_is_active(

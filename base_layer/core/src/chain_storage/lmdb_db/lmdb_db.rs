@@ -1107,6 +1107,15 @@ impl LMDBDatabase {
                             evict.node_to_evict(),
                         )?;
                     },
+                    SideChainFeatureData::ValidatorNodeExit(vn_exit) => {
+                        // The exit must be on or after the next epoch
+                        let min_epoch = constants.block_height_to_epoch(height) + VnEpoch(1);
+                        self.validator_node_store(txn).undo_exit(
+                            sidechain_features.sidechain_public_key(),
+                            min_epoch,
+                            vn_exit.public_key(),
+                        )?;
+                    },
                 }
             }
 
@@ -1523,6 +1532,26 @@ impl LMDBDatabase {
                     sidechain_pk.map(|pk| pk.to_hex()),
                 );
                 store.exit(sidechain_pk, evict_node, next_epoch)?;
+            },
+            SideChainFeatureData::ValidatorNodeExit(exit) => {
+                let store = self.validator_node_store(txn);
+                let sidechain_pk = sidechain_feature.sidechain_id().map(|id| id.public_key());
+                info!(
+                    target: LOG_TARGET,
+                    "ValidatorNodeExit in {}: public_key: {}, sidechain_public_key: {:?}",
+                    header.height,
+                    exit.public_key(),
+                    sidechain_pk.map(|pk| pk.to_hex()),
+                );
+                let constants = self.get_consensus_constants(header.height);
+                let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+                let exit_epoch = store.get_next_exit_epoch(
+                    sidechain_pk,
+                    next_epoch,
+                    usize::try_from(constants.vn_registration_max_exits_per_epoch())
+                        .map_err(|_| ChainStorageError::OutOfRange)?,
+                )?;
+                store.exit(sidechain_pk, exit.public_key(), exit_epoch)?;
             },
         }
 
@@ -2929,15 +2958,13 @@ impl BlockchainBackend for LMDBDatabase {
     fn validator_node_exists(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        height: u64,
+        end_epoch: VnEpoch,
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         let vn_store = self.validator_node_store(&txn);
-        let constants = self.consensus_manager.consensus_constants(height);
 
         // Get the current epoch for the height
-        let end_epoch = constants.block_height_to_epoch(height);
         let is_active = vn_store.vn_exists(sidechain_pk, validator_node_pk, end_epoch)?;
         Ok(is_active)
     }

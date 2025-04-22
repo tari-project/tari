@@ -205,7 +205,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn validator_node_exists(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        height: u64,
+        current_epoch: VnEpoch,
         validator_node_pk: &CompressedPublicKey,
     ) -> Result<bool, ChainStorageError>;
     /// Returns true if the validator node is registered and currently active

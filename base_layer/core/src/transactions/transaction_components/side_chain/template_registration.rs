@@ -43,6 +43,14 @@ pub struct CodeTemplateRegistration {
 }
 
 impl CodeTemplateRegistration {
+    pub fn author_signature(&self) -> &Signature {
+        &self.author_signature
+    }
+
+    pub fn build_info(&self) -> &BuildInfo {
+        &self.build_info
+    }
+
     /// Creates a signature message used to prove knowledge of the author secret key
     pub fn create_signature_message(&self, public_nonce: &CompressedPublicKey) -> [u8; 64] {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
@@ -65,7 +73,7 @@ impl CodeTemplateRegistration {
 
 // -------------------------------- TemplateType -------------------------------- //
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum TemplateType {
     /// Indicates that the template is a WASM module
     Wasm { abi_version: u16 },

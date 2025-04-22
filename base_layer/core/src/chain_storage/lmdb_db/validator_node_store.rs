@@ -26,7 +26,7 @@
 use std::{collections::BTreeSet, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use log::debug;
+use log::*;
 use serde::de::DeserializeOwned;
 use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
@@ -149,17 +149,51 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
     pub fn undo_exit(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
-        exit_epoch: VnEpoch,
+        min_epoch: VnEpoch,
         exit_node: &CompressedPublicKey,
     ) -> Result<(), ChainStorageError> {
-        let exit_key = create_exit_queue_key(sidechain_pk, exit_epoch, exit_node);
-        let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes_exit, &exit_key)?.ok_or_else(
-            || ChainStorageError::ValueNotFound {
-                entity: "Validator node (undo exit)",
-                field: "public key (undo exit)",
-                value: exit_node.to_string(),
-            },
-        )?;
+        let mut epoch = min_epoch;
+        let sidechain_pk_bytes = sid_as_slice(sidechain_pk);
+        // Search through the epochs, from the min until we have no more records
+        let (exit_key, vn) = loop {
+            {
+                // This is to check if there are possibly more records for the next epoch - if not we exit early with an
+                // error. If we didnt do this, the loop would be endless if min_epoch/exit_node do not
+                // exist.
+                let mut cursor = self.exit_queue_read_cursor()?;
+                let epoch_prefix = create_exit_queue_prefix_key(sidechain_pk, epoch);
+                cursor.seek_range(&epoch_prefix)?;
+
+                let key = cursor.next_key()?.ok_or_else(||
+                    // Not in this epoch, and nothing in subsequent recs
+                    ChainStorageError::ValueNotFound {
+                        entity: "Validator node (undo exit)",
+                        field: "public key (undo exit)",
+                        value: exit_node.to_string(),
+                    })?;
+                let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+                let sidechain = sections
+                    .next()
+                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                        function: "ValidatorNodeStore::undo_exit",
+                        details: "Malformed exit queue key".to_string(),
+                    })?;
+                if sidechain != sidechain_pk_bytes {
+                    return Err(ChainStorageError::ValueNotFound {
+                        entity: "Validator node (undo exit)",
+                        field: "public key (undo exit)",
+                        value: exit_node.to_string(),
+                    });
+                }
+            }
+
+            let exit_key = create_exit_queue_key(sidechain_pk, epoch, exit_node);
+            let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes_exit, &exit_key)?;
+            if let Some(vn) = vn {
+                break (exit_key, vn);
+            }
+            epoch += VnEpoch(1);
+        };
 
         lmdb_delete(
             self.txn,
@@ -668,6 +702,64 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         Ok(validators)
     }
 
+    pub fn get_next_exit_epoch(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+        max_exits: usize,
+    ) -> Result<VnEpoch, ChainStorageError> {
+        let mut cursor = self.exit_queue_read_cursor()?;
+        let prefix = create_exit_queue_prefix_key(sidechain_pk, epoch);
+        if !cursor.seek_range(&prefix)? {
+            return Ok(epoch);
+        }
+
+        let sidechain_bytes = sid_as_slice(sidechain_pk);
+        let mut exit_count = 0;
+        let mut exit_epoch = epoch;
+        while let Some(key) = cursor.next_key()? {
+            trace!(target: LOG_TARGET, "exit queue key: {}", key);
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sid = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::get_exiting_in_epoch",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            if sid != sidechain_bytes {
+                // No further entries for this sidechain
+                break;
+            }
+
+            let rec_epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::get_exiting_in_epoch",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            if rec_epoch == exit_epoch.as_u64() {
+                exit_count += 1;
+                if exit_count >= max_exits {
+                    // Scan to the next epoch
+                    exit_epoch += VnEpoch(1);
+                    cursor.seek_range(&create_exit_queue_prefix_key(sidechain_pk, exit_epoch))?;
+                    exit_count = 0;
+                }
+            } else {
+                // Epoch has changed - first check if the previous epoch was below the max_exits
+                if exit_count < max_exits {
+                    break;
+                }
+                exit_epoch = VnEpoch(rec_epoch);
+                exit_count = 1;
+            }
+        }
+
+        Ok(exit_epoch)
+    }
+
     pub fn get(
         &self,
         sidechain_pk: Option<&CompressedPublicKey>,
@@ -901,6 +993,7 @@ mod tests {
 
     mod get_exiting_in_epoch {
         use super::*;
+        use crate::test_helpers::make_hash2;
 
         #[test]
         fn it_returns_vns_exiting() {
@@ -921,11 +1014,16 @@ mod tests {
 
             // Exit some nodes
             store.exit(None, &nodes[0].public_key, VnEpoch(11)).unwrap();
+            store.exit(None, &nodes[0].public_key, VnEpoch(11)).unwrap_err();
+
             store.exit(None, &nodes[1].public_key, VnEpoch(11)).unwrap();
             store.exit(None, &nodes2[0].public_key, VnEpoch(110)).unwrap();
             store.exit(None, &nodes2[1].public_key, VnEpoch(110)).unwrap();
             store.exit(Some(&sid), &nodes3[0].public_key, VnEpoch(11)).unwrap();
             store.exit(Some(&sid), &nodes3[1].public_key, VnEpoch(11)).unwrap();
+
+            let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(11), 2).unwrap();
+            assert_eq!(next_exit_epoch, VnEpoch(12));
 
             assert!(store.is_vn_active(None, &nodes[0].public_key, VnEpoch(9)).unwrap());
             assert!(!store.is_vn_active(None, &nodes[0].public_key, VnEpoch(12)).unwrap());
@@ -974,6 +1072,76 @@ mod tests {
             assert!(!store
                 .is_vn_active(Some(&sid), &nodes3[0].public_key, VnEpoch(11))
                 .unwrap());
+        }
+
+        #[test]
+        fn it_returns_then_next_exit_epoch() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let nodes = insert_n_vns(&store, 1, 0, 3, None);
+            let nodes2 = insert_n_vns(&store, 10, 0, 4, None);
+            let sid = new_public_key();
+            let nodes3 = insert_n_vns(&store, 1, 0, 3, Some(&sid));
+            let nodes4 = insert_n_vns(&store, 1, 0, 3, None);
+
+            // Empty
+            let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(10), 2).unwrap();
+            assert_eq!(next_exit_epoch, VnEpoch(10));
+
+            // Exit some nodes
+            store.exit(None, &nodes[0].public_key, VnEpoch(11)).unwrap();
+            store.exit(None, &nodes[1].public_key, VnEpoch(11)).unwrap();
+            store.exit(None, &nodes2[0].public_key, VnEpoch(12)).unwrap();
+            store.exit(None, &nodes2[1].public_key, VnEpoch(12)).unwrap();
+            store.exit(None, &nodes4[0].public_key, VnEpoch(13)).unwrap();
+            store.exit(None, &nodes4[1].public_key, VnEpoch(13)).unwrap();
+            store.exit(Some(&sid), &nodes3[0].public_key, VnEpoch(11)).unwrap();
+            store.exit(Some(&sid), &nodes3[1].public_key, VnEpoch(11)).unwrap();
+
+            let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(11), 2).unwrap();
+            assert_eq!(next_exit_epoch, VnEpoch(14));
+
+            store.undo_exit(None, VnEpoch(11), &nodes4[0].public_key).unwrap();
+            assert!(store
+                .undo_exit(None, VnEpoch(11), &Default::default())
+                .unwrap_err()
+                .is_value_not_found());
+            assert!(store
+                .undo_exit(None, VnEpoch(110), &Default::default())
+                .unwrap_err()
+                .is_value_not_found());
+
+            let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(11), 2).unwrap();
+            assert_eq!(next_exit_epoch, VnEpoch(13));
+        }
+
+        #[test]
+        fn it_allows_register_exit_register() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let nodes = insert_n_vns(&store, 1, 0, 3, None);
+            // Exit some nodes
+            store.exit(None, &nodes[0].public_key, VnEpoch(10)).unwrap();
+
+            let public_key = nodes[0].public_key.clone();
+            let shard_key = make_hash2(public_key.as_bytes(), [1u8]);
+            let start_epoch = VnEpoch(15);
+            let entry = ValidatorNodeEntry {
+                public_key: public_key.clone(),
+                shard_key,
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
+                activation_epoch: start_epoch,
+                sidechain_public_key: None,
+                ..Default::default()
+            };
+            store.insert(&entry).unwrap();
+
+            assert!(store.is_vn_active(None, &public_key, VnEpoch(15)).unwrap());
+
+            let next_exit_epoch = store.get_next_exit_epoch(None, VnEpoch(15), 2).unwrap();
+            assert_eq!(next_exit_epoch, VnEpoch(15));
         }
     }
 

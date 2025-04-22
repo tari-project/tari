@@ -54,6 +54,7 @@ use crate::{
         SideChainFeatureData,
         SideChainId,
         TemplateType,
+        ValidatorNodeExit,
         ValidatorNodeRegistration,
         ValidatorNodeSignature,
     },
@@ -86,8 +87,8 @@ impl TryFrom<proto::types::SideChainFeature> for SideChainFeature {
 impl From<SideChainFeatureData> for proto::types::side_chain_feature::SideChainFeature {
     fn from(value: SideChainFeatureData) -> Self {
         match value {
-            SideChainFeatureData::ValidatorNodeRegistration(template_reg) => {
-                proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
+            SideChainFeatureData::ValidatorNodeRegistration(reg) => {
+                proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration((*reg).into())
             },
             SideChainFeatureData::CodeTemplateRegistration(template_reg) => {
                 proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
@@ -95,8 +96,11 @@ impl From<SideChainFeatureData> for proto::types::side_chain_feature::SideChainF
             SideChainFeatureData::ConfidentialOutput(output_data) => {
                 proto::types::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data.into())
             },
-            SideChainFeatureData::EvictionProof(ref proof) => {
-                proto::types::side_chain_feature::SideChainFeature::EvictionProof(proof.into())
+            SideChainFeatureData::EvictionProof(proof) => {
+                proto::types::side_chain_feature::SideChainFeature::EvictionProof(proof.as_ref().into())
+            },
+            SideChainFeatureData::ValidatorNodeExit(ref exit) => {
+                proto::types::side_chain_feature::SideChainFeature::ValidatorNodeExit(exit.into())
             },
         }
     }
@@ -107,9 +111,9 @@ impl TryFrom<proto::types::side_chain_feature::SideChainFeature> for SideChainFe
 
     fn try_from(features: proto::types::side_chain_feature::SideChainFeature) -> Result<Self, Self::Error> {
         match features {
-            proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(vn_reg) => {
-                Ok(SideChainFeatureData::ValidatorNodeRegistration(vn_reg.try_into()?))
-            },
+            proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(vn_reg) => Ok(
+                SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg.try_into()?)),
+            ),
             proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
                 Ok(SideChainFeatureData::CodeTemplateRegistration(template_reg.try_into()?))
             },
@@ -117,7 +121,10 @@ impl TryFrom<proto::types::side_chain_feature::SideChainFeature> for SideChainFe
                 Ok(SideChainFeatureData::ConfidentialOutput(output_data.try_into()?))
             },
             proto::types::side_chain_feature::SideChainFeature::EvictionProof(proof) => {
-                Ok(SideChainFeatureData::EvictionProof(proof.try_into()?))
+                Ok(SideChainFeatureData::EvictionProof(Box::new(proof.try_into()?)))
+            },
+            proto::types::side_chain_feature::SideChainFeature::ValidatorNodeExit(exit) => {
+                Ok(SideChainFeatureData::ValidatorNodeExit(exit.try_into()?))
             },
         }
     }
@@ -142,6 +149,7 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
+            value.max_epoch.into(),
         ))
     }
 }
@@ -152,6 +160,38 @@ impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
             claim_public_key: value.claim_public_key().to_vec(),
+            max_epoch: value.max_epoch().as_u64(),
+        }
+    }
+}
+
+// -------------------------------- ValidatorNodeExit -------------------------------- //
+impl TryFrom<proto::types::ValidatorNodeExit> for ValidatorNodeExit {
+    type Error = String;
+
+    fn try_from(value: proto::types::ValidatorNodeExit) -> Result<Self, Self::Error> {
+        let public_key =
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+
+        Ok(Self::new(
+            ValidatorNodeSignature::new(
+                public_key,
+                value
+                    .signature
+                    .map(Signature::try_from)
+                    .ok_or("signature not provided")??,
+            ),
+            value.max_epoch.into(),
+        ))
+    }
+}
+
+impl From<&ValidatorNodeExit> for proto::types::ValidatorNodeExit {
+    fn from(value: &ValidatorNodeExit) -> Self {
+        Self {
+            public_key: value.public_key().to_vec(),
+            signature: Some(value.signature().into()),
+            max_epoch: value.max_epoch().as_u64(),
         }
     }
 }
@@ -191,11 +231,11 @@ impl From<CodeTemplateRegistration> for proto::types::TemplateRegistration {
     fn from(value: CodeTemplateRegistration) -> Self {
         Self {
             author_public_key: value.author_public_key.to_vec(),
-            author_signature: Some(value.author_signature.into()),
+            author_signature: Some(value.author_signature().into()),
             template_name: value.template_name.to_string(),
             template_version: u32::from(value.template_version),
             template_type: Some(value.template_type.into()),
-            build_info: Some(value.build_info.into()),
+            build_info: Some(value.build_info().into()),
             binary_sha: value.binary_sha.to_vec(),
             binary_url: value.binary_url.to_string(),
         }
@@ -275,11 +315,11 @@ impl TryFrom<proto::types::BuildInfo> for BuildInfo {
     }
 }
 
-impl From<BuildInfo> for proto::types::BuildInfo {
-    fn from(value: BuildInfo) -> Self {
+impl From<&BuildInfo> for proto::types::BuildInfo {
+    fn from(value: &BuildInfo) -> Self {
         Self {
-            repo_url: value.repo_url.into_string(),
-            commit_hash: value.commit_hash.to_vec(),
+            repo_url: value.repo_url.as_str().to_string(),
+            commit_hash: value.commit_hash.as_bytes().to_vec(),
         }
     }
 }

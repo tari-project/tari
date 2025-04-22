@@ -33,18 +33,15 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{
-        ComAndPubSignature,
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        PrivateKey,
-        RangeProof,
-        RangeProofService,
-    },
+use tari_common_types::types::{
+    ComAndPubSignature,
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    FixedHash,
+    PrivateKey,
+    RangeProof,
+    RangeProofService,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -332,27 +329,6 @@ impl TransactionOutput {
     /// Verify that the metadata signature is valid
     pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
         let _challenge = self.verify_metadata_signature_internal()?;
-        Ok(())
-    }
-
-    pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
-        let Some(sidechain_features) = self.features.sidechain_feature.as_ref() else {
-            return Ok(());
-        };
-
-        let Some(validator_node_reg) = sidechain_features.validator_node_registration() else {
-            return Ok(());
-        };
-
-        if !validator_node_reg.is_valid_signature_for(
-            sidechain_features.sidechain_id.as_ref().map(|id| id.public_key()),
-            // TODO: use actual epoch
-            VnEpoch::zero(),
-        ) {
-            return Err(TransactionError::InvalidSignatureError(
-                "Validator node signature is not valid!".to_string(),
-            ));
-        }
         Ok(())
     }
 

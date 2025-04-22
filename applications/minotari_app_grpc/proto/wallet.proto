@@ -84,6 +84,7 @@ service Wallet {
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
+  rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
 }
 
 message GetVersionRequest {}
@@ -360,9 +361,10 @@ message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
   bytes validator_node_claim_public_key = 3;
-  uint64 fee_per_gram = 4;
-  bytes payment_id = 5;
-  bytes sidechain_deployment_key = 6;
+  uint64 max_epoch = 4;
+  uint64 fee_per_gram = 5;
+  bytes payment_id = 6;
+  bytes sidechain_deployment_key = 7;
 }
 
 message RegisterValidatorNodeResponse {
@@ -380,4 +382,19 @@ message SubmitValidatorEvictionProofRequest {
 
 message SubmitValidatorEvictionProofResponse {
   uint64 tx_id = 1;
+}
+
+message SubmitValidatorNodeExitRequest {
+  bytes validator_node_public_key = 1;
+  Signature validator_node_signature = 2;
+  uint64 max_epoch = 3;
+  uint64 fee_per_gram = 4;
+  bytes message = 5;
+  bytes sidechain_deployment_key = 6;
+}
+
+message SubmitValidatorNodeExitResponse {
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
 }

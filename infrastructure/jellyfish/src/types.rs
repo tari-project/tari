@@ -661,7 +661,7 @@ impl NibblePath {
     pub fn truncate(&mut self, len: usize) {
         assert!(len <= self.num_nibbles);
         self.num_nibbles = len;
-        self.bytes.truncate((len + 1) / 2);
+        self.bytes.truncate(len.div_ceil(2));
         if len % 2 != 0 {
             *self.bytes.last_mut().expect("must exist.") &= 0xF0;
         }

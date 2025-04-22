@@ -31,8 +31,9 @@ message SideChainFeature {
     TemplateRegistration template_registration = 2;
     ConfidentialOutputData confidential_output = 3;
     EvictionProof eviction_proof = 4;
+    ValidatorNodeExit validator_node_exit = 5;
   }
-  SideChainId sidechain_id = 5;
+  SideChainId sidechain_id = 6;
 }
 
 message SideChainId {
@@ -44,6 +45,13 @@ message ValidatorNodeRegistration {
   bytes public_key = 1;
   Signature signature = 2;
   bytes claim_public_key = 3;
+  uint64 max_epoch = 4;
+}
+
+message ValidatorNodeExit {
+  bytes public_key = 1;
+  Signature signature = 2;
+  uint64 max_epoch = 3;
 }
 
 message TemplateRegistration {
@@ -83,6 +91,7 @@ message BuildInfo {
   string repo_url = 1;
   bytes commit_hash = 2;
 }
+
 
 message EvictionProof {
   CommitProof proof = 1;

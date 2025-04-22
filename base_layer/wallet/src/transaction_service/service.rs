@@ -818,6 +818,7 @@ where
                 validator_node_signature,
                 validator_node_claim_public_key,
                 sidechain_deployment_key,
+                max_epoch,
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
@@ -829,7 +830,35 @@ where
                     validator_node_signature,
                     validator_node_claim_public_key,
                     sidechain_deployment_key,
+                    max_epoch,
                     selection_criteria,
+                    fee_per_gram,
+                    payment_id,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    rp,
+                )
+                .await?;
+                return Ok(());
+            },
+            TransactionServiceRequest::SubmitValidatorNodeExit {
+                amount,
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_deployment_key,
+                max_epoch,
+                selection_criteria,
+                fee_per_gram,
+                payment_id,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.submit_validator_exit(
+                    amount,
+                    validator_node_public_key,
+                    validator_node_signature,
+                    sidechain_deployment_key,
+                    selection_criteria,
+                    max_epoch,
                     fee_per_gram,
                     payment_id,
                     send_transaction_join_handles,
@@ -2508,6 +2537,7 @@ where
         validator_node_signature: Signature,
         validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -2523,7 +2553,11 @@ where
         let sidechain_pk = sidechain_deployment_key
             .as_ref()
             .map(CompressedPublicKey::from_secret_key);
-        if !signature.is_valid_signature_for(sidechain_pk.as_ref(), &validator_node_claim_public_key, VnEpoch(0)) {
+        if !signature.is_valid_registration_signature_for(
+            sidechain_pk.as_ref(),
+            &validator_node_claim_public_key,
+            max_epoch,
+        ) {
             return Err(TransactionServiceError::InvalidValidatorNodeSignature);
         }
 
@@ -2531,7 +2565,52 @@ where
             signature,
             validator_node_claim_public_key,
             sidechain_deployment_key.as_ref(),
+            max_epoch,
         );
+        self.send_transaction(
+            self.resources.interactive_tari_address.clone(),
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            payment_id,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn submit_validator_exit(
+        &mut self,
+        amount: MicroMinotari,
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+        max_epoch: VnEpoch,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
+        let sidechain_pk = sidechain_deployment_key
+            .as_ref()
+            .map(CompressedPublicKey::from_secret_key);
+        if !signature.is_valid_exit_signature_for(sidechain_pk.as_ref(), max_epoch) {
+            return Err(TransactionServiceError::InvalidValidatorNodeSignature);
+        }
+
+        let output_features =
+            OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
         self.send_transaction(
             self.resources.interactive_tari_address.clone(),
             amount,

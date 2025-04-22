@@ -126,6 +126,8 @@ pub struct ConsensusConstants {
     vn_registration_max_vns_initial_epoch: u32,
     /// Maximum number of validator nodes activated in an epoch.
     vn_registration_max_vns_per_epoch: u32,
+    /// Maximum number of validator nodes that can exit per epoch
+    vn_registration_max_exits_per_epoch: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -362,6 +364,10 @@ impl ConsensusConstants {
         self.vn_registration_max_vns_per_epoch
     }
 
+    pub fn vn_registration_max_exits_per_epoch(&self) -> u32 {
+        self.vn_registration_max_exits_per_epoch
+    }
+
     pub fn epoch_length(&self) -> u64 {
         self.vn_epoch_length
     }
@@ -414,6 +420,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -480,6 +487,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -537,6 +545,8 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+
+            vn_registration_max_exits_per_epoch: 5,
         };
         let consensus_constants = vec![consensus_constants1];
         consensus_constants
@@ -595,6 +605,8 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -646,6 +658,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         };
 
         let consensus_constants = vec![con_1];
@@ -701,6 +714,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -723,6 +737,7 @@ impl ConsensusConstants {
             (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
             (OutputType::SidechainCheckpoint, &[RangeProofType::BulletProofPlus]),
             (OutputType::SidechainProof, &[RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeExit, &[RangeProofType::BulletProofPlus]),
         ]
     }
 
@@ -735,6 +750,7 @@ impl ConsensusConstants {
             (OutputType::CodeTemplateRegistration, RangeProofType::all()),
             (OutputType::SidechainCheckpoint, RangeProofType::all()),
             (OutputType::SidechainProof, RangeProofType::all()),
+            (OutputType::ValidatorNodeExit, RangeProofType::all()),
         ];
         RP_TYPES
     }
