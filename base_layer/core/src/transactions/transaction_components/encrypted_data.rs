@@ -1129,7 +1129,7 @@ mod test {
                 amount: MicroMinotari::from(123456),
                 fee: MicroMinotari::from(123),
                 tx_type: TxType::PaymentToSelf,
-                user_data: vec![1; 187],
+                user_data: vec![1; 50],
             },
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
@@ -1145,7 +1145,7 @@ mod test {
                 amount: MicroMinotari::from(123456),
                 fee: MicroMinotari::from(123),
                 tx_type: TxType::ValidatorNodeRegistration,
-                user_data: vec![1; 187],
+                user_data: vec![1; 50],
             },
             // Single + amount
             PaymentId::TransactionInfo {
