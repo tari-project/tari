@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(OutputType::from_byte(5), Some(OutputType::SidechainCheckpoint));
         assert_eq!(OutputType::from_byte(6), Some(OutputType::SidechainProof));
         assert_eq!(OutputType::from_byte(7), Some(OutputType::ValidatorNodeExit));
-        for i in 7..=255 {
+        for i in 8..=255 {
             assert_eq!(OutputType::from_byte(i), None);
         }
     }
