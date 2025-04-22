@@ -102,11 +102,8 @@ impl BlockBodyFullValidator {
                         target: LOG_TARGET,
                         "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
                     );
-                    match e {
-                        ChainStorageError::CannotCalculateNonTipMmr(ref _e) => {
-                            return Err(e.into());
-                        },
-                        _ => {},
+                    if let ChainStorageError::CannotCalculateNonTipMmr(ref _e) = e {
+                        return Err(e.into());
                     }
                     // Recalculate SMT as it might have been altered.
                     *output_smt = backend.calculate_tip_smt()?;

@@ -952,13 +952,10 @@ where B: BlockchainBackend
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets rewind the smt
-                match e {
-                    ChainStorageError::CannotCalculateNonTipMmr(_) => {
-                        warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
-                        // Do not recalc smt, it has not changed.
-                        return Err(e);
-                    },
-                    _ => {},
+                if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
+                    warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
+                    // Do not recalc smt, it has not changed.
+                    return Err(e);
                 }
                 warn!(
                     target: LOG_TARGET,
@@ -993,13 +990,10 @@ where B: BlockchainBackend
         let mmr_roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
             Ok(v) => v,
             Err(e) => {
-                match e {
-                    ChainStorageError::CannotCalculateNonTipMmr(_) => {
-                        warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
-                        // Do not recalc smt, it has not changed.
-                        return Err(e);
-                    },
-                    _ => {},
+                if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
+                    warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
+                    // Do not recalc smt, it has not changed.
+                    return Err(e);
                 }
                 // some error happend, lets reset the smt to its starting state
                 warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
