@@ -124,11 +124,11 @@ impl TariPulseService {
         notify_comms_health: watch::Sender<Vec<LivenessCheckResult>>,
     ) {
         let mut dns_check_interval = time::interval(self.config.dns_check_interval);
-        dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        dns_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(dns_check_interval);
 
         let mut health_check_interval = time::interval(self.config.liveness_interval);
-        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        health_check_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tokio::pin!(health_check_interval);
 
         let mut shutdown_signal = self.shutdown_signal.clone();
