@@ -581,22 +581,6 @@ impl P2pInitializer {
                     dns_errors.push("Timeout".to_string())
                 },
             }
-            // match res {
-            //     Ok(val) => {
-            //         trace!(target: LOG_TARGET, "Found DNS client at '{}'", dns);
-            //         return Ok(val);
-            //     },
-            //     Err(err) => {
-            //         warn!(
-            //             target: LOG_TARGET,
-            //             "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in
-            // \             the config file. (Error: {})",
-            //             dns,
-            //             err.to_string(),
-            //         );
-            //         dns_errors.push(err.to_string())
-            //     },
-            // }
         }
         Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
             "{:?}",
