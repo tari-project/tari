@@ -2516,16 +2516,19 @@ pub async fn command_runner(
                 let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
                 let spend_key_hex = spend_key.pub_key.to_hex();
                 let output_file = args.output_file;
+                let birthday = wallet.db.get_wallet_birthday()?;
                 #[derive(Serialize)]
                 struct ViewKeyFile {
                     view_key: String,
                     public_view_key: String,
                     spend_key: String,
+                    birthday: u16,
                 }
                 let view_key_file = ViewKeyFile {
                     view_key: private_view_key_hex.clone(),
                     public_view_key: view_key_hex.clone(),
                     spend_key: spend_key_hex.clone(),
+                    birthday,
                 };
                 let view_key_file_json =
                     serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
@@ -2536,6 +2539,7 @@ pub async fn command_runner(
                 } else {
                     println!("View key: {}", private_view_key_hex);
                     println!("Spend key: {}", spend_key_hex);
+                    println!("Birthday: {}", birthday);
                 }
             },
             ImportPaperWallet(args) => {

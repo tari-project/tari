@@ -25,6 +25,7 @@
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use dialoguer::Input as InputPrompt;
 use digest::crypto_common::rand_core::OsRng;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
@@ -101,7 +102,7 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
-    ViewAndSpendKey,
+    ViewAndSpendKey { birthday: Option<u16> },
 }
 
 /// Get and confirm a passphrase from the user, with feedback
@@ -751,7 +752,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
     }
 
     if !wallet_exists && cli.view_private_key.is_some() && cli.spend_key.is_some() {
-        return Ok(WalletBoot::ViewAndSpendKey);
+        return Ok(WalletBoot::ViewAndSpendKey { birthday: cli.birthday });
     }
 
     if wallet_exists {
@@ -791,7 +792,15 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                             return Ok(WalletBoot::Recovery);
                         },
                         "3" => {
-                            return Ok(WalletBoot::ViewAndSpendKey);
+                            let mut birthday = InputPrompt::<u16>::new()
+                                .with_prompt("Please enter wallet birth, or enter to skip ")
+                                .default(0)
+                                .interact()
+                                .unwrap_or(0);
+                            let birthday_option = if birthday == 0 { None } else { Some(birthday) };
+                            return Ok(WalletBoot::ViewAndSpendKey {
+                                birthday: birthday_option,
+                            });
                         },
                         _ => continue,
                     }
@@ -833,7 +842,7 @@ pub(crate) fn boot_with_password(
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { .. } => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
@@ -849,12 +858,12 @@ pub fn prompt_wallet_type(
     view_private_key: Option<String>,
     spend_key: Option<String>,
 ) -> Option<WalletType> {
-    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey) {
+    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
         return Some(WalletType::default());
     }
 
     match boot_mode {
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { birthday } => {
             let view_key = if let Some(vk) = view_private_key {
                 match PrivateKey::from_hex(&vk) {
                     Ok(pk) => pk,
@@ -883,6 +892,7 @@ pub fn prompt_wallet_type(
                 public_spend_key: spend_key,
                 private_spend_key: None,
                 private_comms_key: None,
+                birthday,
             }))
         },
         WalletBoot::New | WalletBoot::Recovery => {

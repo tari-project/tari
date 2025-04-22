@@ -267,15 +267,11 @@ where
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
-                    Some(WalletType::ProvidedKeys(_)) => {
-                        let header_proto = client.get_header_by_height(0).await?;
-                        let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
-                        HeightHash {
-                            height: 0,
-                            header_hash: header.hash(),
-                        }
+                    Some(WalletType::ProvidedKeys(wallet)) => {
+                        self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
+                            .await?
                     },
-                    _ => self.get_scanning_start_header_height_hash(&mut client).await?,
+                    _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
                 };
 
                 ScannedBlock {
@@ -749,8 +745,12 @@ where
     async fn get_scanning_start_header_height_hash(
         &self,
         client: &mut BaseNodeWalletRpcClient,
+        option_birthday: Option<u16>,
     ) -> Result<HeightHash, UtxoScannerError> {
-        let birthday = self.resources.db.get_wallet_birthday()?;
+        let birthday = match option_birthday {
+            Some(birthday) => birthday,
+            None => self.resources.db.get_wallet_birthday()?,
+        };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
         let block_height_birthday = client
             .get_height_at_time(epoch_time_birthday)

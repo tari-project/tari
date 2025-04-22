@@ -99,6 +99,8 @@ pub struct Cli {
     pub view_private_key: Option<String>,
     #[clap(long)]
     pub spend_key: Option<String>,
+    #[clap(long)]
+    pub birthday: Option<u16>,
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,

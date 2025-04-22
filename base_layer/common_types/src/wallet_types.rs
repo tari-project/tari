@@ -54,6 +54,7 @@ pub struct ProvidedKeysWallet {
     pub private_spend_key: Option<PrivateKey>,
     pub private_comms_key: Option<PrivateKey>,
     pub view_key: PrivateKey,
+    pub birthday: Option<u16>,
 }
 
 impl Display for ProvidedKeysWallet {
