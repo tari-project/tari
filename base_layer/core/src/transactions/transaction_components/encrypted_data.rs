@@ -525,7 +525,7 @@ impl PaymentId {
             (_, _) => {},
         }
         PaymentId::Open {
-            tx_type: TxType::from_u8(*bytes.get(0).unwrap_or(&0)),
+            tx_type: TxType::from_u8(*bytes.first().unwrap_or(&0)),
             user_data: bytes.get(1..).unwrap_or_default().to_vec(),
         }
     }
