@@ -15,10 +15,7 @@ pub trait ToCommand {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum Command {
     LocalOnly,
-    Prepare,
     LocalPrepare,
-    AllPrepare,
-    SomePrepare,
     LocalAccept,
     AllAccept,
     SomeAccept,

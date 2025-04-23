@@ -8,7 +8,6 @@ use tari_common_types::types::FixedHash;
 
 use crate::{
     CheckVnFunc,
-    Command,
     CommitProofElement,
     QuorumCertificate,
     QuorumDecision,
@@ -17,14 +16,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::sidechain::validations";
-pub fn check_command_inclusion_proof(
-    _header: &SidechainBlockHeader,
-    // inclusion_proof: &InclusionProof,
-    _command: &Command,
-) -> Result<(), SidechainProofValidationError> {
-    // TODO: Implement
-    Ok(())
-}
 
 pub fn check_proof_elements(
     header: &SidechainBlockHeader,

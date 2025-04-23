@@ -8,17 +8,15 @@ use tari_common_types::{
     types::{CompressedPublicKey, FixedHash, PrivateKey, UncompressedPublicKey},
 };
 use tari_crypto::signatures::CompressedSchnorrSignature;
-use tari_hashing::{
-    layer2::{block_hasher, vote_signature_hasher},
-    ValidatorNodeHashDomain,
-};
+use tari_hashing::{layer2, ValidatorNodeHashDomain};
 use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
+use tari_utilities::ByteArray;
 
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
     shard_group::ShardGroup,
-    validations::{check_command_inclusion_proof, check_proof_elements},
+    validations::check_proof_elements,
 };
 
 pub type ValidatorBlockSignature =
@@ -111,8 +109,7 @@ impl<C: ToCommand> CommandCommitProofV1<C> {
     ) -> Result<(), SidechainProofValidationError> {
         let command = self.command.to_command();
         self.validate_inclusion_proof(&command)?;
-        self.commit_proof
-            .validate_committed(&command, quorum_threshold, check_vn)
+        self.commit_proof.validate_committed(quorum_threshold, check_vn)
     }
 }
 
@@ -125,11 +122,9 @@ pub struct SidechainBlockCommitProof {
 impl SidechainBlockCommitProof {
     pub fn validate_committed(
         &self,
-        command: &Command,
         quorum_threshold: usize,
         check_vn: &CheckVnFunc<'_>,
     ) -> Result<(), SidechainProofValidationError> {
-        check_command_inclusion_proof(&self.header, command)?;
         check_proof_elements(
             &self.header,
             &self.proof_elements,
@@ -164,7 +159,7 @@ pub struct ChainLink {
 
 impl ChainLink {
     pub fn calc_block_id(&self) -> FixedHash {
-        block_hasher()
+        layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
             .finalize()
@@ -181,45 +176,33 @@ pub struct SidechainBlockHeader {
     pub epoch: u64,
     pub shard_group: ShardGroup,
     pub proposed_by: CompressedPublicKey,
-    pub total_leader_fee: u64,
     pub state_merkle_root: FixedHash,
     pub command_merkle_root: FixedHash,
-    /// If the block is a dummy block.
-    pub is_dummy: bool,
-    pub foreign_indexes_hash: FixedHash,
     /// Signature of block by the proposer.
     pub signature: ValidatorBlockSignature,
-    pub timestamp: u64,
-    pub base_layer_block_height: u64,
-    pub base_layer_block_hash: FixedHash,
-    pub extra_data_hash: FixedHash,
+    pub metadata_hash: FixedHash,
 }
 
 impl SidechainBlockHeader {
     pub fn calculate_hash(&self) -> FixedHash {
-        block_hasher()
-            .chain(&self.network)
-            .chain(&self.justify_id)
-            .chain(&self.height)
-            .chain(&self.total_leader_fee)
-            .chain(&self.epoch)
-            .chain(&self.shard_group)
-            .chain(&self.proposed_by)
-            .chain(&self.state_merkle_root)
-            .chain(&self.is_dummy)
-            .chain(&self.command_merkle_root)
-            .chain(&self.foreign_indexes_hash)
-            .chain(&self.timestamp)
-            .chain(&self.base_layer_block_height)
-            .chain(&self.base_layer_block_hash)
-            .chain(&self.extra_data_hash)
-            .finalize()
-            .into()
+        let fields = BlockHeaderHashFields::V1(BlockHeaderHashFieldsV1 {
+            network: self.network,
+            justify_id: &self.justify_id,
+            height: self.height,
+            epoch: self.epoch,
+            shard_group: self.shard_group,
+            proposed_by: self.proposed_by.as_bytes(),
+            state_merkle_root: &self.state_merkle_root,
+            command_merkle_root: &self.command_merkle_root,
+            metadata_hash: &self.metadata_hash,
+        });
+
+        layer2::block_hasher().chain(&fields).finalize().into()
     }
 
     pub fn calculate_block_id(&self) -> FixedHash {
         let header_hash = self.calculate_hash();
-        block_hasher()
+        layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&header_hash)
             .finalize()
@@ -241,7 +224,7 @@ pub struct QuorumCertificate {
 
 impl QuorumCertificate {
     pub fn calculate_justified_block(&self) -> FixedHash {
-        block_hasher()
+        layer2::block_hasher()
             .chain(&self.parent_id)
             .chain(&self.header_hash)
             .finalize()
@@ -272,7 +255,10 @@ impl ValidatorQcSignature {
             return false;
         };
 
-        let message = vote_signature_hasher().chain(block_id).chain(&decision).finalize();
+        let message = layer2::vote_signature_hasher()
+            .chain(block_id)
+            .chain(&decision)
+            .finalize();
         signature.verify(&public_key, message)
     }
 
@@ -283,4 +269,23 @@ impl ValidatorQcSignature {
     pub fn signature(&self) -> &ValidatorBlockSignature {
         &self.signature
     }
+}
+
+#[derive(Debug, BorshSerialize)]
+pub enum BlockHeaderHashFields<'a> {
+    V1(BlockHeaderHashFieldsV1<'a>),
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct BlockHeaderHashFieldsV1<'a> {
+    pub network: u8,
+    pub justify_id: &'a FixedHash,
+    pub height: u64,
+    pub epoch: u64,
+    pub shard_group: ShardGroup,
+    // NOTE this is borsh encoded as variable length bytes - technically should always be 32
+    pub proposed_by: &'a [u8],
+    pub state_merkle_root: &'a FixedHash,
+    pub command_merkle_root: &'a FixedHash,
+    pub metadata_hash: &'a FixedHash,
 }

@@ -120,16 +120,10 @@ message SidechainBlockHeader {
   uint64 epoch = 5;
   ShardGroup shard_group = 6;
   bytes proposed_by = 7;
-  uint64 total_leader_fee = 8;
-  bytes state_merkle_root = 9;
-  bytes command_merkle_root = 10;
-  bool is_dummy = 11;
-  bytes foreign_indexes_hash = 12;
-  Signature signature = 13;
-  uint64 timestamp = 14;
-  uint64 base_layer_block_height = 15;
-  bytes base_layer_block_hash = 16;
-  bytes extra_data_hash = 17;
+  bytes state_merkle_root = 8;
+  bytes command_merkle_root = 9;
+  Signature signature = 10;
+  bytes metadata_hash = 11;
 }
 
 message EvictAtom {

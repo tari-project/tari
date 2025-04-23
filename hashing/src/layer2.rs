@@ -35,6 +35,10 @@ pub fn block_hasher() -> TariConsensusHasher {
     tari_consensus_hasher("Block")
 }
 
+pub fn block_metadata_hasher() -> TariConsensusHasher {
+    tari_consensus_hasher("BlockMetadata")
+}
+
 pub fn command_hasher() -> TariConsensusHasher {
     tari_consensus_hasher("Command")
 }
@@ -45,14 +49,6 @@ pub fn quorum_certificate_hasher() -> TariConsensusHasher {
 
 pub fn vote_signature_hasher() -> TariConsensusHasher {
     tari_consensus_hasher("VoteSignature")
-}
-
-pub fn extra_data_hasher() -> TariConsensusHasher {
-    tari_consensus_hasher("ExtraData")
-}
-
-pub fn foreign_indexes_hasher() -> TariConsensusHasher {
-    tari_consensus_hasher("ForeignIndexes")
 }
 
 pub type ValidatorNodeBmtHasherBlake2b = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeMerkleHashDomain>;
