@@ -1971,6 +1971,7 @@ where
         Ok((tx, amount, fee))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
