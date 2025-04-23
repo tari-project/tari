@@ -21,102 +21,71 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cmp,
-    cmp::Ordering,
+    cmp::{self, Ordering},
     collections::VecDeque,
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
-    sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    },
     time::Instant,
 };
 
 use blake2::Blake2b;
 use digest::consts::U32;
+use hickory_proto::rr::rdata::A;
+use jmt::{storage::NodeKey, JellyfishMerkleTree, KeyHash};
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature,
         UncompressedCommitment,
     },
 };
 use tari_hashing::TransactionHashDomain;
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
-};
+use tari_mmr::{pruned_hashset::PrunedHashSet, sparse_merkle_tree::DeleteResult};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::TemplateRegistrationEntry;
+use super::{
+    lmdb_db::{lmdb_tree_reader::LmdbTreeReader, lmdb_tree_writer::LmdbTreeWriter},
+    smt_hasher::SmtHasher,
+    TemplateRegistrationEntry,
+};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock,
+        ChainHeader, HistoricalBlock, NewBlockTemplate, UpdateBlockAccumulatedData,
     },
     chain_storage::{
         consts::{
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         utxo_mined_info::OutputMinedInfo,
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, DbBasicStats, DbTotalSizeStats, HorizonData, InputMinedInfo, MmrTree,
+        Optional, OrNotFound, Reorg, TargetDifficulties,
     },
     common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
+        chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
-        helpers::calc_median_timestamp,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        helpers::calc_median_timestamp, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    ValidatorNodeBMT,
+    OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -222,12 +191,14 @@ pub struct BlockchainDatabase<B> {
     consensus_manager: ConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
-    smt: Arc<RwLock<OutputSmt>>,
+    smt_reader: Arc<LmdbTreeReader>,
+    // smt_writer: Arc<Mutex<LmdbTreeWriter>>,
 }
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -236,7 +207,6 @@ where B: BlockchainBackend
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
-        smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
         trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let blockchain_db = BlockchainDatabase {
@@ -246,7 +216,8 @@ where B: BlockchainBackend
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
-            smt,
+            smt_reader: Arc::new(LmdbTreeReader::new()),
+            // smt_writer: Arc::new(Mutex::new(LmdbTreeWriter::new())),
         };
         Ok(blockchain_db)
     }
@@ -257,7 +228,6 @@ where B: BlockchainBackend
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
-        smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Self, ChainStorageError> {
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
@@ -266,7 +236,8 @@ where B: BlockchainBackend
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
-            smt,
+            smt_reader: Arc::new(LmdbTreeReader::new()),
+            // smt_writer: Arc::new(Mutex::new(LmdbTreeWriter::new())),
         };
         blockchain_db.start()?;
         Ok(blockchain_db)
@@ -303,10 +274,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -325,13 +299,14 @@ where B: BlockchainBackend
                  resync your blockchain database."
                     .into(),
             ));
-        } else {
-            // lets load the smt into memory
-            let mut smt = self.smt_write_access()?;
-            debug!(target: LOG_TARGET, "Loading SMT into memory from stored db");
-            *smt = self.db_write_access()?.calculate_tip_smt()?;
-            debug!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
         }
+        //  else {
+        // lets load the smt into memory
+        // let mut smt = self.smt_write_access()?;
+        // info!(target: LOG_TARGET, "Loading SMT into memory from stored db");
+        // *smt = self.db_write_access()?.calculate_tip_smt()?;
+        // debug!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
+        // }
         if config.cleanup_orphans_at_startup {
             match self.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
@@ -383,30 +358,6 @@ where B: BlockchainBackend
                 "An attempt to get a read lock on the blockchain backend failed. {:?}", e
             );
             ChainStorageError::AccessError("Read lock on blockchain backend failed".into())
-        })
-    }
-
-    pub fn smt_write_access(&self) -> Result<RwLockWriteGuard<OutputSmt>, ChainStorageError> {
-        self.smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a write lock on the smt failed. {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })
-    }
-
-    pub fn smt(&self) -> Arc<RwLock<OutputSmt>> {
-        self.smt.clone()
-    }
-
-    pub fn smt_read_access(&self) -> Result<RwLockReadGuard<OutputSmt>, ChainStorageError> {
-        self.smt.read().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "An attempt to get a read lock on the smt failed. {:?}", e
-            );
-            ChainStorageError::AccessError("read lock on smt".into())
         })
     }
 
@@ -496,16 +447,31 @@ where B: BlockchainBackend
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-        let smt = self.smt_read_access()?;
+        let tip = db.fetch_chain_metadata()?.best_block_height();
+        // let smt = self.smt_read_access()?;
+        let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&*self.smt_reader);
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
 
-            result.push(output.map(|mined_info| {
-                let smt_key = NodeKey::try_from(mined_info.output.commitment.as_bytes()).unwrap();
-                let spent = !smt.contains(&smt_key);
-                (mined_info.output, spent)
-            }));
+            if let Some(mined_info) = output {
+                let smt_key = KeyHash(
+                    mined_info
+                        .output
+                        .commitment
+                        .as_bytes()
+                        .try_into()
+                        .expect("must be 32 bytes"),
+                );
+
+                let spent = !smt
+                    .get(smt_key, tip)
+                    .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?
+                    .is_none();
+                result.push(Some((mined_info.output, spent)));
+            } else {
+                result.push(None);
+            }
         }
         Ok(result)
     }
@@ -947,8 +913,8 @@ where B: BlockchainBackend
                 .ok_or(ChainStorageError::UnexpectedResult("Timestamp overflowed".to_string()))?;
         }
         let mut block = Block { header, body };
-        let mut smt = self.smt_write_access()?;
-        let roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
+        // let mut smt = self.smt_write_access()?;
+        let roots = match calculate_mmr_roots(&*db, self.rules(), &block) {
             Ok(v) => v,
             Err(e) => {
                 // some error happend, lets rewind the smt
@@ -963,7 +929,7 @@ where B: BlockchainBackend
                     e
                 );
 
-                *smt = db.calculate_tip_smt()?;
+                // *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
         };
@@ -986,18 +952,18 @@ where B: BlockchainBackend
                 "calculate_mmr_roots expected a sorted block body, however the block body was not sorted".to_string(),
             ));
         };
-        let mut smt = self.smt_write_access()?;
-        let mmr_roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
+        // let mut smt = self.smt_write_access()?;
+        let mmr_roots = match calculate_mmr_roots(&*db, self.rules(), &block) {
             Ok(v) => v,
             Err(e) => {
-                if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
-                    warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
-                    // Do not recalc smt, it has not changed.
-                    return Err(e);
-                }
+                // if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
+                //     warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
+                //     // Do not recalc smt, it has not changed.
+                //     return Err(e);
+                // }
                 // some error happend, lets reset the smt to its starting state
-                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
-                *smt = db.calculate_tip_smt()?;
+                // warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
+                // *smt = db.calculate_tip_smt()?;
                 return Err(e);
             },
         };
@@ -1098,6 +1064,9 @@ where B: BlockchainBackend
             });
         }
 
+        // let mut smt_lock = self.smt_writer.lock().map_err(|e| {
+        // ChainStorageError::CriticalError("Cannot acquire mutex on smt, a previous thread has panicked".to_string())
+        // })?;
         // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is
         // done as soon as we receive the block before we do any processing on it. A proper proof of
         // work is done as soon as we can link it to the main chain. Full block validation only happens
@@ -1111,7 +1080,7 @@ where B: BlockchainBackend
             &*self.validators.header,
             self.consensus_manager.chain_strength_comparer(),
             candidate_block,
-            self.smt(),
+            // &mut smt_lock,
         )?;
 
         // If blocks were added and the node is in pruned mode, perform pruning
@@ -1161,7 +1130,7 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
 
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block, self.smt())?;
+        insert_best_block(&mut txn, block)?;
         db.write(txn)
     }
 
@@ -1287,9 +1256,9 @@ where B: BlockchainBackend
     /// The operation will fail if
     /// * The block height is in the future
     pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
-        let smt = self.smt().clone();
+        // let smt = self.smt().clone();
         let mut db = self.db_write_access()?;
-        rewind_to_height(&mut *db, height, smt)
+        rewind_to_height(&mut *db, height)
     }
 
     /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
@@ -1300,7 +1269,7 @@ where B: BlockchainBackend
     /// * The block hash is before the horizon block height determined by the pruning horizon
     pub fn rewind_to_hash(&self, hash: BlockHash) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
-        rewind_to_hash(&mut *db, hash, self.smt.clone())
+        rewind_to_hash(&mut *db, hash)
     }
 
     /// This method will compare all chain tips the node currently knows about. This includes
@@ -1315,7 +1284,6 @@ where B: BlockchainBackend
             &self.config,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
-            self.smt(),
         )?;
         Ok(())
     }
@@ -1414,12 +1382,12 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     db: &T,
     rules: &ConsensusManager,
     block: &Block,
-    // we dont want to clone the SMT, so we rather change it and change it back after we are done.
-    output_smt: &mut OutputSmt,
+    // smt_reader: &LmdbTreeReader,
 ) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;
 
+    let smt_reader = db.create_smt_reader()?;
     let metadata = db.fetch_chain_metadata()?;
     if header.prev_hash != *metadata.best_block_hash() {
         return Err(ChainStorageError::CannotCalculateNonTipMmr(format!(
@@ -1443,12 +1411,14 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
-    let mut outputs_to_remove = Vec::new();
+    // let mut outputs_to_remove = Vec::new();
+    let mut batch = Vec::with_capacity(body.outputs().len() + body.inputs().len());
     for output in body.outputs() {
         if output.features.is_coinbase() {
             block_output_mmr.push(output.hash().to_vec())?;
@@ -1456,36 +1426,47 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
             normal_output_mmr.push(output.hash().to_vec())?;
         }
         if !output.is_burned() {
-            let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-            let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-            outputs_to_remove.push(smt_key.clone());
-            if let Err(e) = output_smt.insert(smt_key, smt_node) {
-                error!(
-                    target: LOG_TARGET,
-                    "Output commitment({}) already in SMT",
-                    output.commitment.to_hex(),
-                );
-                return Err(e.into());
-            }
+            // let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+            let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            //  let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
+            let smt_value = output.smt_hash(header.height);
+
+            batch.push((smt_key.clone(), Some(smt_value.to_vec())));
+            // outputs_to_remove.push(smt_key.clone());
+            // if let Err(e) = output_smt.insert(smt_key, smt_node) {
+            //     error!(
+            //         target: LOG_TARGET,
+            //         "Output commitment({}) already in SMT",
+            //         output.commitment.to_hex(),
+            //     );
+            //     return Err(e.into());
+            // }
         }
     }
     block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
-    let mut outputs_to_add = Vec::new();
+    // let mut outputs_to_add = Vec::new();
     for input in body.inputs() {
         input_mmr.push(input.canonical_hash().to_vec())?;
-        let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-        match output_smt.delete(&smt_key)? {
-            DeleteResult::Deleted(value_hash) => outputs_to_add.push((smt_key, value_hash)),
-            DeleteResult::KeyNotFound => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not find input({}) in SMT",
-                    input.commitment()?.to_hex(),
-                );
-                return Err(ChainStorageError::UnspendableInput);
-            },
-        };
+        let smt_key = KeyHash(
+            input
+                .commitment()?
+                .as_bytes()
+                .try_into()
+                .expect("Commitment is 32 bytes"),
+        );
+        // match output_smt.delete(&smt_key)? {
+        //     DeleteResult::Deleted(value_hash) => outputs_to_add.push((smt_key, value_hash)),
+        //     DeleteResult::KeyNotFound => {
+        //         error!(
+        //             target: LOG_TARGET,
+        //             "Could not find input({}) in SMT",
+        //             input.commitment()?.to_hex(),
+        //         );
+        //         return Err(ChainStorageError::UnspendableInput);
+        //     },
+        // };
+        batch.push((smt_key.clone(), None));
     }
 
     let block_height = block.header.height;
@@ -1509,47 +1490,53 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         FixedHash::zero()
     };
 
+    let (output_smt_root, _) = output_smt
+        .put_value_set(batch, header.height)
+        .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
+
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
-        output_mr: output_mr_hash_from_smt(output_smt)?,
+        output_mr: FixedHash::from(output_smt_root.0),
         block_output_mr,
-        output_smt_size: output_smt.size(),
+        output_smt_size: output_smt
+            .get_leaf_count(header.height)
+            .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))? as u64,
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
     };
-    // We have made changes to the SMT that we dont want, sp lets rewind the SMT back to tip again as we want to have
-    // the SMT at tip.
-    for output in outputs_to_add {
-        if output_smt.insert(output.0.clone(), output.1).is_err() {
-            error!(
-                target: LOG_TARGET,
-                "Output commitment({}) already in SMT",
-                output.0,
-            );
-            return Err(ChainStorageError::AccessError(format!(
-                "Could not add output ({}) in SMT",
-                output.0
-            )));
-        }
-    }
-    for output in outputs_to_remove {
-        match output_smt.delete(&output)? {
-            DeleteResult::Deleted(_value_hash) => {},
-            DeleteResult::KeyNotFound => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not find input({}) in SMT when reseting back to tip",
-                    output,
-                );
-                return Err(ChainStorageError::AccessError(format!(
-                    "Could not find input({}) in SMT when reseting back to tip",
-                    output
-                )));
-            },
-        };
-    }
+    // // We have made changes to the SMT that we dont want, sp lets rewind the SMT back to tip again as we want to have
+    // // the SMT at tip.
+    // for output in outputs_to_add {
+    //     if output_smt.insert(output.0.clone(), output.1).is_err() {
+    //         error!(
+    //             target: LOG_TARGET,
+    //             "Output commitment({}) already in SMT",
+    //             output.0,
+    //         );
+    //         return Err(ChainStorageError::AccessError(format!(
+    //             "Could not add output ({}) in SMT",
+    //             output.0
+    //         )));
+    //     }
+    // }
+    // for output in outputs_to_remove {
+    //     match output_smt.delete(&output)? {
+    //         DeleteResult::Deleted(_value_hash) => {},
+    //         DeleteResult::KeyNotFound => {
+    //             error!(
+    //                 target: LOG_TARGET,
+    //                 "Could not find input({}) in SMT when reseting back to tip",
+    //                 output,
+    //             );
+    //             return Err(ChainStorageError::AccessError(format!(
+    //                 "Could not find input({}) in SMT when reseting back to tip",
+    //                 output
+    //             )));
+    //         },
+    //     };
+    // }
     Ok(mmr_roots)
 }
 
@@ -1654,7 +1641,7 @@ fn add_block<T: BlockchainBackend>(
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     candidate_block: Arc<Block>,
-    smt: Arc<RwLock<OutputSmt>>,
+    // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<BlockAddResult, ChainStorageError> {
     handle_possible_reorg(
         db,
@@ -1664,7 +1651,7 @@ fn add_block<T: BlockchainBackend>(
         header_validator,
         chain_strength_comparer,
         candidate_block,
-        smt,
+        // smt,
     )
 }
 
@@ -1672,7 +1659,7 @@ fn add_block<T: BlockchainBackend>(
 fn insert_best_block(
     txn: &mut DbTransaction,
     block: Arc<ChainBlock>,
-    smt: Arc<RwLock<OutputSmt>>,
+    // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
     debug!(
@@ -1685,9 +1672,9 @@ fn insert_best_block(
     let timestamp = block.header().timestamp().as_u64();
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
-    let allow_smt_change = Arc::new(AtomicBool::new(true));
+    // let allow_smt_change = Arc::new(AtomicBool::new(true));
     txn.insert_chain_header(block.to_chain_header())
-        .insert_tip_block_body(block, smt, allow_smt_change)
+        .insert_tip_block_body(block)
         .set_best_block(
             height,
             block_hash,
@@ -1863,7 +1850,6 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 fn rewind_to_height<T: BlockchainBackend>(
     db: &mut T,
     target_height: u64,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
@@ -1933,7 +1919,13 @@ fn rewind_to_height<T: BlockchainBackend>(
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
         let block_hash = *block.hash();
-        txn.delete_tip_block(block_hash, smt.clone());
+        // smt_writer
+        // .delete_all_for_version(block.height())
+        // .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e.to_string()))?;
+        // smt_writer
+        // .apply_to_transaction(&mut txn, true)
+        // .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e.to_string()))?;
+        txn.delete_tip_block(block_hash);
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
@@ -1990,7 +1982,7 @@ fn rewind_to_height<T: BlockchainBackend>(
             let header = fetch_header(db, last_block_height - h - steps_back)?;
             // Although we do not have this full block, this method  will remove all remaining data that is linked to
             // the specific header hash
-            txn.delete_tip_block(header.hash(), smt.clone());
+            txn.delete_tip_block(header.hash());
             db.write(txn)?;
         }
     }
@@ -2001,7 +1993,6 @@ fn rewind_to_height<T: BlockchainBackend>(
 fn rewind_to_hash<T: BlockchainBackend>(
     db: &mut T,
     block_hash: BlockHash,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let block_hash_hex = block_hash.to_hex();
     let target_header = fetch_header_by_block_hash(&*db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
@@ -2009,7 +2000,7 @@ fn rewind_to_hash<T: BlockchainBackend>(
         field: "block_hash",
         value: block_hash_hex,
     })?;
-    rewind_to_height(db, target_header.height, smt)
+    rewind_to_height(db, target_header.height)
 }
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
@@ -2022,14 +2013,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     candidate_block: Arc<Block>,
-    smt: Arc<RwLock<OutputSmt>>,
+    // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let timer = Instant::now();
     let height = candidate_block.header.height;
     let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer, smt);
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer);
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -2048,9 +2039,8 @@ fn reorganize_chain<T: BlockchainBackend>(
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
-    let removed_blocks = rewind_to_hash(backend, fork_hash, smt.clone())?;
+    let removed_blocks = rewind_to_hash(backend, fork_hash)?;
     debug!(
         target: LOG_TARGET,
         "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
@@ -2067,7 +2057,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         let block_hash = *block.hash();
         txn.delete_orphan(block_hash);
         let chain_metadata = backend.fetch_chain_metadata()?;
-        if let Err(e) = block_validator.validate_body_with_metadata(backend, block, &chain_metadata, smt.clone()) {
+        if let Err(e) = block_validator.validate_body_with_metadata(backend, block, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",
@@ -2086,20 +2076,20 @@ fn reorganize_chain<T: BlockchainBackend>(
             backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks, smt.clone())?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
             return Err(e.into());
         }
 
-        if let Err(e) = insert_best_block(&mut txn, block.clone(), smt.clone()) {
-            let mut write_smt = smt.write().map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "reorganize_chain could not get a write lock on the smt. {:?}", e
-                );
-                ChainStorageError::AccessError("write lock on smt".into())
-            })?;
-            warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg due to '{}'", e);
-            *write_smt = backend.calculate_tip_smt()?;
+        if let Err(e) = insert_best_block(&mut txn, block.clone()) {
+            // let mut write_smt = smt.write().map_err(|e| {
+            //     error!(
+            //         target: LOG_TARGET,
+            //         "reorganize_chain could not get a write lock on the smt. {:?}", e
+            //     );
+            //     ChainStorageError::AccessError("write lock on smt".into())
+            // })?;
+            // warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg due to '{}'", e);
+            // *write_smt = backend.calculate_tip_smt()?;
             return Err(e);
         }
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
@@ -2111,7 +2101,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks, smt)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
             return Err(e);
         }
     }
@@ -2124,13 +2114,13 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
-    smt: Arc<RwLock<OutputSmt>>,
+    // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
     // lets clear out all remaining headers that dont have a matching block
     // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
     // height it will only trim the extra headers with no blocks
-    rewind_to_height(db, metadata.best_block_height(), smt.clone())?;
+    rewind_to_height(db, metadata.best_block_height())?;
     let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
     if strongest_orphan_tips.is_empty() {
         // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
@@ -2181,7 +2171,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, smt)?;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -2233,9 +2223,8 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<(), ChainStorageError> {
-    let invalid_chain = rewind_to_hash(db, to_hash, smt.clone())?;
+    let invalid_chain = rewind_to_hash(db, to_hash)?;
     debug!(
         target: LOG_TARGET,
         "Removed {} blocks during chain restore: {:?}.",
@@ -2249,7 +2238,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block, smt.clone())?;
+        insert_best_block(&mut txn, block)?;
     }
     db.write(txn)?;
     Ok(())
@@ -2645,7 +2634,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),
-            smt: self.smt.clone(),
+            smt_reader: self.smt_reader.clone(),
         }
     }
 }
@@ -2681,20 +2670,14 @@ mod test {
     use crate::{
         block_specs,
         consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
+            chain_strength_comparer::strongest_chain, consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
         },
         proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
-                update_block_and_smt,
-                TempDatabase,
+                create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_test_blockchain_db, update_block_and_smt, TempDatabase,
             },
             BlockSpecs,
         },
@@ -2764,12 +2747,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ])
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            )
             .await;
             // Create reorg chain
             // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
@@ -2891,15 +2872,18 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ])
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            )
             .await;
 
             // Fork 1 (with 3 blocks)
@@ -3321,12 +3305,10 @@ mod test {
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
         let mut smt = db.smt_read_access().unwrap().clone();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3414,12 +3396,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3740,11 +3720,14 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()

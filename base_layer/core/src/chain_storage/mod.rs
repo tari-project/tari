@@ -39,54 +39,38 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    calculate_mmr_roots,
-    calculate_validator_node_mr,
-    fetch_header,
-    fetch_headers,
-    fetch_target_difficulty_for_next_block,
-    BlockchainDatabase,
-    BlockchainDatabaseConfig,
-    MmrRoots,
-    Validators,
+    calculate_mmr_roots, calculate_validator_node_mr, fetch_header, fetch_headers,
+    fetch_target_difficulty_for_next_block, BlockchainDatabase, BlockchainDatabaseConfig, MmrRoots, Validators,
 };
-
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
-
 mod consts;
-
 mod db_transaction;
 pub use db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation};
-
 mod mmr_tree;
 pub use mmr_tree::MmrTree;
-
 mod error;
 pub use error::{ChainStorageError, Optional, OrNotFound};
-
 mod horizon_data;
 pub use horizon_data::HorizonData;
-
 mod reorg;
 pub use reorg::Reorg;
-
 mod lmdb_db;
-pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
-
+pub use lmdb_db::{
+    create_lmdb_database, create_recovery_lmdb_database, lmdb_tree_reader::LmdbTreeReader, LMDBDatabase,
+};
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};
-
 mod target_difficulties;
 mod utxo_mined_info;
 pub use target_difficulties::TargetDifficulties;
 pub use utxo_mined_info::*;
-
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
 use tari_common_types::types::HashOutput;
-
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
+mod smt_hasher;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {

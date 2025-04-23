@@ -81,17 +81,23 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub fn on_starting<H>(&mut self, hook: H)
-    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
+    where
+        for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static,
+    {
         self.hooks.add_on_starting_hook(hook);
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static {
+    where
+        H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static,
+    {
         self.hooks.add_on_progress_block_hook(hook);
     }
 
     pub fn on_complete<H>(&mut self, hook: H)
-    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
+    where
+        H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static,
+    {
         self.hooks.add_on_complete_hook(hook);
     }
 
@@ -318,12 +324,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let task_block = block.clone();
             let db = self.db.inner().clone();
             let validator = self.block_validator.clone();
-            let res = task::spawn_blocking(move || {
+            let res = {
                 let txn = db.db_read_access()?;
-                let smt = db.smt().clone();
-                validator.validate_body(&*txn, &task_block, smt)
-            })
-            .await?;
+                // let smt = db.smt().clone();
+                validator.validate_body(&*txn, &task_block)
+            };
 
             let block = match res {
                 Ok(block) => block,
@@ -368,7 +373,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_tip_block_body(block.clone(), self.db.inner().smt(), allow_smt_change.clone())
+                .insert_tip_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,

@@ -34,11 +34,8 @@ use crate::{
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
     validation::{
-        aggregate_body::AggregateBodyChainLinkedValidator,
-        helpers::check_mmr_roots,
-        BlockBodyValidator,
-        CandidateBlockValidator,
-        ValidationError,
+        aggregate_body::AggregateBodyChainLinkedValidator, helpers::check_mmr_roots, BlockBodyValidator,
+        CandidateBlockValidator, ValidationError,
     },
     OutputSmt,
 };
@@ -69,7 +66,6 @@ impl BlockBodyFullValidator {
         backend: &B,
         block: &Block,
         metadata_option: Option<&ChainMetadata>,
-        smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<Block, ValidationError> {
         if let Some(metadata) = metadata_option {
             validate_block_metadata(block, metadata)?;
@@ -87,29 +83,28 @@ impl BlockBodyFullValidator {
         self.block_internal_validator.validate(&block)?;
 
         // validate the merkle mountain range roots+
-        let mut output_smt = smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Validator could not get a write lock on the smt {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?;
-        let mmr_roots =
-            match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt) {
-                Ok(mmr_roots) => mmr_roots,
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
-                    );
-                    if let ChainStorageError::CannotCalculateNonTipMmr(ref _e) = e {
-                        return Err(e.into());
-                    }
-                    // Recalculate SMT as it might have been altered.
-                    *output_smt = backend.calculate_tip_smt()?;
-                    return Err(e.into());
-                },
-            };
+        // let mut output_smt = smt.write().map_err(|e| {
+        //     error!(
+        //         target: LOG_TARGET,
+        //         "Validator could not get a write lock on the smt {:?}", e
+        //     );
+        //     ChainStorageError::AccessError("write lock on smt".into())
+        // })?;
+        let mmr_roots = match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block) {
+            Ok(mmr_roots) => mmr_roots,
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
+                );
+                // if let ChainStorageError::CannotCalculateNonTipMmr(ref _e) = e {
+                // return Err(e.into());
+                // }
+                // Recalculate SMT as it might have been altered.
+                // *output_smt = backend.calculate_tip_smt()?;
+                return Err(e.into());
+            },
+        };
         check_mmr_roots(&block.header, &mmr_roots)?;
 
         BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
@@ -145,16 +140,15 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for BlockBodyFullValidator
         backend: &B,
         block: &ChainBlock,
         metadata: &ChainMetadata,
-        smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<(), ValidationError> {
-        self.validate(backend, block.block(), Some(metadata), smt)?;
+        self.validate(backend, block.block(), Some(metadata))?;
         Ok(())
     }
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
-    fn validate_body(&self, backend: &B, block: &Block, smt: Arc<RwLock<OutputSmt>>) -> Result<Block, ValidationError> {
-        self.validate(backend, block, None, smt)
+    fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError> {
+        self.validate(backend, block, None)
     }
 }
 

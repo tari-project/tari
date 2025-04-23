@@ -34,16 +34,13 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt,
-    PrunedInputMmr,
+    OutputSmt, PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -87,6 +84,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
     if !print {
         return;
     }
+    todo!();
     use std::convert::TryFrom;
 
     use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
@@ -96,28 +94,28 @@ fn print_mr_values(block: &mut Block, print: bool) {
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 
-    let mut output_smt = OutputSmt::new();
+    // let mut output_smt = OutputSmt::new();
 
-    for o in block.body.outputs() {
-        let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-        let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
-        output_smt.insert(smt_key, smt_node).unwrap();
-    }
-    for i in block.body.inputs() {
-        let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-        output_smt.delete(&smt_key).unwrap();
-    }
-    let vn_mmr = calculate_validator_node_mr(&[]);
+    // for o in block.body.outputs() {
+    //     let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+    //     let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
+    //     output_smt.insert(smt_key, smt_node).unwrap();
+    // }
+    // for i in block.body.inputs() {
+    //     let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+    //     output_smt.delete(&smt_key).unwrap();
+    // }
+    // let vn_mmr = calculate_validator_node_mr(&[]);
 
-    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
-    for input in block.body.inputs() {
-        input_mmr.push(input.canonical_hash().to_vec()).unwrap();
-    }
+    // let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+    // for input in block.body.inputs() {
+    //     input_mmr.push(input.canonical_hash().to_vec()).unwrap();
+    // }
 
     block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
-    block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
-    block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
-    block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
+    // block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
+    // block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
+    // block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     println!("input mr: {}", block.header.input_mr.to_hex());
@@ -532,8 +530,7 @@ mod test {
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        PrunedOutputMmr,
+        KernelMmr, PrunedOutputMmr,
     };
     #[test]
     #[serial]

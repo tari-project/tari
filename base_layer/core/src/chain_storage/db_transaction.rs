@@ -81,8 +81,8 @@ impl DbTransaction {
     }
 
     /// Delete a block
-    pub fn delete_tip_block(&mut self, block_hash: HashOutput, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteTipBlock(block_hash, smt));
+    pub fn delete_tip_block(&mut self, block_hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteTipBlock(block_hash));
         self
     }
 
@@ -171,17 +171,8 @@ impl DbTransaction {
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_tip_block_body(
-        &mut self,
-        block: Arc<ChainBlock>,
-        smt: Arc<RwLock<OutputSmt>>,
-        allow_smt_change: Arc<AtomicBool>,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::InsertTipBlockBody {
-            block,
-            smt,
-            allow_smt_change,
-        });
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipBlockBody { block });
         self
     }
 
@@ -300,8 +291,8 @@ pub enum WriteOperation {
     },
     InsertTipBlockBody {
         block: Arc<ChainBlock>,
-        smt: Arc<RwLock<OutputSmt>>,
-        allow_smt_change: Arc<AtomicBool>,
+        // smt: Arc<RwLock<OutputSmt>>,
+        // allow_smt_change: Arc<AtomicBool>,
     },
     InsertKernel {
         header_hash: HashOutput,
@@ -321,7 +312,7 @@ pub enum WriteOperation {
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
-    DeleteTipBlock(HashOutput, Arc<RwLock<OutputSmt>>),
+    DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput, U256),
     InsertMoneroSeedHeight(Vec<u8>, u64),
@@ -378,11 +369,7 @@ impl fmt::Display for WriteOperation {
             InsertChainHeader { header } => {
                 write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash())
             },
-            InsertTipBlockBody {
-                block,
-                smt: _,
-                allow_smt_change: _,
-            } => write!(
+            InsertTipBlockBody { block } => write!(
                 f,
                 "InsertTipBlockBody({}, {})",
                 block.accumulated_data().hash,
@@ -415,7 +402,7 @@ impl fmt::Display for WriteOperation {
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                 write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)
             },
-            DeleteTipBlock(hash, _) => write!(f, "DeleteTipBlock({})", hash),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },

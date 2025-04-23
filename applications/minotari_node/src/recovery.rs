@@ -36,13 +36,8 @@ use tari_common::{
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb,
-        create_lmdb_database,
-        create_recovery_lmdb_database,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        Validators,
+        async_db::AsyncBlockchainDb, create_lmdb_database, create_recovery_lmdb_database, BlockchainBackend,
+        BlockchainDatabase, BlockchainDatabaseConfig, Validators,
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -129,7 +124,6 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         validators,
         node_config.storage,
         difficulty_calculator,
-        smt,
     )?;
     db.start()?;
     do_recovery(db.into(), temp_db).await?;
@@ -159,14 +153,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let source_database = BlockchainDatabase::new(
         source_backend,
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules, Default::default()),
-        smt,
     )?;
     source_database.start()?;
     let max_height = source_database

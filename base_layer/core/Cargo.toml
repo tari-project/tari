@@ -46,7 +46,6 @@ tari_utilities = { workspace = true, features = ["borsh"] }
 tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_common_sqlite = { workspace = true }
 tari_hashing = { workspace = true }
-
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -98,6 +97,7 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
 dirs-next = "1.0.2"
 hickory-proto = { version = "=0.25.0-alpha.4" }
 anyhow = "1.0.53"
+jmt = { version = "0.11.0" }
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }

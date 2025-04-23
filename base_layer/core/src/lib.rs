@@ -65,12 +65,8 @@ mod domain_hashing {
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
     use tari_hashing::ValidatorNodeBmtHashDomain;
     use tari_mmr::{
-        error::MerkleMountainRangeError,
-        pruned_hashset::PrunedHashSet,
-        sparse_merkle_tree::SparseMerkleTree,
-        BalancedBinaryMerkleTree,
-        Hash,
-        MerkleMountainRange,
+        error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, sparse_merkle_tree::SparseMerkleTree,
+        BalancedBinaryMerkleTree, Hash, MerkleMountainRange,
     };
 
     hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
@@ -102,10 +98,10 @@ mod domain_hashing {
         Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
     }
 
-    #[inline]
-    pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
-        Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
-    }
+    // #[inline]
+    // pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
+    //     Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
+    // }
 
     #[inline]
     pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {

@@ -22,18 +22,14 @@
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
-    RwLock,
+    Arc, RwLock,
 };
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
-    traits::CandidateBlockValidator,
-    BlockBodyValidator,
-    HeaderChainLinkedValidator,
-    InternalConsistencyValidator,
+    traits::CandidateBlockValidator, BlockBodyValidator, HeaderChainLinkedValidator, InternalConsistencyValidator,
     TransactionValidator,
 };
 use crate::{
@@ -72,7 +68,7 @@ impl MockValidator {
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
-    fn validate_body(&self, _: &B, block: &Block, _: Arc<RwLock<OutputSmt>>) -> Result<Block, ValidationError> {
+    fn validate_body(&self, _: &B, block: &Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(block.clone())
         } else {
@@ -84,13 +80,7 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
-    fn validate_body_with_metadata(
-        &self,
-        _: &B,
-        _: &ChainBlock,
-        _: &ChainMetadata,
-        _: Arc<RwLock<OutputSmt>>,
-    ) -> Result<(), ValidationError> {
+    fn validate_body_with_metadata(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
