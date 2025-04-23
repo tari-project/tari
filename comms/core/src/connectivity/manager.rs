@@ -1116,7 +1116,7 @@ impl ConnectivityManagerActor {
         self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
 
         #[cfg(feature = "metrics")]
-        super::metrics::banned_peers_counter(node_id).inc();
+        super::metrics::banned_peers_counter().inc();
 
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
