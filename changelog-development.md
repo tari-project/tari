@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.15.0-pre.0](https://github.com/tari-project/tari/compare/v1.14.1-pre.0...v1.15.0-pre.0) (2025-04-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* payment id (#6974)
+* median timestamp check (#6879)
+* network reset
+
+### Bug Fixes
+
+* median timestamp check ([#6879](https://github.com/tari-project/tari/issues/6879)) ([0829724](https://github.com/tari-project/tari/commit/08297241437948bc8e4f071feeccc6f83188a9d5))
+* payment id ([#6974](https://github.com/tari-project/tari/issues/6974)) ([94cb43f](https://github.com/tari-project/tari/commit/94cb43f2c08366fe20252d31110a8d50225c1ed6))
+
 ### [1.14.1-pre.0](https://github.com/tari-project/tari/compare/v1.14.0-pre.0...v1.14.1-pre.0) (2025-04-22)
 
 

@@ -635,8 +635,11 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         };
+        let mut con_2 = con_1.clone();
+        con_2.coinbase_min_maturity = 120;
+        con_2.effective_from_height = 30 * 24 * 2; // 2 days
 
-        let consensus_constants = vec![con_1];
+        let consensus_constants = vec![con_1, con_2];
         consensus_constants
     }
 

@@ -35,7 +35,6 @@ use std::{
     time::Instant,
 };
 
-use borsh::BorshDeserialize;
 use fs2::FileExt;
 use lmdb_zero::{
     open,
@@ -66,7 +65,7 @@ use tari_common_types::{
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
-    hex::{from_hex, to_hex, Hex},
+    hex::{to_hex, Hex},
     ByteArray,
 };
 
@@ -88,7 +87,6 @@ use crate::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
                 fetch_db_entry_sizes,
-                lmdb_all,
                 lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
@@ -2965,7 +2963,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 6;
+    const MIGRATION_VERSION: u64 = 0;
     let txn = db.read_transaction()?;
 
     let k = MetadataKey::MigrationVersion;
@@ -2980,94 +2978,8 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     );
     drop(txn);
 
-    for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
+    for _migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
-        if migrate_from_version == 1 {
-            let txn = db.write_transaction()?;
-            info!(target: LOG_TARGET, "Clearing bad blocks list due to median timestamp bug in nextnet");
-            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
-            txn.commit()?;
-            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
-        }
-        if migrate_from_version == 2 {
-            let txn = db.write_transaction()?;
-            info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
-            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
-            txn.commit()?;
-            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
-        }
-        if migrate_from_version == 3 {
-            let txn = db.write_transaction()?;
-            info!(target: LOG_TARGET, "adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
-            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
-                .expect("should be valid hex");
-            lmdb_replace(&txn, &db.monero_seed_height_db, &vm_key, &843, None)?;
-            txn.commit()?;
-            info!(target: LOG_TARGET, "added RX vm key 91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4");
-        }
-        if migrate_from_version == 4 {
-            let txn = db.write_transaction()?;
-            info!(target: LOG_TARGET, "re-adding vm key '91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4' in list of known keys ");
-            let vm_key: Vec<u8> = from_hex("91ef83186cefaa646dc4c6e950e68e4debab52b4f4a9b7f465891e91fe5f6ce4")
-                .expect("should be valid hex");
-            let _not_used = lmdb_delete(&txn, &db.monero_seed_height_db, &vm_key, "seed heights");
-            info!(target: LOG_TARGET, "Clearing bad blocks list due to bypass validation of monero seed ");
-            let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
-            txn.commit()?;
-            info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
-        }
-        if migrate_from_version == 5 {
-            // lets clear the list of bad blocks
-            {
-                let txn = db.write_transaction()?;
-                info!(target: LOG_TARGET, "Clearing bad blocks list due reorg issue with morero seed heights");
-                let rows_affected = lmdb_clear(&txn, &db.bad_blocks)?;
-                txn.commit()?;
-                info!(target: LOG_TARGET, "Removed {} rows from bad blocks", rows_affected);
-            }
-            // lets create the monero seed height indexes
-            {
-                let txn = db.write_transaction()?;
-                let heights: Vec<(Vec<u8>, u64)> = lmdb_all(&txn, &db.monero_seed_height_db)?;
-                let mut final_table = heights.clone();
-                for (db_seed, height) in &heights {
-                    let mut delete = true;
-                    if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &db.headers_db, height)? {
-                        info!(target: LOG_TARGET, "Checking header for monero seed {}", header.hash().to_hex());
-                        if header.pow_algo() == PowAlgorithm::RandomX {
-                            let pow_bytes = header.pow.pow_data.to_vec();
-                            let pow_data = MoneroPowData::deserialize(&mut pow_bytes.as_slice()).unwrap();
-                            let seed = pow_data.randomx_key.to_vec();
-                            if seed == *db_seed {
-                                delete = false;
-                            } else {
-                                // delete
-                                info!(target: LOG_TARGET, "Deleting monero seed height {} because it does not match the seed", header.hash().to_hex());
-                            }
-                        } else {
-                            // delete
-                            info!(target: LOG_TARGET, "Deleting monero seed height {} because it is not RandomX", header.hash().to_hex());
-                        }
-                    }
-                    if delete {
-                        lmdb_delete(&txn, &db.monero_seed_height_db, db_seed, "monero_seed_height_db")?;
-                        final_table.retain(|(s, _)| s != db_seed);
-                    }
-                }
-                for (seed, height) in final_table {
-                    info!(target: LOG_TARGET, "Inserting new monero seed height {} with seed {}", height, seed.to_hex());
-                    lmdb_insert(
-                        &txn,
-                        &db.monero_seed_height_index_db,
-                        &height,
-                        &seed,
-                        "monero_seed_height_index_db",
-                    )?;
-                }
-
-                txn.commit()?;
-            }
-        }
     }
     if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;

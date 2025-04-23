@@ -423,6 +423,7 @@ where
     Ok(result)
 }
 
+#[allow(dead_code)]
 pub fn lmdb_all<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
 where V: DeserializeOwned {
     let access = txn.access();
