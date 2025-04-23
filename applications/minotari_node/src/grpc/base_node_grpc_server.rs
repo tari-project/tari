@@ -2268,6 +2268,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .clone();
         let short_desc = state.short_desc();
+
+        let mut handler = self.node_service.clone();
+        let report_error_flag = self.report_error_flag();
+        let meta = handler
+            .get_metadata()
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+
         let response = match state {
             StateInfo::HeaderSync(None) => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
@@ -2298,8 +2306,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 initial_connected_peers: 0,
             },
             _ => tari_rpc::SyncProgressResponse {
-                tip_height: 0,
-                local_height: 0,
+                tip_height: if state.is_synced() { meta.best_block_height() } else { 0 },
+                local_height: if state.is_synced() { meta.best_block_height() } else { 0 },
                 state: if state.is_synced() {
                     tari_rpc::SyncState::Done.into()
                 } else {
