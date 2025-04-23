@@ -460,7 +460,6 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
             shard_group: value.shard_group.ok_or("missing shard_group")?.try_into()?,
             proposed_by: CompressedPublicKey::from_canonical_bytes(&value.proposed_by)
                 .map_err(|_| "Invalid proposed_by public key")?,
-            total_leader_fee: value.total_leader_fee,
             state_merkle_root: value
                 .state_merkle_root
                 .try_into()
@@ -469,26 +468,12 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
                 .command_merkle_root
                 .try_into()
                 .map_err(|_| "Invalid command merkle root")?,
-            is_dummy: value.is_dummy,
-            foreign_indexes_hash: value
-                .foreign_indexes_hash
-                .try_into()
-                .map_err(|_| "Invalid foreign indexes hash")?,
             signature: value
                 .signature
                 .ok_or("SidechainBlockHeader signature not provided")?
                 .try_into()
                 .map_err(|_| "Invalid signature")?,
-            timestamp: value.timestamp,
-            base_layer_block_height: value.base_layer_block_height,
-            base_layer_block_hash: value
-                .base_layer_block_hash
-                .try_into()
-                .map_err(|_| "Invalid base layer block hash")?,
-            extra_data_hash: value
-                .extra_data_hash
-                .try_into()
-                .map_err(|_| "Invalid extra data hash")?,
+            metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
         })
     }
 }
@@ -503,16 +488,10 @@ impl From<&SidechainBlockHeader> for proto::types::SidechainBlockHeader {
             epoch: value.epoch,
             shard_group: Some(value.shard_group.into()),
             proposed_by: value.proposed_by.to_vec(),
-            total_leader_fee: value.total_leader_fee,
             state_merkle_root: value.state_merkle_root.to_vec(),
             command_merkle_root: value.command_merkle_root.to_vec(),
-            is_dummy: value.is_dummy,
-            foreign_indexes_hash: value.foreign_indexes_hash.to_vec(),
             signature: Some(value.signature().into()),
-            timestamp: value.timestamp,
-            base_layer_block_height: value.base_layer_block_height,
-            base_layer_block_hash: value.base_layer_block_hash.to_vec(),
-            extra_data_hash: value.extra_data_hash.to_vec(),
+            metadata_hash: value.metadata_hash.to_vec(),
         }
     }
 }
