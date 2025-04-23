@@ -397,11 +397,15 @@ impl PaymentId {
     #[allow(clippy::too_many_lines)]
     pub fn from_bytes(bytes: &[u8]) -> Self {
         // edge case for premine:
-        if bytes.len() == SIZE_VALUE && bytes[0] == 0 {
-            return PaymentId::Open {
-                tx_type: TxType::PaymentToOther,
-                user_data: bytes.to_vec(),
-            };
+        if bytes.len() == SIZE_VALUE {
+            let bytes_array: [u8; SIZE_VALUE] = bytes.try_into().expect("We already test the length");
+            let v = u64::from_le_bytes(bytes_array);
+            if v < 1000 {
+                return PaymentId::Open {
+                    tx_type: TxType::PaymentToOther,
+                    user_data: bytes.to_vec(),
+                };
+            }
         }
 
         let p_tag = if bytes.is_empty() {
@@ -803,7 +807,7 @@ mod test {
 
     #[test]
     fn test_premine() {
-        let id = 12351234u64;
+        let id = 999u64;
         let value = 123456;
         let mask = PrivateKey::default();
         let commitment =
@@ -815,6 +819,7 @@ mod test {
             bytes[..SIZE_VALUE].clone_from_slice(value.to_le_bytes().as_ref());
             bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
             bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
+            dbg!(id.to_le_bytes().to_vec());
 
             // Produce a secure random nonce
             let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -846,7 +851,7 @@ mod test {
         assert_eq!(mask, decrypted_mask);
         match decrypted_payment_id {
             PaymentId::Open { user_data: data, .. } => {
-                let bytes: [u8; SIZE_VALUE] = data.try_into().expect("Cannot fail, as we already test the length");
+                let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
                 let v = u64::from_le_bytes(bytes);
                 assert_eq!(v, id);
             },
@@ -1359,8 +1364,7 @@ mod test {
         assert_eq!(
             payment_id_3.to_string(),
             "recipient_address(f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb), \
-            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967395 T), weight(65635), inputs_count(32867), \
-            outputs_count(4195), type(Burn), data(Hello World!!! 11-22-33)"
+            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967395 T), type(Burn), data(Hello World!!! 11-22-33)"
         );
         // ... but it cannot be serialized and deserialized as is - overflowed metadata will be zeroed.
         let payment_id_3_bytes = payment_id_3.to_bytes();
@@ -1368,8 +1372,7 @@ mod test {
         assert_eq!(
             payment_id_3_from_bytes.to_string(),
             "recipient_address(f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb), \
-            sender_one_sided(true), amount(18446744073709.551615 T), fee(0 µT), weight(0), inputs_count(0), \
-            outputs_count(0), type(Burn), data(Hello World!!! 11-22-33)"
+            sender_one_sided(true), amount(18446744073709.551615 T), fee(0 µT), type(Burn), data(Hello World!!! 11-22-33)"
         );
     }
 

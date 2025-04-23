@@ -2026,7 +2026,13 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(output_features, amount, covenant, payment_id, fee_per_gram)
+            .output_to_self(
+                output_features,
+                amount,
+                covenant,
+                payment_id,
+                input_selection.fee_without_change,
+            )
             .await?;
 
         builder
