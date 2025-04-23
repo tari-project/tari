@@ -819,7 +819,6 @@ mod test {
             bytes[..SIZE_VALUE].clone_from_slice(value.to_le_bytes().as_ref());
             bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
             bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
-            dbg!(id.to_le_bytes().to_vec());
 
             // Produce a secure random nonce
             let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
