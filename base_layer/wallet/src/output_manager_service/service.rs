@@ -849,6 +849,9 @@ where
         };
         let payment_id = PaymentId::AddressAndData {
             sender_address: single_round_sender_data.sender_address.clone(),
+            amount: single_round_sender_data.amount,
+            fee: single_round_sender_data.metadata.fee,
+            sender_one_sided: false,
             tx_type: TxType::PaymentToOther,
             user_data: vec![],
         };
@@ -1274,25 +1277,33 @@ where
         payment_id: PaymentId,
         tx_id: TxId,
     ) -> Result<TariKeyAndId, OutputManagerError> {
-        if let PaymentId::U64(index) = payment_id {
-            let script_key_id = TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                index,
-            };
-            Ok(TariKeyAndId {
-                pub_key: self
-                    .resources
-                    .key_manager
-                    .get_public_key_at_key_id(&script_key_id)
-                    .await?,
-                key_id: script_key_id,
-            })
-        } else {
-            Err(OutputManagerError::ServiceError(format!(
-                "Invalid payment id (TxId: {}): expected 'PaymentId::U64(_)', received {:?}",
-                tx_id, payment_id
-            )))
-        }
+        let index = match payment_id {
+            PaymentId::U256(index) => u64::try_from(index).expect("we dont go over u64"),
+            PaymentId::Open { user_data: data, .. } => {
+                let bytes: [u8; size_of::<u64>()] = data.try_into().map_err(|_| {
+                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
+                })?;
+                u64::from_le_bytes(bytes)
+            },
+            _ => {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
+                    tx_id, payment_id
+                )))
+            },
+        };
+        let script_key_id = TariKeyId::Managed {
+            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+            index: u64::try_from(index).expect("we dont go over u64"),
+        };
+        Ok(TariKeyAndId {
+            pub_key: self
+                .resources
+                .key_manager
+                .get_public_key_at_key_id(&script_key_id)
+                .await?,
+            key_id: script_key_id,
+        })
     }
 
     /// Create a partial transaction in order to prepare output
@@ -1900,6 +1911,9 @@ where
         let payment_id = PaymentId::add_sender_address(
             payment_id,
             self.resources.one_sided_tari_address.clone(),
+            true,
+            amount,
+            fee,
             Some(TxType::PaymentToOther),
         );
 
@@ -1957,6 +1971,7 @@ where
         Ok((tx, amount, fee))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
@@ -2012,7 +2027,13 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(output_features, amount, covenant, payment_id)
+            .output_to_self(
+                output_features,
+                amount,
+                covenant,
+                payment_id,
+                input_selection.fee_without_change,
+            )
             .await?;
 
         builder
@@ -2501,6 +2522,7 @@ where
                     amount_per_split,
                     Covenant::default(),
                     PaymentId::open(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    fee,
                 )
                 .await?;
 
@@ -2666,6 +2688,7 @@ where
                     amount_per_split,
                     Covenant::default(),
                     payment_id.clone(),
+                    final_fee,
                 )
                 .await?;
 
@@ -2764,6 +2787,7 @@ where
         amount: MicroMinotari,
         covenant: Covenant,
         payment_id: PaymentId,
+        fee: MicroMinotari,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
@@ -2774,6 +2798,9 @@ where
         let payment_id = PaymentId::add_sender_address(
             payment_id,
             self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee,
             Some(TxType::PaymentToSelf),
         );
 
@@ -2907,6 +2934,7 @@ where
                 accumulated_amount,
                 Covenant::default(),
                 payment_id.clone(),
+                fee,
             )
             .await?;
 

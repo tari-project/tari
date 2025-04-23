@@ -54,7 +54,6 @@ use crate::{
             KernelFeatures,
             TransactionMetadata,
         },
-        weight::TransactionWeight,
     },
 };
 
@@ -405,14 +404,6 @@ where KM: TransactionKeyManagerInterface
                             .own_address
                             .clone();
 
-                        let weight_without_change = TransactionWeight::latest().calculate(
-                            1,
-                            num_inputs,
-                            num_outputs,
-                            features_and_scripts_size_without_change,
-                        );
-                        let weight_of_change =
-                            TransactionWeight::latest().calculate(0, 0, 1, change_features_and_scripts_size);
                         let sender_one_sided = !self
                             .change
                             .as_ref()
@@ -426,9 +417,6 @@ where KM: TransactionKeyManagerInterface
                             sender_one_sided,
                             amount: MicroMinotari::default(),
                             fee: fee_without_change + change_fee,
-                            weight: weight_without_change + weight_of_change,
-                            inputs_count: num_inputs,
-                            outputs_count: num_outputs + 1,
                             tx_type: if let Some(
                                 PaymentId::Open { tx_type, .. } | PaymentId::AddressAndData { tx_type, .. },
                             ) = self.payment_id.clone()

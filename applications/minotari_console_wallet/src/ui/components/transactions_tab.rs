@@ -385,14 +385,7 @@ impl TransactionsTab {
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
-                if let Some(PaymentId::TransactionInfo {
-                    fee,
-                    weight,
-                    inputs_count,
-                    outputs_count,
-                    ..
-                }) = tx.payment_id.clone()
-                {
+                if let Some(PaymentId::TransactionInfo { fee, .. }) = tx.payment_id.clone() {
                     let status = match tx.status {
                         TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
                         TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
@@ -404,9 +397,9 @@ impl TransactionsTab {
                         tx.direction.clone(),
                         tx.amount,
                         fee,
-                        weight,
-                        inputs_count,
-                        outputs_count,
+                        tx.weight,
+                        tx.inputs_count,
+                        tx.outputs_count,
                         tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),

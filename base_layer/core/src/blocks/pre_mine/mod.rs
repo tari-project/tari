@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    iter::once,
-};
+use std::{convert::TryFrom, iter::once};
 
 use rand::{prelude::SliceRandom, rngs::OsRng, thread_rng};
 use tari_common::configuration::Network;
@@ -853,7 +850,7 @@ pub async fn create_pre_mine_genesis_block_info(
                 RangeProofType::RevealedValue,
             ))
             .with_script(script)
-            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U64(i.try_into().unwrap()))
+            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U256(i.into()))
             .await
             .unwrap()
             .with_input_data(ExecutionStack::default())
