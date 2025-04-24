@@ -57,7 +57,9 @@ use tari_utilities::{
 };
 
 use super::{
-    cursors::KeyPrefixCursor, lmdb::lmdb_get_prefix_cursor, lmdb_tree_reader::LmdbTreeReader,
+    cursors::KeyPrefixCursor,
+    lmdb::lmdb_get_prefix_cursor,
+    lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
 };
 use crate::{
@@ -71,12 +73,9 @@ use crate::{
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
-                fetch_db_entry_sizes, fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_clear, lmdb_delete, lmdb_delete,
-                lmdb_delete_each_where, lmdb_delete_each_where, lmdb_delete_key_value, lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with, lmdb_delete_keys_starting_with, lmdb_exists, lmdb_exists,
-                lmdb_fetch_matching_after, lmdb_fetch_matching_after, lmdb_filter_map_values, lmdb_filter_map_values,
-                lmdb_first_after, lmdb_first_after, lmdb_get, lmdb_get, lmdb_get_multiple, lmdb_get_multiple,
-                lmdb_insert, lmdb_insert, lmdb_insert_dup, lmdb_insert_dup, lmdb_last, lmdb_last, lmdb_len, lmdb_len,
+                fetch_db_entry_sizes, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with, lmdb_exists, lmdb_fetch_matching_after, lmdb_filter_map_values,
+                lmdb_first_after, lmdb_get, lmdb_get_multiple, lmdb_insert, lmdb_insert_dup, lmdb_last, lmdb_len,
                 lmdb_replace,
             },
             validator_node_store::ValidatorNodeStore,
@@ -131,6 +130,8 @@ const LMDB_DB_VALIDATOR_NODES: &str = "validator_nodes";
 const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
+const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
+const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const SMT_CACHE_PERIOD: u64 = 500;
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
@@ -185,6 +186,8 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
         .add_database(LMDB_DB_UTXO_SMT, flags)
+        .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
+        .add_database(LMDB_DB_JMT_NODE_DATA, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -257,7 +260,8 @@ pub struct LMDBDatabase {
     template_registrations: DatabaseRef,
     /// Stores a cache of the sparse merkle tree on the latest mod 1000 height
     utxo_smt: DatabaseRef,
-
+    jmt_value_data: DatabaseRef,
+    jmt_node_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
     smt_cache_period: u64,
@@ -308,6 +312,8 @@ impl LMDBDatabase {
             validator_nodes_mapping: get_database(store, LMDB_DB_VALIDATOR_NODES_MAPPING)?,
             template_registrations: get_database(store, LMDB_DB_TEMPLATE_REGISTRATIONS)?,
             utxo_smt: get_database(store, LMDB_DB_UTXO_SMT)?,
+            jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
+            jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -508,7 +514,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 28] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 30] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -544,6 +550,8 @@ impl LMDBDatabase {
             (LMDB_DB_VALIDATOR_NODES_MAPPING, &self.validator_nodes_mapping),
             (LMDB_DB_TEMPLATE_REGISTRATIONS, &self.template_registrations),
             (LMDB_DB_UTXO_SMT, &self.utxo_smt),
+            (LMDB_DB_JMT_VALUE_DATA, &self.jmt_value_data),
+            (LMDB_DB_JMT_NODE_DATA, &self.jmt_node_data),
         ]
     }
 
@@ -943,7 +951,13 @@ impl LMDBDatabase {
             )));
         }
 
-        let smt_writer = LmdbTreeWriter::new(write_txn);
+        let smt_writer = LmdbTreeWriter::new(
+            write_txn,
+            self.jmt_node_data.clone(),
+            LMDB_DB_JMT_NODE_DATA,
+            self.jmt_value_data.clone(),
+            LMDB_DB_JMT_VALUE_DATA,
+        );
         smt_writer
             .delete_all_for_version(height)
             .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
@@ -1222,7 +1236,14 @@ impl LMDBDatabase {
         body: AggregateBody,
         // smt_writer: &mut LmdbTreeWriter,
     ) -> Result<(), ChainStorageError> {
-        let smt_reader = LmdbTreeReader::new();
+        // let smt_reader = LmdbTreeReader::new();
+        let smt_reader = LmdbTreeReader::new(
+            txn,
+            self.jmt_node_data.clone(),
+            LMDB_DB_JMT_NODE_DATA,
+            self.jmt_value_data.clone(),
+            LMDB_DB_JMT_VALUE_DATA,
+        );
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -1401,7 +1422,13 @@ impl LMDBDatabase {
         let (root, ops) = output_smt
             .put_value_set(batch, header.height)
             .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
-        let smt_writer = LmdbTreeWriter::new(&txn);
+        let smt_writer = LmdbTreeWriter::new(
+            txn,
+            self.jmt_node_data.clone(),
+            LMDB_DB_JMT_NODE_DATA,
+            self.jmt_value_data.clone(),
+            LMDB_DB_JMT_VALUE_DATA,
+        );
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
@@ -1901,10 +1928,18 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
 }
 
 impl BlockchainBackend for LMDBDatabase {
-    fn create_smt_reader(&self) -> Result<LmdbTreeReader, ChainStorageError> {
-        Ok(LmdbTreeReader::new())
-    }
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
+        let read_tx = self.read_transaction()?;
+        let smt_reader = OwnedLmdbTreeReader::new(
+            read_tx,
+            self.jmt_node_data.clone(),
+            LMDB_DB_JMT_NODE_DATA,
+            self.jmt_value_data.clone(),
+            LMDB_DB_JMT_VALUE_DATA,
+        );
 
+        Ok(smt_reader)
+    }
     fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
         if txn.operations().is_empty() {
             return Ok(());

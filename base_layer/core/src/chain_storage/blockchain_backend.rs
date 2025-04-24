@@ -6,7 +6,10 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 
-use super::{lmdb_db::lmdb_tree_reader::LmdbTreeReader, TemplateRegistrationEntry};
+use super::{
+    lmdb_db::lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
+    TemplateRegistrationEntry,
+};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
@@ -185,5 +188,5 @@ pub trait BlockchainBackend: Send + Sync {
     /// Calculates the tip utxo smt
     // fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
 
-    fn create_smt_reader(&self) -> Result<LmdbTreeReader, ChainStorageError>;
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 }

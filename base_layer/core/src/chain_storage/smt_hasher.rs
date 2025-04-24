@@ -1,17 +1,28 @@
+use blake2::Blake2b;
+use digest::consts::U32;
 use jmt::SimpleHasher;
-
-pub(crate) struct SmtHasher {}
+use tari_crypto::{
+    hash_domain,
+    hashing::{AsFixedBytes, DomainSeparatedHasher},
+};
+hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
+pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
+pub(crate) struct SmtHasher {
+    hasher: OutputSmtHasherBlake256,
+}
 
 impl SimpleHasher for SmtHasher {
     fn new() -> Self {
-        todo!()
+        Self {
+            hasher: OutputSmtHasherBlake256::new(),
+        }
     }
 
     fn update(&mut self, data: &[u8]) {
-        todo!()
+        self.hasher.update(data);
     }
 
     fn finalize(self) -> [u8; 32] {
-        todo!()
+        self.hasher.finalize().as_fixed_bytes().expect("Hash is 32 bytes")
     }
 }

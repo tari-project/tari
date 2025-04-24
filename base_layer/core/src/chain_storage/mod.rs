@@ -57,7 +57,8 @@ mod reorg;
 pub use reorg::Reorg;
 mod lmdb_db;
 pub use lmdb_db::{
-    create_lmdb_database, create_recovery_lmdb_database, lmdb_tree_reader::LmdbTreeReader, LMDBDatabase,
+    create_lmdb_database, create_recovery_lmdb_database, lmdb_tree_reader::LmdbTreeReader,
+    lmdb_tree_reader::OwnedLmdbTreeReader, LMDBDatabase,
 };
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};

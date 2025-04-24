@@ -45,7 +45,8 @@ use crate::{
     chain_storage::{
         create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
         ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
-        LMDBDatabase, LmdbTreeReader, MmrTree, OutputMinedInfo, Reorg, TemplateRegistrationEntry, Validators,
+        LMDBDatabase, LmdbTreeReader, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, TemplateRegistrationEntry,
+        Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
@@ -197,9 +198,6 @@ impl Drop for TempDatabase {
 }
 
 impl BlockchainBackend for TempDatabase {
-    fn create_smt_reader(&self) -> Result<LmdbTreeReader, ChainStorageError> {
-        self.db.as_ref().unwrap().create_smt_reader()
-    }
     fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
         self.db.as_mut().unwrap().write(tx)
     }
@@ -415,6 +413,10 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_template_registrations(start_height, end_height)
+    }
+
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
+        self.db.as_ref().unwrap().create_smt_reader()
     }
 }
 

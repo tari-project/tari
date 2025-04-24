@@ -191,7 +191,6 @@ pub struct BlockchainDatabase<B> {
     consensus_manager: ConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
-    smt_reader: Arc<LmdbTreeReader>,
     // smt_writer: Arc<Mutex<LmdbTreeWriter>>,
 }
 
@@ -216,7 +215,7 @@ where
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
-            smt_reader: Arc::new(LmdbTreeReader::new()),
+            // smt_reader: Arc::new(LmdbTreeReader::new()),
             // smt_writer: Arc::new(Mutex::new(LmdbTreeWriter::new())),
         };
         Ok(blockchain_db)
@@ -236,7 +235,7 @@ where
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
-            smt_reader: Arc::new(LmdbTreeReader::new()),
+            // smt_reader: Arc::new(LmdbTreeReader::new()),
             // smt_writer: Arc::new(Mutex::new(LmdbTreeWriter::new())),
         };
         blockchain_db.start()?;
@@ -449,7 +448,10 @@ where
         let db = self.db_read_access()?;
         let tip = db.fetch_chain_metadata()?.best_block_height();
         // let smt = self.smt_read_access()?;
-        let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&*self.smt_reader);
+
+        let smt_reader = db.create_smt_reader()?;
+
+        let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
@@ -2634,7 +2636,6 @@ impl<T> Clone for BlockchainDatabase<T> {
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),
-            smt_reader: self.smt_reader.clone(),
         }
     }
 }
