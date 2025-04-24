@@ -28,11 +28,7 @@ use std::{
     ops::{Bound, RangeBounds},
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
-        Mutex,
-        RwLock,
-        RwLockReadGuard,
-        RwLockWriteGuard,
+        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
     },
     time::Instant,
 };
@@ -47,13 +43,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature,
         UncompressedCommitment,
     },
 };
@@ -69,62 +59,33 @@ use super::{
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock,
+        ChainHeader, HistoricalBlock, NewBlockTemplate, UpdateBlockAccumulatedData,
     },
     chain_storage::{
         consts::{
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         utxo_mined_info::OutputMinedInfo,
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, DbBasicStats, DbTotalSizeStats, HorizonData, InputMinedInfo, MmrTree,
+        Optional, OrNotFound, Reorg, TargetDifficulties,
     },
     common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
+        chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
-        helpers::calc_median_timestamp,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        helpers::calc_median_timestamp, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    ValidatorNodeBMT,
+    OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -235,7 +196,8 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -311,10 +273,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -1449,6 +1414,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
+    dbg!(output_smt.get_root_hash(0));
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
@@ -1508,6 +1474,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
+    let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
     let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
@@ -1517,7 +1484,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         )
     } else {
         // MR is unchanged except for epoch boundary
-        let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
         (tip_header.validator_node_mr, 0)
     };
 
@@ -1527,9 +1493,27 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         FixedHash::zero()
     };
 
-    let (output_smt_root, _) = output_smt
+    dbg!("here");
+    dbg!(header.height);
+    dbg!(&batch.len());
+
+    let (output_smt_root, changes) = output_smt
         .put_value_set(batch, header.height)
         .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
+
+    // TODO: remove this check
+    // let output_hash = output_smt.get_root_hash(header.height).unwrap();
+    // dbg!(output_hash);
+
+    // let mut size = output_smt
+    //     .get_leaf_count(header.height.saturating_sub(0))
+    //     .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))? as u64;
+    // size += changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64;
+    // size = size.saturating_sub(changes.node_stats.first().map(|s| s.stale_leaves).unwrap_or(0) as u64);
+    // TODO: size may not be accurate
+    let mut size = tip_header.output_smt_size;
+    size += changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64;
+    size = size.saturating_sub(changes.node_stats.first().map(|s| s.stale_leaves).unwrap_or(0) as u64);
 
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
@@ -1537,9 +1521,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
         output_mr: FixedHash::from(output_smt_root.0),
         block_output_mr,
-        output_smt_size: output_smt
-            .get_leaf_count(header.height)
-            .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))? as u64,
+        output_smt_size: size,
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
     };
@@ -2706,20 +2688,14 @@ mod test {
     use crate::{
         block_specs,
         consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
+            chain_strength_comparer::strongest_chain, consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
         },
         proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
-                update_block_and_smt,
-                TempDatabase,
+                create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_test_blockchain_db, update_block_and_smt, TempDatabase,
             },
             BlockSpecs,
         },
@@ -2789,12 +2765,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ])
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            )
             .await;
             // Create reorg chain
             // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
@@ -2916,15 +2890,18 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ])
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            )
             .await;
 
             // Fork 1 (with 3 blocks)
@@ -3346,12 +3323,10 @@ mod test {
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
         let mut smt = db.smt_read_access().unwrap().clone();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3439,12 +3414,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3765,11 +3738,14 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()
