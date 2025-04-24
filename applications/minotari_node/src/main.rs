@@ -72,7 +72,8 @@
 use std::{
     fs::File,
     io::Write,
-    panic, process,
+    panic,
+    process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };

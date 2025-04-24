@@ -3,9 +3,8 @@ use lmdb_zero::{Database, WriteTransaction};
 use log::info;
 use tari_storage::lmdb_store::DatabaseRef;
 
-use crate::chain_storage::lmdb_db::lmdb::lmdb_delete;
-
 use super::lmdb::lmdb_insert;
+use crate::chain_storage::lmdb_db::lmdb::lmdb_delete;
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {

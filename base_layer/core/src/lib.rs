@@ -65,8 +65,12 @@ mod domain_hashing {
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
     use tari_hashing::ValidatorNodeBmtHashDomain;
     use tari_mmr::{
-        error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, sparse_merkle_tree::SparseMerkleTree,
-        BalancedBinaryMerkleTree, Hash, MerkleMountainRange,
+        error::MerkleMountainRangeError,
+        pruned_hashset::PrunedHashSet,
+        sparse_merkle_tree::SparseMerkleTree,
+        BalancedBinaryMerkleTree,
+        Hash,
+        MerkleMountainRange,
     };
 
     hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);

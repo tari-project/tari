@@ -34,8 +34,11 @@ use crate::{
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
     validation::{
-        aggregate_body::AggregateBodyChainLinkedValidator, helpers::check_mmr_roots, BlockBodyValidator,
-        CandidateBlockValidator, ValidationError,
+        aggregate_body::AggregateBodyChainLinkedValidator,
+        helpers::check_mmr_roots,
+        BlockBodyValidator,
+        CandidateBlockValidator,
+        ValidationError,
     },
     OutputSmt,
 };

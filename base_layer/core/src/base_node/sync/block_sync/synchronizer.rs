@@ -81,23 +81,17 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub fn on_starting<H>(&mut self, hook: H)
-    where
-        for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static,
-    {
+    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_starting_hook(hook);
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where
-        H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static,
-    {
+    where H: Fn(Arc<ChainBlock>, u64, &SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_progress_block_hook(hook);
     }
 
     pub fn on_complete<H>(&mut self, hook: H)
-    where
-        H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static,
-    {
+    where H: Fn(Arc<ChainBlock>, u64) + Send + Sync + 'static {
         self.hooks.add_on_complete_hook(hook);
     }
 
