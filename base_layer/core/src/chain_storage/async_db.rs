@@ -188,7 +188,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_size");
 
-    make_async_fn!(calculate_mmr_roots(block: Block) -> (Block, MmrRoots), "calculate_mmr_roots");
+    make_async_fn!(calculate_mmr_roots_for_block(block: Block) -> (Block, MmrRoots), "calculate_mmr_roots");
 
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");

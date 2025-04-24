@@ -30,7 +30,6 @@ use std::{
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
-
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
@@ -52,7 +51,7 @@ use tari_common_types::{
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
+    sparse_merkle_tree::{ NodeKey},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
@@ -101,7 +100,6 @@ use crate::{
     },
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
@@ -947,60 +945,25 @@ where B: BlockchainBackend
                 .ok_or(ChainStorageError::UnexpectedResult("Timestamp overflowed".to_string()))?;
         }
         let mut block = Block { header, body };
-        let mut smt = self.smt_write_access()?;
-        let roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
-            Ok(v) => v,
-            Err(e) => {
-                // some error happend, lets rewind the smt
-                if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
-                    warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
-                    // Do not recalc smt, it has not changed.
-                    return Err(e);
-                }
-                warn!(
-                    target: LOG_TARGET,
-                    "Reloading SMT into memory from stored db via new block prepare due to '{}'",
-                    e
-                );
+        let roots = calculate_mmr_roots_for_block(&*db, self.rules(), &block)?;
 
-                *smt = db.calculate_tip_smt()?;
-                return Err(e);
-            },
-        };
+        let mut smt = self.smt_read_access()?.clone();
+
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
-        block.header.output_mr = roots.output_mr;
+        block.header.chain_output_mr = FixedHash::try_from(smt.hash().as_slice())?;
         block.header.block_output_mr = roots.block_output_mr;
-        block.header.output_smt_size = roots.output_smt_size;
+        block.header.chain_output_smt_size = smt.size();
         block.header.validator_node_mr = roots.validator_node_mr;
         block.header.validator_node_size = roots.validator_node_size;
         Ok(block)
     }
 
     /// `calculate_mmr_roots` takes a _pre-sorted_ block body and calculates the MMR roots for it.
-    pub fn calculate_mmr_roots(&self, block: Block) -> Result<(Block, MmrRoots), ChainStorageError> {
+    pub fn calculate_mmr_roots_for_block(&self, block: Block) -> Result<(Block, MmrRoots), ChainStorageError> {
         let db = self.db_read_access()?;
-        if !block.body.is_sorted() {
-            return Err(ChainStorageError::InvalidBlock(
-                "calculate_mmr_roots expected a sorted block body, however the block body was not sorted".to_string(),
-            ));
-        };
-        let mut smt = self.smt_write_access()?;
-        let mmr_roots = match calculate_mmr_roots(&*db, self.rules(), &block, &mut smt) {
-            Ok(v) => v,
-            Err(e) => {
-                if let ChainStorageError::CannotCalculateNonTipMmr(_) = e {
-                    warn!(target: LOG_TARGET, "Cannot calculate non tip MMR, this is expected if the block is not in the main chain. SMT will be reset to the tip.");
-                    // Do not recalc smt, it has not changed.
-                    return Err(e);
-                }
-                // some error happend, lets reset the smt to its starting state
-                warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via calculate root due to '{}'", e);
-                *smt = db.calculate_tip_smt()?;
-                return Err(e);
-            },
-        };
+        let mmr_roots = calculate_mmr_roots_for_block(&*db, self.rules(), &block)?;
         Ok((block, mmr_roots))
     }
 
@@ -1387,9 +1350,7 @@ pub struct MmrRoots {
     pub kernel_mr: FixedHash,
     pub kernel_mmr_size: u64,
     pub input_mr: FixedHash,
-    pub output_mr: FixedHash,
     pub block_output_mr: FixedHash,
-    pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
     pub validator_node_size: u64,
 }
@@ -1400,9 +1361,7 @@ impl std::fmt::Display for MmrRoots {
         writeln!(f, "Input MR        : {}", self.input_mr)?;
         writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
         writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
-        writeln!(f, "Output MR       : {}", self.output_mr)?;
         writeln!(f, "Block Output MR : {}", self.block_output_mr)?;
-        writeln!(f, "Output SMT Size : {}", self.output_smt_size)?;
         writeln!(f, "Validator MR    : {}", self.validator_node_mr)?;
         Ok(())
     }
@@ -1410,12 +1369,10 @@ impl std::fmt::Display for MmrRoots {
 
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::similar_names)]
-pub fn calculate_mmr_roots<T: BlockchainBackend>(
+pub fn calculate_mmr_roots_for_block<T: BlockchainBackend>(
     db: &T,
     rules: &ConsensusManager,
     block: &Block,
-    // we dont want to clone the SMT, so we rather change it and change it back after we are done.
-    output_smt: &mut OutputSmt,
 ) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;
@@ -1448,44 +1405,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
-    let mut outputs_to_remove = Vec::new();
     for output in body.outputs() {
         if output.features.is_coinbase() {
             block_output_mmr.push(output.hash().to_vec())?;
         } else {
             normal_output_mmr.push(output.hash().to_vec())?;
         }
-        if !output.is_burned() {
-            let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-            let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-            outputs_to_remove.push(smt_key.clone());
-            if let Err(e) = output_smt.insert(smt_key, smt_node) {
-                error!(
-                    target: LOG_TARGET,
-                    "Output commitment({}) already in SMT",
-                    output.commitment.to_hex(),
-                );
-                return Err(e.into());
-            }
-        }
     }
     block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
-    let mut outputs_to_add = Vec::new();
     for input in body.inputs() {
         input_mmr.push(input.canonical_hash().to_vec())?;
-        let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-        match output_smt.delete(&smt_key)? {
-            DeleteResult::Deleted(value_hash) => outputs_to_add.push((smt_key, value_hash)),
-            DeleteResult::KeyNotFound => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not find input({}) in SMT",
-                    input.commitment()?.to_hex(),
-                );
-                return Err(ChainStorageError::UnspendableInput);
-            },
-        };
     }
 
     let block_height = block.header.height;
@@ -1513,43 +1443,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         kernel_mr: kernel_mr_hash_from_pruned_mmr(&kernel_mmr)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: input_mr_hash_from_pruned_mmr(&input_mmr)?,
-        output_mr: output_mr_hash_from_smt(output_smt)?,
         block_output_mr,
-        output_smt_size: output_smt.size(),
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
     };
-    // We have made changes to the SMT that we dont want, sp lets rewind the SMT back to tip again as we want to have
-    // the SMT at tip.
-    for output in outputs_to_add {
-        if output_smt.insert(output.0.clone(), output.1).is_err() {
-            error!(
-                target: LOG_TARGET,
-                "Output commitment({}) already in SMT",
-                output.0,
-            );
-            return Err(ChainStorageError::AccessError(format!(
-                "Could not add output ({}) in SMT",
-                output.0
-            )));
-        }
-    }
-    for output in outputs_to_remove {
-        match output_smt.delete(&output)? {
-            DeleteResult::Deleted(_value_hash) => {},
-            DeleteResult::KeyNotFound => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not find input({}) in SMT when reseting back to tip",
-                    output,
-                );
-                return Err(ChainStorageError::AccessError(format!(
-                    "Could not find input({}) in SMT when reseting back to tip",
-                    output
-                )));
-            },
-        };
-    }
     Ok(mmr_roots)
 }
 

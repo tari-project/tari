@@ -99,11 +99,11 @@ pub struct BlockHeader {
     /// This is the Merkle root of the inputs in this block
     pub input_mr: FixedHash,
     /// This is the UTXO merkle root of the outputs on the blockchain
-    pub output_mr: FixedHash,
+    pub chain_output_mr: FixedHash,
     /// This is the block_output_mr
     pub block_output_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
-    pub output_smt_size: u64,
+    pub chain_output_smt_size: u64,
     /// This is the MMR root of the kernels
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
@@ -130,9 +130,9 @@ impl BlockHeader {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
-            output_mr: FixedHash::zero(),
+            chain_output_mr: FixedHash::zero(),
             block_output_mr: FixedHash::zero(),
-            output_smt_size: 0,
+            chain_output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -164,8 +164,8 @@ impl BlockHeader {
             height: prev.height + 1,
             prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: FixedHash::zero(),
-            output_smt_size: prev.output_smt_size,
+            chain_output_mr: FixedHash::zero(),
+            chain_output_smt_size: prev.chain_output_smt_size,
             block_output_mr: FixedHash::zero(),
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
@@ -231,8 +231,8 @@ impl BlockHeader {
             .chain(&self.prev_hash)
             .chain(&self.timestamp)
             .chain(&self.input_mr)
-            .chain(&self.output_mr)
-            .chain(&self.output_smt_size)
+            .chain(&self.chain_output_mr)
+            .chain(&self.chain_output_smt_size)
             .chain(&self.block_output_mr)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
@@ -275,9 +275,9 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             height: header_template.height,
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: FixedHash::zero(),
+            chain_output_mr: FixedHash::zero(),
             block_output_mr: FixedHash::zero(),
-            output_smt_size: 0,
+            chain_output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -311,8 +311,8 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
-            self.input_mr, self.output_mr, self.output_smt_size, self.kernel_mr, self.kernel_mmr_size
+            "Merkle roots:\nInputs: {},\nChain Outputs: {} ({})\n\nKernels: {} ({})",
+            self.input_mr, self.chain_output_mr, self.chain_output_smt_size, self.kernel_mr, self.kernel_mmr_size
         )?;
         writeln!(fmt, "ValidatorNode: {}\n", self.validator_node_mr.to_hex())?;
         writeln!(

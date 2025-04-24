@@ -28,7 +28,7 @@ use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
+    sparse_merkle_tree::{NodeKey},
 };
 use tari_utilities::ByteArray;
 
@@ -76,8 +76,6 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
             panic!("Error: Could not deserialize line: {} in file: {}", line, file);
         }
     }
-    block.header.output_smt_size += outputs.len() as u64;
-    block.header.output_smt_size -= inputs.len() as u64;
     block.body.add_outputs(outputs);
     block.body.add_inputs(inputs);
     block.body.sort();
@@ -97,12 +95,6 @@ fn print_mr_values(block: &mut Block, print: bool) {
     }
 
     let mut output_smt = OutputSmt::new();
-
-    for o in block.body.outputs() {
-        let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-        let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
-        output_smt.insert(smt_key, smt_node).unwrap();
-    }
     for i in block.body.inputs() {
         let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
         output_smt.delete(&smt_key).unwrap();
@@ -115,13 +107,13 @@ fn print_mr_values(block: &mut Block, print: bool) {
     }
 
     block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
-    block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
+    block.header.chain_output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
     block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
     block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     println!("input mr: {}", block.header.input_mr.to_hex());
-    println!("output mr: {}", block.header.output_mr.to_hex());
+    println!("output mr: {}", block.header.chain_output_mr.to_hex());
     println!("vn mr: {}", block.header.validator_node_mr.to_hex());
 }
 
@@ -144,7 +136,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("a08ff15219beea81d4131465290443fb3bd99d28b8af85975dbb2c77cb4cb5a0").unwrap();
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
-        block.header.output_mr =
+        block.header.chain_output_mr =
             FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
@@ -204,7 +196,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("36881d87e25183f5189d2dca5f7da450c399e7006dafd9bd9240f73a5fb3f0ad").unwrap();
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
-        block.header.output_mr =
+        block.header.chain_output_mr =
             FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
@@ -264,7 +256,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("f73daf81a3672d9e290adecb77f6071c82b7095f34bfcdfcfafe8c2148b54fad").unwrap();
         block.header.input_mr =
             FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
-        block.header.output_mr =
+        block.header.chain_output_mr =
             FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
         block.header.block_output_mr =
             FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
@@ -323,7 +315,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
             FixedHash::from_hex("bc5d677b0b8349adc9d7e4a18ace7406986fc7017866f4fd351ecb0f35d6da5e").unwrap();
         block.header.input_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
-        block.header.output_mr =
+        block.header.chain_output_mr =
             FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
@@ -385,7 +377,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("91402b11319114845dd7ce5e5c191dab86f886147515437cb1549ec8c082060e").unwrap();
         block.header.input_mr =
             FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
-        block.header.output_mr =
+        block.header.chain_output_mr =
             FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
@@ -482,10 +474,10 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::zero(),
+            chain_output_mr: FixedHash::zero(),
             block_output_mr: FixedHash::from_hex("622720a6571c33d6bf6138d9e737d3468c77f1193640698ad459953d24ec0812")
                 .unwrap(),
-            output_smt_size: 0,
+            chain_output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")

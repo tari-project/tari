@@ -192,8 +192,7 @@ where B: BlockchainBackend + 'static
 
         trace!(
             target: LOG_TARGET,
-            "UTXO sync by block completed to UTXO {} (Header hash = {})",
-            current_header.output_smt_size,
+            "UTXO sync by block completed to Header {}",
             current_header.hash().to_hex()
         );
 

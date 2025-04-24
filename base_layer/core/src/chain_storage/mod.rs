@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    calculate_mmr_roots,
+    calculate_mmr_roots_for_block,
     calculate_validator_node_mr,
     fetch_header,
     fetch_headers,

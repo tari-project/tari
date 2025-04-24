@@ -584,9 +584,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         loop {
             current_header =
                 if let Some(previous_header) = db.fetch_header_by_block_hash(current_header.prev_hash).await? {
-                    self.num_outputs += current_header
-                        .output_smt_size
-                        .saturating_sub(previous_header.output_smt_size);
                     previous_header
                 } else {
                     break;
@@ -653,9 +650,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Txo::Output(output) => {
                     utxo_counter += 1;
                     // Increase the estimate number of outputs to be downloaded (for display purposes only).
-                    if utxo_counter >= self.num_outputs {
-                        self.num_outputs = utxo_counter + u64::from(current_header.hash() != to_header.hash());
-                    }
+                    self.num_outputs += 1;
+                    
 
                     let constants = self.rules.consensus_constants(current_header.height).clone();
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
@@ -765,7 +761,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         //      it.
         // 3. In both cases it would be impossible to verify the SMT per block, as we would not be able to update the
         //    SMT with the outputs that were created and spent within the tranche.
-        HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, to_header)?;
+        let smt_check_header =  db.fetch_chain_header(to_header.height - 1).await?;
+        HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, smt_check_header.header())?;
 
         // Commit in chunks to avoid locking the database for too long
         let inputs_to_delete_len = inputs_to_delete.len();
@@ -790,17 +787,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     // Helper function to check the output SMT root hash against the expected root hash.
     fn check_output_smt_root_hash(output_smt: &mut OutputSmt, header: &BlockHeader) -> Result<(), HorizonSyncError> {
         let root = output_mr_hash_from_smt(output_smt)?;
-        if root != header.output_mr {
+        if root != header.chain_output_mr {
             warn!(
                 target: LOG_TARGET,
                 "Target root(#{}) did not match expected (#{})",
-                    header.output_mr.to_hex(),
+                    header.chain_output_mr.to_hex(),
                     root.to_hex(),
             );
             return Err(HorizonSyncError::InvalidMrRoot {
                 mr_tree: "UTXO SMT".to_string(),
                 at_height: header.height,
-                expected_hex: header.output_mr.to_hex(),
+                expected_hex: header.chain_output_mr.to_hex(),
                 actual_hex: root.to_hex(),
             });
         }

@@ -32,7 +32,7 @@ message BlockHeader {
     // Timestamp at which the block was built.
     uint64 timestamp = 5;
     // This is the UTXO merkle root of the outputs in the blockchain
-    bytes output_mr = 6;
+    bytes chain_output_mr = 6;
     // This is the merkle root of all outputs in this block
     bytes block_output_mr = 7;
     // This is the MMR root of the kernels
@@ -49,7 +49,7 @@ message BlockHeader {
     // The size of the kernel MMR
     uint64 kernel_mmr_size = 13;
     // The size of the output MMR
-    uint64 output_mmr_size = 14;
+    uint64 chain_output_mmr_size = 14;
     // Sum of script offsets for all kernels in this block.
     bytes total_script_offset = 15;
     // Merkle root of validator nodes

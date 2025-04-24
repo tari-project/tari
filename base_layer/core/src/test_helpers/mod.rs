@@ -143,7 +143,7 @@ pub async fn create_block(
         .timestamp
         .checked_add(EpochTime::from(spec.block_time))
         .unwrap();
-    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
+    block.header.chain_output_smt_size = prev_block.header.chain_output_smt_size + prev_block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)

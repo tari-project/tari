@@ -1536,7 +1536,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             header: header_bytes,
             block_body: block_body_bytes,
             merge_mining_hash: mining_hash,
-            utxo_mr: header.output_mr.to_vec(),
+            utxo_mr: header.chain_output_mr.to_vec(),
             tari_unique_id: gen_hash,
         };
         trace!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");

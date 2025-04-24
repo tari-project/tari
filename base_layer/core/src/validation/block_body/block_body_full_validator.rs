@@ -21,15 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::{Arc, RwLock};
-
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
+use tari_mmr::sparse_merkle_tree::NodeKey;
+use tari_utilities::ByteArray;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
-    chain_storage::{self, BlockchainBackend, ChainStorageError},
+    chain_storage::{self, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
@@ -42,6 +43,7 @@ use crate::{
     },
     OutputSmt,
 };
+use crate::chain_storage::ChainStorageError;
 
 const LOG_TARGET: &str = "c::val::block_body_full_validator";
 
@@ -86,35 +88,49 @@ impl BlockBodyFullValidator {
         // validate the internal consistency of the block body
         self.block_internal_validator.validate(&block)?;
 
-        // validate the merkle mountain range roots+
-        let mut output_smt = smt.write().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Validator could not get a write lock on the smt {:?}", e
-            );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?;
-        let mmr_roots =
-            match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block, &mut output_smt) {
-                Ok(mmr_roots) => mmr_roots,
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
-                    );
-                    if let ChainStorageError::CannotCalculateNonTipMmr(ref _e) = e {
-                        return Err(e.into());
-                    }
-                    // Recalculate SMT as it might have been altered.
-                    *output_smt = backend.calculate_tip_smt()?;
-                    return Err(e.into());
-                },
-            };
-        check_mmr_roots(&block.header, &mmr_roots)?;
+
+        let mmr_roots = chain_storage::calculate_mmr_roots_for_block(backend, &self.consensus_manager, &block)?;
+        check_mmr_roots(&block.header, &mmr_roots, Some(smt.clone()))?;
+        Self::check_chain_mr_validity(&block, smt)?;
 
         BlockBodyFullValidator::check_monero_seed_height(&block.header, &self.consensus_manager, backend)?;
 
         Ok(block)
+    }
+
+    fn check_chain_mr_validity(block: &Block, smt: Arc<RwLock<OutputSmt>>)-> Result<(), ValidationError>{
+        let output_smt = smt.read().map_err(|e| {
+            error!(
+                    target: LOG_TARGET,
+                    "Validator could not get a read lock on the smt {:?}", e
+                );
+            ChainStorageError::AccessError("write lock on smt".into())
+        })?;
+        for output in block.body.outputs(){
+            if !output.is_burned() {
+                let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+                if output_smt.contains(&smt_key) {
+                    error!(
+                    target: LOG_TARGET,
+                    "Output commitment({}) already in SMT",
+                    output.commitment.to_hex(),
+                );
+                    return Err(ValidationError::ContainsTxO);
+                }
+            }
+        }
+        for input in block.body.inputs(){
+            let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
+            if !output_smt.contains(&smt_key) {
+                error!(
+                    target: LOG_TARGET,
+                    "Input commitment({}) not found in SMT",
+                   input.commitment()?.to_hex(),
+                );
+                return Err(ValidationError::UnknownInput);
+            }
+        }
+        Ok(())
     }
 
     fn check_monero_seed_height<B: BlockchainBackend>(

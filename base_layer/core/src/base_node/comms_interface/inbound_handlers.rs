@@ -756,14 +756,14 @@ where B: BlockchainBackend + 'static
         // Perform a sanity check on the reconstructed block, if the MMR roots don't match then it's possible one or
         // more transactions in our mempool had the same excess/signature for a *different* transaction.
         // This is extremely unlikely, but still possible. In case of a mismatch, request the full block from the peer.
-        let (block, mmr_roots) = match self.blockchain_db.calculate_mmr_roots(block).await {
+        let (block, mmr_roots) = match self.blockchain_db.calculate_mmr_roots_for_block(block).await {
             Err(_) => {
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
             },
             Ok(v) => v,
         };
-        if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
+        if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots, None) {
             warn!(
                 target: LOG_TARGET,
                 "Reconstructed block #{} ({}) failed MMR check validation!. Requesting full block. Error: {}",

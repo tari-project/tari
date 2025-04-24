@@ -23,7 +23,7 @@
 use tari_common_types::types::HashOutput;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
-
+use tari_mmr::sparse_merkle_tree::SMTError;
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
@@ -137,6 +137,8 @@ pub enum ValidationError {
     CovenantTooLarge { max_size: usize, actual_size: usize },
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
+    #[error("Sparse Merkle Tree error: {0}")]
+    SMTError(#[from] SMTError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -199,7 +201,7 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
+            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. }| ValidationError::SMTError(_) => None,
         }
     }
 }

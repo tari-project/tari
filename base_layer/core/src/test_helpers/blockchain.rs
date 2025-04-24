@@ -27,7 +27,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
-
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -529,6 +528,9 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
 }
 
 pub fn update_block_and_smt(block: &mut Block, smt: &mut OutputSmt) {
+    let root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
+    block.header.chain_output_mr = root;
+
     for output in block.body.outputs() {
         let smt_key = NodeKey::try_from(output.commitment.as_bytes()).unwrap();
         let smt_node = ValueHash::try_from(output.smt_hash(block.header.height).as_slice()).unwrap();
@@ -539,8 +541,6 @@ pub fn update_block_and_smt(block: &mut Block, smt: &mut OutputSmt) {
         let smt_key = NodeKey::try_from(input.commitment().unwrap().as_bytes()).unwrap();
         smt.delete(&smt_key).unwrap();
     }
-    let root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
-    block.header.output_mr = root;
 }
 
 pub struct TestBlockchain {
