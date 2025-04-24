@@ -651,7 +651,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     utxo_counter += 1;
                     // Increase the estimate number of outputs to be downloaded (for display purposes only).
                     self.num_outputs += 1;
-                    
 
                     let constants = self.rules.consensus_constants(current_header.height).clone();
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
@@ -761,7 +760,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         //      it.
         // 3. In both cases it would be impossible to verify the SMT per block, as we would not be able to update the
         //    SMT with the outputs that were created and spent within the tranche.
-        let smt_check_header =  db.fetch_chain_header(to_header.height - 1).await?;
+        let smt_check_header = db.fetch_chain_header(to_header.height - 1).await?;
         HorizonStateSynchronization::<B>::check_output_smt_root_hash(&mut output_smt, smt_check_header.header())?;
 
         // Commit in chunks to avoid locking the database for too long

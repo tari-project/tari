@@ -274,7 +274,7 @@ mod test {
             header.version = cm.consensus_constants(header.height).blockchain_version();
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
-            header.output_smt_size += 1;
+            header.chain_output_smt_size += 1;
             let acc_data = BlockHeaderAccumulatedData {
                 hash: header.hash(),
                 ..Default::default()

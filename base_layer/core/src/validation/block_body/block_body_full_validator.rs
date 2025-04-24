@@ -21,16 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::{Arc, RwLock};
+
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_utilities::hex::Hex;
 use tari_mmr::sparse_merkle_tree::NodeKey;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
-    chain_storage::{self, BlockchainBackend},
+    chain_storage::{self, BlockchainBackend, ChainStorageError},
     consensus::ConsensusManager,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
@@ -43,7 +43,6 @@ use crate::{
     },
     OutputSmt,
 };
-use crate::chain_storage::ChainStorageError;
 
 const LOG_TARGET: &str = "c::val::block_body_full_validator";
 
@@ -88,7 +87,6 @@ impl BlockBodyFullValidator {
         // validate the internal consistency of the block body
         self.block_internal_validator.validate(&block)?;
 
-
         let mmr_roots = chain_storage::calculate_mmr_roots_for_block(backend, &self.consensus_manager, &block)?;
         check_mmr_roots(&block.header, &mmr_roots, Some(smt.clone()))?;
         Self::check_chain_mr_validity(&block, smt)?;
@@ -98,28 +96,28 @@ impl BlockBodyFullValidator {
         Ok(block)
     }
 
-    fn check_chain_mr_validity(block: &Block, smt: Arc<RwLock<OutputSmt>>)-> Result<(), ValidationError>{
+    fn check_chain_mr_validity(block: &Block, smt: Arc<RwLock<OutputSmt>>) -> Result<(), ValidationError> {
         let output_smt = smt.read().map_err(|e| {
             error!(
-                    target: LOG_TARGET,
-                    "Validator could not get a read lock on the smt {:?}", e
-                );
+                target: LOG_TARGET,
+                "Validator could not get a read lock on the smt {:?}", e
+            );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
-        for output in block.body.outputs(){
+        for output in block.body.outputs() {
             if !output.is_burned() {
                 let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
                 if output_smt.contains(&smt_key) {
                     error!(
-                    target: LOG_TARGET,
-                    "Output commitment({}) already in SMT",
-                    output.commitment.to_hex(),
-                );
+                        target: LOG_TARGET,
+                        "Output commitment({}) already in SMT",
+                        output.commitment.to_hex(),
+                    );
                     return Err(ValidationError::ContainsTxO);
                 }
             }
         }
-        for input in block.body.inputs(){
+        for input in block.body.inputs() {
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
             if !output_smt.contains(&smt_key) {
                 error!(

@@ -30,6 +30,7 @@ use std::{
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
+
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
@@ -49,10 +50,7 @@ use tari_common_types::{
     },
 };
 use tari_hashing::TransactionHashDomain;
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{ NodeKey},
-};
+use tari_mmr::{pruned_hashset::PrunedHashSet, sparse_merkle_tree::NodeKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;

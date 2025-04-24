@@ -214,9 +214,9 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
         let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
         mmr.insert(smt_key, smt_node).unwrap();
     }
-    header.output_smt_size = body.outputs().len() as u64;
+    header.chain_output_smt_size = body.outputs().len() as u64;
 
-    header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
+    header.chain_output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
     header.block_output_mr = FixedHash::try_from(output_mr.get_merkle_root().unwrap()).unwrap();
     Ok(Block { header, body })
 }

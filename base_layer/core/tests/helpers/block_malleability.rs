@@ -96,7 +96,7 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
         .store()
         .rewind_to_height(mod_block.header.height - 1)
         .unwrap();
-    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
+    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots_for_block(mod_block).unwrap();
 
     match field {
         MerkleMountainRangeField::Input => {
@@ -104,8 +104,8 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
             mod_block.header.input_mr = modded_root.input_mr;
         },
         MerkleMountainRangeField::Output => {
-            assert_ne!(block.header().output_mr, modded_root.output_mr);
-            mod_block.header.output_mr = modded_root.output_mr;
+            assert_ne!(block.header().block_output_mr, modded_root.block_output_mr);
+            mod_block.header.block_output_mr = modded_root.block_output_mr;
         },
         MerkleMountainRangeField::Kernel => {
             assert_ne!(block.header().kernel_mr, modded_root.kernel_mr);

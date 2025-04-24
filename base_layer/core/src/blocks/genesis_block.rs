@@ -26,10 +26,7 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey},
-};
+use tari_mmr::{pruned_hashset::PrunedHashSet, sparse_merkle_tree::NodeKey};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -506,6 +503,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 #[cfg(test)]
 mod test {
     use std::convert::TryFrom;
+    use tari_mmr::sparse_merkle_tree::ValueHash;
 
     use serial_test::serial;
     use tari_common_types::{
@@ -639,7 +637,7 @@ mod test {
         );
         assert_eq!(
             block.block().body.outputs().len() as u64 - block.block().body.inputs().len() as u64,
-            block.header().output_smt_size
+            block.header().chain_output_smt_size
         );
 
         for kernel in block.block().body.kernels() {
@@ -725,7 +723,7 @@ mod test {
         );
         assert_eq!(
             output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
-            block.header().output_mr.to_vec().to_hex(),
+            block.header().chain_output_mr.to_vec().to_hex(),
         );
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();

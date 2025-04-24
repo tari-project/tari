@@ -20,29 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
-use std::sync::{Arc, RwLock};
+use std::{
+    convert::TryFrom,
+    sync::{Arc, RwLock},
+};
+
 use log::*;
 use tari_common_types::types::FixedHash;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 
-use crate::{blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError}, borsh::SerializedSize, chain_storage::{BlockchainBackend, MmrRoots, MmrTree}, consensus::{ConsensusConstants, ConsensusManager}, covenants::Covenant,  proof_of_work::{
-    randomx_difficulty,
-    randomx_factory::RandomXFactory,
-    sha3x_difficulty,
-    AchievedTargetDifficulty,
-    Difficulty,
-    PowAlgorithm,
-    PowError,
-}, transactions::transaction_components::{
-    encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-    EncryptedData,
-    TransactionInput,
-    TransactionKernel,
-    TransactionOutput,
-}, validation::ValidationError, OutputSmt};
-use crate::chain_storage::ChainStorageError;
+use crate::{
+    blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
+    borsh::SerializedSize,
+    chain_storage::{BlockchainBackend, ChainStorageError, MmrRoots, MmrTree},
+    consensus::{ConsensusConstants, ConsensusManager},
+    covenants::Covenant,
+    proof_of_work::{
+        randomx_difficulty,
+        randomx_factory::RandomXFactory,
+        sha3x_difficulty,
+        AchievedTargetDifficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
+    transactions::transaction_components::{
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        EncryptedData,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
+    validation::ValidationError,
+    OutputSmt,
+};
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 
@@ -258,7 +270,11 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots, smt: Option<Arc<RwLock<OutputSmt>>>) -> Result<(), ValidationError> {
+pub fn check_mmr_roots(
+    header: &BlockHeader,
+    mmr_roots: &MmrRoots,
+    smt: Option<Arc<RwLock<OutputSmt>>>,
+) -> Result<(), ValidationError> {
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
@@ -345,18 +361,21 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots, smt: Option<A
 
     if let Some(smt) = smt {
         // validate the merkle mountain range roots+
-        let mut output_smt = smt.read().map_err(|e| {
-            error!(
+        let mut output_smt = smt
+            .read()
+            .map_err(|e| {
+                error!(
                     target: LOG_TARGET,
                     "Validator could not get a read lock on the smt {:?}", e
                 );
-            ChainStorageError::AccessError("write lock on smt".into())
-        })?.clone();
+                ChainStorageError::AccessError("write lock on smt".into())
+            })?
+            .clone();
         let smt_root = FixedHash::try_from(output_smt.hash().as_slice()).map_err(|e| {
             error!(
-                    target: LOG_TARGET,
-                    "Validator could not get a read lock on the smt {:?}", e
-                );
+                target: LOG_TARGET,
+                "Validator could not get a read lock on the smt {:?}", e
+            );
             ChainStorageError::AccessError("write lock on smt".into())
         })?;
         if header.chain_output_mr != smt_root {
@@ -382,7 +401,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots, smt: Option<A
             );
             return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
                 mmr_tree: "UTXO".to_string(),
-                expected:output_smt.size(),
+                expected: output_smt.size(),
                 actual: header.chain_output_smt_size,
             }));
         };

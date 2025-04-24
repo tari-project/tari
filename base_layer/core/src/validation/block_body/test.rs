@@ -26,7 +26,7 @@ use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address:
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tokio::time::Instant;
-
+use tari_common_types::types::FixedHash;
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
@@ -90,12 +90,14 @@ async fn it_passes_if_large_output_block_is_valid() {
         .await;
     let (mut block, mmr_roots) = blockchain
         .db()
-        .calculate_mmr_roots(chain_block.block().clone())
+        .calculate_mmr_roots_for_block(chain_block.block().clone())
         .unwrap();
+    let mut smt = blockchain.db().smt_read_access().unwrap().clone();
+    let smt_root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.block_output_mr = mmr_roots.block_output_mr;
-    block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.chain_output_mr = smt_root;
+    block.header.chain_output_smt_size = smt.size();
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -127,12 +129,15 @@ async fn it_validates_when_a_coinbase_is_spent() {
         .await;
     let (mut block, mmr_roots) = blockchain
         .db()
-        .calculate_mmr_roots(chain_block.block().clone())
+        .calculate_mmr_roots_for_block(chain_block.block().clone())
         .unwrap();
+
+    let mut smt = blockchain.db().smt_read_access().unwrap().clone();
+    let smt_root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
-    block.header.output_mr = mmr_roots.output_mr;
     block.header.block_output_mr = mmr_roots.block_output_mr;
-    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.chain_output_mr = smt_root;
+    block.header.chain_output_smt_size = smt.size();
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -170,12 +175,14 @@ async fn it_passes_if_large_block_is_valid() {
         .await;
     let (mut block, mmr_roots) = blockchain
         .db()
-        .calculate_mmr_roots(chain_block.block().clone())
+        .calculate_mmr_roots_for_block(chain_block.block().clone())
         .unwrap();
+    let mut smt = blockchain.db().smt_read_access().unwrap().clone();
+    let smt_root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
-    block.header.output_mr = mmr_roots.output_mr;
     block.header.block_output_mr = mmr_roots.block_output_mr;
-    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.chain_output_mr = smt_root;
+    block.header.chain_output_smt_size = smt.size();
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -201,12 +208,14 @@ async fn it_passes_if_block_is_valid() {
 
     let (mut block, mmr_roots) = blockchain
         .db()
-        .calculate_mmr_roots(chain_block.block().clone())
+        .calculate_mmr_roots_for_block(chain_block.block().clone())
         .unwrap();
+    let mut smt = blockchain.db().smt_read_access().unwrap().clone();
+    let smt_root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
-    block.header.output_mr = mmr_roots.output_mr;
     block.header.block_output_mr = mmr_roots.block_output_mr;
-    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.chain_output_mr = smt_root;
+    block.header.chain_output_smt_size = smt.size();
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;

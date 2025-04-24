@@ -27,6 +27,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
+
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,

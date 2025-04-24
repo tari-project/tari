@@ -670,7 +670,7 @@ OutputFeatures::default()),
     // check mmr roots
     let mut new_block = db.prepare_new_block(template).unwrap();
     let prev_header = db.fetch_header(new_block.header.height - 1).unwrap().unwrap();
-    new_block.header.output_mr = FixedHash::zero();
+    new_block.header.chain_output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
@@ -1088,7 +1088,7 @@ async fn test_block_sync_body_validator() {
     // lets the mmr root
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, None, &key_manager).await;
     let mut new_block = db.prepare_new_block(template).unwrap();
-    new_block.header.output_mr = FixedHash::zero();
+    new_block.header.chain_output_mr = FixedHash::zero();
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();

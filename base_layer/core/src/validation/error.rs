@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::HashOutput;
+use tari_mmr::sparse_merkle_tree::SMTError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
-use tari_mmr::sparse_merkle_tree::SMTError;
+
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
@@ -201,7 +202,9 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. }| ValidationError::SMTError(_) => None,
+            ValidationError::FatalStorageError(_) |
+            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            ValidationError::SMTError(_) => None,
         }
     }
 }
