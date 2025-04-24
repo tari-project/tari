@@ -1,4 +1,4 @@
-# gRPC Wallet Functions for Tari
+# gRPC API for Minotari Wallet
 ## Introduction
 This document provides detailed descriptions of the Remote Procedure Call (RPC) methods available in the Minotari Wallet using **gRPC**. These gRPC methods allow developers and users to interact programmatically with the Minotari Wallet, enabling a wide range of operations such as querying balances, managing transactions, and retrieving wallet-related data.
 
@@ -36,7 +36,7 @@ message GetBalanceResponse {
 }
 ```
 
-## gRPC Calls
+## gRPC Base Node Methods
 ### Get Max Height
 You can call the base node's gRPC method to get the current blockchain height.
 
@@ -47,8 +47,10 @@ const response = await client.getTipInfo();
 console.log('Max Height:', response.chain_height);
 ```
 
+## gRPC Wallet Methods
 ### Get Balance
-Use the wallet gRPC method `getBalance` to retrieve the wallet's available and pending balances. You will need to pass the
+Use the wallet gRPC method `getBalance` to retrieve the wallet's available and pending balances.
+
 Example:
 ```javascript
      const balance = await client.getBalance();
@@ -84,7 +86,7 @@ Example using the FFI:
      console.log("Wallet created:", wallet);
 ```
 
-### Get Transaction Details by Transaction ID
+### Get Transaction Info
 You can use the `getTransactionInfo` gRPC method to obtain information about a specific transaction.
    
 Example:
@@ -93,7 +95,7 @@ Example:
      console.log(txDetails);
 ```
 
-### Get All Transactions by Block ID
+### Fetch UTXOs by Block ID
 The `fetch_unspent_utxos_in_block` function is used to fetch unspent transaction outputs (UTXOs) within a specific block by its hash. You will need to interact with the base node directly via the `BaseNodeCommsInterface`.
 
 Example:
@@ -128,7 +130,7 @@ async fn fetch_utxos_for_block(
 }
 ```
 
-To use this function, you need to pass the block hash of the block for which you want to fetch UTXOs. For example:
+Pass the block hash to fetch UTXOs.
 
 ### Send a Transaction
 Use the `transfer` function to perform a send transaction to a participant.
@@ -139,19 +141,19 @@ Example:
        destination: 'receiver-tari-address',
        amount: 1000000,           // Amount in µT
        fee_per_gram: 25,          // Fee per gram
-       message: 'Payment for services'
+       message: 'Payment for services'  //Maximum message size is 256bit (32 bytes)
      });
      console.log('Transfer successful:', transferResponse);
 ```
 
-### Authentication
-#### Authentication with gRPC**
+#### Authentication with gRPC
 The `GrpcAuthentication` object supports two modes:
 - **None**: No authentication is required.
 - **Basic**: Username and password are used for authentication. Note that these are distinct from your wallet's credentials and are configured separately.
 
 Example:
 ```rust
+use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum GrpcAuthentication {
     None,
@@ -165,21 +167,40 @@ pub enum GrpcAuthentication {
 #### Connecting with Authentication Examples
 **Rust:**
 ```rust
-let auth_config = GrpcAuthentication::Basic {
-    username: "my_username".to_string(),
-    password: SafePassword::from("my_password".to_string()),
-};
+use tari_utilities::SafePassword;
+use serde::{Deserialize, Serialize};
 
-let wallet_client = WalletGrpcClient::connect_with_auth("http://localhost:18143", &auth_config).await?;
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum GrpcAuthentication {
+    #[default]
+    None,
+    Basic {
+        username: String,
+        #[serde(deserialize_with = "deserialize_safe_password")]
+        password: SafePassword,
+    },
+}
+
+fn main() {
+    let auth_config = GrpcAuthentication::Basic {
+        username: "my_username".to_string(),
+        password: SafePassword::from("my_password".to_string()),
+    };
+}
 ```
 
 **Node.js:**
 ```javascript
+const { Client } = require('./path/to/clients/nodejs/wallet_grpc_client');
+
 const client = new Client('localhost:18143', {
   authentication: {
     type: 'basic',
     username: 'my_username',
-    password: 'my_password'
-  }
+    password: 'my_password',
+  },
 });
+
+console.log('Client created:', client);
 ```
