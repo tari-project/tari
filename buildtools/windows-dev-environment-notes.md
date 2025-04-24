@@ -8,7 +8,7 @@ This guide utilises the PowerShell command line to install the dependencies
 
 You will require the following package managers to set up the development environment:
 * winget
-* choclately
+* Choclately
 * vcpkg
 
 The following dependencies are required, and will be installed as you proceed through this guide:
@@ -16,6 +16,7 @@ The following dependencies are required, and will be installed as you proceed th
 * Visual Studio BuildTools 2022
 * CMake
 * Protocol buffers (otherwise known as protobuf)
+* SQLIte3
 * (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
 
 ## Setting up ```winget``` and ```App Installer```
@@ -198,7 +199,7 @@ Chocolatey upgraded 3/3 packages.
 
 The last package manager you'll need to install is ```vcpkg```. This will be used for the installation of ```OpenSSL```.
 
-To install ```vcpkg```, run the following commnands:
+To install ```vcpkg```, run the following commands:
 
 ```PowerShell
 git clone https://github.com/microsoft/vcpkg.git \vcpkg
