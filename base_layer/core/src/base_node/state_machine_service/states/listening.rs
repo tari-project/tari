@@ -265,9 +265,10 @@ impl Listening {
                         ahead_of_peers_counter += 1;
                         if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
                             self.set_synced_response(shared);
-                            debug!(target: LOG_TARGET, "Initial sync achieved");
+                            info!(target: LOG_TARGET, "Initial sync achieved");
                         } else {
-                            debug!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                            self.set_synced_response(shared);
                         }
                     }
 
