@@ -74,12 +74,13 @@ impl Default for TariPulseConfig {
 
 fn get_network_dns_name(network: Network) -> &'static str {
     match network {
-        Network::NextNet => "checkpoints-nextnet.tari.com",
-        Network::MainNet => "checkpoints-mainnet.tari.com",
-        Network::Esmeralda => "checkpoints-esmeralda.tari.com",
-        Network::StageNet => "checkpoints-stagenet.tari.com",
-        Network::Igor => "checkpoints-igor.tari.com",
-        Network::LocalNet => "checkpoints-localnet.tari.com",
+        Network::NextNet => "checkpoints-nextnet.tari.com.",
+        Network::MainNet => "checkpoints-mainnet.tari.com.",
+        // Network::Esmeralda => "checkpoints-esmeralda.tari.com.",
+        Network::Esmeralda => "checkpoints-esme.tari.com.",
+        Network::StageNet => "checkpoints-stagenet.tari.com.",
+        Network::Igor => "checkpoints-igor.tari.com.",
+        Network::LocalNet => "checkpoints-localnet.tari.com.",
     }
 }
 
