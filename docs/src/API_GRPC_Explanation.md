@@ -141,7 +141,7 @@ Example:
        destination: 'receiver-tari-address',
        amount: 1000000,           // Amount in µT
        fee_per_gram: 25,          // Fee per gram
-       message: 'Payment for services'  //Maximum message size is 256bit (32 bytes)
+       message: 'Payment for services'  // Maximum message size is 32 bytes (256 bits)
      });
      console.log('Transfer successful:', transferResponse);
 ```
@@ -153,7 +153,7 @@ The `GrpcAuthentication` object supports two modes:
 
 Example:
 ```rust
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum GrpcAuthentication {
     None,
@@ -167,9 +167,11 @@ pub enum GrpcAuthentication {
 #### Connecting with Authentication Examples
 **Rust:**
 ```rust
-use tari_utilities::SafePassword;
 use serde::{Deserialize, Serialize};
+use tari_utilities::SafePassword;
 
+// `untagged` allows matching JSON structures to either variant without an explicit tag.
+// `default` marks `None` as the fallback when no fields are present.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GrpcAuthentication {
@@ -194,6 +196,7 @@ fn main() {
 ```javascript
 const { Client } = require('./path/to/clients/nodejs/wallet_grpc_client');
 
+// Replace './path/to/clients/nodejs/wallet_grpc_client' with the installed module name or relative path
 const client = new Client('localhost:18143', {
   authentication: {
     type: 'basic',
