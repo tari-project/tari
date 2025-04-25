@@ -96,6 +96,11 @@ Example:
 
 In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
 
+The user_payment_id can be specified in three formats: 
+- **u256 (bytes)**: Must be provided as a byte array.
+- **utf8_string (string)**: Must be a valid UTF-8 string.
+- **user_bytes (bytes)**: Must be provided as a generic byte array.
+
 ```javascript
 const userPaymentId = {
          utf8_string: "your_payment_id_string" // Replace this with your actual payment ID
