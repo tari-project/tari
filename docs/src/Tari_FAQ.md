@@ -20,4 +20,26 @@ Normal users can utilise the binaries found on Tari's main website under [www.ta
 
 On average, block size is between 1.3 and 1.5mb. This will result in the chain's average growth of around 1gb per day. Note that the maximum allowed size for a block is 4mb.
 
-### How often is a block mined?
+### How often is a block mined / what is the interval per block / what is the block production rate?
+
+Blocks are mined every 120 seconds.
+
+### What is the precision of Minotari?
+
+Minotari can be traded at 0.000001 XTM. Fractional Minotari is referred to as Microtari (μT).
+
+### Does Tari have a public facing API interface?
+
+Yes. There are two access points depending on your requirements:
+
+- Mainnet: [https://grpc.mainnet.tari.com](https://grpc.mainnet.tari.com)
+- Testing: [https://grpc.nextnet.tari.com](https://grpc.nextnet.tari.com)
+
+### Does Tari support memo functions like EOS?
+
+No.
+
+### Does Tari support accounts?
+
+There are no accounts on Minotari (L1). Minotari uses a UTXO model and as such there is no specific account tied to a user's transactions on Minotari. The closest comparison is the wallet and wallet private address which is then associated with signing of transactions (and is used to validate existing UTXOs for things like calculating balance, etc).
+
