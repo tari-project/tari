@@ -12,7 +12,7 @@ Each gRPC method has the following general structure:
 - **Service**: Defined in the `wallet.proto` file (e.g., `Wallet` service).
 - **Request Format**: Protocol Buffers (Protobuf messages).
 - **Response Format**: Protocol Buffers (Protobuf messages).
-- **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:50051`).
+- **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:18183`).
 
 To make a gRPC call, a client application must:
 1. Use the generated gRPC client stubs from the `wallet.proto` file, located [here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
@@ -36,7 +36,40 @@ message GetBalanceResponse {
 }
 ```
 
+### Instantiating the Client
+To use the methods, you will need use a gRPC library to instantiate a gRPC client against the `wallet.proto` file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
+
+```javascript
+     // Imports the gRPC library for Node.js, specifically the pure JavaScript implementation (@grpc/grpc-js), which supports HTTP/2 and is the modern, recommended one.
+     const grpc = require('@grpc/grpc-js');
+     // Imports a module that can parse .proto files into a format grpc-js can understand.
+     const protoLoader = require('@grpc/proto-loader');
+     // Loads and synchronously parses the wallet.proto file using proto-loader.
+     const packageDef = protoLoader.loadSync("wallet.proto", {});
+     // Takes the parsed proto package and feeds it into grpc.loadPackageDefinition() to make it usable with grpc-js.
+     const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
+     // Instantiates a gRPC client for the Wallet service.
+     const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
+```
+
+This would need to be placed before any method call. Below is an example of the `getBalance` method with the client instantiated:
+
+```javascript
+     const grpc = require('@grpc/grpc-js');
+     const protoLoader = require('@grpc/proto-loader');
+     const packageDef = protoLoader.loadSync("wallet.proto", {});
+     const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
+     const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
+
+     const balance = await client.getBalance();
+     console.log('Available Balance:', balance.available_balance);
+     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
+     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+```
+
 ## gRPC Base Node Methods
+These methods are dependent on access to a base node and use of the `base_node.proto` file.
+
 ### Get Max Height
 You can call the base node's gRPC method to get the current blockchain height.
 
@@ -48,6 +81,8 @@ console.log('Max Height:', response.chain_height);
 ```
 
 ## gRPC Wallet Methods
+These methods are dependent on access to a base node and use of the `wallet.proto` file.
+
 ### Get Balance
 Use the wallet gRPC method `getBalance` to retrieve the wallet's available and pending balances.
 
