@@ -37,10 +37,10 @@ impl<'a> TreeReader for LmdbTreeReader<'a> {
         let mut lmdb_key: Vec<u8> = vec![];
         lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
         borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
-        dbg!(&lmdb_key);
-        dbg!(&node_key);
+        // dbg!(&lmdb_key);
+        // dbg!(&node_key);
         let node = lmdb_get(&self.txn, &self.node_db, &lmdb_key)?;
-        dbg!(&node);
+        // dbg!(&node);
         Ok(node)
     }
 

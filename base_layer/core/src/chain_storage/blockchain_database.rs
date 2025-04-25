@@ -1493,9 +1493,9 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         FixedHash::zero()
     };
 
-    dbg!("here");
-    dbg!(header.height);
-    dbg!(&batch.len());
+    // dbg!("here");
+    // dbg!(header.height);
+    // dbg!(&batch.len());
 
     let (output_smt_root, changes) = output_smt
         .put_value_set(batch, header.height)

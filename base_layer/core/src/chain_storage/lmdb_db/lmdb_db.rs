@@ -1435,8 +1435,8 @@ impl LMDBDatabase {
         );
         // TODO: remove this check
         let check_root = output_smt.get_root_hash_option(header.height).unwrap();
-        dbg!(&check_root);
-        dbg!(&root);
+        // dbg!(&check_root);
+        // dbg!(&root);
 
         if header.output_mr.as_slice() != root.0.as_slice() {
             warn!(
@@ -1453,7 +1453,7 @@ impl LMDBDatabase {
         }
         dbg!("writing smt");
         dbg!(header.height);
-        dbg!(&ops);
+        // dbg!(&ops);
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
