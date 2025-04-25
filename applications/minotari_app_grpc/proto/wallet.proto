@@ -249,7 +249,9 @@ enum TransactionStatus {
   TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN = 14;
 }
 
-message GetCompletedTransactionsRequest {}
+message GetCompletedTransactionsRequest {
+  user_payment_id payment_id = 1;
+}
 
 message GetCompletedTransactionsResponse {
   TransactionInfo transaction = 1;

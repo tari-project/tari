@@ -751,7 +751,7 @@ impl AppStateInner {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
-        completed_transactions.extend(self.wallet.transaction_service.get_completed_transactions().await?);
+        completed_transactions.extend(self.wallet.transaction_service.get_completed_transactions(None).await?);
 
         completed_transactions.extend(
             self.wallet

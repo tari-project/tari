@@ -813,8 +813,15 @@ where
         Ok(balance)
     }
 
-    fn get_balance_payment_id(&self, current_tip_for_time_lock_calculation: Option<u64>, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
-        let balance = self.resources.db.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
+    fn get_balance_payment_id(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerError> {
+        let balance = self
+            .resources
+            .db
+            .get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }

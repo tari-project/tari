@@ -45,6 +45,7 @@ use tari_core::transactions::{
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
 use tokio::time::Instant;
+
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -968,7 +969,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn get_balance_payment_id(
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
-        payment_id: Vec<u8>
+        payment_id: Vec<u8>,
     ) -> Result<Balance, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;

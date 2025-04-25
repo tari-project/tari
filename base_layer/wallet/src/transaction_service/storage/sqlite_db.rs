@@ -1048,6 +1048,22 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(coinbases)
     }
 
+    fn find_completed_transactions_for_payment_id(
+        &self,
+        payment_id: Vec<u8>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+        Ok(completed_transactions::table
+            .filter(completed_transactions::user_payment_id.eq(payment_id))
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?)
+    }
+
     fn fetch_unmined_coinbase_transactions_from_height(
         &self,
         height: u64,
@@ -1329,7 +1345,7 @@ impl InboundTransactionSql {
         let receiver_protocol_bytes = bincode::serialize(&i.receiver_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let user_payment_id = i.payment_id.user_data_as_bytes();
-        let user_payment_id = if user_payment_id.is_empty(){
+        let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
             Some(user_payment_id)
@@ -1586,7 +1602,7 @@ impl OutboundTransactionSql {
         let sender_protocol_bytes = bincode::serialize(&o.sender_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let user_payment_id = o.payment_id.user_data_as_bytes();
-        let user_payment_id = if user_payment_id.is_empty(){
+        let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
             Some(user_payment_id)
@@ -1966,7 +1982,7 @@ impl CompletedTransactionSql {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let user_payment_id = c.payment_id.user_data_as_bytes();
-        let user_payment_id = if user_payment_id.is_empty(){
+        let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
             Some(user_payment_id)

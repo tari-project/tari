@@ -79,7 +79,7 @@ use crate::{
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
-    GetCompletedTransactions,
+    GetCompletedTransactions(Option<Vec<u8>>),
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
@@ -208,7 +208,7 @@ impl fmt::Display for TransactionServiceRequest {
         match self {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
-            Self::GetCompletedTransactions => write!(f, "GetCompletedTransactions"),
+            Self::GetCompletedTransactions(_) => write!(f, "GetCompletedTransactions"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -960,10 +960,13 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn get_completed_transactions(&mut self) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+    pub async fn get_completed_transactions(
+        &mut self,
+        payment_id: Option<Vec<u8>>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetCompletedTransactions)
+            .call(TransactionServiceRequest::GetCompletedTransactions(payment_id))
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),

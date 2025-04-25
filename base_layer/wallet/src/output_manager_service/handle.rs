@@ -500,7 +500,11 @@ impl OutputManagerHandle {
     }
 
     pub async fn get_balance_for_payment_id(&mut self, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetBalancePaymentId(payment_id)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetBalancePaymentId(payment_id))
+            .await??
+        {
             OutputManagerResponse::Balance(b) => Ok(b),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }

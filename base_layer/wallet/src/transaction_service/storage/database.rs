@@ -155,6 +155,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
+    fn find_completed_transactions_for_payment_id(
+        &self,
+        payment_id: Vec<u8>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -477,6 +482,14 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
+    pub fn get_completed_transactions_by_payment_id(
+        &self,
+        payment_id: Vec<u8>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let t = self.db.find_completed_transactions_for_payment_id(payment_id)?;
+        Ok(t)
+    }
+
     pub fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.fetch_last_mined_transaction()
     }
@@ -583,12 +596,15 @@ where T: TransactionBackend + 'static
         Ok(address)
     }
 
-    pub fn get_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(false)
+    pub fn get_completed_transactions(
+        &self,
+        payment_id: Option<Vec<u8>>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.get_completed_transactions_by_cancelled(payment_id, false)
     }
 
     pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(true)
+        self.get_completed_transactions_by_cancelled(None, true)
     }
 
     pub fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
@@ -612,6 +628,7 @@ where T: TransactionBackend + 'static
 
     fn get_completed_transactions_by_cancelled(
         &self,
+        payment_id: Option<Vec<u8>>,
         cancelled: bool,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
@@ -619,17 +636,23 @@ where T: TransactionBackend + 'static
         } else {
             DbKey::CompletedTransactions
         };
-
-        let t = match self.db.fetch(&key) {
-            Ok(None) => log_error(
-                key,
-                TransactionStorageError::UnexpectedResult("Could not retrieve completed transactions".to_string()),
-            ),
-            Ok(Some(DbValue::CompletedTransactions(pt))) => Ok(pt),
-            Ok(Some(other)) => unexpected_result(key, other),
-            Err(e) => log_error(key, e),
-        }?;
-        Ok(t)
+        match payment_id {
+            Some(payment_id) => self.db.find_completed_transactions_for_payment_id(payment_id),
+            None => {
+                let t = match self.db.fetch(&key) {
+                    Ok(None) => log_error(
+                        key,
+                        TransactionStorageError::UnexpectedResult(
+                            "Could not retrieve completed transactions".to_string(),
+                        ),
+                    ),
+                    Ok(Some(DbValue::CompletedTransactions(pt))) => Ok(pt),
+                    Ok(Some(other)) => unexpected_result(key, other),
+                    Err(e) => log_error(key, e),
+                }?;
+                Ok(t)
+            },
+        }
     }
 
     /// This method moves a `PendingOutboundTransaction` to the `CompleteTransaction` collection.

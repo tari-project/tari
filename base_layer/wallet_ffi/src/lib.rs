@@ -8208,7 +8208,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
     match completed_transactions {
         Ok(completed_transactions) => {
             // The frontend specification calls for completed transactions that have not yet been mined to be
@@ -8276,7 +8276,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 
             if let Ok(completed_txs) = (*wallet)
                 .runtime
-                .block_on((*wallet).wallet.transaction_service.get_completed_transactions())
+                .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None))
             {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
@@ -8346,7 +8346,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             }
             if let Ok(completed_txs) = (*wallet)
                 .runtime
-                .block_on((*wallet).wallet.transaction_service.get_completed_transactions())
+                .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None))
             {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
@@ -8501,7 +8501,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -8562,7 +8562,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -8635,7 +8635,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
 
     match completed_transactions {
         Ok(completed_transactions) => {

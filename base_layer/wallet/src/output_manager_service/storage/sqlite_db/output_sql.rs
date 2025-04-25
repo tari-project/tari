@@ -529,7 +529,7 @@ impl OutputSql {
     #[allow(clippy::cast_possible_wrap)]
     pub fn get_balance_payment_id(
         current_tip_for_time_lock_calculation: Option<u64>,
-        payment_id:Vec<u8>,
+        payment_id: Vec<u8>,
         conn: &mut SqliteConnection,
     ) -> Result<Balance, OutputManagerStorageError> {
         #[derive(QueryableByName, Clone)]

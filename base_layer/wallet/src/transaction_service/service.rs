@@ -890,8 +890,8 @@ where
                 TransactionServiceResponse::PendingOutboundTransactions(self.db.get_pending_outbound_transactions()?),
             ),
 
-            TransactionServiceRequest::GetCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions()?),
+            TransactionServiceRequest::GetCompletedTransactions(payment_id) => Ok(
+                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions(payment_id)?),
             ),
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
