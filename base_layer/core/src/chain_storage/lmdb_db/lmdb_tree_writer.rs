@@ -1,10 +1,10 @@
-use jmt::storage::TreeWriter;
+use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::{Database, WriteTransaction};
-use log::info;
+use log::{info, warn};
 use tari_storage::lmdb_store::DatabaseRef;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::lmdb_delete;
+use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
@@ -33,7 +33,14 @@ impl<'a> LmdbTreeWriter<'a> {
     }
 
     pub fn delete_all_for_version(&self, version: u64) -> anyhow::Result<()> {
-        todo!("implement delete all for version")
+        let key = version.to_be_bytes();
+        let nodes = lmdb_delete_keys_starting_with::<Node>(&self.txn, &self.node_db, &key)?;
+        warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
+        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(&self.txn, &self.value_db, &key)?;
+        warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
+
+        Ok(())
+        // todo!("implement delete all for version")
     }
 }
 

@@ -995,7 +995,7 @@ impl LMDBDatabase {
         // }
         todo!(
             "Verify smt root is correct after deleting. Possibly create a reader direct from the lmdbwriter, then you \
-             don't have to pass in a reader to this method"
+         don't have to pass in a reader to this method"
         );
 
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
