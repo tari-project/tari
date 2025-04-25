@@ -37,38 +37,25 @@ message GetBalanceResponse {
 ```
 
 ### Instantiating the Client
-To use the methods, you will need use a gRPC library to instantiate a gRPC client against the `wallet.proto` file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
+To use the methods, you will need to use a gRPC library to instantiate a gRPC client against the `wallet.proto` file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
 
 ```javascript
-     // Imports the gRPC library for Node.js, specifically the pure JavaScript implementation (@grpc/grpc-js), which supports HTTP/2 and is the modern, recommended one.
-     const grpc = require('@grpc/grpc-js');
-     // Imports a module that can parse .proto files into a format grpc-js can understand.
-     const protoLoader = require('@grpc/proto-loader');
-     // Loads and synchronously parses the wallet.proto file using proto-loader.
-     const packageDef = protoLoader.loadSync("wallet.proto", {});
-     // Takes the parsed proto package and feeds it into grpc.loadPackageDefinition() to make it usable with grpc-js.
-     const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
-     // Instantiates a gRPC client for the Wallet service.
-     const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
+// Imports the gRPC library for Node.js, specifically the pure JavaScript implementation (@grpc/grpc-js), which supports HTTP/2 and is the modern, recommended one.
+const grpc = require('@grpc/grpc-js');
+// Imports a module that can parse .proto files into a format grpc-js can understand.
+const protoLoader = require('@grpc/proto-loader');
+// Loads and synchronously parses the wallet.proto file using proto-loader.
+const packageDef = protoLoader.loadSync("wallet.proto", {});
+// Takes the parsed proto package and feeds it into grpc.loadPackageDefinition() to make it usable with grpc-js.
+const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
+// Instantiates a gRPC client for the Wallet service.
+const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
 ```
 
 This would need to be placed before any method call. Below is an example of the `getBalance` method with the client instantiated:
 
-```javascript
-     const grpc = require('@grpc/grpc-js');
-     const protoLoader = require('@grpc/proto-loader');
-     const packageDef = protoLoader.loadSync("wallet.proto", {});
-     const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
-     const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
-
-     const balance = await client.getBalance();
-     console.log('Available Balance:', balance.available_balance);
-     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
-     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
-```
-
 ## gRPC Base Node Methods
-These methods are dependent on access to a base node and use of the `base_node.proto` file.
+These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
 
 ### Get Max Height
 You can call the base node's gRPC method to get the current blockchain height.
@@ -92,14 +79,15 @@ Example:
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
 In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
 
 The user_payment_id can be specified in three formats: 
-- **u256 (bytes)**: Must be provided as a byte array.
-- **utf8_string (string)**: Must be a valid UTF-8 string.
-- **user_bytes (bytes)**: Must be provided as a generic byte array.
+- **`u256 (bytes)`**: Must be provided as a byte array.
+- **`utf8_string (string)`**: Must be a valid UTF-8 string.
+- **`user_bytes (bytes)`**: Must be provided as a generic byte array.
 
 ```javascript
 const userPaymentId = {
