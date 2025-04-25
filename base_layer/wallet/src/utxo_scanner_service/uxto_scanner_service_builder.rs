@@ -118,6 +118,7 @@ impl UtxoScannerServiceBuilder {
             factories: wallet.factories.clone(),
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
+            birthday_offset: wallet.config.birthday_offset,
         };
 
         let (event_sender, _) = broadcast::channel(200);
@@ -153,6 +154,7 @@ impl UtxoScannerServiceBuilder {
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
+        birthday_offset: u16,
     ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
         let resources = UtxoScannerResources {
             db,
@@ -165,6 +167,7 @@ impl UtxoScannerServiceBuilder {
             factories,
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
+            birthday_offset,
         };
 
         UtxoScannerService::new(

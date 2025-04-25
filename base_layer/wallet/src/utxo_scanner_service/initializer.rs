@@ -51,18 +51,20 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     backend: Option<WalletDatabase<T>>,
     factories: CryptoFactories,
     network: Network,
+    birthday_offset: u16,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network) -> Self {
+    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network, birthday_offset: u16) -> Self {
         Self {
             backend: Some(backend),
             factories,
             network,
             phantom: PhantomData,
+            birthday_offset,
         }
     }
 }
@@ -95,6 +97,7 @@ where
             .expect("Cannot start Utxo scanner service without setting a storage backend");
         let factories = self.factories.clone();
         let network = self.network;
+        let birthday_offset = self.birthday_offset;
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -136,6 +139,7 @@ where
                     base_node_service_handle,
                     one_sided_message_watch_receiver,
                     recovery_message_watch_receiver,
+                    birthday_offset,
                 )
                 .await
                 .run();

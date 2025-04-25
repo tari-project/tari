@@ -282,6 +282,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             db,
             factories.clone(),
             Network::LocalNet,
+            14,
         ))
         .build()
         .await

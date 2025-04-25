@@ -99,6 +99,8 @@
 # For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
 # responsiveness of the wallet with slightly delayed balance updates (default = 5):
 #balance_enquiry_cooldown_period = 5
+#The defaul offset for scanning from the birthday, it will start at the birthday - the offset
+#birthday_offset = 2
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)

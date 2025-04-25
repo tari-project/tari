@@ -160,6 +160,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
+    pub config: WalletConfig,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -213,7 +214,7 @@ where
                 publisher,
             ))
             .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
-                config.output_manager_service_config,
+                config.output_manager_service_config.clone(),
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
@@ -225,7 +226,7 @@ where
                 wallet_type.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
-                config.transaction_service_config,
+                config.transaction_service_config.clone(),
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
@@ -254,11 +255,14 @@ where
                 config.base_node_service_config.clone(),
                 wallet_database.clone(),
             ))
-            .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
+            .add_initializer(WalletConnectivityInitializer::new(
+                config.base_node_service_config.clone(),
+            ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 factories.clone(),
                 config.network,
+                config.birthday_offset,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -315,10 +319,10 @@ where
                     }
                 });
             };
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         } else {
             let after_comms = |_identity| {};
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
@@ -376,6 +380,7 @@ where
             output_db: output_manager_database,
             factories,
             wallet_type,
+            config,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,

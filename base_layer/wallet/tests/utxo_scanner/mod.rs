@@ -213,6 +213,7 @@ async fn setup(
             base_node_service_handle,
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
+            14,
         )
         .await;
 

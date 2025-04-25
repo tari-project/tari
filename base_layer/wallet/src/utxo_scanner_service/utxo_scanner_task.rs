@@ -81,6 +81,7 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
+    pub birthday_offset: u16,
 }
 impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
 where
@@ -759,9 +760,9 @@ where
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
+        // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
-        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = client
             .get_height_at_time(epoch_time_scanning_start)
             .await
