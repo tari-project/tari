@@ -84,7 +84,7 @@ console.log('Max Height:', response.chain_height);
 These methods are dependent on access to a base node and use of the `wallet.proto` file.
 
 ### Get Balance
-Use the wallet gRPC method `getBalance` to retrieve the wallet's available and pending balances.
+The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
 
 Example:
 ```javascript
@@ -92,6 +92,20 @@ Example:
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+```
+
+In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
+
+```javascript
+const userPaymentId = {
+         utf8_string: "your_payment_id_string" // Replace this with your actual payment ID
+     };
+
+     const balance = await client.getBalance({ payment_id: userPaymentId });
+     console.log('Available Balance:', balance.available_balance);
+     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
+     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
 ### Create Wallet
