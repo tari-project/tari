@@ -1414,7 +1414,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
-    dbg!(output_smt.get_root_hash(0));
+    // dbg!(output_smt.get_root_hash(0));
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
@@ -1503,7 +1503,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     // TODO: remove this check
     // let output_hash = output_smt.get_root_hash(header.height).unwrap();
-    // dbg!(output_hash);
+    dbg!(&output_smt_root);
 
     // let mut size = output_smt
     //     .get_leaf_count(header.height.saturating_sub(0))

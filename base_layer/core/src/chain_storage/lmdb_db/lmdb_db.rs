@@ -33,6 +33,7 @@ use std::{
     },
     time::Instant,
 };
+use tari_utilities::hex::Hex;
 
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
@@ -52,10 +53,7 @@ use tari_common_types::{
 };
 use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
-use tari_utilities::{
-    hex::{to_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::{hex::to_hex, ByteArray};
 
 use super::{
     cursors::KeyPrefixCursor,
@@ -993,11 +991,34 @@ impl LMDBDatabase {
         //         "Deleting block, new smt root did not match expected smt root".to_string(),
         //     ));
         // }
-        todo!(
-            "Verify smt root is correct after deleting. Possibly create a reader direct from the lmdbwriter, then you \
-         don't have to pass in a reader to this method"
+        // todo!(
+        //     "Verify smt root is correct after deleting. Possibly create a reader direct from the lmdbwriter, then you \
+        //  don't have to pass in a reader to this method"
+        // );
+        let reader = LmdbTreeReader::new(
+            write_txn,
+            self.jmt_node_data.clone(),
+            LMDB_DB_JMT_NODE_DATA,
+            self.jmt_value_data.clone(),
+            LMDB_DB_JMT_VALUE_DATA,
         );
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
+        let root = jmt
+            .get_root_hash(new_tip_header.header().height)
+            .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
+
+        if root.0.as_slice() != new_tip_header.header().output_mr.as_slice() {
+            error!(
+                target: LOG_TARGET,
+                "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
+                    hex::encode(root.0.as_slice()),
+                    new_tip_header.header().output_mr.to_hex(),
+            );
+            return Err(ChainStorageError::InvalidOperation(
+                "Deleting block, new smt root did not match expected smt root".to_string(),
+            ));
+        }
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
         Ok(())

@@ -495,8 +495,8 @@ impl ConsensusConstants {
             PowAlgorithm::Sha3x,
             PowAlgorithmConstants {
                 // TODO: remove before merge
-                min_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
-                max_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
+                min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
+                max_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
                 // max_difficulty: Difficulty::max(),
                 target_time: 1,
             },
