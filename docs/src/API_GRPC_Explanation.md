@@ -15,7 +15,7 @@ Each gRPC method has the following general structure:
 - **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:50051`).
 
 To make a gRPC call, a client application must:
-1. Use the generated gRPC client stubs from the `wallet.proto` file, located [here](https://github.com/tari-project/tari/blob/b4ba3a438a414c4c0408add103d7185d74f48ebc/applications/minotari_app_gRPC/proto/wallet.proto).
+1. Use the generated gRPC client stubs from the `wallet.proto` file, located [here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
 2. Call the desired method (e.g., `GetBalance`).
 3. Pass the appropriate Protobuf request object and handle the Protobuf response or any errors.
 
