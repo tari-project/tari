@@ -36,8 +36,6 @@ message GetBalanceResponse {
 }
 ```
 
-Perfect — based on your existing document and structure, here's a **brief, clear, and consistent** section you can insert right after the “Instantiating the Client” section, to explain the **code generation concept** for `.proto` files.
-
 ### Understanding Code Generation from `.proto` Files
 
 The `.proto` file, such as [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto), acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
@@ -284,18 +282,60 @@ The `GrpcAuthentication` object supports two modes:
 - **None**: No authentication is required.
 - **Basic**: Username and password are used for authentication. Note that these are distinct from your wallet's credentials and are configured separately.
 
-Example:
-```rust
-use serde::{Deserialize, Serialize};
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub enum GrpcAuthentication {
-    None,
-    Basic {
-        username: String,
-        password: SafePassword,
-    },
-}
-```
+Here are step-by-step instructions for enabling and configuring basic gRPC authentication in the Tari wallet using the `config.toml` file:
+
+### 1. **Locate the Configuration File**
+   - Navigate to the `config.toml` file for your Tari wallet.
+   - Example path: `common/config/presets/d_console_wallet.toml`.
+
+### 2. **Enable gRPC Authentication**
+   - Open the configuration file in a text editor.
+   - Find the following commented-out section:
+     ```toml
+     # gRPC authentication method (default = "none")
+     #grpc_authentication = { username = "admin", password = "xxxx" }
+     ```
+
+### 3. **Uncomment and Configure**
+   - Uncomment the `grpc_authentication` line by removing the `#` at the beginning.
+   - Set a clear-text username and password. For example:
+     ```toml
+     grpc_authentication = { username = "admin", password = "mysecurepassword" }
+     ```
+
+### 4. **Save the File**
+   - After making the changes, save the `config.toml` file.
+
+### 5. **Restart the Wallet**
+   - Restart your Tari wallet application to apply the updated configuration.
+
+### 6. **Client-Side Configuration**
+   - Ensure your gRPC client connects using basic authentication. For example, in JavaScript:
+
+     ```javascript
+     const grpc = require('grpc');
+     const metadata = new grpc.Metadata();
+     metadata.add('username', 'admin');
+     metadata.add('password', 'mysecurepassword');
+
+     const callCredentials = grpc.credentials.createFromMetadataGenerator((_, callback) => {
+         callback(null, metadata);
+     });
+
+     const channelCredentials = grpc.credentials.combineChannelCredentials(
+         grpc.credentials.createSsl(),
+         callCredentials
+     );
+
+     const client = new walletProto('localhost:18183', channelCredentials);
+     ```
+
+### 7. **Test the Connection**
+   - Verify that the gRPC client can successfully connect using the provided username and password.
+
+   - Ensure the username and password are secure and not shared publicly.
+   - If you’re using SSL (`grpc.credentials.createSsl()`), combine it with the credentials for a secure connection.
+   - If the gRPC server is running locally, you may use `grpc.credentials.createInsecure()` for testing purposes (not recommended for production).
 
 #### Connecting with Authentication Examples
 **Rust:**
