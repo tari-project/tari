@@ -307,8 +307,35 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(SetBaseNodeResponse {}))
     }
 
-    async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
+    async fn get_balance(&self, request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
+        let message = request.into_inner();
         let start = std::time::Instant::now();
+        if let Some(user_payment_id) = message.payment_id{
+            let bytes = match (user_payment_id.u256.is_empty(), user_payment_id.utf8_string.is_empty(), user_payment_id.user_bytes.is_empty()){
+                (false, true, true) => {
+                    user_payment_id.u256
+                },
+                (true, false, true) => {
+                    user_payment_id.utf8_string.as_bytes().to_vec()
+                },
+                (true, true, false) => {
+                    user_payment_id.user_bytes
+                },
+                _ => {
+                    return Err(Status::invalid_argument("user_payment_id must be one of u256, utf8_string or user_bytes".to_string()));
+                }
+            };
+            let mut oms = self.get_output_manager_service();
+            let balance = oms.get_balance_for_payment_id(bytes).await.map_err(|e| {
+                Status::not_found(format!("WalletDebouncer error! {}", e))
+            })?;
+            return Ok(Response::new(GetBalanceResponse {
+                available_balance: balance.available_balance.into(),
+                pending_incoming_balance: balance.pending_incoming_balance.into(),
+                pending_outgoing_balance: balance.pending_outgoing_balance.into(),
+                timelocked_balance: balance.time_locked_balance.unwrap_or_default().into(),
+            }))
+        }
         let balance = {
             let mut get_balance = self.debouncer.lock().await;
             match get_balance.get_balance().await {

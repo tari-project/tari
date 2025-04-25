@@ -334,6 +334,14 @@ where
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
+            OutputManagerRequest::GetBalancePaymentId(payment_id) => {
+                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
+                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
+                    Err(_) => None,
+                };
+                self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
+                    .map(OutputManagerResponse::Balance)
+            },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
                 .get_default_recipient_transaction(tsm)
                 .await
@@ -801,6 +809,12 @@ where
 
     fn get_balance(&self, current_tip_for_time_lock_calculation: Option<u64>) -> Result<Balance, OutputManagerError> {
         let balance = self.resources.db.get_balance(current_tip_for_time_lock_calculation)?;
+        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        Ok(balance)
+    }
+
+    fn get_balance_payment_id(&self, current_tip_for_time_lock_calculation: Option<u64>, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
+        let balance = self.resources.db.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }

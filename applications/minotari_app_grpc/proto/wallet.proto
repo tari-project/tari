@@ -255,7 +255,15 @@ message GetCompletedTransactionsResponse {
   TransactionInfo transaction = 1;
 }
 
-message GetBalanceRequest {}
+message GetBalanceRequest {
+    user_payment_id payment_id = 1;
+}
+
+message user_payment_id {
+  bytes u256 = 1;
+  string utf8_string = 2;
+  bytes user_bytes = 3;
+}
 
 message GetStateRequest {}
 

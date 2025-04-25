@@ -61,6 +61,7 @@ use crate::output_manager_service::{
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
+    GetBalancePaymentId(Vec<u8>),
     AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
@@ -165,6 +166,7 @@ impl fmt::Display for OutputManagerRequest {
         use OutputManagerRequest::*;
         match self {
             GetBalance => write!(f, "GetBalance"),
+            GetBalancePaymentId(_) => write!(f, "GetBalance for user payment id"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
             AddUnvalidatedOutput((t, v, _)) => {
@@ -492,6 +494,13 @@ impl OutputManagerHandle {
 
     pub async fn get_balance(&mut self) -> Result<Balance, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetBalance).await?? {
+            OutputManagerResponse::Balance(b) => Ok(b),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_balance_for_payment_id(&mut self, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetBalancePaymentId(payment_id)).await?? {
             OutputManagerResponse::Balance(b) => Ok(b),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }

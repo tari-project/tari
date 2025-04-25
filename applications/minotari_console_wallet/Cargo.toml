@@ -80,7 +80,7 @@ tui ={ version = "^0.19", default-features = false, features = ["crossterm"]}
 tari_features = { workspace = true }
 
 [features]
-default = ["libtor", "ledger"]
+default = ["libtor", "ledger", "grpc"]
 grpc = []
 ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger"]
 libtor = ["tari_libtor"]

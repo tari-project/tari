@@ -37,6 +37,7 @@ diesel::table! {
         transaction_signature_nonce -> Binary,
         transaction_signature_key -> Binary,
         payment_id -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -52,6 +53,7 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -78,6 +80,7 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -118,6 +121,7 @@ diesel::table! {
         source -> Integer,
         last_validation_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
