@@ -9,17 +9,17 @@ Use of gRPC requires access to a full node configured to allow gRPC calls. More 
 Each gRPC method has the following general structure:
 
 - **Protocol**: gRPC
-- **Service**: Defined in the `wallet.proto` file (e.g., `Wallet` service).
+- **Service**: Defined in the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file (e.g., `Wallet` service).
 - **Request Format**: Protocol Buffers (Protobuf messages).
 - **Response Format**: Protocol Buffers (Protobuf messages).
 - **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:18183`).
 
 To make a gRPC call, a client application must:
-1. Use the generated gRPC client stubs from the `wallet.proto` file, located [here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
+1. Use the generated gRPC client stubs from the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file, located [here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
 2. Call the desired method (e.g., `GetBalance`).
 3. Pass the appropriate Protobuf request object and handle the Protobuf response or any errors.
 
-Below is an example of how a gRPC call would typically work for a function defined in `wallet.proto`.
+Below is an example of how a gRPC call would typically work for a function defined in [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
 
 ```proto
 service Wallet {
@@ -36,8 +36,59 @@ message GetBalanceResponse {
 }
 ```
 
+Perfect — based on your existing document and structure, here's a **brief, clear, and consistent** section you can insert right after the “Instantiating the Client” section, to explain the **code generation concept** for `.proto` files.
+
+### Understanding Code Generation from `.proto` Files
+
+The `.proto` file, such as [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto), acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
+
+To actually call these methods in your application, the `.proto` file must be **processed into usable code** through a process known as **code generation**. This step provides you with:
+
+- **Message classes** you can use to create requests and read responses (e.g., `GetBalanceRequest`)
+- **Service stubs or clients** that wrap the underlying gRPC transport and let you call methods like `GetBalance()` as regular functions
+- Support for automatic serialization, deserialization, and type checking
+
+In some languages like Java or Go, this is done ahead of time using the `protoc` compiler:
+
+```bash
+protoc --go_out=. --go-grpc_out=. wallet.proto
+```
+
+In others, like Node.js, code generation can be done **at runtime** using tools such as `@grpc/proto-loader`, which dynamically loads and interprets the `.proto` definitions.
+
+Regardless of the language, this step is required: it transforms the `.proto` contract into concrete, usable APIs in your application.
+
+> 🔧 **Note:** If you're using a statically typed language, make sure to run the appropriate `protoc` command to generate your language-specific files before attempting to use the gRPC client.
+
+### Loading the Protocol Buffer Definition
+
+In gRPC, a `.proto` file defines the **contract** between services and clients. This contract includes:
+
+- The **RPC methods** a service exposes (e.g., `SendTransaction`, `GetBalance`)
+- The **data types** used for requests and responses (e.g., `TransactionRequest`, `TransactionResponse`)
+
+All gRPC clients and servers—regardless of the programming language—use this `.proto` file to generate code that knows how to encode, decode, and handle communication between endpoints.
+
+Whether you're building a gRPC client in Java, Python, Go, or Node.js, one of the first steps is to **load and parse the `.proto` file**. This step:
+
+- Converts the definitions into usable service and message classes/objects.
+- Ensures consistent structure across different implementations.
+- Enables automatic serialization (binary encoding) and deserialization of data between systems.
+
+In **Node.js**, for example, this is done using a utility like `@grpc/proto-loader`:
+
+```javascript
+const packageDefinition = protoLoader.loadSync('wallet.proto', {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+```
+
 ### Instantiating the Client
-To use the methods, you will need to use a gRPC library to instantiate a gRPC client against the `wallet.proto` file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
+To use the methods, you will need to use a gRPC library to instantiate a gRPC client against the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
 
 ```javascript
 // Imports the gRPC library for Node.js, specifically the pure JavaScript implementation (@grpc/grpc-js), which supports HTTP/2 and is the modern, recommended one.
@@ -52,7 +103,7 @@ const walletProto = grpc.loadPackageDefinition(packageDef).Wallet;
 const client = new walletProto('localhost:18183', grpc.credentials.createInsecure());
 ```
 
-This would need to be placed before any method call. Below is an example of the `getBalance` method with the client instantiated:
+This would need to be placed before any method call.
 
 ## gRPC Base Node Methods
 These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
@@ -68,7 +119,7 @@ console.log('Max Height:', response.chain_height);
 ```
 
 ## gRPC Wallet Methods
-These methods are dependent on access to a base node and use of the `wallet.proto` file.
+These methods are dependent on access to a base node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
 
 ### Get Balance
 The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
@@ -99,6 +150,46 @@ const userPaymentId = {
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
      console.log('Time Locked Balance:', balance.timelocked_balance);
+```
+
+### Get Transactions by Payment ID
+
+The `GetCompletedTransactionsRequest` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
+
+Example of retrieving all transactions:
+
+```javascript
+// Define the request without a user_payment_id
+const request = {};
+
+// Call GetCompletedTransactions
+client.GetCompletedTransactions(request, (error, response) => {
+  if (error) {
+    console.error('Error:', error);
+  } else {
+    console.log('Completed Transactions:', response);
+  }
+});
+```
+
+This example retrieves completed transactions filtered by a specific `user_payment_id`.
+
+```javascript
+// Define the request with a user_payment_id
+const request = {
+  payment_id: {
+    utf8_string: 'example_payment_id', // Replace with your user_payment_id
+  },
+};
+
+// Call GetCompletedTransactions
+client.GetCompletedTransactions(request, (error, response) => {
+  if (error) {
+    console.error('Error:', error);
+  } else {
+    console.log('Filtered Completed Transactions:', response);
+  }
+});
 ```
 
 ### Create Wallet
