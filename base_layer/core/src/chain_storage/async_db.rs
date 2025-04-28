@@ -38,14 +38,29 @@ use tari_utilities::epoch_time::EpochTime;
 use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
-        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, HistoricalBlock,
-        NewBlockTemplate, UpdateBlockAccumulatedData,
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        HistoricalBlock,
+        NewBlockTemplate,
+        UpdateBlockAccumulatedData,
     },
     chain_storage::{
         blockchain_database::MmrRoots,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
-        BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, DbBasicStats, DbTotalSizeStats,
-        DbTransaction, HorizonData, MmrTree, TargetDifficulties,
+        BlockAddResult,
+        BlockchainBackend,
+        BlockchainDatabase,
+        ChainStorageError,
+        DbBasicStats,
+        DbTotalSizeStats,
+        DbTransaction,
+        HorizonData,
+        MmrTree,
+        TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
@@ -56,9 +71,7 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
-where
-    F: FnOnce() -> R,
-{
+where F: FnOnce() -> R {
     let start = Instant::now();
     let trace_id = OsRng.next_u32();
     trace!(

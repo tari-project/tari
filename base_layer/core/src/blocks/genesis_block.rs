@@ -203,7 +203,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -263,7 +263,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
+            FixedHash::from_hex("ce7f66009cbd277968ba86d5e7be1b41aa268f5cb2f655ea1741cc82ab793c3b").unwrap();
         block.header.block_output_mr =
             FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
         block.header.validator_node_mr =
@@ -384,7 +384,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
+            FixedHash::from_hex("a871470fefd60e1c268beeac5918c7997073e1bbd5c5890306acbfe57b85329f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
         block.header.block_output_mr =

@@ -40,10 +40,13 @@ use crate::{
         test_helpers::schema_to_transaction,
         transaction_components::{
             encrypted_data::{PaymentId, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
-            EncryptedData, RangeProofType, TransactionError,
+            EncryptedData,
+            RangeProofType,
+            TransactionError,
         },
         transaction_key_manager::TariKeyId,
-        CoinbaseBuilder, CryptoFactories,
+        CoinbaseBuilder,
+        CryptoFactories,
     },
     txn_schema,
     validation::{BlockBodyValidator, ValidationError},
@@ -526,7 +529,8 @@ mod body_only {
 mod orphan_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::OutputType, txn_schema,
+        transactions::transaction_components::OutputType,
+        txn_schema,
         validation::block_body::BlockBodyInternalConsistencyValidator,
     };
 
@@ -638,10 +642,9 @@ mod orphan_validator {
                         (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Coinbase, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
-                        (
-                            OutputType::ValidatorNodeRegistration,
-                            &[RangeProofType::BulletProofPlus],
-                        ),
+                        (OutputType::ValidatorNodeRegistration, &[
+                            RangeProofType::BulletProofPlus,
+                        ]),
                         (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
                     ])
                     .with_coinbase_lockheight(0)

@@ -43,26 +43,9 @@ use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        create_lmdb_database,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        InputMinedInfo,
-        LMDBDatabase,
-        LmdbTreeReader,
-        MmrTree,
-        OutputMinedInfo,
-        OwnedLmdbTreeReader,
-        Reorg,
-        TemplateRegistrationEntry,
+        create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
+        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
+        LMDBDatabase, LmdbTreeReader, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, TemplateRegistrationEntry,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -70,11 +53,7 @@ use crate::{
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
         transaction_components::{
-            RangeProofType,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            WalletOutput,
+            RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
@@ -522,22 +501,6 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     db.write(txn).unwrap();
 
     (names, chain)
-}
-
-pub fn update_block_and_smt(block: &mut Block) {
-    todo!("fix");
-    for output in block.body.outputs() {
-        // let smt_key = NodeKey::try_from(output.commitment.as_bytes()).unwrap();
-        // let smt_node = ValueHash::try_from(output.smt_hash(block.header.height).as_slice()).unwrap();
-        // suppress this error as some unit tests rely on this not being completely correct.
-        // let _result = smt.insert(smt_key, smt_node);
-    }
-    for input in block.body.inputs() {
-        // let smt_key = NodeKey::try_from(input.commitment().unwrap().as_bytes()).unwrap();
-        // smt.delete(&smt_key).unwrap();
-    }
-    // let root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
-    // block.header.output_mr = root;
 }
 
 pub struct TestBlockchain {
