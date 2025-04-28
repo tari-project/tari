@@ -527,6 +527,7 @@ impl OutputSql {
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
     #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
     pub fn get_balance_payment_id(
         current_tip_for_time_lock_calculation: Option<u64>,
         payment_id: Vec<u8>,

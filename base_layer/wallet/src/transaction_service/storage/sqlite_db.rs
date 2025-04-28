@@ -1054,14 +1054,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
-        Ok(completed_transactions::table
+        completed_transactions::table
             .filter(completed_transactions::user_payment_id.eq(payment_id))
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
                 CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
             })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?)
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
     fn fetch_unmined_coinbase_transactions_from_height(
