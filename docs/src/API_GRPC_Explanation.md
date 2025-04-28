@@ -148,7 +148,7 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
    - Ensure your gRPC client connects using basic authentication. For example, in JavaScript:
 
      ```javascript
-     const grpc = require('grpc');
+     const grpc = require('@grpc/grpc-js');
      const metadata = new grpc.Metadata();
      metadata.add('username', 'admin');
      metadata.add('password', 'mysecurepassword');
