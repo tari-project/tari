@@ -25,7 +25,7 @@ use std::{
     env::temp_dir,
     fs,
     io::{self, Write},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -36,13 +36,8 @@ use tari_common::{
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb,
-        create_lmdb_database,
-        create_recovery_lmdb_database,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        Validators,
+        async_db::AsyncBlockchainDb, create_lmdb_database, create_recovery_lmdb_database, BlockchainBackend,
+        BlockchainDatabase, BlockchainDatabaseConfig, Validators,
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -53,7 +48,6 @@ use tari_core::{
         mocks::MockValidator,
         DifficultyCalculator,
     },
-    OutputSmt,
 };
 
 use crate::{BaseNodeConfig, DatabaseType};
@@ -81,27 +75,14 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(
-                &node_config.lmdb_path,
-                node_config.lmdb.clone(),
-                node_config.storage.pruning_interval,
-                node_config.storage.pruning_horizon,
-                rules.clone(),
-            )
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening db: {}", e);
-                anyhow!("Could not open DB: {}", e)
-            })?;
+            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
+                .map_err(|e| {
+                    error!(target: LOG_TARGET, "Error opening db: {}", e);
+                    anyhow!("Could not open DB: {}", e)
+                })?;
             let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(
-                &temp_path,
-                node_config.lmdb.clone(),
-                node_config.storage.pruning_interval,
-                node_config.storage.pruning_horizon,
-                rules.clone(),
-            )
-            .map_err(|e| {
+            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone(), rules.clone()).map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
@@ -111,7 +92,6 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),

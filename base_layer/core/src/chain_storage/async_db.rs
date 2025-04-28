@@ -19,12 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{
-    mem,
-    ops::RangeBounds,
-    sync::{atomic::AtomicBool, Arc, RwLock},
-    time::Instant,
-};
+use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use log::*;
 use primitive_types::U256;
@@ -38,40 +33,26 @@ use tari_utilities::epoch_time::EpochTime;
 use super::TemplateRegistrationEntry;
 use crate::{
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, HistoricalBlock,
+        NewBlockTemplate, UpdateBlockAccumulatedData,
     },
     chain_storage::{
         blockchain_database::MmrRoots,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-        DbBasicStats,
-        DbTotalSizeStats,
-        DbTransaction,
-        HorizonData,
-        MmrTree,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, DbBasicStats, DbTotalSizeStats,
+        DbTransaction, HorizonData, MmrTree, TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R
-where F: FnOnce() -> R {
+where
+    F: FnOnce() -> R,
+{
     let start = Instant::now();
     let trace_id = OsRng.next_u32();
     trace!(

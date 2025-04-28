@@ -23,17 +23,13 @@
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
-    RwLock,
 };
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
-    traits::CandidateBlockValidator,
-    BlockBodyValidator,
-    HeaderChainLinkedValidator,
-    InternalConsistencyValidator,
+    traits::CandidateBlockValidator, BlockBodyValidator, HeaderChainLinkedValidator, InternalConsistencyValidator,
     TransactionValidator,
 };
 use crate::{
@@ -43,7 +39,6 @@ use crate::{
     test_helpers::create_consensus_rules,
     transactions::transaction_components::Transaction,
     validation::{error::ValidationError, DifficultyCalculator, FinalHorizonStateValidation},
-    OutputSmt,
 };
 
 #[derive(Clone)]

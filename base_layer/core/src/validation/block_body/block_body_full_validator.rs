@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
-
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::hex::Hex;
@@ -29,18 +27,14 @@ use tari_utilities::hex::Hex;
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
-    chain_storage::{self, BlockchainBackend, ChainStorageError},
+    chain_storage::{self, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::CryptoFactories,
     validation::{
-        aggregate_body::AggregateBodyChainLinkedValidator,
-        helpers::check_mmr_roots,
-        BlockBodyValidator,
-        CandidateBlockValidator,
-        ValidationError,
+        aggregate_body::AggregateBodyChainLinkedValidator, helpers::check_mmr_roots, BlockBodyValidator,
+        CandidateBlockValidator, ValidationError,
     },
-    OutputSmt,
 };
 
 const LOG_TARGET: &str = "c::val::block_body_full_validator";
@@ -85,14 +79,6 @@ impl BlockBodyFullValidator {
         // validate the internal consistency of the block body
         self.block_internal_validator.validate(&block)?;
 
-        // validate the merkle mountain range roots+
-        // let mut output_smt = smt.write().map_err(|e| {
-        //     error!(
-        //         target: LOG_TARGET,
-        //         "Validator could not get a write lock on the smt {:?}", e
-        //     );
-        //     ChainStorageError::AccessError("write lock on smt".into())
-        // })?;
         let mmr_roots = match chain_storage::calculate_mmr_roots(backend, &self.consensus_manager, &block) {
             Ok(mmr_roots) => mmr_roots,
             Err(e) => {
@@ -100,11 +86,6 @@ impl BlockBodyFullValidator {
                     target: LOG_TARGET,
                     "Validator could not calculate MMR roots for block {}: {:?}", block.hash().to_hex(), e
                 );
-                // if let ChainStorageError::CannotCalculateNonTipMmr(ref _e) = e {
-                // return Err(e.into());
-                // }
-                // Recalculate SMT as it might have been altered.
-                // *output_smt = backend.calculate_tip_smt()?;
                 return Err(e.into());
             },
         };

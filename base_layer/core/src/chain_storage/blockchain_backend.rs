@@ -6,27 +6,14 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 
-use super::{
-    lmdb_db::lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
-    TemplateRegistrationEntry,
-};
+use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        OutputMinedInfo,
-        Reorg,
+        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
+        MmrTree, OutputMinedInfo, Reorg,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -194,8 +181,7 @@ pub trait BlockchainBackend: Send + Sync {
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
-    /// Calculates the tip utxo smt
-    // fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
 
+    /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 }

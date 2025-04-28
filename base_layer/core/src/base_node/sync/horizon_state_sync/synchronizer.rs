@@ -28,12 +28,10 @@ use std::{
 };
 
 use futures::StreamExt;
-use jmt::JellyfishMerkleTree;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
-use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::task;
 
@@ -45,8 +43,7 @@ use crate::{
         horizon_state_sync::{HorizonSyncInfo, HorizonSyncStatus},
         rpc,
         rpc::BaseNodeSyncRpcClient,
-        BlockchainSyncConfig,
-        SyncPeer,
+        BlockchainSyncConfig, SyncPeer,
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
@@ -54,17 +51,11 @@ use crate::{
     consensus::ConsensusManager,
     proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::transaction_components::{
-        transaction_output::batch_verify_range_proofs,
-        OutputType,
-        TransactionKernel,
-        TransactionOutput,
+        transaction_output::batch_verify_range_proofs, TransactionKernel, TransactionOutput,
     },
     validation::{
-        aggregate_body::validate_individual_output,
-        helpers::validate_output_version,
-        FinalHorizonStateValidation,
+        aggregate_body::validate_individual_output, helpers::validate_output_version, FinalHorizonStateValidation,
     },
-    OutputSmt,
     PrunedKernelMmr,
 };
 
@@ -119,12 +110,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     pub fn on_starting<H>(&mut self, hook: H)
-    where for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static {
+    where
+        for<'r> H: FnOnce(&SyncPeer) + Send + Sync + 'static,
+    {
         self.hooks.add_on_starting_hook(hook);
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: Fn(HorizonSyncInfo) + Send + Sync + 'static {
+    where
+        H: Fn(HorizonSyncInfo) + Send + Sync + 'static,
+    {
         self.hooks.add_on_progress_horizon_hook(hook);
     }
 
@@ -411,11 +406,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
-            current: local_num_kernels,
-            total: remote_num_kernels,
-            sync_peer: sync_peer.clone(),
-        });
+        let info = HorizonSyncInfo::new(
+            vec![sync_peer.node_id().clone()],
+            HorizonSyncStatus::Kernels {
+                current: local_num_kernels,
+                total: remote_num_kernels,
+                sync_peer: sync_peer.clone(),
+            },
+        );
         self.hooks.call_on_progress_horizon_hooks(info);
 
         debug!(
@@ -531,11 +529,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer.set_latency(latency);
             sync_peer.add_sample(last_sync_timer.elapsed());
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
-                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
-                    current: mmr_position,
-                    total: self.num_kernels,
-                    sync_peer: sync_peer.clone(),
-                });
+                let info = HorizonSyncInfo::new(
+                    vec![sync_peer.node_id().clone()],
+                    HorizonSyncStatus::Kernels {
+                        current: mmr_position,
+                        total: self.num_kernels,
+                        sync_peer: sync_peer.clone(),
+                    },
+                );
                 self.hooks.call_on_progress_horizon_hooks(info);
             }
 
@@ -596,11 +597,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         }
 
-        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
-            current: 0,
-            total: self.num_outputs,
-            sync_peer: sync_peer.clone(),
-        });
+        let info = HorizonSyncInfo::new(
+            vec![sync_peer.node_id().clone()],
+            HorizonSyncStatus::Outputs {
+                current: 0,
+                total: self.num_outputs,
+                sync_peer: sync_peer.clone(),
+            },
+        );
         self.hooks.call_on_progress_horizon_hooks(info);
 
         let latency = client.get_last_request_latency();
@@ -622,15 +626,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         };
         let mut output_stream = client.sync_utxos(req).await?;
 
-        let mut txn = db.write_transaction();
+        // let mut txn = db.write_transaction();
         let mut utxo_counter = 0u64;
         let mut stxo_counter = 0u64;
-        let timer = Instant::now();
         // let mut output_smt = (*db.inner().smt_write_access()?).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
 
-        let mut inputs_to_delete = Vec::new();
+        // let mut inputs_to_delete = Vec::new();
         while let Some(response) = output_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
@@ -682,15 +685,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         //     return Err(e.into());
                         // }
                         todo!("Implement smt changes");
-                        txn.insert_output_via_horizon_sync(
-                            output,
-                            current_header.hash(),
-                            current_header.height,
-                            current_header.timestamp.as_u64(),
-                        );
+                        // txn.insert_output_via_horizon_sync(
+                        //     output,
+                        //     current_header.hash(),
+                        //     current_header.height,
+                        //     current_header.timestamp.as_u64(),
+                        // );
 
-                        // We have checked the range proof, and we have checked that the linked to header exists.
-                        txn.commit().await?;
+                        // // We have checked the range proof, and we have checked that the linked to header exists.
+                        // txn.commit().await?;
                     }
                 },
                 Txo::Commitment(commitment_bytes) => {
@@ -726,7 +729,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             todo!("Implement smt changes");
                             // This will only be committed once the SMT has been verified due to rewind difficulties if
                             // we need to abort the sync
-                            inputs_to_delete.push((output_hash, commitment));
+                            // inputs_to_delete.push((output_hash, commitment));
                         },
                         None => {
                             return Err(HorizonSyncError::IncorrectResponse(
@@ -738,11 +741,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             if utxo_counter % 100 == 0 {
-                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
-                    current: utxo_counter,
-                    total: self.num_outputs,
-                    sync_peer: sync_peer.clone(),
-                });
+                let info = HorizonSyncInfo::new(
+                    vec![sync_peer.node_id().clone()],
+                    HorizonSyncStatus::Outputs {
+                        current: utxo_counter,
+                        total: self.num_outputs,
+                        sync_peer: sync_peer.clone(),
+                    },
+                );
                 self.hooks.call_on_progress_horizon_hooks(info);
             }
             sync_peer.set_latency(latency);
@@ -787,7 +793,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         //     stxo_counter,
         //     timer.elapsed()
         // );
-        Ok(())
+        // Ok(())
     }
 
     // Helper function to check the output SMT root hash against the expected root hash.

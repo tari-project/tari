@@ -1,5 +1,3 @@
-use std::sync::{Arc, RwLock};
-
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -32,7 +30,6 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty},
     transactions::transaction_components::Transaction,
     validation::error::ValidationError,
-    OutputSmt,
 };
 
 /// A validator that determines if a block body is valid, assuming that the header has already been

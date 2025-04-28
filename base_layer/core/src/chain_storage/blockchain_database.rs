@@ -28,15 +28,14 @@ use std::{
     ops::{Bound, RangeBounds},
     sync::{
         atomic::{self, AtomicBool},
-        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
     },
     time::Instant,
 };
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use hickory_proto::rr::rdata::A;
-use jmt::{storage::NodeKey, JellyfishMerkleTree, KeyHash};
+use jmt::{JellyfishMerkleTree, KeyHash};
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -48,14 +47,10 @@ use tari_common_types::{
     },
 };
 use tari_hashing::TransactionHashDomain;
-use tari_mmr::{pruned_hashset::PrunedHashSet, sparse_merkle_tree::DeleteResult};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{
-    lmdb_db::{lmdb_tree_reader::LmdbTreeReader, lmdb_tree_writer::LmdbTreeWriter},
-    smt_hasher::SmtHasher,
-    TemplateRegistrationEntry,
-};
+use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
@@ -85,7 +80,7 @@ use crate::{
         helpers::calc_median_timestamp, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
         InternalConsistencyValidator, ValidationError,
     },
-    OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
+    PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -466,10 +461,10 @@ where
                         .expect("must be 32 bytes"),
                 );
 
-                let spent = !smt
+                let spent = smt
                     .get(smt_key, tip)
-                    .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?
-                    .is_none();
+                    .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+                    .is_some();
                 result.push(Some((mined_info.output, spent)));
             } else {
                 result.push(None);
@@ -1414,13 +1409,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
     let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
-    // dbg!(output_smt.get_root_hash(0));
 
     for kernel in body.kernels() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
-    // let mut outputs_to_remove = Vec::new();
     let mut batch = Vec::with_capacity(body.outputs().len() + body.inputs().len());
     for output in body.outputs() {
         if output.features.is_coinbase() {
@@ -1429,26 +1422,14 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
             normal_output_mmr.push(output.hash().to_vec())?;
         }
         if !output.is_burned() {
-            // let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
-            //  let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
             let smt_value = output.smt_hash(header.height);
 
-            batch.push((smt_key.clone(), Some(smt_value.to_vec())));
-            // outputs_to_remove.push(smt_key.clone());
-            // if let Err(e) = output_smt.insert(smt_key, smt_node) {
-            //     error!(
-            //         target: LOG_TARGET,
-            //         "Output commitment({}) already in SMT",
-            //         output.commitment.to_hex(),
-            //     );
-            //     return Err(e.into());
-            // }
+            batch.push((smt_key, Some(smt_value.to_vec())));
         }
     }
     block_output_mmr.push(normal_output_mmr.get_merkle_root()?.to_vec())?;
 
-    // let mut outputs_to_add = Vec::new();
     for input in body.inputs() {
         input_mmr.push(input.canonical_hash().to_vec())?;
         let smt_key = KeyHash(
@@ -1458,18 +1439,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
                 .try_into()
                 .expect("Commitment is 32 bytes"),
         );
-        // match output_smt.delete(&smt_key)? {
-        //     DeleteResult::Deleted(value_hash) => outputs_to_add.push((smt_key, value_hash)),
-        //     DeleteResult::KeyNotFound => {
-        //         error!(
-        //             target: LOG_TARGET,
-        //             "Could not find input({}) in SMT",
-        //             input.commitment()?.to_hex(),
-        //         );
-        //         return Err(ChainStorageError::UnspendableInput);
-        //     },
-        // };
-        batch.push((smt_key.clone(), None));
+        batch.push((smt_key, None));
     }
 
     let block_height = block.header.height;
@@ -1492,24 +1462,10 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     } else {
         FixedHash::zero()
     };
-
-    // dbg!("here");
-    // dbg!(header.height);
-    // dbg!(&batch.len());
-
     let (output_smt_root, changes) = output_smt
         .put_value_set(batch, header.height)
-        .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
+        .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
-    // TODO: remove this check
-    // let output_hash = output_smt.get_root_hash(header.height).unwrap();
-    dbg!(&output_smt_root);
-
-    // let mut size = output_smt
-    //     .get_leaf_count(header.height.saturating_sub(0))
-    //     .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))? as u64;
-    // size += changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64;
-    // size = size.saturating_sub(changes.node_stats.first().map(|s| s.stale_leaves).unwrap_or(0) as u64);
     // TODO: size may not be accurate
     let mut size = tip_header.output_smt_size;
     size += changes.node_stats.first().map(|s| s.new_leaves).unwrap_or(0) as u64;
@@ -1525,37 +1481,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         validator_node_mr,
         validator_node_size: validator_node_size as u64,
     };
-    // // We have made changes to the SMT that we dont want, sp lets rewind the SMT back to tip again as we want to have
-    // // the SMT at tip.
-    // for output in outputs_to_add {
-    //     if output_smt.insert(output.0.clone(), output.1).is_err() {
-    //         error!(
-    //             target: LOG_TARGET,
-    //             "Output commitment({}) already in SMT",
-    //             output.0,
-    //         );
-    //         return Err(ChainStorageError::AccessError(format!(
-    //             "Could not add output ({}) in SMT",
-    //             output.0
-    //         )));
-    //     }
-    // }
-    // for output in outputs_to_remove {
-    //     match output_smt.delete(&output)? {
-    //         DeleteResult::Deleted(_value_hash) => {},
-    //         DeleteResult::KeyNotFound => {
-    //             error!(
-    //                 target: LOG_TARGET,
-    //                 "Could not find input({}) in SMT when reseting back to tip",
-    //                 output,
-    //             );
-    //             return Err(ChainStorageError::AccessError(format!(
-    //                 "Could not find input({}) in SMT when reseting back to tip",
-    //                 output
-    //             )));
-    //         },
-    //     };
-    // }
     Ok(mmr_roots)
 }
 
@@ -2099,18 +2024,8 @@ fn reorganize_chain<T: BlockchainBackend>(
             return Err(e.into());
         }
 
-        if let Err(e) = insert_best_block(&mut txn, block.clone()) {
-            // let mut write_smt = smt.write().map_err(|e| {
-            //     error!(
-            //         target: LOG_TARGET,
-            //         "reorganize_chain could not get a write lock on the smt. {:?}", e
-            //     );
-            //     ChainStorageError::AccessError("write lock on smt".into())
-            // })?;
-            // warn!(target: LOG_TARGET, "Reloading SMT into memory from stored db via reorg due to '{}'", e);
-            // *write_smt = backend.calculate_tip_smt()?;
-            return Err(e);
-        }
+        insert_best_block(&mut txn, block.clone())?;
+
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.

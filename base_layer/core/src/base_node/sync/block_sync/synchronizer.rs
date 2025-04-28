@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -30,7 +30,6 @@ use futures::StreamExt;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
-use tokio::task;
 
 use super::error::BlockSyncError;
 use crate::{

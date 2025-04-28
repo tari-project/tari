@@ -22,23 +22,17 @@
 use std::{
     cmp::max,
     convert::TryFrom,
-    f32::consts::E,
     fmt,
     fs::{self, File},
     ops::Deref,
     path::Path,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
-    },
+    sync::Arc,
     time::Instant,
 };
 
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
-use lmdb_zero::{
-    open, traits::AsLmdbBytes, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction,
-};
+use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -50,7 +44,6 @@ use tari_common_types::{
         UncompressedCommitment,
     },
 };
-use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
     hex::{to_hex, Hex},
@@ -96,7 +89,7 @@ use crate::{
             OutputType, SpentOutput, TransactionInput, TransactionKernel, TransactionOutput, ValidatorNodeRegistration,
         },
     },
-    OutputSmt, PrunedKernelMmr,
+    PrunedKernelMmr,
 };
 
 type DatabaseRef = Arc<Database<'static>>;
@@ -133,7 +126,6 @@ const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
-const SMT_CACHE_PERIOD: u64 = 500;
 
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
@@ -143,8 +135,6 @@ type ValidatorNodeRegistrationKey = CompositeKey<40>;
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
-    prune_interval: u64,
-    pruning_horizon: u64,
     consensus_manager: ConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
@@ -192,13 +182,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(
-        &lmdb_store,
-        file_lock,
-        consensus_manager,
-        prune_interval,
-        pruning_horizon,
-    )
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -265,7 +249,6 @@ pub struct LMDBDatabase {
     jmt_node_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
-    smt_cache_period: u64,
 }
 
 impl LMDBDatabase {
@@ -273,17 +256,8 @@ impl LMDBDatabase {
         store: &LMDBStore,
         file_lock: File,
         consensus_manager: ConsensusManager,
-        prune_interval: u64,
-        pruning_horizon: u64,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
-        let smt_cache_period = if pruning_horizon == 0 || prune_interval == 0 {
-            SMT_CACHE_PERIOD
-        } else {
-            // we make sure we run this in the pruning interval, 2 is just a same number here.
-            prune_interval / 2
-        };
-
         let db = Self {
             metadata_db: get_database(store, LMDB_DB_METADATA)?,
             headers_db: get_database(store, LMDB_DB_HEADERS)?,
@@ -319,7 +293,6 @@ impl LMDBDatabase {
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
-            smt_cache_period,
         };
 
         run_migrations(&db)?;
@@ -1458,10 +1431,6 @@ impl LMDBDatabase {
             self.jmt_value_data.clone(),
             LMDB_DB_JMT_VALUE_DATA,
         );
-        // TODO: remove this check
-        let check_root = output_smt.get_root_hash_option(header.height).unwrap();
-        // dbg!(&check_root);
-        // dbg!(&root);
 
         if header.output_mr.as_slice() != root.0.as_slice() {
             warn!(
@@ -1470,15 +1439,13 @@ impl LMDBDatabase {
                 header.output_mr.to_hex(),
                 root.0.to_hex()
             );
-            //     return Err(ChainStorageError::InvalidOperation(format!(
-            //         "The output merkle root in the header does not match the calculated root. Header: {}, calculated:
-            // {}",         header.output_mr.to_hex(),
-            //         root.to_hex()
-            //     )));
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "The output merkle root in the header does not match the calculated root. Header: {}, calculated:
+            {}",
+                header.output_mr.to_hex(),
+                root.0.to_hex()
+            )));
         }
-        dbg!("writing smt");
-        dbg!(header.height);
-        // dbg!(&ops);
         smt_writer
             .write_node_batch(&ops.node_batch)
             .map_err(|e| ChainStorageError::JellyfishMerkleTreeError(e))?;
@@ -1491,10 +1458,6 @@ impl LMDBDatabase {
                 CompressedCommitment::from_commitment(total_kernel_sum),
             ),
         )?;
-        // allow_smt_change.store(false, Ordering::SeqCst);
-        // if header.height % self.smt_cache_period == 0 {
-        //     self.insert_smt(txn, &output_smt, header.height)?;
-        // }
 
         Ok(())
     }
@@ -1887,64 +1850,6 @@ impl LMDBDatabase {
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
-    }
-
-    fn insert_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt, height: u64) -> Result<(), ChainStorageError> {
-        let start = Instant::now();
-        let k = MetadataKey::Smt;
-
-        trace!(target: LOG_TARGET,
-            "Saving SMT at height: {}",
-            height
-        );
-
-        // This is best effort, if it fails (typically when the entry does not yet exist) we just log it
-        if let Err(e) = lmdb_delete(txn, &self.utxo_smt, &k.as_u32(), LMDB_DB_UTXO_SMT) {
-            debug!(
-                "Could NOT delete '{}' db with key '{}' ({})",
-                LMDB_DB_UTXO_SMT,
-                to_hex(k.as_u32().as_lmdb_bytes()),
-                e
-            );
-        }
-
-        #[allow(clippy::cast_possible_truncation)]
-        let estimated_bytes = smt.size().saturating_mul(225) as usize;
-
-        match lmdb_replace(txn, &self.utxo_smt, &k.as_u32(), smt, Some(estimated_bytes)) {
-            Ok(_) => {
-                trace!(
-                target: LOG_TARGET,
-                    "Inserted ~{} MB with key '{}' into '{}' (size {}) in {:.2?}",
-                    estimated_bytes / BYTES_PER_MB,
-                    to_hex(k.as_u32().as_lmdb_bytes()),
-                    LMDB_DB_UTXO_SMT,
-                    smt.size(),
-                    start.elapsed()
-                );
-                lmdb_replace(
-                    txn,
-                    &self.metadata_db,
-                    &MetadataKey::SmtHeight.as_u32(),
-                    &height,
-                    Some(8),
-                )?;
-                Ok(())
-            },
-            Err(e) => {
-                if let ChainStorageError::DbResizeRequired(Some(val)) = e {
-                    trace!(
-                    target: LOG_TARGET,
-                            "Could NOT insert {} MB with key '{}' into '{}' (size {})",
-                            val / BYTES_PER_MB,
-                            to_hex(k.as_u32().as_lmdb_bytes()),
-                            LMDB_DB_UTXO_SMT,
-                            smt.size()
-                        );
-                }
-                Err(e)
-            },
-        }
     }
 }
 
@@ -2911,8 +2816,6 @@ enum MetadataKey {
     HorizonData,
     BestBlockTimestamp,
     MigrationVersion,
-    Smt,
-    SmtHeight,
 }
 
 impl MetadataKey {
@@ -2933,8 +2836,6 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonData => write!(f, "Database info"),
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
-            MetadataKey::Smt => write!(f, "Chain Sparse Merkle Tree"),
-            MetadataKey::SmtHeight => write!(f, "Chain Sparse Merkle Tree saved height"),
         }
     }
 }

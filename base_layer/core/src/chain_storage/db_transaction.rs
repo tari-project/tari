@@ -23,7 +23,7 @@
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::Arc,
 };
 
 use primitive_types::U256;
@@ -34,7 +34,6 @@ use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
     transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 #[derive(Debug)]

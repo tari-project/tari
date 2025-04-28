@@ -24,7 +24,7 @@ use std::{
     fs,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use tari_common::configuration::Network;
@@ -59,7 +59,6 @@ use crate::{
         mocks::MockValidator,
         DifficultyCalculator,
     },
-    OutputSmt,
 };
 
 /// Create a new blockchain database containing the genesis block
@@ -84,23 +83,20 @@ pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<T
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    create_store_with_consensus_and_validators(rules, validators, smt)
+    create_store_with_consensus_and_validators(rules, validators)
 }
 
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
-    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default(), smt)
+    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
 }
 
 pub fn create_store_with_consensus_and_validators_and_config(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
     BlockchainDatabase::start_new(
@@ -120,8 +116,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
         MockValidator::new(true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    create_store_with_consensus_and_validators(rules, validators, smt)
+    create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let rules = create_consensus_rules();
@@ -144,7 +139,7 @@ impl TempDatabase {
         let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, 0, rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
@@ -153,7 +148,7 @@ impl TempDatabase {
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
         let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), 0, 0, rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }
@@ -433,7 +428,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             .unwrap_or_else(|| panic!("Could not find block {}", block_spec.parent));
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
-        let (mut block, _) = create_block(
+        let (block, _) = create_block(
             &rules,
             prev_block.block(),
             block_spec,
@@ -527,7 +522,6 @@ impl TestBlockchain {
             wallet_payment_address,
             range_proof_type: RangeProofType::BulletProofPlus,
         };
-        // let smt = blockchain.db.smt_read_access().unwrap().clone();
 
         blockchain.chain.push(("GB", genesis));
         blockchain
@@ -564,9 +558,9 @@ impl TestBlockchain {
         Ok(())
     }
 
-    pub async fn with_validators(validators: Validators<TempDatabase>, smt: Arc<RwLock<OutputSmt>>) -> Self {
+    pub async fn with_validators(validators: Validators<TempDatabase>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        let db = create_store_with_consensus_and_validators(rules.clone(), validators, smt);
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
         Self::new(db, rules).await
     }
 
