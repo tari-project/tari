@@ -7,7 +7,7 @@ use tari_crypto::{
 };
 hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
 pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
-pub(crate) struct SmtHasher {
+pub struct SmtHasher {
     hasher: OutputSmtHasherBlake256,
 }
 

@@ -34,15 +34,13 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt,
-    PrunedInputMmr,
+    OutputSmt, PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -515,6 +513,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 mod test {
     use std::convert::TryFrom;
 
+    use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
     use tari_common_types::{
         epoch::VnEpoch,
@@ -524,16 +523,15 @@ mod test {
     use super::*;
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
-        chain_storage::calculate_validator_node_mr,
+        chain_storage::{calculate_validator_node_mr, BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
-        test_helpers::blockchain::create_new_blockchain_with_network,
+        test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        PrunedOutputMmr,
+        KernelMmr, PrunedOutputMmr,
     };
     #[test]
     #[serial]
@@ -666,19 +664,28 @@ mod test {
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
-        let mut output_smt = OutputSmt::new();
+        let tempdb = TempDatabase::new();
+        let tree_reader = tempdb.create_smt_reader().unwrap();
+        let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&tree_reader);
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut vn_nodes = Vec::new();
+        let mut smt_batch = vec![];
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
                 block_output_mmr.push(o.hash().to_vec()).unwrap();
             } else {
                 normal_output_mmr.push(o.hash().to_vec()).unwrap();
             }
-            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
-            output_smt.insert(smt_key, smt_node).unwrap();
+            let smt_key = KeyHash(o.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            //  let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
+            let smt_value = o.smt_hash(block.header().height);
+
+            smt_batch.push((smt_key.clone(), Some(smt_value.to_vec())));
+            // let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+            // let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+            // output_smt.insert(smt_key, smt_node).unwrap();
+
             o.verify_metadata_signature().unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = o
@@ -699,8 +706,18 @@ mod test {
             .unwrap();
 
         for i in block.block().body.inputs() {
-            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-            output_smt.delete(&smt_key).unwrap();
+            // let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
+            // output_smt.delete(&smt_key).unwrap();
+
+            let smt_key = KeyHash(
+                i.commitment()
+                    .unwrap()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Commitment is 32 bytes"),
+            );
+            smt_batch.push((smt_key.clone(), None));
+
             if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = i
                     .features()
@@ -731,10 +748,8 @@ mod test {
             kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
             block.header().kernel_mr.to_vec().to_hex()
         );
-        assert_eq!(
-            output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
-            block.header().output_mr.to_vec().to_hex(),
-        );
+        let (smt_root, _) = output_smt.put_value_set(smt_batch, 0).unwrap();
+        assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
         let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();

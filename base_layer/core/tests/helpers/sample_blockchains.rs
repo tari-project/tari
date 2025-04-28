@@ -257,14 +257,12 @@ pub async fn create_new_blockchain_lmdb(
         .build()
         .unwrap();
     let db = TempDatabase::new();
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let db = BlockchainDatabase::start_new(
         db,
         consensus_manager.clone(),
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager, key_manager)

@@ -35,28 +35,20 @@ use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{
-        consensus_constants::PowAlgorithmConstants,
-        emission::Emission,
-        ConsensusConstantsBuilder,
-        ConsensusManager,
+        consensus_constants::PowAlgorithmConstants, emission::Emission, ConsensusConstantsBuilder, ConsensusManager,
     },
     proof_of_work::{
         monero_rx,
         monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
-        Difficulty,
-        PowAlgorithm,
+        Difficulty, PowAlgorithm,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
-            create_wallet_output_with_data,
-            schema_to_transaction,
-            spend_utxos,
-            TestParams,
-            UtxoTestParams,
+            create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams,
         },
         transaction_components::OutputFeatures,
         transaction_key_manager::TransactionKeyManagerInterface,
@@ -67,12 +59,8 @@ use tari_core::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
         mocks::MockValidator,
-        BlockBodyValidator,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        BlockBodyValidator, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
     OutputSmt,
 };
@@ -85,10 +73,7 @@ use tokio::time::Instant;
 use crate::{
     helpers::{
         block_builders::{
-            chain_block_with_coinbase,
-            chain_block_with_new_coinbase,
-            create_coinbase,
-            create_genesis_block_with_utxos,
+            chain_block_with_coinbase, chain_block_with_new_coinbase, create_coinbase, create_genesis_block_with_utxos,
             find_header_with_achieved_difficulty,
         },
         test_blockchain::TestBlockchain,
@@ -107,16 +92,22 @@ async fn test_monero_blocks() {
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 300,
-        })
-        .add_proof_of_work(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::min(),
-            max_difficulty: Difficulty::min(),
-            target_time: 200,
-        })
+        .add_proof_of_work(
+            PowAlgorithm::Sha3x,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 300,
+            },
+        )
+        .add_proof_of_work(
+            PowAlgorithm::RandomX,
+            PowAlgorithmConstants {
+                min_difficulty: Difficulty::min(),
+                max_difficulty: Difficulty::min(),
+                target_time: 200,
+            },
+        )
         .with_blockchain_version(0)
         .build();
     let cm = ConsensusManager::builder(network)
@@ -289,9 +280,10 @@ async fn inputs_are_not_malleable() {
     malicious_test_params.commitment_mask_key_id = spent_output.spending_key_id;
     let modified_so = blockchain
         .key_manager
-        .get_script_offset(&vec![spent_output.script_key_id.clone()], &vec![malicious_test_params
-            .script_key_id
-            .clone()])
+        .get_script_offset(
+            &vec![spent_output.script_key_id.clone()],
+            &vec![malicious_test_params.script_key_id.clone()],
+        )
         .await
         .unwrap();
     // so is calculated as ks-ko
@@ -329,8 +321,7 @@ async fn inputs_are_not_malleable() {
 
     let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
     let txn = blockchain.store().db_read_access().unwrap();
-    let smt = blockchain.store().smt();
-    let err = validator.validate_body(&*txn, &block, smt).unwrap_err();
+    let err = validator.validate_body(&*txn, &block).unwrap_err();
 
     // All validations pass, except the Input MMR.
     unpack_enum!(ValidationError::BlockError(err) = err);
@@ -358,7 +349,6 @@ async fn test_orphan_validator() {
     let orphan_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone());
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
 
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
@@ -370,7 +360,6 @@ async fn test_orphan_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         difficulty_calculator,
-        smt,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -502,7 +491,6 @@ async fn test_orphan_body_validation() {
         .unwrap();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let body_only_validator = BlockBodyFullValidator::new(rules.clone(), true);
     let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone());
     let validators = Validators::new(
@@ -516,7 +504,6 @@ async fn test_orphan_body_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -557,10 +544,9 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    let smt = db.smt().clone();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata, smt)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
@@ -629,9 +615,8 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    let smt = db.smt().clone();
     assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata, smt)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
@@ -662,9 +647,8 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    let smt = db.smt();
     assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata, smt)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
@@ -693,9 +677,8 @@ OutputFeatures::default()),
 
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
-    let smt = db.smt();
     assert!(body_only_validator
-        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata, smt)
+        .validate_body_with_metadata(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
@@ -725,7 +708,6 @@ async fn test_header_validation() {
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone());
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
@@ -737,7 +719,6 @@ async fn test_header_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         difficulty_calculator,
-        smt,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -840,7 +821,6 @@ async fn test_block_sync_body_validator() {
         .unwrap();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator),
@@ -853,7 +833,6 @@ async fn test_block_sync_body_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     let validator = BlockBodyFullValidator::new(rules.clone(), true);
@@ -888,8 +867,7 @@ async fn test_block_sync_body_validator() {
     let err = {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err()
+        validator.validate_body(&*txn, &new_block).unwrap_err()
     };
     assert!(
         matches!(
@@ -908,8 +886,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap();
+        validator.validate_body(&*txn, &new_block).unwrap();
     }
 
     // lets break the block weight
@@ -927,15 +904,14 @@ async fn test_block_sync_body_validator() {
         new_block
             .body
             .calculate_weight(consensus_constants.transaction_weight_params())
-            .expect("Failed to calculate weight") >
-            400,
+            .expect("Failed to calculate weight")
+            > 400,
         "If this is not more than 400, then the next line should fail"
     );
     let err = {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err()
+        validator.validate_body(&*txn, &new_block).unwrap_err()
     };
     assert!(
         matches!(
@@ -954,8 +930,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // lets break the sorting
@@ -967,8 +942,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // lets have unknown inputs;
@@ -1005,8 +979,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // lets check duplicate txos
@@ -1020,8 +993,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // let break coinbase value
@@ -1044,8 +1016,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // let break coinbase lock height
@@ -1068,8 +1039,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap();
+        validator.validate_body(&*txn, &new_block).unwrap();
     }
 
     // lets break accounting
@@ -1081,8 +1051,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 
     // lets the mmr root
@@ -1092,8 +1061,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        let smt = db.smt();
-        validator.validate_body(&*txn, &new_block, smt).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap_err();
     }
 }
 
@@ -1144,7 +1112,6 @@ async fn add_block_with_large_block() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     // lets make our big block (1 -> 5) * 12
@@ -1205,7 +1172,6 @@ async fn add_block_with_large_many_output_block() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     // lets make our big block (1 -> 5) * 12

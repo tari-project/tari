@@ -29,40 +29,21 @@ use tari_common_types::{
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{
-        calculate_validator_node_mr,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
+        calculate_validator_node_mr, BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError,
     },
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
+            CoinBaseExtra, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
+            TransactionKernel, TransactionKernelVersion, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
-    KernelMmr,
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
+    KernelMmr, OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr,
 };
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
@@ -154,32 +135,6 @@ async fn genesis_template(
     (block, output)
 }
 
-#[test]
-fn print_new_genesis_block_values() {
-    let vn_mr = calculate_validator_node_mr(&[]);
-    let validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
-
-    // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
-    let kernel_mr = kernel_mr_hash_from_mmr(&KernelMmr::new(Vec::new())).unwrap();
-    let kernel_mr_pruned = kernel_mr_hash_from_pruned_mmr(&PrunedKernelMmr::new(PrunedHashSet::default())).unwrap();
-    assert_eq!(kernel_mr, kernel_mr_pruned);
-    let input_mr = input_mr_hash_from_pruned_mmr(&PrunedInputMmr::new(PrunedHashSet::default())).unwrap();
-    let output_mr = output_mr_hash_from_smt(&mut OutputSmt::new()).unwrap();
-
-    // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
-    println!();
-    println!("Genesis block constants");
-    println!();
-    println!("header output_mr:           {}", output_mr.to_hex());
-    println!("header output_mmr_size:     0");
-    println!("header kernel_mr:           {}", kernel_mr.to_hex());
-    println!("header kernel_mmr_size:     0");
-    println!("header validator_node_mr:   {}", validator_node_mr.to_hex());
-    println!("header input_mr:            {}", input_mr.to_hex());
-    println!("header total_kernel_offset: {}", FixedHash::zero().to_hex());
-    println!("header total_script_offset: {}", FixedHash::zero().to_hex());
-}
-
 /// Create a genesis block returning it with the spending key for the coinbase utxo
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
@@ -232,15 +187,18 @@ pub async fn create_genesis_block_with_coinbase_value(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         output,
     )
@@ -273,15 +231,18 @@ pub async fn create_genesis_block_with_utxos(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         outputs,
     )
