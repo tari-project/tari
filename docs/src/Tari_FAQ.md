@@ -6,8 +6,7 @@ Welcome to the Tari Frequently-Asked Questions. On this page, we have provided t
 - [Installation and Operational Requiremnents](#installation-and-operational-requirements) - Covers installation and configuration of Tari, as well as operational elements for the network, such as available networks, upgrade process, public nodes lists, available networks and mode.
 - [Technical Characteristics](#technical-characteristics-of-tari) - Covers the technical characteristics of Tari. Network throughput, address format, consensus model and more.
 - [Development](#development) - Questions related to development and development resources.
-- [Exchanges] - Information specific to exchanges.
-- [Security & Legal] - Questions around the security and legal aspects of Tari.
+- [Exchanges](#exchanges)- Information specific to exchanges.
 
 ## General
 ### What are the official channels/website/social network profiles for Tari.
@@ -82,13 +81,7 @@ The total initial supply of Tari (XTM) is 21 billion tokens, with the following 
 **Long-term Supply**
 After the initial distribution, there will be a tail emission of 1% per year to ensure miners continue to receive compensation for securing the network.
 
-
-
-
 ## Installation and Operational Requirements
-
-
-
 ### What are the current networks for Tari?
 - **MainNet** (`mainnet`)- The primary network for live transactions.
 - **StageNet** (`stagenet`) - A stable testing network closely resembling MainNet.
@@ -98,7 +91,6 @@ After the initial distribution, there will be a tail emission of 1% per year to 
 - **Esmeralda** (`esmeralda`)- A stable test network used for testing and mobile wallets.
 
 To specify which network to use when running `minotari_node`, you can set the `TARI_NETWORK` environment variable or use the `--network` command-line argument. If no network is specified, `minotari_node` will use the `testnet` by default unless overridden in the configuration file (`config.toml`) or environment variable. Ensure your configuration file (`~/.tari/config.toml` or equivalent) contains relevant settings for the selected network, such as peer seeds and port numbers.
-
 
 ### What are the size requirements for the Tari chain?
 On average, block size is between 1.3 and 1.5mb. This will result in the chain's average growth of around 1gb per day. Note that the maximum allowed size for a block is 4mb.
@@ -119,10 +111,6 @@ The Tari protocol addresses for the bootstrap nodes are:
 - ""54e491e0d88633170a98898f5d89ccc6b4f7ec22252afc23fe645d5bab453734::/ip4/198.244.203.249/tcp/18189""
 - ""54e491e0d88633170a98898f5d89ccc6b4f7ec22252afc23fe645d5bab453734::/onion3/b5zgqd6emm6p2zmj7gdniysbxvmtvltrwshsyfxjoq26xqfjoicge5id:18141""
 - ""94a4b29148621479b1c1dffb1a2f5680dcf2c0cfb901152e245d6ec299821f61::/onion3/x4cc7t4z5bhzz2qoj5qkfje6jnisz5gvzixeygvzwgi6sg3rhpo5rlqd:18141"" 
-
-### 
-
-
 
 ## Technical Characteristics of Tari
 ### What documentation is currently available for Tari?
@@ -225,40 +213,26 @@ Tari prevents double spending through several mechanisms rooted in Mimblewimble'
 - **Transaction Kernel**: Every transaction in Tari includes a kernel that records the public excess value and a signature. The kernel ensures that inputs and outputs balance without revealing transaction amounts, and it prevents tampering by validating the signature.
 - **Replay Prevention**: Every transaction includes the block height at the time of transaction, and is tied to the transaction. To replay the transaction, an attacker would require the private cryptographic key used to sign the transaction. Private keys are 128-bit, resulting in 2¹²⁸ possible combinations and would require, according to current mathematics and processing power, billions of years on the world's fastest computers to guess.
 
-
-
-
-
-
-7. How does Tari manage network upgrades or protocol changes?
-8. What is the maximum supply of Tari?
-9. What programming languages and SDKs does Tari support?
-10. Can Tari transactions be tracked or traced?
-11. What is the Tari wallet’s security model?
-12. How does Tari handle network congestion?
-13. Can Tari support smart contracts or custom scripts?
-14. How does Tari integrate with decentralized applications (dApps)?
-15. What kind of hardware is required to run a Tari node?
-16. Is there a testnet for Tari?
-17. What happens if a miner or node goes offline?
-18. How is Tari interoperable with other blockchains?
-19. How does Tari ensure scalability over time?
-20. What is the process for submitting a proposal for a new feature or change to the Tari network?
-
-
-
-
-
-
-
-
-
 ## Development
 ### Does Tari have a public facing API interface?
 Yes. There are two access points depending on your requirements:
 
 - Mainnet: [https://grpc.mainnet.tari.com](https://grpc.mainnet.tari.com)
 - Testing: [https://grpc.nextnet.tari.com](https://grpc.nextnet.tari.com)
+
+### What documentation is available for developers?
+
+If you are interested in contributing to the Tari project, please review our community guidelines here: https://github.com/tari-project/tari/edit/development/Contributing.md
+
+You can also review the following documents:
+- The RFC Documents cover some fundamental principles around Tari, and can be located here: https://rfc.tari.com/
+- Additional minor documentation can be found in: https://github.com/tari-project/tari/blob/development/docs/src/
+- The node and wallet require grpc to interact with the API. The proto files include documentation: 
+    - Node: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto
+    - Wallet: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto
+- There are some examples and more detailed explaination of the api here: https://github.com/tari-project/tari/blob/development/docs/src/API_GRPC_Explanation.md
+
+You can also review the Wallet FFI here: 
 
 ### What are the rules governing the construction of addresses in Tari?
 You can read more [here](https://rfc.tari.com/RFC-0155_TariAddress), but we have summarized below:
