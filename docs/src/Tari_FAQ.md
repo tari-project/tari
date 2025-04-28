@@ -1,45 +1,278 @@
 # Tari FAQ
-## General
+Welcome to the Tari Frequently-Asked Questions. On this page, we have provided the answers to many common questions, categorised into appropriate sections. You can check the 
 
-### What is Tari's main website?
-The website is [www.tari.com].(https://www.tari.com)
+- [General](#general) - Covers the coin name, official resources, general overview of architecture and more 
+- [Tokenomics](#tokenomics) - Covers the planned economics of Tari
+- [Installation and Operational Requiremnents](#installation-and-operational-requirements) - Covers installation and configuration of Tari, as well as operational elements for the network, such as available networks, upgrade process, public nodes lists, available networks and mode.
+- [Technical Characteristics](#technical-characteristics-of-tari) - Covers the technical characteristics of Tari. Network throughput, address format, consensus model and more.
+- [Development](#development) - Questions related to development and development resources.
+- [Exchanges] - Information specific to exchanges.
+- [Security & Legal] - Questions around the security and legal aspects of Tari.
+
+## General
+### What are the official channels/website/social network profiles for Tari.
+- Official Website: [www.tari.com](www.tari.com)
+- Twitter: [https://twitter.com/tari/](https://twitter.com/tari/)
+- Discord: [https://discord.gg/tari](https://discord.gg/tari)
+- Telegram: [https://t.me/tariproject](https://t.me/tariproject)
+
+### What are the official wallets for Minotari
+Users have the three options available:
+
+- [The Minotari Console Wallet](https://tari.com/downloads/) - Part of the Tari suite of applications. Provides a console-based wallet for transactions and interactions with the blockchain
+- [Aurora](https://aurora.tari.com) - A mobile application for Android and iOS.
+- [Tari Universe](https://airdrop.tari.com) - a desktop application that includes the entire Tari suite, including a Minotari wallet built directly into the application.
 
 ### What is the coin name? And what is it abbreviation and symbol?
 Minotari. The abbreviation and symbol is XTM.
+
+### Is Tari open-source?
+Yes.
 
 ### What is the official Github repository for the Tari Project?
 Tari Project's repos can be found in [https://github.com/tari-project/](https://github.com/tari-project/). The main project is [https://github.com/tari-project/tari/](https://github.com/tari-project/)
 
 ### Where can I find installation instructions for Tari?
-
 Normal users can utilise the binaries found on Tari's main website under [www.tari.com/downloads](https://tari.com/downloads/). Developers should refer to the instructions available on in the main Tari repo at [https://github.com/tari-project/tari/](https://github.com/tari-project/)
 
-## Technical
+### Explain the general architecture of the Tari solution? What components make up Tari?
+Tari consists of several components. While it is not necessary to run all of these as a casual user, all are required if you wish to run a full base node with mining capabilities. The components are:
+
+- Minotari Base Node (`minotari_node`): Validates and propagates Tari coin transactions and blocks on the base layer. Forms the backbone of the Tari blockchain, maintaining consensus about the longest valid proof-of-work blockchain
+- Minotari Console Wallet (`minotari_console_wallet`):  Manages user funds, creates transactions, and maintains private keys. Allows users to send, receive, and manage their Tari coins. The wallet also provides a means to interact with the gRPC Wallet API. A mobile wallet is also available via [Aurora](https://aurora.tari.com)
+- Minotari Miner (`minotari_miner`): Enables merge mining with Monero. Connects XMRig (Monero mining software) to the Tari network to allow simultaneous mining of both Minotari and Monero. This will be dependent on XMRig and the `minotari_merge_mining_proxy`.
+- Tari Universe: A desktop-based client that handles the installation and configuration of Tari in a simple installation. Recommended for the average user.
+
+Additional, dependent components that aren't specific to Tari are:
+
+- XMRig: Third-party Monero mining software. Used in conjunction with the `minotari_merge_mining_proxy` to mine both Monero and Tari.
+- Tor: Provides network privacy and NAT traversal. Enables secure, anonymous communication between Tari nodes.
+
+### Are there any Tari blockchain explorers?
+The mainnet explorer will be [https://explore.tari.com](https://explore.tari.com).
+
+Please note that only Testnet explorer is currently live: https://explore-nextnet.tari.com/
+
+## Tokenomics
+### Is there any documentation available describing the tokenomics of Tari?
+Users can refer to the following: [https://tari.substack.com/p/tari-tokenomics](https://tari.substack.com/p/tari-tokenomics)
+
+### Is there an initial total supply? And is the supply fixed?
+Excluding premine: 0 at genesis, 21 billion XTM once tail emission starts. 
+
+### What is the tail emission of Tari?
+Tari has a tail emission of 1% per year after initial supply.
+
+### Does Tari have a token allocation plan?
+The total initial supply of Tari (XTM) is 21 billion tokens, with the following allocation:
+**Initial Supply Distribution (21 billion XTM)**
+- 70% to Miners (14.7 billion XTM): The majority of tokens will be distributed through mining, with rewards split 50/50 between merge mining (RandomX algorithm) and standalone mining (SHA3x algorithm).
+- 30% Pre-mine (6.3 billion XTM): This portion is further divided into:
+    - 5% Community (1.05 billion XTM): For incentive programs to encourage and reward community engagement
+    - 9% Protocol Infrastructure and Grants (1.89 billion XTM): To support development of tooling necessary for operating the Tari network
+    - 4% Contributors (0.84 billion XTM): For people who contributed to the development of the Tari network
+    - 12% Participants (2.52 billion XTM): For early supporters who helped make Tari a reality
+
+**Unlock Schedule**
+- Community Tokens: Unlock monthly for 12 months, beginning 6 months after mainnet launch
+- Protocol Infrastructure and Grants: 40% (756 million tokens) available at launch for protocol liquidity, with the remainder unlocking monthly for 4 years, beginning 6 months after launch
+- Contributor Tokens: Unlock monthly for 5 years, beginning 12 months after mainnet launch
+- Participant Tokens: Unlock monthly for 2 years, beginning 12 months after mainnet launch
+
+**Long-term Supply**
+After the initial distribution, there will be a tail emission of 1% per year to ensure miners continue to receive compensation for securing the network.
+
+
+
+
+## Installation and Operational Requirements
+
+
+
+### What are the current networks for Tari?
+- **MainNet** (`mainnet`)- The primary network for live transactions.
+- **StageNet** (`stagenet`) - A stable testing network closely resembling MainNet.
+- **NextNet** (`nextnet`) - A pre-production network for testing features before release.
+- **TestNet** (`testnet`)- A general testing network with frequent resets and experimental features.
+- **LocalNet** (`localnet`) - A local testing environment for development purposes.
+- **Esmeralda** (`esmeralda`)- A stable test network used for testing and mobile wallets.
+
+To specify which network to use when running `minotari_node`, you can set the `TARI_NETWORK` environment variable or use the `--network` command-line argument. If no network is specified, `minotari_node` will use the `testnet` by default unless overridden in the configuration file (`config.toml`) or environment variable. Ensure your configuration file (`~/.tari/config.toml` or equivalent) contains relevant settings for the selected network, such as peer seeds and port numbers.
+
 
 ### What are the size requirements for the Tari chain?
-
 On average, block size is between 1.3 and 1.5mb. This will result in the chain's average growth of around 1gb per day. Note that the maximum allowed size for a block is 4mb.
 
-### How often is a block mined / what is the interval per block / what is the block production rate?
+### Does Tari require any rent or reservations?
+No.
 
+### Is there a whitelisting process for nodes for synchronization?
+No.
+
+### Is there a public nodes list?
+There are also bootstrap nodes for the network available via TXT DNS at: [seeds.tari.com](seeds.tari.com)
+
+The Tari protocol addresses for the bootstrap nodes are:
+
+- ""94a4b29148621479b1c1dffb1a2f5680dcf2c0cfb901152e245d6ec299821f61::/ip4/91.134.83.67/tcp/18189""
+- ""7c8e6530294e8bb7ff45b0f39e8bf8ea4e461b3df15a2df1ba3fa3a9bcc9ef71::/ip4/15.235.224.202/tcp/18189""
+- ""54e491e0d88633170a98898f5d89ccc6b4f7ec22252afc23fe645d5bab453734::/ip4/198.244.203.249/tcp/18189""
+- ""54e491e0d88633170a98898f5d89ccc6b4f7ec22252afc23fe645d5bab453734::/onion3/b5zgqd6emm6p2zmj7gdniysbxvmtvltrwshsyfxjoq26xqfjoicge5id:18141""
+- ""94a4b29148621479b1c1dffb1a2f5680dcf2c0cfb901152e245d6ec299821f61::/onion3/x4cc7t4z5bhzz2qoj5qkfje6jnisz5gvzixeygvzwgi6sg3rhpo5rlqd:18141"" 
+
+### 
+
+
+
+## Technical Characteristics of Tari
+### What documentation is currently available for Tari?
+- For exchanges, the best starting location is going through the exchange guide here: https://www.tari.com/lessons/09_adding_tari_to_your_exchange
+- The node and wallet require grpc to interact with the API. The proto files include documentation: 
+    - Node: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto
+    - Wallet: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto
+- There are some examples and more detailed explaination of the api here: https://github.com/tari-project/tari/blob/development/docs/src/API_GRPC_Explanation.md
+- In addition, you can refer to the following doc for more information regarding integration with the base node via RPC: https://docs.google.com/document/d/11G2P0yEZkyJIg3WtVpBbACeqpWYgDDqQmlrUKv4HEjk/edit?tab=t.0#heading=h.ap7pxb7d730l
+- The RFC Documents cover some fundamental principles around Tari, and can be located here: https://rfc.tari.com/
+- Additional minor documentation can be found in: https://github.com/tari-project/tari/blob/development/docs/src/
+
+### What kind of blockchain is Tari?
+Tari is a proof-of-work, merge-mined blockchain focused on privacy and digital asset support.
+
+### What consensus model does Tari use?
+Tari uses a Proof-of-Work (PoW) model for consensus and security, and is merge-mined with Monero. Tari uses two algorithms for this purpose:
+- RandomX: This is the same CPU-optimized algorithm used by Monero. It is merge-mined with Monero, meaning miners can mine both networks at once using the same work.
+- Sha3x: A custom algorithm based on SHA-3 (specifically SHA3-256), optimized for GPU mining. It's designed to provide algorithmic diversity and broaden miner participation.
+
+The primary aim is to increase the cost of 51% attacks, ensuring mining decentralization and resilience against hardware centralization.
+
+### Is Tari cross-chain?
+No. Swaps must be performed manually at this time.
+
+### Is Tari account-based?
+No. Tari uses the UTXO model, similar to Bitcoin. As such there is no specific account tied to a user's transactions on Minotari. The closest comparison is the private keys associated with the wallet, which are you used to signing of transactions and validating existing UTXOs for things like calculating balance, etc.
+
+### How often is a block mined / what is the interval per block / what is the block production rate?
 Blocks are mined every 120 seconds.
 
 ### What is the precision of Minotari?
-
 Minotari can be traded at 0.000001 XTM. Fractional Minotari is referred to as Microtari (μT).
 
-### Does Tari have a public facing API interface?
+### What coins is Tari similar to?
+Bitcoin, Grin, Beam, Litecoin
 
+### Does Tari have "super nodes"?
+No. This is sssuming that "super nodes" in this context is a high-performance, specialized node that play a critical role in validation, governance, or network infrastructure, then **no**. All base nodes have an equal role in ensuring the security of the network.
+
+### What is the transaction expiration policy in the transaction pool? Is there a timeout duration after which unconfirmed transactions are removed?
+Completed transactions are never removed. Pending transactions have a timeout of three (3) days; if they have not been completed within that period, the base node will reject it and it will be removed from the mempool, meaning that it will not be added to the blockchain.
+
+### How does Tari prevent forks?
+Tari, like most blockchains, cannot definitively prevent forks, but has a number of mechanisms to minimise the chance of forks and to deal with fork occurence:
+
+- **Proof-of-work**: A PoW model ensures blocks are valid through computational effort expended to validate the block.
+- **Strongest Chain**: Tari will focus on the strongest chain (strongest being the chain with the most computational effort used to mine blocks due to higher difficulty)
+- **Merge-mining with Monero**: Miners are incentivized to maintain a single, consistent chain to ensure rewards from both chains.
+
+A list of the current strongest checkpoints are published on https://checkpoints.tari.com
+
+### Does Tari provide dividends or interest for running a node?
+No.
+
+### Do transactions support multiple signatures?
+Yes.
+
+### Does Tari have fees? If so, what is the fee mechanism?
+There is a fee. The fee for a transaction in Tari is calculated based on the transaction's weight and the specified fee-per-gram value. The relevant formula is implemented in the `Fee::calculate` method located in the `base_layer/core/src/transactions/fee.rs` file. Here's a summary of how it works:
+
+1. Transaction Weight: The weight is determined by the number of kernels, inputs, outputs, and the size of features and scripts in bytes. This is computed using the TransactionWeight class.
+2. Fee Calculation: The formula for the fee is: fee = weight * fee_per_gram
+
+where `weight` is the total calculated weight of the transaction, and `fee_per_gram` is the fee per gram specified for the transaction.
+
+For more details, you can explore the `Fee::calculate` implementation in the https://github.com/tari-project/tari/blob/693cd7ab56deddcd089cfbc4b4128af8e94e9786/base_layer/core/src/transactions/fee.rs.
+
+### Does each block in the Tari blockchain include a coinbase transaction, and if so, how is the block reward distributed?
+Yes, each block in the Tari blockchain includes a coinbase transaction as part of the consensus rules. The coinbase transaction is created to distribute the block reward, which consists of:
+
+- **Block Subsidy**: Newly minted Tari as defined by the emission schedule.
+- **Transaction Fees**: Fees collected from all transactions included in the block.
+
+The entire block reward (block subsidy + transaction fees) is assigned to the miner who successfully mines the block. The coinbase transaction includes an output specifying the miner's wallet address to receive the reward. The reward structure is implemented programmatically during block construction, ensuring compliance with the consensus rules
+
+### Does Tari support offline signing/transactions?
+Yes, Tari transactions can be signed offline.
+
+### How is the Tari blockchain secured?
+Tari relies on the Nakamoto Consensus and dual mining algorithms, with approximately 50% of block rewards derived from merged-mining monero via RandomX and the other 50% from Sha3x mining.
+
+### What is the block reward emission schedule in Tari?
+The Tari emission schedule is designed to distribute new Tari through block rewards using an exponentially decaying model, followed by a tail emission phase. Initially, block rewards start at a high value and decay gradually over time based on a decay factor. For example, the starting block reward is approximately 12.92 Minotari (12,923,971 µT), and it decreases over time as the decay factor is applied. This approach ensures a predictable reduction in rewards, similar to Monero's emission model, without abrupt halving events.
+
+Once the decaying rewards reach a minimum threshold, Tari introduces a tail emission phase. In this phase, miners receive a constant minimum reward per block. For instance, the tail emission reward is set to approximately 0.764 Minotari (764,000 µT) per block. This ensures ongoing miner incentives and long-term network security, preventing the total supply from becoming completely fixed. Combined with a pre-defined epoch length, the emission schedule balances early incentives with sustainable rewards over time.
+
+The emission schedule also incorporates inflation during the tail emission phase. The inflation rate is recalculated at periodic intervals (epochs) based on the current circulating supply and is designed to remain minimal. This ensures that while the total supply continues to increase, the rate of new issuance slows significantly, maintaining economic stability within the Tari ecosystem.
+
+### What is Tari's finality model?
+While a transaction is never technically finalized in Tari, given the use of the use of the UTXO model, as time progresses and more blocks are mined it becomes statistically unlikely that a transaction can be reversed. We normally recommend at least 6 blocks to ensure transaction finality, which would be considered 99% finalized given the computational power required to rewrite the blockchain at that point.
+
+### What is the transaction throughput of the Tari network?
+Tari is capable of approximately 8.3 transactions per second.
+
+### How does Tari prevent double-spending?
+Tari prevents double spending through several mechanisms rooted in Mimblewimble's cryptographic principles and its enhancements with TariScript.
+
+- **Range Proof and Commitments**:Every transaction output is represented as a cryptographic commitment, which conceals the value and the keys using Pedersen commitments. Each commitment ensures that only the private key owner can spend the output. In addition, a range proof ensures that the transaction value is positive, preventing invalid and negative values.
+- **Transaction Kernel**: Every transaction in Tari includes a kernel that records the public excess value and a signature. The kernel ensures that inputs and outputs balance without revealing transaction amounts, and it prevents tampering by validating the signature.
+- **Replay Prevention**: Every transaction includes the block height at the time of transaction, and is tied to the transaction. To replay the transaction, an attacker would require the private cryptographic key used to sign the transaction. Private keys are 128-bit, resulting in 2¹²⁸ possible combinations and would require, according to current mathematics and processing power, billions of years on the world's fastest computers to guess.
+
+
+
+
+
+
+7. How does Tari manage network upgrades or protocol changes?
+8. What is the maximum supply of Tari?
+9. What programming languages and SDKs does Tari support?
+10. Can Tari transactions be tracked or traced?
+11. What is the Tari wallet’s security model?
+12. How does Tari handle network congestion?
+13. Can Tari support smart contracts or custom scripts?
+14. How does Tari integrate with decentralized applications (dApps)?
+15. What kind of hardware is required to run a Tari node?
+16. Is there a testnet for Tari?
+17. What happens if a miner or node goes offline?
+18. How is Tari interoperable with other blockchains?
+19. How does Tari ensure scalability over time?
+20. What is the process for submitting a proposal for a new feature or change to the Tari network?
+
+
+
+
+
+
+
+
+
+## Development
+### Does Tari have a public facing API interface?
 Yes. There are two access points depending on your requirements:
 
 - Mainnet: [https://grpc.mainnet.tari.com](https://grpc.mainnet.tari.com)
 - Testing: [https://grpc.nextnet.tari.com](https://grpc.nextnet.tari.com)
 
-### Does Tari support memo functions like EOS?
+### What are the rules governing the construction of addresses in Tari?
+You can read more [here](https://rfc.tari.com/RFC-0155_TariAddress), but we have summarized below:
 
+The address is a base58-encoded and adheres to the following bytes/rules:
+- 0 - Network: Determines which network the address belongs to.
+- 1 - Features: Indicates whether the feature set for this address is for a one-sided address or an interactive address. Valid values for these are 1 and 2 respectively.
+- 2 to 33 - Public view key
+- 34 to 65 - Public Spend Key
+- 66 - Checksum using the DammSumm algorithm using 0,1 and the Public Spent Key to calculate.
+
+### Does Tari support memo functions like EOS?
 No.
 
-### Does Tari support accounts?
-
-There are no accounts on Minotari (L1). Minotari uses a UTXO model and as such there is no specific account tied to a user's transactions on Minotari. The closest comparison is the wallet and wallet private address which is then associated with signing of transactions (and is used to validate existing UTXOs for things like calculating balance, etc).
-
+## Exchanges
+### How many block confirmations are required to ensure safe transactions/credit?
+For exchanges, it is recommended that a minimum of 6+ block confirmations is used to ensure safety.
