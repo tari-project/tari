@@ -10,8 +10,17 @@ use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistration
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
-        MmrTree, OutputMinedInfo, Reorg,
+        ChainStorageError,
+        DbBasicStats,
+        DbKey,
+        DbTotalSizeStats,
+        DbTransaction,
+        DbValue,
+        HorizonData,
+        InputMinedInfo,
+        MmrTree,
+        OutputMinedInfo,
+        Reorg,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };

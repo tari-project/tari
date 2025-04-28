@@ -471,7 +471,9 @@ mod test {
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr, PrunedInputMmr, PrunedOutputMmr,
+        KernelMmr,
+        PrunedInputMmr,
+        PrunedOutputMmr,
     };
     #[test]
     #[serial]

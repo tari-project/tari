@@ -128,35 +128,35 @@ impl HorizonSyncError {
         match self {
             // no ban
             HorizonSyncError::ChainStorageError(e) => e.get_ban_reason(),
-            HorizonSyncError::NoSyncPeers
-            | HorizonSyncError::FailedSyncAllPeers
-            | HorizonSyncError::AllSyncPeersExceedLatency
-            | HorizonSyncError::ConnectivityError(_)
-            | HorizonSyncError::NoMoreSyncPeers(_)
-            | HorizonSyncError::PeerNotFound
-            | HorizonSyncError::JoinError(_)
-            | HorizonSyncError::MrHashError(_) => None,
+            HorizonSyncError::NoSyncPeers |
+            HorizonSyncError::FailedSyncAllPeers |
+            HorizonSyncError::AllSyncPeersExceedLatency |
+            HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::NoMoreSyncPeers(_) |
+            HorizonSyncError::PeerNotFound |
+            HorizonSyncError::JoinError(_) |
+            HorizonSyncError::MrHashError(_) => None,
 
             // short ban
-            err @ HorizonSyncError::MaxLatencyExceeded { .. }
-            | err @ HorizonSyncError::RpcError { .. }
-            | err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
+            err @ HorizonSyncError::MaxLatencyExceeded { .. } |
+            err @ HorizonSyncError::RpcError { .. } |
+            err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: BanPeriod::Short,
             }),
 
             // long ban
-            err @ HorizonSyncError::IncorrectResponse(_)
-            | err @ HorizonSyncError::FinalStateValidationFailed(_)
-            | err @ HorizonSyncError::RangeProofError(_)
-            | err @ HorizonSyncError::InvalidMrRoot { .. }
-            | err @ HorizonSyncError::SMTError(_)
-            | err @ HorizonSyncError::InvalidMmrPosition { .. }
-            | err @ HorizonSyncError::ConversionError(_)
-            | err @ HorizonSyncError::MerkleMountainRangeError(_)
-            | err @ HorizonSyncError::FixedHashSizeError(_)
-            | err @ HorizonSyncError::TransactionError(_)
-            | err @ HorizonSyncError::ByteArrayError(_) => Some(BanReason {
+            err @ HorizonSyncError::IncorrectResponse(_) |
+            err @ HorizonSyncError::FinalStateValidationFailed(_) |
+            err @ HorizonSyncError::RangeProofError(_) |
+            err @ HorizonSyncError::InvalidMrRoot { .. } |
+            err @ HorizonSyncError::SMTError(_) |
+            err @ HorizonSyncError::InvalidMmrPosition { .. } |
+            err @ HorizonSyncError::ConversionError(_) |
+            err @ HorizonSyncError::MerkleMountainRangeError(_) |
+            err @ HorizonSyncError::FixedHashSizeError(_) |
+            err @ HorizonSyncError::TransactionError(_) |
+            err @ HorizonSyncError::ByteArrayError(_) => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: BanPeriod::Long,
             }),
