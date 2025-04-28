@@ -131,6 +131,16 @@ Example:
      console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
+Response Example:
+```json
+{
+  "available_balance": 1000000,
+  "pending_incoming_balance": 200000,
+  "pending_outgoing_balance": 50000,
+  "timelocked_balance": 150000
+}
+```
+
 In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
 
 The user_payment_id can be specified in three formats: 
@@ -169,6 +179,30 @@ client.GetCompletedTransactions(request, (error, response) => {
   }
 });
 ```
+
+<details><summary>Example of Response</summary>
+
+```json
+{
+  "transaction": {
+    "tx_id": "123456",
+    "source_address": "B1a2c3d4e5f6g7h8i9j0",
+    "dest_address": "A9j8h7g6f5e4d3c2b1a0",
+    "status": 3,
+    "amount": "1000000000",
+    "is_cancelled": false,
+    "direction": 1,
+    "fee": "2500000",
+    "timestamp": 1714328123,
+    "excess_sig": "abcdef0123456789...",
+    "payment_id": "4f3c2a1b",
+    "mined_in_block_height": 10203
+  }
+}
+```
+
+</details>
+
 
 This example retrieves completed transactions filtered by a specific `user_payment_id`.
 
