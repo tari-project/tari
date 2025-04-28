@@ -1,11 +1,22 @@
 # gRPC API for Minotari Wallet
+Below is documentation regarding various gRPC methods available for the Minotari Console Wallet and accessible via the base node.
+
+- [Introduction](#introduction)
+  - [General Structure](#general-structure)
+  - [Code Generation from .proto files](#understanding-code-generation-from-proto-files)
+  - [Loading the Protocol Buffer Definition](#loading-the-protocol-buffer-definition)
+  - [Instantiating the Client](#instantiating-the-client)
+  - [Authentication with gRPC](#authentication-with-grpc)
+- [Base Node gRPC Methods](#grpc-base-node-methods)
+- [Wallet gRPC Methods](#grpc-wallet-methods)
+- [Useful Non-gRPC Methods](#unrelated-functions-not-available-in-the-grpc-but-useful)
+
 ## Introduction
 This document provides detailed descriptions of the Remote Procedure Call (RPC) methods available in the Minotari Wallet using **gRPC**. These gRPC methods allow developers and users to interact programmatically with the Minotari Wallet, enabling a wide range of operations such as querying balances, managing transactions, and retrieving wallet-related data.
 
 Use of gRPC requires access to a full node configured to allow gRPC calls. More on this can be read in the [Adding Tari to your Exchange guide](https://www.tari.com/lessons/09_adding_tari_to_your_exchange).
 
 ### General Structure
-
 Each gRPC method has the following general structure:
 
 - **Protocol**: gRPC
@@ -37,7 +48,6 @@ message GetBalanceResponse {
 ```
 
 ### Understanding Code Generation from `.proto` Files
-
 The `.proto` file, such as [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto), acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
 
 To actually call these methods in your application, the `.proto` file must be **processed into usable code** through a process known as **code generation**. This step provides you with:
@@ -59,7 +69,6 @@ Regardless of the language, this step is required: it transforms the `.proto` co
 > 🔧 **Note:** If you're using a statically typed language, make sure to run the appropriate `protoc` command to generate your language-specific files before attempting to use the gRPC client.
 
 ### Loading the Protocol Buffer Definition
-
 In gRPC, a `.proto` file defines the **contract** between services and clients. This contract includes:
 
 - The **RPC methods** a service exposes (e.g., `SendTransaction`, `GetBalance`)
@@ -103,226 +112,18 @@ const client = new walletProto('localhost:18183', grpc.credentials.createInsecur
 
 This would need to be placed before any method call.
 
-## gRPC Base Node Methods
-These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
-
-### Get Max Height
-You can call the base node's gRPC method to get the current blockchain height.
-
-Example:
-```javascript
-const client = new Client('localhost:18143'); // Connect to base node
-const response = await client.getTipInfo();
-console.log('Max Height:', response.chain_height);
-```
-
-## gRPC Wallet Methods
-These methods are dependent on access to a base node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
-
-### Get Balance
-The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
-
-Example:
-```javascript
-     const balance = await client.getBalance();
-     console.log('Available Balance:', balance.available_balance);
-     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
-     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
-     console.log('Time Locked Balance:', balance.timelocked_balance);
-```
-
-Response Example:
-```json
-{
-  "available_balance": 1000000,
-  "pending_incoming_balance": 200000,
-  "pending_outgoing_balance": 50000,
-  "timelocked_balance": 150000
-}
-```
-
-In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
-
-The user_payment_id can be specified in three formats: 
-- **`u256 (bytes)`**: Must be provided as a byte array.
-- **`utf8_string (string)`**: Must be a valid UTF-8 string.
-- **`user_bytes (bytes)`**: Must be provided as a generic byte array.
-
-```javascript
-const userPaymentId = {
-         utf8_string: "your_payment_id_string" // Replace this with your actual payment ID
-     };
-
-     const balance = await client.getBalance({ payment_id: userPaymentId });
-     console.log('Available Balance:', balance.available_balance);
-     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
-     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
-     console.log('Time Locked Balance:', balance.timelocked_balance);
-```
-
-### Get Transactions by Payment ID
-
-The `GetCompletedTransactionsRequest` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
-
-Example of retrieving all transactions:
-
-```javascript
-// Define the request without a user_payment_id
-const request = {};
-
-// Call GetCompletedTransactions
-client.GetCompletedTransactions(request, (error, response) => {
-  if (error) {
-    console.error('Error:', error);
-  } else {
-    console.log('Completed Transactions:', response);
-  }
-});
-```
-
-<details><summary>Example of Response</summary>
-
-```json
-{
-  "transaction": {
-    "tx_id": "123456",
-    "source_address": "B1a2c3d4e5f6g7h8i9j0",
-    "dest_address": "A9j8h7g6f5e4d3c2b1a0",
-    "status": 3,
-    "amount": "1000000000",
-    "is_cancelled": false,
-    "direction": 1,
-    "fee": "2500000",
-    "timestamp": 1714328123,
-    "excess_sig": "abcdef0123456789...",
-    "payment_id": "4f3c2a1b",
-    "mined_in_block_height": 10203
-  }
-}
-```
-
-</details>
-
-
-This example retrieves completed transactions filtered by a specific `user_payment_id`.
-
-```javascript
-// Define the request with a user_payment_id
-const request = {
-  payment_id: {
-    utf8_string: 'example_payment_id', // Replace with your user_payment_id
-  },
-};
-
-// Call GetCompletedTransactions
-client.GetCompletedTransactions(request, (error, response) => {
-  if (error) {
-    console.error('Error:', error);
-  } else {
-    console.log('Filtered Completed Transactions:', response);
-  }
-});
-```
-
-### Create Wallet
-By default, the gRPC interface is incapable of creating a wallet at this stage. It is used for interacting with a single wallet instance.
-
-To create a wallet, a user can use the `minotari_console_wallet` command and follow the instructions. More details on this process are available in the [Adding Tari to your Exchange guide](https://www.tari.com/lessons/09_adding_tari_to_your_exchange).
-
-Users can, however, use the Tari Wallet FFI to create a new wallet directly. You will need to provide a seed phrase or allow the wallet to generate one.
-
-You can find [the Wallet FFI here](https://github.com/tari-project/tari/tree/b4ba3a438a414c4c0408add103d7185d74f48ebc/base_layer/wallet_ffi): 
-
-Example using the FFI:
-```javascript
-     const wallet = lib.wallet_create(
-       comms,                    // Communication configuration
-       "./wallet/logs",          // Log files
-       5,                        // Comms buffer size
-       10240,                    // Message cache size
-       null,                     // Passphrase
-       seedWords,                // Seed words if provided. Requires 20 words, defined in the BIP-39 mnemonic standard. If not provided, a unique seed key will be generated automatically.
-       receivedTxCallback,       // Callbacks for various events
-       receivedTxReplyCallback,
-       receivedFinalizedCallback,
-       txBroadcastCallback,
-       txMinedCallback
-     );
-     console.log("Wallet created:", wallet);
-```
-
-### Get Transaction Info
-You can use the `getTransactionInfo` gRPC method to obtain information about a specific transaction.
-   
-Example:
-```javascript
-     const txDetails = await client.getTransactionInfo({ txId: 'your-transaction-id' });
-     console.log(txDetails);
-```
-
-### Fetch UTXOs by Block ID
-The `fetch_unspent_utxos_in_block` function is used to fetch unspent transaction outputs (UTXOs) within a specific block by its hash. You will need to interact with the base node directly via the `BaseNodeCommsInterface`.
-
-Example:
-```rust
-use tari_common_types::types::BlockHash;
-use tari_core::transactions::transaction::TransactionOutput;
-use tari_service_framework::reply_channel::RequestSender;
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use std::sync::Arc;
-
-async fn fetch_utxos_for_block(
-    block_hash: BlockHash,
-    request_sender: Arc<RequestSender>, // Replace with the actual `request_sender` type
-) -> Result<Vec<TransactionOutput>, Box<dyn std::error::Error>> {
-    // Create a mutable instance of the interface
-    let mut base_node_interface = BaseNodeCommsInterface::new(
-        request_sender,
-        OutboundMessageRequester::default(), // Replace with the actual implementation
-    );
-
-    // Fetch the UTXOs
-    match base_node_interface.fetch_unspent_utxos_in_block(block_hash).await {
-        Ok(utxos) => {
-            println!("Fetched {} UTXOs in block.", utxos.len());
-            Ok(utxos)
-        },
-        Err(e) => {
-            eprintln!("Error fetching UTXOs: {:?}", e);
-            Err(Box::new(e))
-        },
-    }
-}
-```
-
-Pass the block hash to fetch UTXOs.
-
-### Send a Transaction
-Use the `transfer` function to perform a send transaction to a participant.
-
-Example:
-```javascript
-     const transferResponse = await client.transfer({
-       destination: 'receiver-tari-address',
-       amount: 1000000,           // Amount in µT
-       fee_per_gram: 25,          // Fee per gram
-       message: 'Payment for services'  // Maximum message size is 32 bytes (256 bits)
-     });
-     console.log('Transfer successful:', transferResponse);
-```
-
-#### Authentication with gRPC
+### Authentication with gRPC
 The `GrpcAuthentication` object supports two modes:
 - **None**: No authentication is required.
 - **Basic**: Username and password are used for authentication. Note that these are distinct from your wallet's credentials and are configured separately.
 
 Here are step-by-step instructions for enabling and configuring basic gRPC authentication in the Tari wallet using the `config.toml` file:
 
-### 1. **Locate the Configuration File**
+#### 1. **Locate the Configuration File**
    - Navigate to the `config.toml` file for your Tari wallet.
    - Example path: `common/config/presets/d_console_wallet.toml`.
 
-### 2. **Enable gRPC Authentication**
+#### 2. **Enable gRPC Authentication**
    - Open the configuration file in a text editor.
    - Find the following commented-out section:
      ```toml
@@ -330,20 +131,20 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
      #grpc_authentication = { username = "admin", password = "xxxx" }
      ```
 
-### 3. **Uncomment and Configure**
+#### 3. **Uncomment and Configure**
    - Uncomment the `grpc_authentication` line by removing the `#` at the beginning.
    - Set a clear-text username and password. For example:
      ```toml
      grpc_authentication = { username = "admin", password = "mysecurepassword" }
      ```
 
-### 4. **Save the File**
+#### 4. **Save the File**
    - After making the changes, save the `config.toml` file.
 
-### 5. **Restart the Wallet**
+#### 5. **Restart the Wallet**
    - Restart your Tari wallet application to apply the updated configuration.
 
-### 6. **Client-Side Configuration**
+#### 6. **Client-Side Configuration**
    - Ensure your gRPC client connects using basic authentication. For example, in JavaScript:
 
      ```javascript
@@ -364,14 +165,14 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
      const client = new walletProto('localhost:18183', channelCredentials);
      ```
 
-### 7. **Test the Connection**
+#### 7. **Test the Connection**
    - Verify that the gRPC client can successfully connect using the provided username and password.
 
    - Ensure the username and password are secure and not shared publicly.
    - If you’re using SSL (`grpc.credentials.createSsl()`), combine it with the credentials for a secure connection.
    - If the gRPC server is running locally, you may use `grpc.credentials.createInsecure()` for testing purposes (not recommended for production).
 
-#### Connecting with Authentication Examples
+##### Connecting with Authentication Examples
 **Rust:**
 ```rust
 use serde::{Deserialize, Serialize};
@@ -414,3 +215,218 @@ const client = new Client('localhost:18143', {
 
 console.log('Client created:', client);
 ```
+
+## gRPC Base Node Methods
+These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
+
+### Get Max Height
+You can call the base node's gRPC method to get the current blockchain height.
+
+Example:
+```javascript
+const client = new Client('localhost:18143'); // Connect to base node
+const response = await client.getTipInfo();
+console.log('Max Height:', response.chain_height);
+```
+
+## gRPC Wallet Methods
+These methods are dependent on access to a base node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
+
+### Get Balance
+The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
+
+Example:
+```javascript
+     const balance = await client.getBalance();
+     console.log('Available Balance:', balance.available_balance);
+     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
+     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
+```
+
+In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
+
+The user_payment_id can be specified in three formats: 
+- **`u256 (bytes)`**: Must be provided as a byte array.
+- **`utf8_string (string)`**: Must be a valid UTF-8 string.
+- **`user_bytes (bytes)`**: Must be provided as a generic byte array.
+
+```javascript
+const userPaymentId = {
+         utf8_string: "your_payment_id_string" // Replace this with your actual payment ID
+     };
+
+     const balance = await client.getBalance({ payment_id: userPaymentId });
+     console.log('Available Balance:', balance.available_balance);
+     console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
+     console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
+```
+
+**Example JSON Response:**
+```json
+{
+  "available_balance": 1000000,
+  "pending_incoming_balance": 200000,
+  "pending_outgoing_balance": 50000,
+  "timelocked_balance": 150000
+}
+```
+
+### Get Transactions by Payment ID
+The `GetCompletedTransactionsRequest` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
+
+**Example of retrieving all transactions:**
+```javascript
+// Define the request without a user_payment_id
+const request = {};
+
+// Call GetCompletedTransactions
+client.GetCompletedTransactions(request, (error, response) => {
+  if (error) {
+    console.error('Error:', error);
+  } else {
+    console.log('Completed Transactions:', response);
+  }
+});
+```
+
+This example retrieves completed transactions filtered by a specific `user_payment_id`.
+
+```javascript
+// Define the request with a user_payment_id
+const request = {
+  payment_id: {
+    utf8_string: 'example_payment_id', // Replace with your user_payment_id
+  },
+};
+
+// Call GetCompletedTransactions
+client.GetCompletedTransactions(request, (error, response) => {
+  if (error) {
+    console.error('Error:', error);
+  } else {
+    console.log('Filtered Completed Transactions:', response);
+  }
+});
+```
+
+**Example of JSON Response**
+```json
+{
+  "transaction": {
+    "tx_id": "123456",
+    "source_address": "B1a2c3d4e5f6g7h8i9j0",
+    "dest_address": "A9j8h7g6f5e4d3c2b1a0",
+    "status": 3,
+    "amount": "1000000000",
+    "is_cancelled": false,
+    "direction": 1,
+    "fee": "2500000",
+    "timestamp": 1714328123,
+    "excess_sig": "abcdef0123456789...",
+    "payment_id": "4f3c2a1b",
+    "mined_in_block_height": 10203
+  }
+}
+```
+
+### Get Transaction Info
+You can use the `getTransactionInfo` gRPC method to obtain information about transactions associated with one or more `transaction_id`.
+
+Example:
+```javascript
+     const txDetails = await client.getTransactionInfo({ txId: 'your-transaction-id' });
+     console.log(txDetails);
+```
+
+**Example JSON Response**
+```json
+{
+  "transactions": [
+    {
+      "tx_id": "1234567890",
+      "source_address": "T1a2b3c4d5e6f7g8h9i0jklmnopqrstuvwx",
+      "dest_address": "T1z9y8x7w6v5u4t3s2r1q0ponmlkjihgfedcba",
+      "status": 2,
+      "amount": "1000000000",
+      "is_cancelled": false,
+      "direction": 1,
+      "fee": "1000000",
+      "timestamp": 1714328123,
+      "excess_sig": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "payment_id": "4f3c2a1b",
+      "mined_in_block_height": 10203
+    },
+    {
+      "tx_id": "9876543210",
+      "source_address": "T1z9y8x7w6v5u4t3s2r1q0ponmlkjihgfedcba",
+      "dest_address": "T1a2b3c4d5e6f7g8h9i0jklmnopqrstuvwx",
+      "status": 1,
+      "amount": "500000000",
+      "is_cancelled": false,
+      "direction": 2,
+      "fee": "500000",
+      "timestamp": 1714329156,
+      "excess_sig": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "payment_id": "7e8f9d0c",
+      "mined_in_block_height": 10204
+    }
+  ]
+}
+```
+
+### Send a Transaction
+Use the `transfer` function to perform a send transaction to a participant.
+
+Example:
+```javascript
+     const transferResponse = await client.transfer({
+       destination: 'receiver-tari-address',
+       amount: 1000000,           // Amount in µT
+       fee_per_gram: 25,          // Fee per gram
+       message: 'Payment for services'  // Maximum message size is 32 bytes (256 bits)
+     });
+     console.log('Transfer successful:', transferResponse);
+```
+
+
+
+
+## Unrelated functions not available in the gRPC but useful
+### Fetch UTXOs by Block ID
+The `fetch_unspent_utxos_in_block` function is used to fetch unspent transaction outputs (UTXOs) within a specific block by its hash. You will need to interact with the base node directly via the `BaseNodeCommsInterface`.
+
+Example:
+```rust
+use tari_common_types::types::BlockHash;
+use tari_core::transactions::transaction::TransactionOutput;
+use tari_service_framework::reply_channel::RequestSender;
+use tari_comms_dht::outbound::OutboundMessageRequester;
+use std::sync::Arc;
+
+async fn fetch_utxos_for_block(
+    block_hash: BlockHash,
+    request_sender: Arc<RequestSender>, // Replace with the actual `request_sender` type
+) -> Result<Vec<TransactionOutput>, Box<dyn std::error::Error>> {
+    // Create a mutable instance of the interface
+    let mut base_node_interface = BaseNodeCommsInterface::new(
+        request_sender,
+        OutboundMessageRequester::default(), // Replace with the actual implementation
+    );
+
+    // Fetch the UTXOs
+    match base_node_interface.fetch_unspent_utxos_in_block(block_hash).await {
+        Ok(utxos) => {
+            println!("Fetched {} UTXOs in block.", utxos.len());
+            Ok(utxos)
+        },
+        Err(e) => {
+            eprintln!("Error fetching UTXOs: {:?}", e);
+            Err(Box::new(e))
+        },
+    }
+}
+```
+
+Pass the block hash to fetch UTXOs.
