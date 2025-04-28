@@ -20,17 +20,17 @@ Use of gRPC requires access to a full node configured to allow gRPC calls. More 
 Each gRPC method has the following general structure:
 
 - **Protocol**: gRPC
-- **Service**: Defined in the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file (e.g., `Wallet` service).
+- **Service**: Defined in the [wallet-proto]: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto file (e.g., `Wallet` service).
 - **Request Format**: Protocol Buffers (Protobuf messages).
 - **Response Format**: Protocol Buffers (Protobuf messages).
 - **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:18183`).
 
 To make a gRPC call, a client application must:
-1. Use the generated gRPC client stubs from the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
+1. Use the generated gRPC client stubs from the [`wallet.proto`][wallet-proto] file.
 2. Call the desired method (e.g., `GetBalance`).
 3. Pass the appropriate Protobuf request object and handle the Protobuf response or any errors.
 
-Below is an example of how a gRPC call would typically work for a function defined in [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
+Below is an example of how a gRPC call would typically work for a function defined in [`wallet.proto`][wallet-proto].
 
 ```proto
 service Wallet {
@@ -48,7 +48,7 @@ message GetBalanceResponse {
 ```
 
 ### Understanding Code Generation from `.proto` Files
-The `.proto` file, such as [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto), acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
+The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
 
 To actually call these methods in your application, the `.proto` file must be **processed into usable code** through a process known as **code generation**. This step provides you with:
 
@@ -95,7 +95,7 @@ const packageDefinition = protoLoader.loadSync('wallet.proto', {
 ```
 
 ### Instantiating the Client
-To use the methods, you will need to use a gRPC library to instantiate a gRPC client against the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
+To use the methods, you will need to use a gRPC library to instantiate a gRPC client against the [`wallet.proto`][wallet-proto] file. Once done, you can then call various methods against the gRPC wallet service. Instantiating the client will differ depending on your particular language. Below is an example of a Node.js implementation.
 
 ```javascript
 // Imports the gRPC library for Node.js, specifically the pure JavaScript implementation (@grpc/grpc-js), which supports HTTP/2 and is the modern, recommended one.
@@ -230,23 +230,22 @@ console.log('Max Height:', response.chain_height);
 ```
 
 ## gRPC Wallet Methods
-These methods are dependent on access to a wallet node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
+These methods are dependent on access to a wallet node and use of the [`wallet.proto`][wallet-proto] file.
 
 ### Get Balance
-The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
+The wallet gRPC method `GetBalance` is used to retrieve a wallet's total available and pending balances. 
 
 Example:
 ```javascript
-     const balance = await client.getBalance();
+     const balance = await client.GetBalance();
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
-     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
-In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `user_payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `user_payment_id`
+In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `payment_id`
 
-The user_payment_id can be specified in three formats: 
+The `payment_id` can be specified in three formats: 
 - **`u256 (bytes)`**: Must be provided as a byte array.
 - **`utf8_string (string)`**: Must be a valid UTF-8 string.
 - **`user_bytes (bytes)`**: Must be provided as a generic byte array.
@@ -256,11 +255,10 @@ const userPaymentId = {
          utf8_string: "your_payment_id_string" // Replace this with your actual payment ID
      };
 
-     const balance = await client.getBalance({ payment_id: userPaymentId });
+     const balance = await client.GetBalance({ payment_id: userPaymentId });
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
-     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
 **Example JSON Response:**
@@ -269,12 +267,11 @@ const userPaymentId = {
   "available_balance": 1000000,
   "pending_incoming_balance": 200000,
   "pending_outgoing_balance": 50000,
-  "timelocked_balance": 150000
 }
 ```
 
 ### Get Transactions by Payment ID
-The `GetCompletedTransactionsRequest` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
+The `GetCompletedTransactions` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
 
 - `user_payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `user_payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
 
@@ -334,13 +331,13 @@ client.GetCompletedTransactions(request, (error, response) => {
 ```
 
 ### Get Transaction Info
-You can use the `getTransactionInfo` gRPC method to obtain information about transactions associated with one or more `transaction_id`.
+You can use the `GetTransactionInfo` gRPC method to obtain information about transactions associated with one or more `transaction_id`.
 
 - The `transaction_id` is defined as repeated uint64. Must be an unsigned 64-bit integer (e.g., 1234567890). Ensure it is passed as an array if querying multiple transactions.
 
 Example:
 ```javascript
-     const txDetails = await client.getTransactionInfo({ txId: 'your-transaction-id' });
+     const txDetails = await client.GetTransactionInfo({ txId: 'your-transaction-id' });
      console.log(txDetails);
 ```
 
@@ -385,7 +382,7 @@ Use the `transfer` function to perform a send transaction to a participant.
 
 Example:
 ```javascript
-     const transferResponse = await client.transfer({
+     const transferResponse = await client.Transfer({
        destination: 'receiver-tari-address',
        amount: 1000000,           // Amount in µT
        fee_per_gram: 25,          // Fee per gram
