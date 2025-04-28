@@ -9,9 +9,9 @@ use crate::chain_storage::lmdb_db::lmdb::lmdb_get;
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
     node_db: DatabaseRef,
-    node_table_name: &'static str,
-    value_db: DatabaseRef,
-    value_table_name: &'static str,
+    // node_table_name: &'static str,
+    // value_db: DatabaseRef,
+    // value_table_name: &'static str,
 }
 
 impl<'a> LmdbTreeReader<'a> {
@@ -25,9 +25,9 @@ impl<'a> LmdbTreeReader<'a> {
         Self {
             txn: txn.deref(),
             node_db,
-            node_table_name,
-            value_db,
-            value_table_name,
+            // node_table_name,
+            // value_db,
+            // value_table_name,
         }
     }
 }
@@ -46,8 +46,8 @@ impl<'a> TreeReader for LmdbTreeReader<'a> {
 
     fn get_value_option(
         &self,
-        max_version: jmt::Version,
-        key_hash: jmt::KeyHash,
+        _max_version: jmt::Version,
+        _key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
         todo!()
         // TODO: implement after saving
@@ -100,8 +100,8 @@ impl<'a> TreeReader for OwnedLmdbTreeReader<'a> {
 
     fn get_value_option(
         &self,
-        max_version: jmt::Version,
-        key_hash: jmt::KeyHash,
+        _max_version: jmt::Version,
+        _key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
         todo!()
     }

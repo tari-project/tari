@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::sync::{Arc, RwLock};
-
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::ChainBlock,
@@ -36,7 +34,6 @@ use tari_core::{
     },
     txn_schema,
     validation::DifficultyCalculator,
-    OutputSmt,
 };
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};

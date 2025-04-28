@@ -26,21 +26,16 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
-};
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
+    kernel_mr_hash_from_mmr,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt, PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -143,7 +138,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -322,7 +317,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -519,19 +514,21 @@ mod test {
         epoch::VnEpoch,
         types::{CompressedCommitment, UncompressedCommitment},
     };
+    use tari_mmr::pruned_hashset::PrunedHashSet;
 
     use super::*;
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{calculate_validator_node_mr, BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
+        input_mr_hash_from_pruned_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr, PrunedOutputMmr,
+        KernelMmr, PrunedInputMmr, PrunedOutputMmr,
     };
     #[test]
     #[serial]

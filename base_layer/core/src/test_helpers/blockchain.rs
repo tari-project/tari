@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fs,
     ops::Deref,
     path::{Path, PathBuf},
@@ -32,12 +31,10 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::ByteArray;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{
@@ -45,8 +42,7 @@ use crate::{
     chain_storage::{
         create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
         ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
-        LMDBDatabase, LmdbTreeReader, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, TemplateRegistrationEntry,
-        Validators,
+        LMDBDatabase, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, TemplateRegistrationEntry, Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
@@ -447,7 +443,6 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             None,
         )
         .await;
-        update_block_and_smt(&mut block);
         let block = mine_block(block, prev_block.accumulated_data(), difficulty);
         block_names.push(name.to_string());
         block_hashes.insert(name.to_string(), block);
@@ -631,7 +626,7 @@ impl TestBlockchain {
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let difficulty = block_spec.difficulty;
-        let (mut block, coinbase) = create_block(
+        let (block, coinbase) = create_block(
             &self.rules,
             parent.block(),
             block_spec,
@@ -641,7 +636,6 @@ impl TestBlockchain {
             Some(self.range_proof_type),
         )
         .await;
-        update_block_and_smt(&mut block);
         let block = mine_block(block, parent.accumulated_data(), difficulty);
         (block, coinbase)
     }
@@ -661,14 +655,12 @@ impl TestBlockchain {
             Some(self.range_proof_type),
         )
         .await;
-        update_block_and_smt(&mut block);
         block.body.sort();
         (block, outputs)
     }
 
-    pub fn mine_block(&self, parent_name: &'static str, mut block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
+    pub fn mine_block(&self, parent_name: &'static str, block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
         let parent = self.get_block_and_smt_by_name(parent_name).unwrap();
-        update_block_and_smt(&mut block);
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 

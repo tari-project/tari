@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use tari_common::configuration::Network;
 use tari_common_types::types::HashOutput;
@@ -32,17 +29,10 @@ use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::states::{
-            BlockSync,
-            DecideNextSync,
-            HeaderSyncState,
-            HorizonStateSync,
-            StateEvent,
-            StatusInfo,
+            BlockSync, DecideNextSync, HeaderSyncState, HorizonStateSync, StateEvent, StatusInfo,
         },
         sync::SyncPeer,
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
-        SyncValidators,
+        BaseNodeStateMachine, BaseNodeStateMachineConfig, SyncValidators,
     },
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
@@ -58,7 +48,6 @@ use tari_core::{
     },
     txn_schema,
     validation::mocks::MockValidator,
-    OutputSmt,
 };
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;

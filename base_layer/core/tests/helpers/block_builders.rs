@@ -29,46 +29,28 @@ use tari_common_types::{
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{
-        calculate_validator_node_mr,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
+        calculate_validator_node_mr, BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError,
     },
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    kernel_mr_hash_from_pruned_mmr,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
+            CoinBaseExtra, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
+            TransactionKernel, TransactionKernelVersion, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
-    KernelMmr,
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
+    KernelMmr, OutputSmt, PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr,
 };
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
     sparse_merkle_tree::{NodeKey, ValueHash},
 };
 use tari_script::script;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::ByteArray;
 
 pub async fn create_coinbase(
     value: MicroMinotari,
@@ -205,15 +187,18 @@ pub async fn create_genesis_block_with_coinbase_value(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         output,
     )
@@ -246,15 +231,18 @@ pub async fn create_genesis_block_with_utxos(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         outputs,
     )
