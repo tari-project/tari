@@ -816,7 +816,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    PaymentId::open(&args.payment_id, TxType::Burn),
+                    PaymentId::open_from_string(&args.payment_id, TxType::Burn),
                 )
                 .await
                 {
@@ -994,7 +994,7 @@ pub async fn command_runner(
                     output_hash,
                     commitment.clone(),
                     args.recipient_address.clone(),
-                    PaymentId::open(
+                    PaymentId::open_from_string(
                         &args.payment_id,
                         detect_tx_metadata(&wallet, args.recipient_address).await,
                     ),
@@ -1357,7 +1357,7 @@ pub async fn command_runner(
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
-                        PaymentId::open(
+                        PaymentId::open_from_string(
                             &args.payment_id,
                             detect_tx_metadata(&wallet, current_recipient_address).await,
                         ),
@@ -2035,7 +2035,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     args.destination.clone(),
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2053,7 +2053,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination.clone(),
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2079,7 +2079,7 @@ pub async fn command_runner(
                     args.start_time.unwrap_or_else(Utc::now),
                     args.destination.clone(),
                     transaction_type,
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2091,7 +2091,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    PaymentId::open(&args.payment_id, TxType::CoinSplit),
+                    PaymentId::open_from_string(&args.payment_id, TxType::CoinSplit),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2293,7 +2293,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
+                    PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
                 .await
                 {
@@ -2316,7 +2316,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
+                        PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
                     .await
                     {
@@ -2336,7 +2336,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        PaymentId::open(&args.payment_id, TxType::HtlcAtomicSwapRefund),
+                        PaymentId::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                     {
@@ -2377,7 +2377,7 @@ pub async fn command_runner(
                     ),
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    PaymentId::open(&args.payment_id, TxType::ValidatorNodeRegistration),
+                    PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);

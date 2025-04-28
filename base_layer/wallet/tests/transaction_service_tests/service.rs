@@ -621,7 +621,7 @@ async fn manage_single_transaction() {
     )
     .await;
     let bob_address =
-        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network).unwrap();
     assert!(alice_ts
         .send_transaction(
             bob_address.clone(),
@@ -646,7 +646,7 @@ async fn manage_single_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            PaymentId::open("TAKE MAH MONEYS!", TxType::PaymentToOther),
+            PaymentId::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending tx");
@@ -794,7 +794,7 @@ async fn large_interactive_transaction() {
     alice_db.mark_outputs_as_unspent(unspent).unwrap();
     let transaction_value = output_value * (outputs_count as u64 - 1);
     let bob_address =
-        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network).unwrap();
 
     alice_ts
         .send_transaction(
@@ -803,7 +803,7 @@ async fn large_interactive_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(1),
-            PaymentId::open("TAKE MAH MONEYS!", TxType::PaymentToOther),
+            PaymentId::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending large tx");
@@ -958,7 +958,8 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
     let fee_per_gram = MicroMinotari::from(1);
     let value = balance.available_balance - amount_per_output * 10;
     let alice_address =
-        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network)
+            .unwrap();
     assert!(alice_ts
         .send_transaction(
             alice_address,
@@ -966,7 +967,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .is_err());
@@ -1056,7 +1057,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
     let fee_per_gram = MicroMinotari::from(1);
     let value = balance.available_balance - amount_per_output * 10;
     let bob_address =
-        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network).unwrap();
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -1064,7 +1065,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
+            PaymentId::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1171,7 +1172,8 @@ async fn test_spend_dust_happy_path() {
 
     let value_self = (number_of_outputs / 3) * amount_per_output;
     let alice_address =
-        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network)
+            .unwrap();
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -1179,7 +1181,7 @@ async fn test_spend_dust_happy_path() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1215,7 +1217,7 @@ async fn test_spend_dust_happy_path() {
 
     let value_bob = (number_of_outputs / 3) * amount_per_output;
     let bob_address =
-        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network).unwrap();
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -1223,7 +1225,7 @@ async fn test_spend_dust_happy_path() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
+            PaymentId::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1315,7 +1317,8 @@ async fn single_transaction_to_self() {
         .unwrap();
     let value = 10000.into();
     let alice_address =
-        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(alice_node_identity.public_key().clone(), network)
+            .unwrap();
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -1323,7 +1326,7 @@ async fn single_transaction_to_self() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::open("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending tx");
@@ -1412,7 +1415,7 @@ async fn large_coin_split_transaction() {
             tx_id,
             coin_split_tx,
             amount,
-            PaymentId::open("large coin-split", TxType::CoinSplit),
+            PaymentId::open_from_string("large coin-split", TxType::CoinSplit),
         )
         .await
         .expect("Alice sending coin-split tx");
@@ -1648,7 +1651,8 @@ async fn send_one_sided_transaction_to_other() {
         bob_view_key,
         bob_node_identity.public_key().clone(),
         network,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
             bob_address,
@@ -1656,7 +1660,7 @@ async fn send_one_sided_transaction_to_other() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::open("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther),
+            PaymentId::open_from_string("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1795,7 +1799,8 @@ async fn recover_one_sided_transaction() {
         bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
             bob_address,
@@ -1920,7 +1925,8 @@ async fn recover_stealth_one_sided_transaction() {
         bob_view_key.pub_key,
         bob_node_identity.public_key().clone(),
         network,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_clone
         .send_one_sided_to_stealth_address_transaction(
             bob_address,
@@ -2029,7 +2035,7 @@ async fn test_htlc_send_and_claim() {
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
     let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key().await.unwrap();
     let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network);
+        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network).unwrap();
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -2267,7 +2273,8 @@ async fn manage_multiple_transactions() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id_a_to_b_1 = alice_ts
         .send_transaction(
             bob_address.clone(),
@@ -2275,7 +2282,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("a to b 1", TxType::PaymentToOther),
+            PaymentId::open_from_string("a to b 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2284,7 +2291,8 @@ async fn manage_multiple_transactions() {
     let carol_address = TariAddress::new_single_address_with_interactive_only(
         carol_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id_a_to_c_1 = alice_ts
         .send_transaction(
             carol_address,
@@ -2292,7 +2300,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("a to c 1", TxType::PaymentToOther),
+            PaymentId::open_from_string("a to c 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2303,7 +2311,8 @@ async fn manage_multiple_transactions() {
     let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     bob_ts
         .send_transaction(
             alice_address,
@@ -2311,7 +2320,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("b to a 1", TxType::PaymentToOther),
+            PaymentId::open_from_string("b to a 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2322,7 +2331,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("a to b 2", TxType::PaymentToOther),
+            PaymentId::open_from_string("a to b 2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2458,7 +2467,8 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -2892,7 +2902,7 @@ async fn discovery_async_return_test() {
 
     let value_a_to_c_1 = MicroMinotari::from(14000);
     let bob_address =
-        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(bob_node_identity.public_key().clone(), network).unwrap();
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
@@ -2900,7 +2910,7 @@ async fn discovery_async_return_test() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("Discovery Tx!", TxType::PaymentToOther),
+            PaymentId::open_from_string("Discovery Tx!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2931,7 +2941,8 @@ async fn discovery_async_return_test() {
     assert!(!is_direct_send);
 
     let carol_address =
-        TariAddress::new_single_address_with_interactive_only(carol_node_identity.public_key().clone(), network);
+        TariAddress::new_single_address_with_interactive_only(carol_node_identity.public_key().clone(), network)
+            .unwrap();
     let tx_id2 = alice_ts
         .send_transaction(
             carol_address,
@@ -2939,7 +2950,7 @@ async fn discovery_async_return_test() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open("Discovery Tx2!", TxType::PaymentToOther),
+            PaymentId::open_from_string("Discovery Tx2!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3016,12 +3027,14 @@ async fn test_power_mode_updates() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let completed_tx1 = CompletedTransaction {
         tx_id: 1u64.into(),
         source_address,
@@ -3040,19 +3053,21 @@ async fn test_power_mode_updates() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
-        payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
     };
 
     let source_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let completed_tx2 = CompletedTransaction {
         tx_id: 2u64.into(),
         source_address,
@@ -3071,7 +3086,7 @@ async fn test_power_mode_updates() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
-        payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
     };
 
     tx_backend
@@ -3236,7 +3251,8 @@ async fn test_transaction_cancellation() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3245,7 +3261,7 @@ async fn test_transaction_cancellation() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3352,7 +3368,7 @@ async fn test_transaction_cancellation() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(5))
-        .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -3439,7 +3455,7 @@ async fn test_transaction_cancellation() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(5))
-        .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -3587,7 +3603,8 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3596,7 +3613,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3789,7 +3806,8 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let _tx_id2 = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3798,7 +3816,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3978,7 +3996,8 @@ async fn test_tx_direct_send_behaviour() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3987,7 +4006,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message1", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4031,7 +4050,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message2", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4080,7 +4099,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message3", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message3", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4129,7 +4148,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message4", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message4", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4263,7 +4282,8 @@ async fn test_restarting_transaction_protocols() {
         bob_view_key.pub_key,
         bob_identity.public_key().clone(),
         network,
-    );
+    )
+    .unwrap();
     let inbound_tx = InboundTransaction {
         tx_id,
         source_address: bob_address,
@@ -4289,7 +4309,8 @@ async fn test_restarting_transaction_protocols() {
         alice_view_key.pub_key,
         alice_identity.public_key().clone(),
         network,
-    );
+    )
+    .unwrap();
     let outbound_tx = OutboundTransaction {
         tx_id,
         destination_address: alice_address,
@@ -4447,7 +4468,8 @@ async fn test_transaction_resending() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -4456,7 +4478,7 @@ async fn test_transaction_resending() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4644,7 +4666,7 @@ async fn test_resend_on_startup() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -4676,7 +4698,8 @@ async fn test_resend_on_startup() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let mut outbound_tx = OutboundTransaction {
         tx_id,
         destination_address: address,
@@ -4684,7 +4707,7 @@ async fn test_resend_on_startup() {
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
         status: TransactionStatus::Pending,
-        payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
@@ -4810,14 +4833,15 @@ async fn test_resend_on_startup() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let mut inbound_tx = InboundTransaction {
         tx_id,
         source_address: address,
         amount,
         receiver_protocol: rtp,
         status: TransactionStatus::Pending,
-        payment_id: PaymentId::open("Yo2", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo2", TxType::PaymentToOther),
         timestamp: Utc::now(),
         cancelled: false,
         direct_send_success: false,
@@ -4970,7 +4994,8 @@ async fn test_replying_to_cancelled_tx() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -4979,7 +5004,7 @@ async fn test_replying_to_cancelled_tx() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5110,7 +5135,8 @@ async fn test_transaction_timeout_cancellation() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -5119,7 +5145,7 @@ async fn test_transaction_timeout_cancellation() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5174,7 +5200,7 @@ async fn test_transaction_timeout_cancellation() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -5206,7 +5232,8 @@ async fn test_transaction_timeout_cancellation() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let outbound_tx = OutboundTransaction {
         tx_id,
         destination_address: address,
@@ -5214,7 +5241,7 @@ async fn test_transaction_timeout_cancellation() {
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
         status: TransactionStatus::Pending,
-        payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         timestamp: Utc::now().checked_sub_signed(ChronoDuration::seconds(20)).unwrap(),
         cancelled: false,
         direct_send_success: false,
@@ -5404,7 +5431,8 @@ async fn transaction_service_tx_broadcast() {
     let bob_address = TariAddress::new_single_address_with_interactive_only(
         bob_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     // Send Tx1
     let tx_id1 = alice_ts_interface
         .transaction_service_handle
@@ -5414,7 +5442,7 @@ async fn transaction_service_tx_broadcast() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open("Testing Message", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5475,7 +5503,7 @@ async fn transaction_service_tx_broadcast() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20 * uT,
-            PaymentId::open("Testing Message2", TxType::PaymentToOther),
+            PaymentId::open_from_string("Testing Message2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5746,12 +5774,14 @@ async fn broadcast_all_completed_transactions_on_startup() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let completed_tx1 = CompletedTransaction {
         tx_id: 1u64.into(),
         source_address,
@@ -5770,7 +5800,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
-        payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -5872,7 +5902,8 @@ async fn test_update_faux_tx_on_oms_validation() {
     let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
 
     let uo_1 = make_input(
         &mut OsRng.clone(),
@@ -5908,7 +5939,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("blah", TxType::PaymentToOther),
+            PaymentId::open_from_string("blah", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5924,7 +5955,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("one-sided 1", TxType::PaymentToOther),
+            PaymentId::open_from_string("one-sided 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5940,7 +5971,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("one-sided 2", TxType::PaymentToOther),
+            PaymentId::open_from_string("one-sided 2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -6047,7 +6078,8 @@ async fn test_update_coinbase_tx_on_oms_validation() {
     let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
 
     let uo_1 = make_input(
         &mut OsRng.clone(),
@@ -6083,7 +6115,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("coinbase_confirmed", TxType::PaymentToOther),
+            PaymentId::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -6099,7 +6131,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
+            PaymentId::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -6115,7 +6147,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open("Coinbase_not_mined", TxType::PaymentToOther),
+            PaymentId::open_from_string("Coinbase_not_mined", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -6258,12 +6290,14 @@ async fn test_completed_transactions_ordering() {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     let destination_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
 
     for i in 1u32..5u32 {
         let random_timestamp = i64::from(OsRng.next_u32());
@@ -6285,7 +6319,7 @@ async fn test_completed_transactions_ordering() {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: DateTime::<Utc>::from_timestamp(random_timestamp + 100i64, 0),
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         };
 
         tx_backend

@@ -199,7 +199,8 @@ async fn setup(
         view_key.pub_key,
         node_identity.public_key().clone(),
         Network::default(),
-    );
+    )
+    .unwrap();
     let scanner_service = scanner_service_builder
         .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
             wallet_db.clone(),

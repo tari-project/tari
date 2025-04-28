@@ -170,9 +170,10 @@ where
             comms_key.pub_key,
             network,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )?;
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = OutputManagerResources {
             config,
             db,
@@ -2057,7 +2058,10 @@ where
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
             )
-            .with_payment_id(PaymentId::open("Pay to self transaction", TxType::PaymentToSelf));
+            .with_payment_id(PaymentId::open_from_string(
+                "Pay to self transaction",
+                TxType::PaymentToSelf,
+            ));
 
         let mut stp = builder
             .build()
@@ -2487,7 +2491,7 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
-            .with_payment_id(PaymentId::open(
+            .with_payment_id(PaymentId::open_from_string(
                 &format!(
                     "Coin split transaction, {} into {} outputs",
                     accumulated_amount, number_of_splits
@@ -2521,7 +2525,7 @@ where
                     OutputFeatures::default(),
                     amount_per_split,
                     Covenant::default(),
-                    PaymentId::open(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    PaymentId::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
                     fee,
                 )
                 .await?;
@@ -2658,7 +2662,7 @@ where
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
         );
-        let payment_id = PaymentId::open(
+        let payment_id = PaymentId::open_from_string(
             &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
             TxType::CoinSplit,
         );
@@ -3015,7 +3019,7 @@ where
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(PaymentId::open("scraping wallet", TxType::PaymentToOther))
+            .with_payment_id(PaymentId::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -3127,7 +3131,10 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(PaymentId::open("SHA-XTR atomic swap", TxType::ClaimAtomicSwap))
+                    .with_payment_id(PaymentId::open_from_string(
+                        "SHA-XTR atomic swap",
+                        TxType::ClaimAtomicSwap,
+                    ))
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3210,7 +3217,10 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(PaymentId::open("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund))
+            .with_payment_id(PaymentId::open_from_string(
+                "SHA-XTR atomic refund",
+                TxType::HtlcAtomicSwapRefund,
+            ))
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)

@@ -80,7 +80,8 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
         CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     (script_key_id, wallet_payment_address)
 }
 

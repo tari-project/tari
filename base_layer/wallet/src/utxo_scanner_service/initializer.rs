@@ -120,7 +120,9 @@ where
                 spend_key.pub_key,
                 network,
                 TariAddressFeatures::create_one_sided_only(),
-            );
+                None,
+            )
+            .expect("Could not create one-sided Tari address");
 
             let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle>::builder()
                 .with_peers(vec![])

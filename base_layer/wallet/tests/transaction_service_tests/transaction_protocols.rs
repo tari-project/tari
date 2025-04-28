@@ -175,9 +175,12 @@ pub async fn setup() -> (
         comms_key.pub_key,
         network,
         TariAddressFeatures::create_one_sided_only(),
-    );
+        None,
+    )
+    .unwrap();
     let interactive_tari_address =
-        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)
+            .unwrap();
     let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -246,7 +249,7 @@ pub async fn add_transaction_to_database(
         TransactionDirection::Outbound,
         None,
         None,
-        PaymentId::open("Test", TxType::PaymentToOther),
+        PaymentId::open_from_string("Test", TxType::PaymentToOther),
     )
     .unwrap();
     db.insert_completed_transaction(tx_id, completed_tx1).unwrap();

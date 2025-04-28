@@ -440,6 +440,10 @@ impl From<TariAddressError> for LibWalletError {
                 code: 708,
                 message: format!("{:?}", e),
             },
+            TariAddressError::PaymentIdTooLarge => Self {
+                code: 709,
+                message: format!("{:?}", e),
+            },
         }
     }
 }

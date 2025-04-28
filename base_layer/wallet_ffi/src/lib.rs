@@ -2481,7 +2481,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
-            PaymentId::open(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
+            PaymentId::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
         )) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
@@ -7094,7 +7094,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        PaymentId::open(
+        PaymentId::open_from_string(
             &format!("{} even coin splits", number_of_splits),
             if number_of_splits > 1 {
                 TxType::CoinSplit
@@ -7170,7 +7170,7 @@ pub unsafe extern "C" fn wallet_coin_join(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
         commitments,
         fee_per_gram.into(),
-        Some(PaymentId::open(
+        Some(PaymentId::open_from_string(
             &format!("Coin join {} outputs", commitments_len),
             TxType::CoinJoin,
         )),
@@ -7892,10 +7892,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        PaymentId::open("", TxType::PaymentToOther)
+        PaymentId::open_from_string("", TxType::PaymentToOther)
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => PaymentId::open(v, TxType::PaymentToOther),
+            Ok(v) => PaymentId::open_from_string(v, TxType::PaymentToOther),
             _ => {
                 *error_out = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 return 0;
@@ -10420,7 +10420,9 @@ mod test {
                 spend_key.clone(),
                 Network::Esmeralda,
                 TariAddressFeatures::create_one_sided_only(),
-            );
+                None,
+            )
+            .unwrap();
             let test_address = Box::into_raw(Box::new(address.clone()));
 
             let mut error = 0;
@@ -10897,10 +10899,9 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
             let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_address = Box::into_raw(Box::new(TariWalletAddress::new_single_address_with_interactive_only(
-                key,
-                Network::default(),
-            )));
+            let test_address = Box::into_raw(Box::new(
+                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
+            ));
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
@@ -10930,7 +10931,7 @@ mod test {
             let test_contact_private_key = private_key_generate();
             let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
             let test_contact_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()),
+                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
             ));
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
@@ -13440,7 +13441,8 @@ mod test {
             let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
                 bob_node_identity.public_key().clone(),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let alice_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("bob").unwrap()) as *const c_char;
             let alice_contact_address_ptr = Box::into_raw(Box::new(bob_wallet_address.clone()));
@@ -13452,7 +13454,8 @@ mod test {
             let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
                 alice_node_identity.public_key().clone(),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let bob_contact_alias_ptr: *const c_char =
                 CString::into_raw(CString::new("alice").unwrap()) as *const c_char;
             let bob_contact_address_ptr = Box::into_raw(Box::new(alice_wallet_address.clone()));

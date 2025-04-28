@@ -32,7 +32,6 @@ use std::{
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
-use tari_crypto::tari_utilities::ByteArray;
 use tari_utilities::hex::{from_hex, Hex};
 use thiserror::Error;
 
@@ -48,15 +47,18 @@ const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 91; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
+const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
 
 bitflags! {
     impl TariAddressFeatures: u8 {
-        const INTERACTIVE = 2u8;
+        // this forces a transaction to include the following payment id
+        const PAYMENT_ID = 0b0000_0100;
+        const INTERACTIVE = 0b0000_0010;
         ///one sided payment
-        const ONE_SIDED = 1u8;
+        const ONE_SIDED = 0b0000_0001;
     }
 }
 
@@ -124,6 +126,8 @@ pub enum TariAddressError {
     InvalidAddressString,
     #[error("Could not create TariAddress: {0}")]
     CreationError(String),
+    #[error("Too large payment_id")]
+    PaymentIdTooLarge,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,13 +143,30 @@ impl TariAddress {
         spend_key: CompressedPublicKey,
         network: Network,
         features: TariAddressFeatures,
-    ) -> Self {
-        TariAddress::Dual(Box::new(DualAddress::new(view_key, spend_key, network, features)))
+        payment_id_user_data: Option<Vec<u8>>,
+    ) -> Result<TariAddress, TariAddressError> {
+        Ok(TariAddress::Dual(Box::new(DualAddress::new(
+            view_key,
+            spend_key,
+            network,
+            features,
+            payment_id_user_data,
+        )?)))
     }
 
     /// Creates a new Tari Address from the provided public keys, network and features
-    pub fn new_single_address(spend_key: CompressedPublicKey, network: Network, features: TariAddressFeatures) -> Self {
-        TariAddress::Single(Box::new(SingleAddress::new(spend_key, network, features)))
+    pub fn new_single_address(
+        spend_key: CompressedPublicKey,
+        network: Network,
+        features: TariAddressFeatures,
+        payment_id_user_data: Option<Vec<u8>>,
+    ) -> Result<TariAddress, TariAddressError> {
+        Ok(TariAddress::Single(Box::new(SingleAddress::new(
+            spend_key,
+            network,
+            features,
+            payment_id_user_data,
+        )?)))
     }
 
     /// Creates a new Tari Address from the provided public keys and network while using the default features
@@ -153,15 +174,20 @@ impl TariAddress {
         view_key: CompressedPublicKey,
         spend_key: CompressedPublicKey,
         network: Network,
-    ) -> Self {
-        TariAddress::Dual(Box::new(DualAddress::new_with_default_features(
+    ) -> Result<TariAddress, TariAddressError> {
+        Ok(TariAddress::Dual(Box::new(DualAddress::new_with_default_features(
             view_key, spend_key, network,
-        )))
+        )?)))
     }
 
     /// Creates a new Tari Address from the provided public keys, network and features
-    pub fn new_single_address_with_interactive_only(spend_key: CompressedPublicKey, network: Network) -> Self {
-        TariAddress::Single(Box::new(SingleAddress::new_with_interactive_only(spend_key, network)))
+    pub fn new_single_address_with_interactive_only(
+        spend_key: CompressedPublicKey,
+        network: Network,
+    ) -> Result<TariAddress, TariAddressError> {
+        Ok(TariAddress::Single(Box::new(SingleAddress::new_with_interactive_only(
+            spend_key, network,
+        )?)))
     }
 
     pub fn combine_addresses(one: &TariAddress, two: &TariAddress) -> Result<TariAddress, TariAddressError> {
@@ -179,23 +205,26 @@ impl TariAddress {
             }
         }
         match (one, two) {
-            (TariAddress::Dual(one), _) => Ok(TariAddress::new_dual_address(
+            (TariAddress::Dual(one), _) => TariAddress::new_dual_address(
                 one.public_view_key().clone(),
                 one.public_spend_key().clone(),
                 one.network(),
                 one.features().combine_features(two.features()),
-            )),
-            (_, TariAddress::Dual(two)) => Ok(TariAddress::new_dual_address(
+                None,
+            ),
+            (_, TariAddress::Dual(two)) => TariAddress::new_dual_address(
                 two.public_view_key().clone(),
                 one.public_spend_key().clone(),
                 one.network(),
                 one.features().combine_features(two.features()),
-            )),
-            (_, _) => Ok(TariAddress::new_single_address(
+                None,
+            ),
+            (_, _) => TariAddress::new_single_address(
                 one.public_spend_key().clone(),
                 one.network(),
                 one.features().combine_features(two.features()),
-            )),
+                None,
+            ),
         }
     }
 
@@ -204,6 +233,13 @@ impl TariAddress {
         match self {
             TariAddress::Dual(_) => TARI_ADDRESS_INTERNAL_DUAL_SIZE,
             TariAddress::Single(_) => TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
+        }
+    }
+
+    pub fn get_payment_id_bytes(&self) -> Vec<u8> {
+        match self {
+            TariAddress::Dual(v) => v.get_payment_id_bytes(),
+            TariAddress::Single(v) => v.get_payment_id_bytes(),
         }
     }
 
@@ -299,8 +335,8 @@ impl TariAddress {
     /// Convert Tari Address to bytes
     pub fn to_vec(&self) -> Vec<u8> {
         match self {
-            TariAddress::Dual(v) => v.to_bytes().to_vec(),
-            TariAddress::Single(v) => v.to_bytes().to_vec(),
+            TariAddress::Dual(v) => v.to_vec(),
+            TariAddress::Single(v) => v.to_vec(),
         }
     }
 
@@ -458,7 +494,7 @@ mod test {
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key =
-            TariAddress::new_single_address_with_interactive_only(public_key.clone(), Network::Esmeralda);
+            TariAddress::new_single_address_with_interactive_only(public_key.clone(), Network::Esmeralda).unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
 
         let features = emoji_id_from_public_key.features();
@@ -483,7 +519,9 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
 
         let features = emoji_id_from_public_key.features();
@@ -508,7 +546,9 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
 
         let features = emoji_id_from_public_key.features();
@@ -539,7 +579,8 @@ mod test {
             view_key.clone(),
             spend_key.clone(),
             Network::Esmeralda,
-        );
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), Some(&view_key));
 
@@ -568,7 +609,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), Some(&view_key));
 
@@ -597,7 +640,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), Some(&view_key));
 
@@ -625,7 +670,8 @@ mod test {
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
-        let address = TariAddress::new_single_address_with_interactive_only(public_key.clone(), Network::Esmeralda);
+        let address =
+            TariAddress::new_single_address_with_interactive_only(public_key.clone(), Network::Esmeralda).unwrap();
 
         let buff = address.to_vec();
         let base58 = address.to_base58();
@@ -670,7 +716,9 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
 
         let buff = address.to_vec();
         let base58 = address.to_base58();
@@ -714,7 +762,9 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
 
         let buff = address.to_vec();
         let base58 = address.to_base58();
@@ -802,7 +852,8 @@ mod test {
             view_key.clone(),
             spend_key.clone(),
             Network::Esmeralda,
-        );
+        )
+        .unwrap();
         test_addres(address);
 
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -814,7 +865,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
         test_addres(address);
 
         let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
@@ -826,7 +879,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
         test_addres(address);
     }
     #[test]
@@ -895,8 +950,8 @@ mod test {
         let public_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an address using a valid network and ensure it's not valid on another network
-        let address = SingleAddress::new_with_interactive_only(public_key, Network::Esmeralda);
-        let mut bytes = address.to_bytes();
+        let address = SingleAddress::new_with_interactive_only(public_key, Network::Esmeralda).unwrap();
+        let mut bytes = address.to_vec();
         // this is an invalid network
         bytes[0] = 123;
         let checksum = compute_checksum(&bytes[0..34]);
@@ -907,7 +962,8 @@ mod test {
         let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an address using a valid network and ensure it's not valid on another network
-        let address = TariAddress::new_dual_address_with_default_features(view_key, spend_key, Network::Esmeralda);
+        let address =
+            TariAddress::new_dual_address_with_default_features(view_key, spend_key, Network::Esmeralda).unwrap();
         let mut bytes = address.to_vec();
         // this is an invalid network
         bytes[0] = 123;

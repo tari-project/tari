@@ -314,7 +314,7 @@ impl BurnTab {
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
-                                PaymentId::open(&self.payment_id_field, TxType::Burn),
+                                PaymentId::open_from_string(&self.payment_id_field, TxType::Burn),
                                 tx,
                             )) {
                                 Err(e) => {

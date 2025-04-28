@@ -198,6 +198,8 @@ pub enum TransactionServiceError {
     NotSupported(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Tari address error: `{0}`")]
+    TariAddressError(#[from] TariAddressError),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

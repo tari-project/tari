@@ -14,6 +14,7 @@ tari_common = { workspace = true }
 # TODO: This is mainly to reference the Branch structure. This should be moved to a crate that does not 
 # reference ledger, or at least does not have ledger in the name.
 minotari_ledger_wallet_common = { workspace = true }
+tari_max_size = { workspace = true }
 chacha20poly1305 = "0.10.1"
 bitflags = { version = "2.4", features = ["serde"] }
 borsh = "1.5.7"

@@ -537,7 +537,8 @@ where
             comms_key.pub_key,
             self.network.as_network(),
             features,
-        ))
+            None,
+        )?)
     }
 
     pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
@@ -548,7 +549,8 @@ where
             spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
-        ))
+            None,
+        )?)
     }
 
     pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
@@ -784,7 +786,7 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
-        let payment_id = payment_id.unwrap_or(PaymentId::open(
+        let payment_id = payment_id.unwrap_or(PaymentId::open_from_string(
             &format!("Coin join {} outputs", commitments.len()),
             TxType::CoinJoin,
         ));

@@ -280,9 +280,10 @@ where
             comms_key.pub_key,
             network,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )?;
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
@@ -850,7 +851,7 @@ where
                         binary_url,
                     },
                     UtxoSelectionCriteria::default(),
-                    PaymentId::open(
+                    PaymentId::open_from_string(
                         &format!("Template Registration: {}", template_name),
                         TxType::CodeTemplateRegistration,
                     ),
@@ -1119,7 +1120,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        mut payment_id: PaymentId,
         tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -1198,7 +1199,10 @@ where
 
             return Ok(());
         }
-
+        // let override the payment_id if the address says we should
+        if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            payment_id = PaymentId::open(destination.get_payment_id_bytes(), TxType::PaymentToOther);
+        }
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
         let (cancellation_sender, cancellation_receiver) = oneshot::channel();
         self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
@@ -1747,9 +1751,13 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         recipient_script: Option<TariScript>,
-        payment_id: PaymentId,
+        mut payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
+        // let override the payment_id if the address says we should
+        if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            payment_id = PaymentId::open(dest_address.get_payment_id_bytes(), TxType::PaymentToOther);
+        }
         let payment_id = match payment_id.clone() {
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
@@ -3028,7 +3036,8 @@ where
                     source_pubkey,
                     self.resources.interactive_tari_address.network(),
                     TariAddressFeatures::INTERACTIVE,
-                )
+                    None,
+                )?
             };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();

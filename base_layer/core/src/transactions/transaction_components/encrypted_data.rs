@@ -551,9 +551,17 @@ impl PaymentId {
     }
 
     /// Helper function to create a `PaymentId::Open` from a string and the transaction type
-    pub fn open(s: &str, tx_type: TxType) -> Self {
+    pub fn open_from_string(s: &str, tx_type: TxType) -> Self {
         PaymentId::Open {
             user_data: s.as_bytes().to_vec(),
+            tx_type,
+        }
+    }
+
+    /// Helper function to create a `PaymentId::Open` from a bytes and the transaction type
+    pub fn open(bytes: Vec<u8>, tx_type: TxType) -> Self {
+        PaymentId::Open {
+            user_data: bytes,
             tx_type,
         }
     }
