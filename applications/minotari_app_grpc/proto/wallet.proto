@@ -250,7 +250,7 @@ enum TransactionStatus {
 }
 
 message GetCompletedTransactionsRequest {
-  user_payment_id payment_id = 1;
+  UserPaymentId payment_id = 1;
 }
 
 message GetCompletedTransactionsResponse {
@@ -258,10 +258,10 @@ message GetCompletedTransactionsResponse {
 }
 
 message GetBalanceRequest {
-    user_payment_id payment_id = 1;
+  UserPaymentId payment_id = 1;
 }
 
-message user_payment_id {
+message UserPaymentId {
   bytes u256 = 1;
   string utf8_string = 2;
   bytes user_bytes = 3;
