@@ -527,11 +527,10 @@ impl TestBlockchain {
             wallet_payment_address,
             range_proof_type: RangeProofType::BulletProofPlus,
         };
-        todo!("Fix smt")
         // let smt = blockchain.db.smt_read_access().unwrap().clone();
 
-        // blockchain.chain.push(("GB", genesis, smt));
-        // blockchain
+        blockchain.chain.push(("GB", genesis));
+        blockchain
     }
 
     pub async fn create(rules: ConsensusManager) -> Self {

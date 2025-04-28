@@ -203,6 +203,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
+    block.header.output_mr =
+        FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
+
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
@@ -475,7 +478,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::zero(),
+            output_mr: FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap(),
             block_output_mr: FixedHash::from_hex("622720a6571c33d6bf6138d9e737d3468c77f1193640698ad459953d24ec0812")
                 .unwrap(),
             output_smt_size: 0,
