@@ -31,25 +31,13 @@ use crate::chain_storage::lmdb_db::lmdb::lmdb_get;
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
     node_db: DatabaseRef,
-    // node_table_name: &'static str,
-    // value_db: DatabaseRef,
-    // value_table_name: &'static str,
 }
 
 impl<'a> LmdbTreeReader<'a> {
-    pub fn new<T: Deref<Target = ConstTransaction<'a>>>(
-        txn: &'a T,
-        node_db: DatabaseRef,
-        node_table_name: &'static str,
-        value_db: DatabaseRef,
-        value_table_name: &'static str,
-    ) -> Self {
+    pub fn new<T: Deref<Target = ConstTransaction<'a>>>(txn: &'a T, node_db: DatabaseRef) -> Self {
         Self {
             txn: txn.deref(),
             node_db,
-            // node_table_name,
-            // value_db,
-            // value_table_name,
         }
     }
 }
@@ -59,10 +47,7 @@ impl<'a> TreeReader for LmdbTreeReader<'a> {
         let mut lmdb_key: Vec<u8> = vec![];
         lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
         borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
-        // dbg!(&lmdb_key);
-        // dbg!(&node_key);
         let node = lmdb_get(&self.txn, &self.node_db, &lmdb_key)?;
-        // dbg!(&node);
         Ok(node)
     }
 
@@ -110,13 +95,7 @@ impl<'a> OwnedLmdbTreeReader<'a> {
 
 impl<'a> TreeReader for OwnedLmdbTreeReader<'a> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
-        let inner = LmdbTreeReader::new(
-            &self.txn,
-            self.node_db.clone(),
-            self.node_table_name,
-            self.value_db.clone(),
-            self.value_table_name,
-        );
+        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone());
         inner.get_node_option(node_key)
     }
 
