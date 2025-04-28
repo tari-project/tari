@@ -1,3 +1,5 @@
+[wallet-proto]: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto
+
 # gRPC API for Minotari Wallet
 Below is documentation regarding various gRPC methods available for the Minotari Console Wallet.
 
@@ -20,7 +22,7 @@ Use of gRPC requires access to a full node configured to allow gRPC calls. More 
 Each gRPC method has the following general structure:
 
 - **Protocol**: gRPC
-- **Service**: Defined in the [wallet-proto]: https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto file (e.g., `Wallet` service).
+- **Service**: Defined in the [`wallet.proto`][wallet-proto] file (e.g., `Wallet` service).
 - **Request Format**: Protocol Buffers (Protobuf messages).
 - **Response Format**: Protocol Buffers (Protobuf messages).
 - **Endpoint**: The gRPC server address, typically defined as a host and port combination (e.g., `127.0.0.1:18183`).
@@ -274,13 +276,13 @@ const userPaymentId = {
 ```
 
 ### Get Transactions by Payment ID
-The `GetCompletedTransactions` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
+The `GetCompletedTransactions` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `payment_id` to show only completed transactions associated with the payment ID.
 
-- `user_payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `user_payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
+- `payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
 
 **Example of retrieving all transactions:**
 ```javascript
-// Define the request without a user_payment_id
+// Define the request without a payment_id
 const request = {};
 
 // Call GetCompletedTransactions
@@ -293,13 +295,13 @@ client.GetCompletedTransactions(request, (error, response) => {
 });
 ```
 
-This example retrieves completed transactions filtered by a specific `user_payment_id`.
+This example retrieves completed transactions filtered by a specific `payment_id`.
 
 ```javascript
-// Define the request with a user_payment_id
+// Define the request with a payment_id
 const request = {
   payment_id: {
-    utf8_string: 'example_payment_id', // Replace with your user_payment_id
+    utf8_string: 'example_payment_id', // Replace with your payment_id
   },
 };
 
@@ -340,7 +342,7 @@ You can use the `GetTransactionInfo` gRPC method to obtain information about tra
 
 Example:
 ```javascript
-     const txDetails = await client.GetTransactionInfo({ txId: 'your-transaction-id' });
+     const txDetails = await client.getTransactionInfo({ transaction_id: ['your-transaction-id'] });
      console.log(txDetails);
 ```
 
