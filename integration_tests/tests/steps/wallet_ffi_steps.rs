@@ -210,7 +210,7 @@ async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: Stri
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = PaymentId::open(
+    let payment_id = PaymentId::open_from_string(
         &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
         TxType::PaymentToOther,
     );
@@ -223,7 +223,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = PaymentId::open(
+    let payment_id = PaymentId::open_from_string(
         &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
         TxType::PaymentToOther,
     );

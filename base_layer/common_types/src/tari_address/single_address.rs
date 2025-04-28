@@ -62,7 +62,7 @@ impl SingleAddress {
         let payment_id_user_data = match payment_id_user_data {
             Some(data) => {
                 if data.len() > MAX_ENCRYPTED_DATA_SIZE {
-                    return Err(TariAddressError::InvalidSize);
+                    return Err(TariAddressError::PaymentIdTooLarge);
                 }
                 features.set(TariAddressFeatures::PAYMENT_ID, true);
                 MaxSizeBytes::from_bytes_truncate(data)
@@ -89,8 +89,8 @@ impl SingleAddress {
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
         let length = emoji.chars().count();
-        if length < TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
-            length > TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE
+        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+            .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
         }
@@ -143,8 +143,8 @@ impl SingleAddress {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
-        if length < TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
-            length > TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE
+        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+            .contains(&length)
         {
             return Err(TariAddressError::InvalidSize);
         }
