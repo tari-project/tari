@@ -10,25 +10,22 @@ pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 pub(crate) struct LmdbTreeWriter<'a> {
     txn: &'a WriteTransaction<'a>,
     node_db: DatabaseRef,
-    node_table_name: &'static str,
     value_db: DatabaseRef,
-    value_table_name: &'static str,
+    unique_key_db: DatabaseRef,
 }
 
 impl<'a> LmdbTreeWriter<'a> {
     pub fn new(
         txn: &'a WriteTransaction<'a>,
         node_db: DatabaseRef,
-        node_table_name: &'static str,
         value_db: DatabaseRef,
-        value_table_name: &'static str,
+        unique_key_db: DatabaseRef,
     ) -> Self {
         Self {
             txn,
             node_db,
-            node_table_name,
             value_db,
-            value_table_name,
+            unique_key_db,
         }
     }
 
@@ -38,6 +35,20 @@ impl<'a> LmdbTreeWriter<'a> {
         warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
         let values = lmdb_delete_keys_starting_with::<Vec<u8>>(&self.txn, &self.value_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
+
+        for (value_key, _) in values {
+            let mut lmdb_key: Vec<u8> = vec![];
+            // version is first 8 bytes
+            if value_key.len() < 8 {
+                return Err(anyhow::anyhow!("Value key is too short"));
+            }
+            lmdb_key.extend_from_slice(&value_key[8..]);
+            // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+            // lmdb_key.extend_from_slice(&value_key.1 .0);
+            dbg!(&lmdb_key);
+            lmdb_delete(&self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table")?;
+        }
+        // todo!("delete unique keys for version {}", version);
 
         Ok(())
         // todo!("implement delete all for version")
@@ -69,26 +80,39 @@ impl<'a> TreeWriter for LmdbTreeWriter<'a> {
             // }
             // let val_bytes = bincode::serialize(node)?;
             // let val = lmdb_zero::Value::from(val_bytes);
-            lmdb_insert(&self.txn, &self.node_db, &lmdb_key, &node, &self.node_table_name)?;
+            lmdb_insert(&self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
         }
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1 .0);
-            // dbg!(value_key);
-            // dbg!(&lmdb_key);
             let val_bytes = bincode::serialize(value)?;
-            lmdb_insert(&self.txn, &self.value_db, &lmdb_key, &val_bytes, &self.value_table_name)?;
-            //     match value {
-            //         Some(v) => {
-            //             let val_bytes = bincode::serialize(v)?;
-            //             lmdb_insert(&self.txn, &self.value_db, &lmdb_key, &val_bytes, &self.value_table_name)?;
-            //         },
-            //         None => {
-            //             // todo!("delete value");
-            //             // lmdb_delete(txn, db, key, table_name);
-            //         },
-            //     };
+            lmdb_insert(&self.txn, &self.value_db, &lmdb_key, &val_bytes, &"jmt_value_table")?;
+            dbg!(&lmdb_key);
+            dbg!(&value_key.1 .0);
+            dbg!(&value_key.0);
+
+            match value {
+                Some(v) => {
+                    // let val_bytes = bincode::serialize(v)?;
+                    // insert a map to the latest version key
+                    lmdb_insert(
+                        &self.txn,
+                        &self.unique_key_db,
+                        &value_key.1 .0,
+                        &lmdb_key,
+                        "jmt_unique_key_table",
+                    )?;
+                },
+                None => {
+                    dbg!("Deleting unique key for value");
+                    let version = value_key.0;
+                    if version != 0 {
+                        // No need to delete for the first version
+                        lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")?;
+                    }
+                },
+            };
         }
         info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
