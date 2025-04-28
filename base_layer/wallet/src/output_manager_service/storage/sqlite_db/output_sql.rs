@@ -545,13 +545,13 @@ impl OutputSql {
                  FROM outputs WHERE status = ? AND maturity <= ? AND script_lock_height <= ? AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? AND user_payment_id = ? \
+                 FROM outputs WHERE status = ? AND ((maturity > ? OR script_lock_height > ?) AND user_payment_id = ?) \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? AND user_payment_id = ? \
+                 FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
-                 FROM outputs WHERE status = ? OR status = ? OR status = ? AND user_payment_id = ?",
+                 FROM outputs WHERE (status = ? OR status = ? OR status = ?) AND user_payment_id = ?",
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
