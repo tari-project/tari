@@ -1,5 +1,5 @@
 # gRPC API for Minotari Wallet
-Below is documentation regarding various gRPC methods available for the Minotari Console Wallet and accessible via the base node.
+Below is documentation regarding various gRPC methods available for the Minotari Console Wallet.
 
 - [Introduction](#introduction)
   - [General Structure](#general-structure)
@@ -205,7 +205,7 @@ fn main() {
 const { Client } = require('./path/to/clients/nodejs/wallet_grpc_client');
 
 // Replace './path/to/clients/nodejs/wallet_grpc_client' with the installed module name or relative path
-const client = new Client('localhost:18143', {
+const client = new Client('localhost:18183', {
   authentication: {
     type: 'basic',
     username: 'my_username',
@@ -230,7 +230,7 @@ console.log('Max Height:', response.chain_height);
 ```
 
 ## gRPC Wallet Methods
-These methods are dependent on access to a base node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
+These methods are dependent on access to a wallet node and use of the [`wallet.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto) file.
 
 ### Get Balance
 The wallet gRPC method `getBalance` is used to retrieve a wallet's total available and pending balances. 
@@ -275,6 +275,8 @@ const userPaymentId = {
 
 ### Get Transactions by Payment ID
 The `GetCompletedTransactionsRequest` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `user_payment_id` to show only completed transactions associated with the payment ID.
+
+- `user_payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `user_payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
 
 **Example of retrieving all transactions:**
 ```javascript
@@ -333,6 +335,8 @@ client.GetCompletedTransactions(request, (error, response) => {
 
 ### Get Transaction Info
 You can use the `getTransactionInfo` gRPC method to obtain information about transactions associated with one or more `transaction_id`.
+
+- The `transaction_id` is defined as repeated uint64. Must be an unsigned 64-bit integer (e.g., 1234567890). Ensure it is passed as an array if querying multiple transactions.
 
 Example:
 ```javascript
