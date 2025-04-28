@@ -241,6 +241,7 @@ Example:
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
 In addition, it is possible to retrieve the balance of a wallet's funds that are matched to a specific `payment_id` provided with any transactions to the wallet. This will provide the total of all transactions that were made into the wallet using that `payment_id`
@@ -259,6 +260,7 @@ const userPaymentId = {
      console.log('Available Balance:', balance.available_balance);
      console.log('Pending Incoming Balance:', balance.pending_incoming_balance);
      console.log('Pending Outgoing Balance:', balance.pending_outgoing_balance);
+     console.log('Time Locked Balance:', balance.timelocked_balance);
 ```
 
 **Example JSON Response:**
@@ -267,6 +269,7 @@ const userPaymentId = {
   "available_balance": 1000000,
   "pending_incoming_balance": 200000,
   "pending_outgoing_balance": 50000,
+  "timelocked_balance": 0,
 }
 ```
 
