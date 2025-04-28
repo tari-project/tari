@@ -577,15 +577,14 @@ impl OutputSql {
             balance_query.load::<BalanceQueryResult>(conn)?
         } else {
             let balance_query = sql_query(
-                "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND user_payment_id = ?\
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND status = ? OR status = ? OR status = ? AND user_payment_id = ? \
-                 UNION ALL \
-                 SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
-                 FROM outputs WHERE status = ? OR status = ? OR status = ? AND user_payment_id = ?",
-            )
+"SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
+ FROM outputs WHERE status = ? AND user_payment_id = ?\
+ UNION ALL \
+ SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
+ FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
+ UNION ALL \
+ SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
+ FROM outputs WHERE (status = ? OR status = ? OR status = ?) AND user_payment_id = ?",
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
