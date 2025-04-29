@@ -42,12 +42,12 @@ impl<'a> LmdbTreeReader<'a> {
     }
 }
 
-impl<'a> TreeReader for LmdbTreeReader<'a> {
+impl TreeReader for LmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
         let mut lmdb_key: Vec<u8> = vec![];
         lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
         borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
-        let node = lmdb_get(&self.txn, &self.node_db, &lmdb_key)?;
+        let node = lmdb_get(self.txn, &self.node_db, &lmdb_key)?;
         Ok(node)
     }
 
@@ -78,7 +78,7 @@ impl<'a> OwnedLmdbTreeReader<'a> {
     }
 }
 
-impl<'a> TreeReader for OwnedLmdbTreeReader<'a> {
+impl TreeReader for OwnedLmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
         let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone());
         inner.get_node_option(node_key)

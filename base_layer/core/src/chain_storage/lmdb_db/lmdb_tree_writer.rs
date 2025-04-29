@@ -56,9 +56,9 @@ impl<'a> LmdbTreeWriter<'a> {
 
     pub fn delete_all_for_version(&self, version: u64) -> anyhow::Result<()> {
         let key = version.to_be_bytes();
-        let nodes = lmdb_delete_keys_starting_with::<Node>(&self.txn, &self.node_db, &key)?;
+        let nodes = lmdb_delete_keys_starting_with::<Node>(self.txn, &self.node_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
-        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(&self.txn, &self.value_db, &key)?;
+        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
 
         Ok(())
@@ -66,7 +66,7 @@ impl<'a> LmdbTreeWriter<'a> {
     }
 }
 
-impl<'a> TreeWriter for LmdbTreeWriter<'a> {
+impl TreeWriter for LmdbTreeWriter<'_> {
     fn write_node_batch(&self, node_batch: &jmt::storage::NodeBatch) -> anyhow::Result<()> {
         for (node_key, node) in node_batch.nodes() {
             let mut lmdb_key: Vec<u8> = vec![];
@@ -91,7 +91,7 @@ impl<'a> TreeWriter for LmdbTreeWriter<'a> {
             // }
             // let val_bytes = bincode::serialize(node)?;
             // let val = lmdb_zero::Value::from(val_bytes);
-            lmdb_insert(&self.txn, &self.node_db, &lmdb_key, &node, &self.node_table_name)?;
+            lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, self.node_table_name)?;
         }
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
@@ -100,7 +100,7 @@ impl<'a> TreeWriter for LmdbTreeWriter<'a> {
             // dbg!(value_key);
             // dbg!(&lmdb_key);
             let val_bytes = bincode::serialize(value)?;
-            lmdb_insert(&self.txn, &self.value_db, &lmdb_key, &val_bytes, &self.value_table_name)?;
+            lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, self.value_table_name)?;
             //     match value {
             //         Some(v) => {
             //             let val_bytes = bincode::serialize(v)?;

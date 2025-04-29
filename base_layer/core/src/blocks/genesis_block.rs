@@ -623,7 +623,7 @@ mod test {
             //  let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
             let smt_value = o.smt_hash(block.header().height);
 
-            smt_batch.push((smt_key.clone(), Some(smt_value.to_vec())));
+            smt_batch.push((smt_key, Some(smt_value.to_vec())));
             // let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
             // let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
             // output_smt.insert(smt_key, smt_node).unwrap();
@@ -658,7 +658,7 @@ mod test {
                     .try_into()
                     .expect("Commitment is 32 bytes"),
             );
-            smt_batch.push((smt_key.clone(), None));
+            smt_batch.push((smt_key, None));
 
             if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = i

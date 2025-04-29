@@ -326,14 +326,13 @@ where B: BlockchainBackend
                  resync your blockchain database."
                     .into(),
             ));
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Blockchain db is not empty. Genesis block already exists in the database."
+            );
         }
-        //  else {
-        // lets load the smt into memory
-        // let mut smt = self.smt_write_access()?;
-        // info!(target: LOG_TARGET, "Loading SMT into memory from stored db");
-        // *smt = self.db_write_access()?.calculate_tip_smt()?;
-        // debug!(target: LOG_TARGET, "Finished loading SMT into memory from stored db");
-        // }
+
         if config.cleanup_orphans_at_startup {
             match self.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
