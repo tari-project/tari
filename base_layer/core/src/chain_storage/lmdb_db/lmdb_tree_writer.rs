@@ -26,40 +26,50 @@ use log::{info, warn};
 use tari_storage::lmdb_store::DatabaseRef;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::lmdb_delete_keys_starting_with;
+use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
     txn: &'a WriteTransaction<'a>,
     node_db: DatabaseRef,
-    node_table_name: &'static str,
     value_db: DatabaseRef,
-    value_table_name: &'static str,
+    unique_key_db: DatabaseRef,
 }
 
 impl<'a> LmdbTreeWriter<'a> {
     pub fn new(
         txn: &'a WriteTransaction<'a>,
         node_db: DatabaseRef,
-        node_table_name: &'static str,
         value_db: DatabaseRef,
-        value_table_name: &'static str,
+        unique_key_db: DatabaseRef,
     ) -> Self {
         Self {
             txn,
             node_db,
-            node_table_name,
             value_db,
-            value_table_name,
+            unique_key_db,
         }
     }
 
     pub fn delete_all_for_version(&self, version: u64) -> anyhow::Result<()> {
         let key = version.to_be_bytes();
-        let nodes = lmdb_delete_keys_starting_with::<Node>(self.txn, &self.node_db, &key)?;
+        let nodes = lmdb_delete_keys_starting_with::<Node>(&self.txn, &self.node_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
-        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &key)?;
+        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(&self.txn, &self.value_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
+
+        for (value_key, _) in values {
+            let mut lmdb_key: Vec<u8> = vec![];
+            // version is first 8 bytes
+            if value_key.len() < 8 {
+                return Err(anyhow::anyhow!("Value key is too short"));
+            }
+            lmdb_key.extend_from_slice(&value_key[8..]);
+            // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+            // lmdb_key.extend_from_slice(&value_key.1 .0);
+            lmdb_delete(&self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table")?;
+        }
+        // todo!("delete unique keys for version {}", version);
 
         Ok(())
         // todo!("implement delete all for version")
@@ -72,16 +82,156 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
-            lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, self.node_table_name)?;
+            lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
         }
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1 .0);
             let val_bytes = bincode::serialize(value)?;
-            lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, self.value_table_name)?;
+            lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, "jmt_value_table")?;
+            match value {
+                Some(_v) => {
+                    lmdb_insert(
+                        &self.txn,
+                        &self.unique_key_db,
+                        &value_key.1 .0,
+                        &lmdb_key,
+                        "jmt_unique_key_table",
+                    )?;
+                },
+                None => {
+                    let version = value_key.0;
+                    if version != 0 {
+                        // No need to delete for the first version, zero conf spends are only allowed in first version.
+                        lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")?;
+                    }
+                },
+            };
         }
         info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        chain_storage::{BlockchainBackend, SmtHasher},
+        test_helpers::blockchain::TempDatabase,
+    };
+    use jmt::{JellyfishMerkleTree, KeyHash};
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_utilities::ByteArray;
+
+    #[test]
+    fn test_jmt_does_not_accept_duplicates() {
+        let db = TempDatabase::new();
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+        let value = b"test_value".to_vec();
+        let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
+        tree_writer.write_node_batch(&updates.node_batch).unwrap();
+
+        txn.commit().unwrap();
+        // Try again for new version.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+        let (_root, update2) = jmt.put_value_set(vec![(smt_key, Some(value))], 1).unwrap();
+        assert!(
+            tree_writer.write_node_batch(&update2.node_batch).is_err(),
+            "Duplicate key error expected"
+        );
+    }
+
+    #[test]
+    fn test_jmt_does_accept_duplicate_if_deleted() {
+        // If a key in the jmt is deleted, it can be added later.
+        let db = TempDatabase::new();
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+        let value = b"test_value".to_vec();
+        let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
+        tree_writer.write_node_batch(&updates.node_batch).unwrap();
+
+        txn.commit().unwrap();
+        // Try again for new version.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+        let (_root, update2) = jmt.put_value_set(vec![(smt_key, None)], 1).unwrap();
+        tree_writer.write_node_batch(&update2.node_batch).unwrap();
+
+        txn.commit().unwrap();
+
+        // Try again for version 2.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+        let (_root, update2) = jmt.put_value_set(vec![(smt_key, Some(value))], 2).unwrap();
+        tree_writer.write_node_batch(&update2.node_batch).unwrap();
+
+        txn.commit().unwrap();
+    }
+
+    #[test]
+    fn test_jmt_deletes_block_on_reorg() {
+        let db = TempDatabase::new();
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+        let value = b"test_value".to_vec();
+        let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
+        tree_writer.write_node_batch(&updates.node_batch).unwrap();
+
+        txn.commit().unwrap();
+        // Try again for new version.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+        let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let smt_key2 = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+
+        let (_root1, update2) = jmt.put_value_set(vec![(smt_key2, Some(value))], 1).unwrap();
+        tree_writer.write_node_batch(&update2.node_batch).unwrap();
+        txn.commit().unwrap();
+
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        tree_writer.delete_all_for_version(1).unwrap();
+        txn.commit().unwrap();
+
+        let reader = db.db().create_smt_reader().unwrap();
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let root2 = jmt.get_root_hash(0).unwrap();
+
+        assert_eq!(root, root2);
     }
 }
