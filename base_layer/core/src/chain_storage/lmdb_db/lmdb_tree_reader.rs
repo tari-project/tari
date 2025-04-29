@@ -22,6 +22,7 @@
 
 use std::ops::Deref;
 
+use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
 use tari_storage::lmdb_store::DatabaseRef;
@@ -46,7 +47,7 @@ impl TreeReader for LmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
         let mut lmdb_key: Vec<u8> = vec![];
         lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
-        borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
+        BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
         let node = lmdb_get(self.txn, &self.node_db, &lmdb_key)?;
         Ok(node)
     }
