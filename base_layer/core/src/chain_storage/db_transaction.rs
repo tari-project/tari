@@ -290,8 +290,6 @@ pub enum WriteOperation {
     },
     InsertTipBlockBody {
         block: Arc<ChainBlock>,
-        // smt: Arc<RwLock<OutputSmt>>,
-        // allow_smt_change: Arc<AtomicBool>,
     },
     InsertKernel {
         header_hash: HashOutput,

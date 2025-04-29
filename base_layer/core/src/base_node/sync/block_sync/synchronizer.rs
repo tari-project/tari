@@ -319,7 +319,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let validator = self.block_validator.clone();
             let res = {
                 let txn = db.db_read_access()?;
-                // let smt = db.smt().clone();
                 validator.validate_body(&*txn, &task_block)
             };
 

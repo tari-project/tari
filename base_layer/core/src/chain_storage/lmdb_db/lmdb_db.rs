@@ -982,34 +982,9 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        // let mut output_smt = smt.write().map_err(|e| {
-        //     error!(
-        //         target: LOG_TARGET,
-        //         "delete_tip_block_body could not get a write lock on the smt. {:?}", e
-        //     );
-        //     ChainStorageError::AccessError("write lock on smt".into())
-        // })?;
-
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
-        // let smt = JellyfishMerkleTree::<_, SmtHasher>::new(
-        // let root = output_mr_hash_from_smt(&mut output_smt)?;
-        // if root != new_tip_header.header().output_mr {
-        // error!(
-        //         target: LOG_TARGET,
-        //         "Deleting block, new smt root(#{}) did not match expected (#{}) smt root",
-        //             root.to_hex(),
-        //             new_tip_header.header().output_mr.to_hex(),
-        //     );
-        //     return Err(ChainStorageError::InvalidOperation(
-        //         "Deleting block, new smt root did not match expected smt root".to_string(),
-        //     ));
-        // }
-        // todo!(
-        //     "Verify smt root is correct after deleting. Possibly create a reader direct from the lmdbwriter, then you
-        // \  don't have to pass in a reader to this method"
-        // );
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone());
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
