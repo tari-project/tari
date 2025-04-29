@@ -112,7 +112,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     for _ in 0..=num_retries {
         let _result = client.validate_all_transactions(ValidateRequest {}).await;
         curr_amount = client
-            .get_balance(GetBalanceRequest {})
+            .get_balance(GetBalanceRequest { payment_id: None })
             .await
             .unwrap()
             .into_inner()
@@ -159,7 +159,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
     let mut completed_tx_stream = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();
@@ -493,7 +493,7 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     }
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
 
-    let request = GetCompletedTransactionsRequest {};
+    let request = GetCompletedTransactionsRequest { payment_id: None };
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
 
     while let Some(tx) = completed_txs.next().await {
@@ -542,7 +542,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 
     for _ in 0..num_retries {
         let mut txs = client
-            .get_completed_transactions(grpc::GetCompletedTransactionsRequest {})
+            .get_completed_transactions(grpc::GetCompletedTransactionsRequest { payment_id: None })
             .await
             .unwrap()
             .into_inner();
@@ -624,10 +624,10 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     println!("Waiting for wallet {} to have less than {} uT", wallet, amount);
 
     let num_retries = 100;
-    let request = GetBalanceRequest {};
+    let request = GetBalanceRequest { payment_id: None };
 
     for _ in 0..num_retries {
-        let balance_res = client.get_balance(request).await.unwrap().into_inner();
+        let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
         let current_balance = balance_res.available_balance;
         if current_balance < amount {
             println!(
@@ -959,7 +959,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
 async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();
@@ -1015,7 +1015,7 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
 ) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();
@@ -1230,7 +1230,7 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
 
         'inner: for _ in 0..num_retries {
             let mut stream = client
-                .get_completed_transactions(GetCompletedTransactionsRequest {})
+                .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
                 .await
                 .unwrap()
                 .into_inner();
@@ -1545,7 +1545,7 @@ async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
     for _ in 0..num_retries {
         let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
         let balance_res = wallet_client
-            .get_balance(GetBalanceRequest {})
+            .get_balance(GetBalanceRequest { payment_id: None })
             .await
             .unwrap()
             .into_inner();
@@ -1613,7 +1613,7 @@ async fn wallet_with_tari_connected_to_base_node(
     for _ in 0..num_retries {
         let _result = wallet_client.validate_all_transactions(ValidateRequest {}).await;
         let balance_res = wallet_client
-            .get_balance(GetBalanceRequest {})
+            .get_balance(GetBalanceRequest { payment_id: None })
             .await
             .unwrap()
             .into_inner();
@@ -2110,7 +2110,7 @@ async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet:
     for _ in 0..=num_retries {
         let _result = client.validate_all_transactions(ValidateRequest {}).await;
         curr_amount = client
-            .get_balance(GetBalanceRequest {})
+            .get_balance(GetBalanceRequest { payment_id: None })
             .await
             .unwrap()
             .into_inner()
@@ -2642,7 +2642,7 @@ async fn restart_wallet(world: &mut TariWorld, wallet: String) {
 async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: String, num_txs: u64) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();
@@ -2793,7 +2793,7 @@ async fn multi_send_txs_from_wallet(
 async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();
@@ -2816,7 +2816,7 @@ async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld,
 async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
-        .get_completed_transactions(GetCompletedTransactionsRequest {})
+        .get_completed_transactions(GetCompletedTransactionsRequest { payment_id: None })
         .await
         .unwrap()
         .into_inner();

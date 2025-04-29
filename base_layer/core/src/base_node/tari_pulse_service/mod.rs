@@ -197,7 +197,7 @@ impl TariPulseService {
             Ok(Ok(checkpoints)) => checkpoints,
             Ok(Err(err)) => {
                 warn!(target: LOG_TARGET, "Failed to fetch DNS checkpoints: {}", err);
-                return Err(err.into());
+                return Err(err);
             },
             Err(_) => {
                 warn!(target: LOG_TARGET, "Timeout fetching DNS checkpoints. We can't tell whether our blockchain has the correct data or not.");

@@ -1315,7 +1315,7 @@ where
         };
         let script_key_id = TariKeyId::Managed {
             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-            index: u64::try_from(index).expect("we dont go over u64"),
+            index,
         };
         Ok(TariKeyAndId {
             pub_key: self
