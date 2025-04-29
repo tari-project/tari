@@ -66,21 +66,20 @@ Tari addresses are **Base58-encoded strings** representing a serialized binary f
 
 #### Payment ID Feature (Optional)
 
-The Payment ID optional feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
+The optional Payment ID feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
 
 
-When included, the `payment_id` is **encrypted using the public keys** of the address. The `Features` byte uses **bitflags** to indicate optional fields.
-  - For example:
-    ```rust
+When included, the `payment_id` is **encrypted using the public keys** of the address. The `Features` byte uses **bitflags** to indicate optional fields. For example:
+   ```rust
     const PAYMENT_ID_PRESENT: u8 = 0b00000001;
-    ```
+   ```
 
-Maximum allowed size for `payment_id` is **256 bytes**. Larger values will raise:
+The maximum allowed size for `payment_id` is **256 bytes**. Larger values will raise:
   ```rust
   TariAddressError::PaymentIdTooLarge
   ```
 
-Please note that fees will be applicable for every bit used in the `payment_id`, so it is best to standardise on something minimal but one 
+Please note that fees will be applicable for every bit used in the `payment_id`.
 
 #### Encoding
 
@@ -358,7 +357,7 @@ const userPaymentId = {
 }
 ```
 
-### Retrieve Payment ID Address
+### Get Payment ID Address
 The `GetPaymentIdAddress` gRPC method returns an address appended with a payment ID, derived from an existing address. The payment ID is an optional, additional piece of metadata (like an invoice number or customer reference).
 
 - `payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
@@ -370,7 +369,7 @@ const crypto = require('crypto');
 // Generate a 32-byte random payment_id
 const paymentId = crypto.randomBytes(32); // This will be a Buffer
 
-client.getPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
+client.GetPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
   if (error) {
     console.error('gRPC Error:', error);
     return;
@@ -391,8 +390,6 @@ client.getPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
   "one_sided_address": "f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8b3a5d4f2a1d2c3e4f5a6b7c8d9e0"
 }
 ```
-
-
 
 ### Get Transactions by Payment ID
 The `GetCompletedTransactions` method retrieves all completed transactions against a particular wallet, which can be optionally filtered by passing the `payment_id` to show only completed transactions associated with the payment ID.
