@@ -68,12 +68,15 @@ Tari addresses is a address scheme used by Tari. Each address includes the neces
 
 The optional Payment ID feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
 
-
-When included, the `payment_id` is **encrypted using the public keys** of the address. The `Features` byte uses **bitflag 3** (8) to indicate optional fields. For example:
+When included, the payment_id is encrypted using the public keys of the address. The Features byte uses bitflag 2 (value 4) to indicate the presence of a payment ID. For example::
    
-   ```rust
-    const PAYMENT_ID_PRESENT: u8 = 0b00000001;
-   ```
+   impl TariAddressFeatures: u8 {
+        // this forces a transaction to include the following payment id
+        const PAYMENT_ID = 0b0000_0100;
+        const INTERACTIVE = 0b0000_0010;
+        ///one sided payment
+        const ONE_SIDED = 0b0000_0001;
+    }
 
 The maximum allowed size for `payment_id` is **256 bytes**. Larger values will raise:
   ```rust
