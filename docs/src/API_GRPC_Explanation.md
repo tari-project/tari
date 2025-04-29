@@ -51,7 +51,7 @@ message GetBalanceResponse {
 ```
 
 ### Tari Address Structure (with Optional Payment ID)
-Tari addresses are **Base58-encoded strings** representing a serialized binary format. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**.
+Tari addresses is a address scheme used by Tari. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**.
 
 #### Binary Structure
 
@@ -69,7 +69,8 @@ Tari addresses are **Base58-encoded strings** representing a serialized binary f
 The optional Payment ID feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
 
 
-When included, the `payment_id` is **encrypted using the public keys** of the address. The `Features` byte uses **bitflags** to indicate optional fields. For example:
+When included, the `payment_id` is **encrypted using the public keys** of the address. The `Features` byte uses **bitflag 3** (8) to indicate optional fields. For example:
+   
    ```rust
     const PAYMENT_ID_PRESENT: u8 = 0b00000001;
    ```
@@ -82,54 +83,7 @@ The maximum allowed size for `payment_id` is **256 bytes**. Larger values will r
 Please note that fees will be applicable for every bit used in the `payment_id`.
 
 #### Encoding
-
-After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address.
-
-#### Example: JavaScript Decoder
-
-Here’s a working decoder stub using `bs58`:
-
-```javascript
-const bs58 = require('bs58');
-
-/**
- * Decodes a Tari address and extracts its components, including an optional payment_id.
- * @param {string} tariAddress - Base58 encoded Tari address.
- * @returns {Object} Decoded components.
- */
-function decodeTariAddress(tariAddress) {
-  const bytes = bs58.decode(tariAddress);
-
-  if (bytes.length < 67) {
-    throw new Error('Address is too short to be valid');
-  }
-
-  const networkId = bytes[0];
-  const features = bytes[1];
-  const viewKey = bytes.slice(2, 34);
-  const spendKey = bytes.slice(34, 66);
-
-  let paymentId = null;
-  let checksumIndex = 66;
-
-  if (features & 0b00000001) {
-    // payment_id is present
-    paymentId = bytes.slice(66, bytes.length - 1);
-    checksumIndex = bytes.length - 1;
-  }
-
-  const checksum = bytes[checksumIndex];
-
-  return {
-    networkId,
-    features,
-    viewKey,
-    spendKey,
-    paymentId,
-    checksum,
-  };
-}
-```
+After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address. The RFC https://rfc.tari.com/RFC-0155_TariAddress is suitable for this.
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
@@ -360,7 +314,7 @@ const userPaymentId = {
 ### Get Payment ID Address
 The `GetPaymentIdAddress` gRPC method returns an address appended with a payment ID, derived from an existing address. The payment ID is an optional, additional piece of metadata (like an invoice number or customer reference).
 
-- `payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `payment_id` must be encoded in UTF-8 and should not contain invalid UTF-8 characters.
+- `payment_id` (optional) must be passed as a UTF-8 encoded byte array. If derived from a string, the `payment_id` must be encoded in UTF-8.
 
 **Example:**
 ```javascript
@@ -386,8 +340,8 @@ client.GetPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
 **Example of JSON response**:
 ```json
 {
-  "interactive_address": "b3a5d4f2a1d2c3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8",
-  "one_sided_address": "f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8b3a5d4f2a1d2c3e4f5a6b7c8d9e0"
+  "interactive_address": "14HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReh",
+  "one_sided_address": "12HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReL"
 }
 ```
 
