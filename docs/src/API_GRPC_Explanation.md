@@ -86,7 +86,7 @@ The maximum allowed size for `payment_id` is **256 bytes**. Larger values will r
 Please note that fees will be applicable for every bit used in the `payment_id`.
 
 #### Encoding
-After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address. The RFC https://rfc.tari.com/RFC-0155_TariAddress is suitable for this.
+After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address. The [RFC-0155 TariAddress](https://rfc.tari.com/RFC-0155_TariAddress) can be reviewed for more information.
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
