@@ -41,6 +41,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
@@ -84,7 +85,8 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
     (script_key_id, wallet_payment_address)
 }
 
-pub async fn create_block(
+pub async fn create_block<TDB: BlockchainBackend>(
+    db: &BlockchainDatabase<TDB>,
     rules: &ConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
@@ -143,10 +145,24 @@ pub async fn create_block(
         .timestamp
         .checked_add(EpochTime::from(spec.block_time))
         .unwrap();
+    let mut block = apply_mmr_to_block(&db, block);
+
     block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)
+}
+
+pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, block: Block) -> Block {
+    let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
+    block.header.input_mr = mmr_roots.input_mr;
+    block.header.output_mr = mmr_roots.output_mr;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
+    block.header.kernel_mr = mmr_roots.kernel_mr;
+    block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
+    block
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {

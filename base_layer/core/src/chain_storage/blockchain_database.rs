@@ -28,10 +28,7 @@ use std::{
     ops::{Bound, RangeBounds},
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
-        RwLock,
-        RwLockReadGuard,
-        RwLockWriteGuard,
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
     },
     time::Instant,
 };
@@ -45,13 +42,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature,
         UncompressedCommitment,
     },
 };
@@ -63,61 +54,33 @@ use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock,
+        ChainHeader, HistoricalBlock, NewBlockTemplate, UpdateBlockAccumulatedData,
     },
     chain_storage::{
         consts::{
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         utxo_mined_info::OutputMinedInfo,
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
+        BlockAddResult, BlockchainBackend, DbBasicStats, DbTotalSizeStats, HorizonData, InputMinedInfo, MmrTree,
+        Optional, OrNotFound, Reorg, TargetDifficulties,
     },
     common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
+        chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager,
         DomainSeparatedConsensusHasher,
     },
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
-        helpers::calc_median_timestamp,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
+        helpers::calc_median_timestamp, CandidateBlockValidator, DifficultyCalculator, HeaderChainLinkedValidator,
+        InternalConsistencyValidator, ValidationError,
     },
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    ValidatorNodeBMT,
+    PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr, ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -228,7 +191,8 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -304,10 +268,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -2633,19 +2600,14 @@ mod test {
     use crate::{
         block_specs,
         consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
+            chain_strength_comparer::strongest_chain, consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
         },
         proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
-                TempDatabase,
+                create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_test_blockchain_db, TempDatabase,
             },
             BlockSpecs,
         },
@@ -2709,12 +2671,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ])
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            )
             .await;
             // Create reorg chain
             let fork_root = mainchain.get("B").unwrap().clone();
@@ -2761,7 +2721,7 @@ mod test {
                 .try_into_chain_block()
                 .map(Arc::new)
                 .unwrap();
-            let (_, chain) = create_chained_blocks(&[("A->GB", 1u64, 120u64)], genesis_block).await;
+            let (_, chain) = create_chained_blocks(&db, &[("A->GB", 1u64, 120u64)], genesis_block).await;
             let block = chain.get("A").unwrap().clone();
             let mut access = db.db_write_access().unwrap();
             insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
@@ -2778,8 +2738,12 @@ mod test {
             let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]).await;
 
             let block_b = main_chain.get("B").unwrap().clone();
-            let (_, orphan_chain) =
-                create_chained_blocks(&[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)], block_b).await;
+            let (_, orphan_chain) = create_chained_blocks(
+                &db,
+                &[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)],
+                block_b,
+            )
+            .await;
             let mut access = db.db_write_access().unwrap();
 
             let block_d2 = orphan_chain.get("D2").unwrap().clone();
@@ -2801,7 +2765,7 @@ mod test {
             let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]).await;
 
             let fork_root = main_chain.get("A").unwrap().clone();
-            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 1, 120)], fork_root).await;
+            let (_, orphan_chain) = create_chained_blocks(&db, &[("B2->GB", 1, 120)], fork_root).await;
             let mut access = db.db_write_access().unwrap();
 
             let block = orphan_chain.get("B2").unwrap().clone();
@@ -2825,21 +2789,25 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ])
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            )
             .await;
 
             // Fork 1 (with 3 blocks)
             let fork_root_1 = main_chain.get("A").unwrap().clone();
 
             let (_, orphan_chain_1) = create_chained_blocks(
+                &db,
                 &[("B2->GB", 1, 120), ("C2->B2", 1, 120), ("D2->C2", 1, 120)],
                 fork_root_1,
             )
@@ -2847,11 +2815,11 @@ mod test {
 
             // Fork 2 (with 1 block)
             let fork_root_2 = main_chain.get("GB").unwrap().clone();
-            let (_, orphan_chain_2) = create_chained_blocks(&[("B3->GB", 1, 120)], fork_root_2).await;
+            let (_, orphan_chain_2) = create_chained_blocks(&db, &[("B3->GB", 1, 120)], fork_root_2).await;
 
             // Fork 3 (with 1 block)
             let fork_root_3 = main_chain.get("B").unwrap().clone();
-            let (_, orphan_chain_3) = create_chained_blocks(&[("B4->GB", 1, 120)], fork_root_3).await;
+            let (_, orphan_chain_3) = create_chained_blocks(&db, &[("B4->GB", 1, 120)], fork_root_3).await;
 
             // Add blocks to db
             let mut access = db.db_write_access().unwrap();
@@ -2928,6 +2896,7 @@ mod test {
 
             let fork_root = main_chain.get("1a").unwrap().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
+                &test.db,
                 block_specs!(["2b->GB"], ["3b->2b"], ["4b->3b"], ["5b->4b"], ["6b->5b"]),
                 fork_root,
             )
@@ -2942,8 +2911,12 @@ mod test {
 
             // Add chain c orphans branching from chain b
             let fork_root = orphan_chain_b.get("3b").unwrap().clone();
-            let (_, orphan_chain_c) =
-                create_chained_blocks(block_specs!(["4c->GB"], ["5c->4c"], ["6c->5c"], ["7c->6c"]), fork_root).await;
+            let (_, orphan_chain_c) = create_chained_blocks(
+                &test.db,
+                block_specs!(["4c->GB"], ["5c->4c"], ["6c->5c"], ["7c->6c"]),
+                fork_root,
+            )
+            .await;
 
             for name in ["7c", "5c", "6c", "4c"] {
                 let block = orphan_chain_c.get(name).unwrap();
@@ -2953,6 +2926,7 @@ mod test {
 
             let fork_root = orphan_chain_c.get("6c").unwrap().clone();
             let (_, orphan_chain_d) = create_chained_blocks(
+                &test.db,
                 block_specs!(["7d->GB", difficulty: Difficulty::from_u64(10).unwrap()]),
                 fork_root,
             )
@@ -3031,6 +3005,7 @@ mod test {
             let genesis = main_chain.get("GB").unwrap().clone();
             let fork_root = main_chain.get("1a").unwrap().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
+                &test.db,
                 block_specs!(
                     ["2b->GB"],
                     ["3b->2b"],
@@ -3102,6 +3077,7 @@ mod test {
 
             let fork_root = main_chain.get("1a").unwrap().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
+                &test.db,
                 block_specs!(["2b->GB", height: 10, difficulty: Difficulty::from_u64(10).unwrap()]),
                 fork_root,
             )
@@ -3230,16 +3206,14 @@ mod test {
     }
 
     #[tokio::test]
-    #[ignore = "This test originally created an SMT in memory and not using a database, that is not possible with the \
-                JMT"]
+    // #[ignore = "This test originally created an SMT in memory and not using a database, that is not possible with the \
+    // JMT"]
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3247,6 +3221,7 @@ mod test {
 
         let fork_block = mainchain.get("B").unwrap().clone();
         let (_, reorg_chain) = create_chained_blocks(
+            &db,
             &[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)],
             fork_block,
         )
@@ -3314,12 +3289,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3327,7 +3300,7 @@ mod test {
         // we only need a smt, this one will not be technically correct, but due to the use of mockvalidators(true),
         // they will pass all mr tests
         let fork_block = mainchain.get("C").unwrap().clone();
-        let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block).await;
+        let (_, reorg_chain) = create_chained_blocks(&db, &[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block).await;
 
         // Add true orphans
         let mut access = db.db_write_access().unwrap();
@@ -3608,7 +3581,7 @@ mod test {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let (block_names, chain) = { create_chained_blocks(blocks, genesis_block).await };
+        let (block_names, chain) = { create_chained_blocks(&test.db, blocks, genesis_block).await };
 
         let mut results = vec![];
         for name in block_names {
@@ -3629,11 +3602,14 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()

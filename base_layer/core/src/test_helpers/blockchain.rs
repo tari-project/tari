@@ -40,37 +40,16 @@ use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        create_lmdb_database,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        InputMinedInfo,
-        LMDBDatabase,
-        MmrTree,
-        OutputMinedInfo,
-        OwnedLmdbTreeReader,
-        Reorg,
-        TemplateRegistrationEntry,
-        Validators,
+        create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
+        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
+        LMDBDatabase, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, TemplateRegistrationEntry, Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
         transaction_components::{
-            RangeProofType,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            WalletOutput,
+            RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
@@ -432,7 +411,8 @@ impl BlockchainBackend for TempDatabase {
     }
 }
 
-pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
+pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
+    db: &BlockchainDatabase<TDB>,
     blocks: T,
     genesis_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
@@ -450,6 +430,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
         let (block, _) = create_block(
+            &db,
             &rules,
             prev_block.block(),
             block_spec,
@@ -489,7 +470,7 @@ pub async fn create_main_chain<T: Into<BlockSpecs>>(
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let (names, chain) = { create_chained_blocks(blocks, genesis_block).await };
+    let (names, chain) = { create_chained_blocks(&db, blocks, genesis_block).await };
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();
@@ -503,7 +484,7 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     blocks: T,
     root_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-    let (names, chain) = create_chained_blocks(blocks, root_block).await;
+    let (names, chain) = create_chained_blocks(&db, blocks, root_block).await;
     let mut txn = DbTransaction::new();
     for name in &names {
         let block = chain.get(name).unwrap().clone();
@@ -641,6 +622,7 @@ impl TestBlockchain {
             .unwrap();
         let difficulty = block_spec.difficulty;
         let (block, coinbase) = create_block(
+            self.db(),
             &self.rules,
             parent.block(),
             block_spec,
@@ -660,6 +642,7 @@ impl TestBlockchain {
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let (mut block, outputs) = create_block(
+            self.db(),
             &self.rules,
             parent.block(),
             block_spec,
