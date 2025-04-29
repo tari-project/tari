@@ -31,19 +31,163 @@ import "network.proto";
 
 // The gRPC interface for interacting with the wallet.
 service Wallet {
-  // This returns the current version
+  // Returns the current version of the running wallet service.
+  //
+  // This method retrieves the semantic version of the wallet software as defined in the Cargo.toml file (e.g., "1.2.3"). Useful for diagnostics and compatibility checks.
+  //
+  // Example usage (JavaScript gRPC client):
+  // ```javascript
+  // const response = await client.getVersion({});
+  // console.log(response.version); // e.g., "1.2.3"
+  // ```
+  //
+  // Example response:
+  // ```json
+  // {
+  //   "version": "1.2.3"
+  // }
+  // ```
+
   rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
-  // This returns the current state of the wallet
+  // Returns the current operational state of the wallet.
+  //
+  // This RPC provides an overview of the wallet's internal status, including:
+  // - The latest blockchain height scanned by the wallet
+  // - The current balance (available, pending incoming/outgoing)
+  // - Network connectivity status with the base node
+  //
+  // This is commonly used by UI clients or backend systems to confirm the wallet is healthy,
+  // synchronized, and connected to the Tari network.
+  //
+  // Example usage (JavaScript):
+  // ```javascript
+  // const response = await client.getState({});
+  // console.log(response.scanned_height); // e.g., 1523493
+  // console.log(response.balance.available_balance); // e.g., 1234567890
+  // console.log(response.network.status); // e.g., "Online"
+  // ```
+  //
+  // Example response:
+  // ```json
+  // {
+  //   "scanned_height": 1523493,
+  //   "balance": {
+  //     "available_balance": 1234567890,
+  //     "pending_incoming_balance": 100000000,
+  //     "pending_outgoing_balance": 0
+  //   },
+  //   "network": {
+  //     "status": "Online",
+  //     "avg_latency_ms": 28,
+  //     "num_node_connections": 8
+  //   }
+  // }
+  // ```
   rpc GetState (GetStateRequest) returns (GetStateResponse);
-  // This checks if the wallet is healthy and running
+  // This RPC returns a lightweight response indicating whether the wallet is connected to the network, attempting to connect, or currently offline. This is useful for UIs or clients to determine if network interactions like transactions or syncs are possible.
+  //
+  // Example usage (JavaScript):
+  // ```javascript
+  // const response = await client.checkConnectivity({});
+  // console.log(response.status); // e.g., 1 (Online)
+  // ```
+  //
+  // Example response:
+  // ```json
+  // {
+  //   "status": "Online"
+  // }
+  // ```
   rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
   // Check for new updates
   rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
-  // This returns the identity information
+  // The `Identify` RPC call returns the identity information of the wallet node.
+  // This includes:
+  // - **Public Key**: The wallet’s cryptographic public key.
+  // - **Public Address**: The wallet’s public address used to receive funds.
+  // - **Node ID**: The unique identifier of the wallet node in the network.
+  //
+  // Example usage (JavaScript):
+  // ```javascript
+ // // Call the Identify RPC method
+  // client.Identify({}, (error, response) => {
+  //   if (error) {
+  //     console.error('Error:', error);
+  //   } else {
+  //     console.log('Identity Response:', response);
+  //   }
+  // });
+  // ```
+  //
+  // **Sample JSON Response:**
+  //
+  // ```json
+  // {
+  //   "public_key": "0x04b2c5f3fe65bb1c3cde019e34f3eab1234598c820dca43bbf4d5686a980ddc69e0d4b180d85990d0a5e4aee46e0a6ad9283f0a41783992a70c548e53e47321fa",
+  //   "public_address": "14HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReh",
+  //   "node_id": "0x1234abcd5678efgh9012ijkl3456mnop"
+  // }
+  // ```
   rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
-  // This returns the tari address
+  // This RPC returns two types of wallet addresses: interactive and one-sided addresses.
+  // It provides these addresses in byte format as part of the response.
+  // - **Interactive Address**: This is a type of address used for interaction and communication with the wallet.
+  // - **One-Sided Address**: This is another address type, typically used in scenarios where a one-way interaction or transaction is needed.
+  //
+  // Example usage (JavaScript):
+  // // Call the GetAddress RPC method
+  // client.GetAddress({}, (error, response) => {
+  //   if (error) {
+  //     console.error('Error:', error);
+  //   } else {
+  //     console.log('Address Response:', response);
+  //   }
+  // });
+  // ```
+  //
+  // **Sample JSON Response:**
+  //  // ```json
+  // {
+  //   "interactive_address": "0x14b27bde3f7d9c9d7455f16b056a3c439c663af93356f56e16d2b2c79e6995c44c9c6c7c",
+  //   "one_sided_address": "0x12b35ddcb2270a72d7b327abc7cd4f607a492c6e13e72e65c34742069e48bd3bc462df63"
+  // }
+  // ```
   rpc GetAddress (Empty) returns (GetAddressResponse);
-  // This returns the payment id tari address
+  // This RPC returns addresses generated for a specific payment ID. It provides both the interactive 
+  // and one-sided addresses for the given payment ID, along with their respective representations in 
+  // base58 and emoji formats.
+  //
+  // Example usage (JavaScript):
+  //
+  // ```javascript
+  // // Prepare the payment ID for the request
+  // const paymentId = Buffer.from('your_payment_id_here', 'hex');
+  // const request = { payment_id: paymentId };
+  //
+  // // Call the GetPaymentIdAddress RPC method
+  // client.GetPaymentIdAddress(request, (error, response) => {
+  //   if (error) {
+  //     console.error('Error:', error);
+  //   } else {
+  //     console.log('Payment ID Address Response:', response);
+  //   }
+  // });
+  // ```
+  //
+  // **Sample JSON Response:**
+  //
+  // ```json
+  //{
+  //  "interactive_address": "0411aabbccddeeff00112233445566778899aabbccddeeff0011223344556677",
+  //  "one_sided_address": "02ff8899aabbccddeeff00112233445566778899aabbccddeeff001122334455",
+  //  "interactive_address_base58": "14HVCEeZC2RGE4SDn3yG.....6xouGvS5SXwEvXKwK3zLz2rgReh",
+  //  "one_sided_address_base58": "12HVCEeZC2RGE4SDn3yGwqz.....obB1a6xouGvS5SXwEvXKwK3zLz2rgReL",
+  //  "interactive_address_emoji": "🐢🌊💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭",
+  //  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭"
+  //}
+  //```
+  //
+
   rpc GetPaymentIdAddress (GetPaymentIdAddressRequest) returns (GetCompleteAddressResponse);
   // Returns the address in multiple formats (binary, base58, and emoji)
   rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
@@ -87,6 +231,7 @@ service Wallet {
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 }
+
 
 message GetVersionRequest {}
 
@@ -282,9 +427,13 @@ message GetBalanceResponse {
   uint64 timelocked_balance = 4;
 }
 
+// Response message for GetState
 message GetStateResponse {
+  // The blockchain height (in blocks) that the wallet has scanned up to
   uint64 scanned_height = 1;
+  // Current wallet balance information (available, pending), based on the GetBalanceResponse
   GetBalanceResponse balance = 2;
+  // Status of the wallet's connection to the base node, based on the NetworkStatusResponse
   NetworkStatusResponse network = 3;
 }
 
@@ -347,14 +496,21 @@ message SetBaseNodeRequest {
 
 message SetBaseNodeResponse{}
 
+// Empty request for CheckConnectivity
 message GetConnectivityRequest{}
 
+// Response indicating the wallet's connectivity status
 message CheckConnectivityResponse{
+  // Describes the wallet's network connection state
   enum OnlineStatus {
+    // The wallet is attempting to connect to peers
     Connecting = 0;
+    // The wallet is successfully connected to peers
     Online = 1;
+    // The wallet is not connected to any peers
     Offline = 2;
   }
+  // The current connectivity state of the wallet
   OnlineStatus status = 1;
 }
 
