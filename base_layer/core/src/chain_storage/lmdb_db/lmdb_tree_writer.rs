@@ -101,12 +101,15 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     )?;
                 },
                 None => {
+                    xxx remove genesis check 
+                    
                     let version = value_key.0;
                     if version != 0 {
                         // No need to delete for the first version, zero conf spends are only allowed in first version.
                         lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")?;
                     }
                 },
+                
             };
         }
         info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
@@ -116,15 +119,16 @@ impl TreeWriter for LmdbTreeWriter<'_> {
 
 #[cfg(test)]
 mod test {
+    use jmt::{JellyfishMerkleTree, KeyHash};
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_utilities::ByteArray;
+
     use super::*;
     use crate::{
         chain_storage::{BlockchainBackend, SmtHasher},
         test_helpers::blockchain::TempDatabase,
     };
-    use jmt::{JellyfishMerkleTree, KeyHash};
-    use rand::rngs::OsRng;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_utilities::ByteArray;
 
     #[test]
     fn test_jmt_does_not_accept_duplicates() {
@@ -219,7 +223,7 @@ mod test {
         let smt_key2 = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
-        let (_root1, update2) = jmt.put_value_set(vec![(smt_key2, Some(value))], 1).unwrap();
+        let (root1, update2) = jmt.put_value_set(vec![(smt_key2, Some(value.clone()))], 1).unwrap();
         tree_writer.write_node_batch(&update2.node_batch).unwrap();
         txn.commit().unwrap();
 
@@ -233,5 +237,17 @@ mod test {
         let root2 = jmt.get_root_hash(0).unwrap();
 
         assert_eq!(root, root2);
+
+        // Test that you can add it back again.
+        let txn = db.db().create_write_txn();
+        let tree_writer = db.db().create_lmdb_tree_writer(&txn);
+        let reader = db.db().create_smt_reader().unwrap();
+
+        let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        let (root1_v2, update2) = jmt.put_value_set(vec![(smt_key2, Some(value))], 1).unwrap();
+        tree_writer.write_node_batch(&update2.node_batch).unwrap();
+        txn.commit().unwrap();
+
+        assert_eq!(root1, root1_v2);
     }
 }
