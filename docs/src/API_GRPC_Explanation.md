@@ -329,19 +329,26 @@ client.GetPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
     return;
   }
 
-  console.log('Received Address Response:');
-  console.log({
+  console.log(JSON.stringify({
     interactive_address: Buffer.from(response.interactive_address).toString('hex'),
     one_sided_address: Buffer.from(response.one_sided_address).toString('hex'),
-  });
+    interactive_address_base58: response.interactive_address_base58,
+    one_sided_address_base58: response.one_sided_address_base58,
+    interactive_address_emoji: response.interactive_address_emoji,
+    one_sided_address_emoji: response.one_sided_address_emoji
+  }, null, 2));
 });
 ```
 
 **Example of JSON response**:
 ```json
 {
-  "interactive_address": "14HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReh",
-  "one_sided_address": "12HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReL"
+  "interactive_address": "0411aabbccddeeff00112233445566778899aabbccddeeff0011223344556677",
+  "one_sided_address": "02ff8899aabbccddeeff00112233445566778899aabbccddeeff001122334455",
+  "interactive_address_base58": "14HVCEeZC2RGE4SDn3yG.....6xouGvS5SXwEvXKwK3zLz2rgReh",
+  "one_sided_address_base58": "12HVCEeZC2RGE4SDn3yGwqz.....obB1a6xouGvS5SXwEvXKwK3zLz2rgReL",
+  "interactive_address_emoji": "🐢🌊💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭",
+  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭 "
 }
 ```
 
