@@ -263,7 +263,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_payment_id_address(
         &self,
         request: Request<GetPaymentIdAddressRequest>,
-    ) -> Result<Response<GetAddressResponse>, Status> {
+    ) -> Result<Response<GetCompleteAddressResponse>, Status> {
         let message = request.into_inner();
 
         let interactive_address = self
@@ -282,9 +282,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let one_sided_address = one_sided_address
             .create_payment_id_address(message.payment_id)
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        Ok(Response::new(GetAddressResponse {
+        Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),
+            interactive_address_base58: interactive_address.to_base58(),
+            one_sided_address_base58: one_sided_address.to_base58(),
+            interactive_address_emoji: interactive_address.to_emoji_string(),
+            one_sided_address_emoji: one_sided_address.to_emoji_string(),
         }))
     }
 
