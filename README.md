@@ -422,7 +422,7 @@ the Minotari Base Node and the Minotari Wallet, if they are not enabled already.
 ```
 [wallet]
 
-grpc_address = "127.0.0.1:18143"
+grpc_address = "http://127.0.0.1:18143"
 ```
 
 ```
@@ -430,7 +430,7 @@ grpc_address = "127.0.0.1:18143"
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
+grpc_base_node_address = "http://127.0.0.1:18142"
 ```
 
 For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
@@ -445,11 +445,11 @@ For the Minotari Miner there are some additional settings under section **`miner
 
 # GRPC address of base node
 # Default: value from `base_node.grpc_base_node_address`
-#base_node_grpc_address = "127.0.0.1:18142"
+#base_node_grpc_address = "http://127.0.0.1:18142"
 
 # GRPC address of console wallet
 # Default: value from `wallet.grpc_address`
-#wallet_grpc_address = "127.0.0.1:18143"
+#wallet_grpc_address = "http://127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
 # and current block height is on the tip of network
@@ -547,13 +547,13 @@ they are not enabled already:
 - For the Minotari Base Node and the Minotari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
-  grpc_address = "127.0.0.1:18143"
+  grpc_address = "http://127.0.0.1:18143"
   ```
   ```
   [base_node.esmeralda]
   transpo*_r_*t = "tor"
   allow_test_addresses = false
-  base_node_grpc_address = "127.0.0.1:18142"
+  base_node_grpc_address = "http://127.0.0.1:18142"
   ```
 
 Depending on if you are using solo mining or self-select mining, you will use one of the following:
