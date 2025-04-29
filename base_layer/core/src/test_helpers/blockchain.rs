@@ -451,7 +451,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
         let (block, _) = create_block(
-            &db,
+            db,
             &rules,
             prev_block.block(),
             block_spec,
@@ -491,7 +491,7 @@ pub async fn create_main_chain<T: Into<BlockSpecs>>(
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let (names, chain) = { create_chained_blocks(&db, blocks, genesis_block).await };
+    let (names, chain) = { create_chained_blocks(db, blocks, genesis_block).await };
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();
@@ -505,7 +505,7 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     blocks: T,
     root_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-    let (names, chain) = create_chained_blocks(&db, blocks, root_block).await;
+    let (names, chain) = create_chained_blocks(db, blocks, root_block).await;
     let mut txn = DbTransaction::new();
     for name in &names {
         let block = chain.get(name).unwrap().clone();

@@ -145,7 +145,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
         .timestamp
         .checked_add(EpochTime::from(spec.block_time))
         .unwrap();
-    let mut block = apply_mmr_to_block(&db, block);
+    let mut block = apply_mmr_to_block(db, block);
 
     block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
