@@ -28,17 +28,9 @@ use tari_common_types::{
 };
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
-    chain_storage::{
-        calculate_validator_node_mr,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-    },
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_mmr,
-    kernel_mr_hash_from_pruned_mmr,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroMinotari,
@@ -59,8 +51,6 @@ use tari_core::{
     },
     KernelMmr,
     OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
     PrunedOutputMmr,
 };
 use tari_mmr::{

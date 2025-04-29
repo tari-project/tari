@@ -70,26 +70,11 @@ impl<'a> TreeReader for LmdbTreeReader<'a> {
 pub struct OwnedLmdbTreeReader<'a> {
     txn: ReadTransaction<'a>,
     node_db: DatabaseRef,
-    node_table_name: &'static str,
-    value_db: DatabaseRef,
-    value_table_name: &'static str,
 }
 
 impl<'a> OwnedLmdbTreeReader<'a> {
-    pub fn new(
-        txn: ReadTransaction<'a>,
-        node_db: DatabaseRef,
-        node_table_name: &'static str,
-        value_db: DatabaseRef,
-        value_table_name: &'static str,
-    ) -> Self {
-        Self {
-            txn,
-            node_db,
-            node_table_name,
-            value_db,
-            value_table_name,
-        }
+    pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef) -> Self {
+        Self { txn, node_db }
     }
 }
 

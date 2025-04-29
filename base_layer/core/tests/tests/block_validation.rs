@@ -20,11 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    iter,
-    sync::{Arc, RwLock},
-};
+use std::{convert::TryFrom, iter, sync::Arc};
 
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
@@ -74,7 +70,6 @@ use tari_core::{
         InternalConsistencyValidator,
         ValidationError,
     },
-    OutputSmt,
 };
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
@@ -127,11 +122,9 @@ async fn test_monero_blocks() {
     let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
     let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator);
     let block_validator = BlockBodyFullValidator::new(cm.clone(), true);
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
         Validators::new(block_validator, header_validator, MockValidator::new(true)),
-        smt,
     );
     let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, None, &key_manager).await;

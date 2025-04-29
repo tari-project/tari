@@ -1913,13 +1913,7 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
 impl BlockchainBackend for LMDBDatabase {
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
         let read_tx = self.read_transaction()?;
-        let smt_reader = OwnedLmdbTreeReader::new(
-            read_tx,
-            self.jmt_node_data.clone(),
-            LMDB_DB_JMT_NODE_DATA,
-            self.jmt_value_data.clone(),
-            LMDB_DB_JMT_VALUE_DATA,
-        );
+        let smt_reader = OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone());
 
         Ok(smt_reader)
     }

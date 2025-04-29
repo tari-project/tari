@@ -449,8 +449,6 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 // Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
     use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
     use tari_common_types::{
@@ -458,6 +456,7 @@ mod test {
         types::{CompressedCommitment, UncompressedCommitment},
     };
     use tari_mmr::pruned_hashset::PrunedHashSet;
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
@@ -465,6 +464,7 @@ mod test {
         chain_storage::{calculate_validator_node_mr, BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
         input_mr_hash_from_pruned_mmr,
+        kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},

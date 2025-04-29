@@ -2930,7 +2930,6 @@ mod test {
             let genesis = main_chain.get("GB").unwrap().clone();
 
             let fork_root = main_chain.get("1a").unwrap().clone();
-            let mut a1_block = fork_root.block().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
                 block_specs!(["2b->GB"], ["3b->2b"], ["4b->3b"], ["5b->4b"], ["6b->5b"]),
                 fork_root,
@@ -3034,7 +3033,6 @@ mod test {
             .await;
             let genesis = main_chain.get("GB").unwrap().clone();
             let fork_root = main_chain.get("1a").unwrap().clone();
-            let a1_block = fork_root.block().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
                 block_specs!(
                     ["2b->GB"],
@@ -3106,7 +3104,6 @@ mod test {
                 create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"])).await;
 
             let fork_root = main_chain.get("1a").unwrap().clone();
-            let mut a1_block = fork_root.block().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
                 block_specs!(["2b->GB", height: 10, difficulty: Difficulty::from_u64(10).unwrap()]),
                 fork_root,
@@ -3236,6 +3233,8 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore = "This test originally created an SMT in memory and not using a database, that is not possible with the \
+                JMT"]
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
         let (_, mainchain) = create_main_chain(&db, &[
@@ -3249,9 +3248,7 @@ mod test {
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
 
-        let mut a_block = mainchain.get("A").unwrap().block().clone();
         let fork_block = mainchain.get("B").unwrap().clone();
-        let mut b_block = fork_block.block().clone();
         let (_, reorg_chain) = create_chained_blocks(
             &[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)],
             fork_block,
