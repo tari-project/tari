@@ -476,9 +476,6 @@ Example:
      console.log('Transfer successful:', transferResponse);
 ```
 
-
-
-
 ## Unrelated functions not available in the gRPC but useful
 ### Fetch UTXOs by Block ID
 The `fetch_unspent_utxos_in_block` function is used to fetch unspent transaction outputs (UTXOs) within a specific block by its hash. You will need to interact with the base node directly via the `BaseNodeCommsInterface`.
