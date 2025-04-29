@@ -243,6 +243,21 @@ impl TariAddress {
         }
     }
 
+    pub fn create_payment_id_address(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
+        match self {
+            TariAddress::Dual(v) => {
+                let mut address = v.clone();
+                address.add_payment_id(data)?;
+                Ok(TariAddress::Dual(address))
+            },
+            TariAddress::Single(v) => {
+                let mut address = v.clone();
+                address.add_payment_id(data)?;
+                Ok(TariAddress::Single(address))
+            },
+        }
+    }
+
     /// helper function to convert emojis to u8
     fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum

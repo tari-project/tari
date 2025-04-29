@@ -49,6 +49,7 @@ use minotari_app_grpc::tari_rpc::{
     CreateTemplateRegistrationRequest,
     CreateTemplateRegistrationResponse,
     GetAddressResponse,
+    GetPaymentIdAddressRequest,
     GetBalanceRequest,
     GetBalanceResponse,
     GetCompleteAddressResponse,
@@ -253,6 +254,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_wallet_one_sided_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        Ok(Response::new(GetAddressResponse {
+            interactive_address: interactive_address.to_vec(),
+            one_sided_address: one_sided_address.to_vec(),
+        }))
+    }
+
+    async fn get_payment_id_address(&self, request: Request<GetPaymentIdAddressRequest>) -> Result<Response<GetAddressResponse>, Status> {
+        let message = request.into_inner();
+
+
+        let interactive_address = self
+            .wallet
+            .get_wallet_interactive_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        let interactive_address = interactive_address.create_payment_id_address(message.payment_id.clone()).map_err(|e| Status::internal(format!("{:?}", e)))?;
+        let one_sided_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        let one_sided_address = one_sided_address.create_payment_id_address(message.payment_id).map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),

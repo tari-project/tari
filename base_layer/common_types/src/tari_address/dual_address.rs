@@ -89,6 +89,15 @@ impl DualAddress {
         Self::new(view_key, spend_key, network, TariAddressFeatures::default(), None)
     }
 
+    pub fn add_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
+        if data.len() > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(TariAddressError::PaymentIdTooLarge);
+        }
+        self.features.set(TariAddressFeatures::PAYMENT_ID, true);
+        self.payment_id_user_data = MaxSizeBytes::from_bytes_truncate(data);
+        Ok(())
+    }
+
     /// helper function to convert emojis to u8
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
