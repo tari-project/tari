@@ -187,13 +187,112 @@ service Wallet {
   //}
   //```
   //
-
   rpc GetPaymentIdAddress (GetPaymentIdAddressRequest) returns (GetCompleteAddressResponse);
-  // Returns the address in multiple formats (binary, base58, and emoji)
+  // This RPC call that retrieves the current wallet's interactive and one-sided addresses in multiple formats and returns them in a structured response.
+  // The response includes:
+  // - Raw binary
+  // - Base58-encoded (human-readable)
+  // - Emoji-encoded (for fun and friendliness)
+  // 
+  // Example usage (JavaScript with gRPC):
+  //
+  // ```js
+  // const client = new WalletClient('localhost:50051', grpc.credentials.createInsecure());
+  // client.getCompleteAddress({}, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response);
+  // });
+  // ```
+  //
+  // Sample response:
+  // ```json
+  // {
+  //  "interactive_address": "0411aabbccddeeff00112233445566778899aabbccddeeff0011223344556677",
+  //  "one_sided_address": "02ff8899aabbccddeeff00112233445566778899aabbccddeeff001122334455",
+  //  "interactive_address_base58": "14HVCEeZC2RGE4SDn3yG.....6xouGvS5SXwEvXKwK3zLz2rgReh",
+  //  "one_sided_address_base58": "12HVCEeZC2RGE4SDn3yGwqz.....obB1a6xouGvS5SXwEvXKwK3zLz2rgReL",
+  //  "interactive_address_emoji": "🐢🌊💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭",
+  //  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭"
+  // }
+  // ```
   rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
-  // Send Minotari to a number of recipients
+  // This call supports standard interactive transactions (Mimblewimble),
+  // one-sided transactions, and one-sided-to-stealth-address transactions.
+  // Each recipient must include a valid Tari address, amount, fee, and payment type.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const recipient = new PaymentRecipient();
+  // recipient.setAddress("14HVCEeZ...");
+  // recipient.setAmount(1000000); // 1 T
+  // recipient.setFeePerGram(25);
+  // recipient.setPaymentType(PaymentType.ONE_SIDED);
+  // recipient.setPaymentId(Buffer.from("abc123", "utf-8"));
+  //
+  // const request = new TransferRequest();
+  // request.setRecipientsList([recipient]);
+  //
+  // client.transfer(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response.toObject());
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "results": [
+  //     {
+  //       "address": "14HVCEeZ...",
+  //       "transaction_id": 12345,
+  //       "is_success": true,
+  //       "failure_message": ""
+  //     }
+  //   ]
+  // }
+  // ```
   rpc Transfer (TransferRequest)  returns (TransferResponse);
-  // Returns the transaction details for the given transaction IDs
+  // Returns the transaction details for the given transaction IDs.
+  //
+  // This RPC retrieves detailed information about specific transactions based on their IDs. 
+  // The response includes details such as transaction status, direction, amount, fee, and more.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = { transaction_ids: [12345, 67890] };
+  // client.getTransactionInfo(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response.transactions);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "transactions": [
+  //     {
+  //       "tx_id": 12345,
+  //       "source_address": "0x1234abcd...",
+  //       "dest_address": "0x5678efgh...",
+  //       "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
+  //       "direction": "TRANSACTION_DIRECTION_OUTBOUND",
+  //       "amount": 1000000,
+  //       "fee": 25,
+  //       "is_cancelled": false,
+  //       "excess_sig": "0xabcdef...",
+  //       "timestamp": 1681234567,
+  //       "payment_id": "0xdeadbeef...",
+  //       "mined_in_block_height": 1523493
+  //     }
+  //   ]
+  // }
+  // ```
+  rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+  
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
   // Returns all transactions' details
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
@@ -248,19 +347,23 @@ message GetAddressResponse {
 message GetPaymentIdAddressRequest {
   bytes payment_id = 1;
 }
-
+// Response message containing all formats of wallet addresses.
 message GetCompleteAddressResponse {
-  // Binary format addresses
+  // Binary form of the interactive address.
   bytes interactive_address = 1;
+  // Binary form of the one-sided address.
   bytes one_sided_address = 2;
-  // Base58 encoded addresses
+  // Base58-encoded version of the interactive address.
   string interactive_address_base58 = 3;
+  // Base58-encoded version of the one-sided address.
   string one_sided_address_base58 = 4;
-  // Emoji encoded addresses
+  // Emoji-encoded version of the interactive address.
   string interactive_address_emoji = 5;
+  // Emoji-encoded version of the one-sided address.
   string one_sided_address_emoji = 6;
 }
 
+// A request to send funds to one or more recipients.
 message TransferRequest {
   repeated PaymentRecipient recipients = 1;
 }
@@ -276,17 +379,25 @@ message CreateBurnTransactionRequest{
   bytes payment_id = 5;
 }
 
-
+// A recipient for a transfer, including address, amount, fee, and optional payment ID.
 message PaymentRecipient {
+  // Base58 Tari address of the recipient.
   string address = 1;
+  // Amount to send in microTari (1 T = 1_000_000 µT).
   uint64 amount = 2;
+   // Fee rate per gram.
   uint64 fee_per_gram = 3;
   enum PaymentType {
+    // Default Mimblewimble-style transaction.
     STANDARD_MIMBLEWIMBLE = 0;
+    // One-sided transaction (receiver not required to participate).
     ONE_SIDED = 1;
+    // One-sided stealth address (adds privacy by hiding destination).
     ONE_SIDED_TO_STEALTH_ADDRESS = 2;
   }
+  // The type of payment to perform.
   PaymentType payment_type = 5;
+  // Optional encrypted payment ID for reference (max 256 bytes).
   bytes payment_id = 6;
 }
 
