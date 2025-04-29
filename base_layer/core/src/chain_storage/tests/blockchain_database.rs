@@ -30,7 +30,9 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block, default_coinbase_entities, BlockSpec,
+        create_block,
+        default_coinbase_entities,
+        BlockSpec,
     },
     transactions::{
         tari_amount::T,
