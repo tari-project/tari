@@ -51,7 +51,7 @@ message GetBalanceResponse {
 ```
 
 ### Tari Address Structure (with Optional Payment ID)
-Tari addresses is a address scheme used by Tari. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**.
+Tari addresses are an address scheme used by Tari. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**. The [RFC-0155 TariAddress](https://rfc.tari.com/RFC-0155_TariAddress) can be reviewed for more information.
 
 #### Binary Structure
 
@@ -68,7 +68,7 @@ Tari addresses is a address scheme used by Tari. Each address includes the neces
 
 The optional Payment ID feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
 
-When included, the payment_id is encrypted using the public keys of the address. The Features byte uses bitflag 2 (value 4) to indicate the presence of a payment ID. For example::
+When included, the payment_id is encrypted using the public keys of the address. The Features byte uses bitflag 2 (value 4) to indicate the presence of a payment ID. For example:
    
    impl TariAddressFeatures: u8 {
         // this forces a transaction to include the following payment id
@@ -86,7 +86,7 @@ The maximum allowed size for `payment_id` is **256 bytes**. Larger values will r
 Please note that fees will be applicable for every bit used in the `payment_id`.
 
 #### Encoding
-After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address. The [RFC-0155 TariAddress](https://rfc.tari.com/RFC-0155_TariAddress) can be reviewed for more information.
+After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address.
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
@@ -351,7 +351,7 @@ client.GetPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
   "interactive_address_base58": "14HVCEeZC2RGE4SDn3yG.....6xouGvS5SXwEvXKwK3zLz2rgReh",
   "one_sided_address_base58": "12HVCEeZC2RGE4SDn3yGwqz.....obB1a6xouGvS5SXwEvXKwK3zLz2rgReL",
   "interactive_address_emoji": "🐢🌊💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭",
-  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭 "
+  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭"
 }
 ```
 
