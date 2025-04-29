@@ -678,6 +678,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     /// Test encoding for single tari address
     fn encoding_single() {
         // Generate random public key
