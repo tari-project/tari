@@ -72,45 +72,14 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&node_key.version().to_be_bytes());
             borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
-            // dbg!(&lmdb_key);
-            // dbg!(&node_key);
-            // dbg!(&node);
-            // match node {
-            //     jmt::storage::Node::Leaf(ref leaf) => {
-            //         // let val_bytes = bincode::serialize(leaf)?;
-            //         lmdb_insert(&self.txn, &self.node_db, &lmdb_key, &node, &self.node_table_name)?;
-            //     },
-            //     jmt::storage::Node::Internal(ref branch) => {
-            //         // let val_bytes = bincode::serialize(branch)?;
-            //         lmdb_insert(&self.txn, &self.node_db, &lmdb_key, &node, &self.node_table_name)?;
-            //     },
-            //     jmt::storage::Node::Null => {
-            //         // delete
-            //         // lmdb_delete(&self.txn, &self.node_db, &lmdb_key, &self.node_table_name)?;
-            //     },
-            // }
-            // let val_bytes = bincode::serialize(node)?;
-            // let val = lmdb_zero::Value::from(val_bytes);
             lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, self.node_table_name)?;
         }
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1 .0);
-            // dbg!(value_key);
-            // dbg!(&lmdb_key);
             let val_bytes = bincode::serialize(value)?;
             lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, self.value_table_name)?;
-            //     match value {
-            //         Some(v) => {
-            //             let val_bytes = bincode::serialize(v)?;
-            //             lmdb_insert(&self.txn, &self.value_db, &lmdb_key, &val_bytes, &self.value_table_name)?;
-            //         },
-            //         None => {
-            //             // todo!("delete value");
-            //             // lmdb_delete(txn, db, key, table_name);
-            //         },
-            //     };
         }
         info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())

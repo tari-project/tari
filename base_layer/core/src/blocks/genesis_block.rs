@@ -463,17 +463,14 @@ mod test {
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{calculate_validator_node_mr, BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
-        input_mr_hash_from_pruned_mmr,
-        kernel_mr_hash_from_mmr,
+        input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        PrunedInputMmr,
-        PrunedOutputMmr,
+        KernelMmr, PrunedInputMmr, PrunedOutputMmr,
     };
     #[test]
     #[serial]
@@ -620,13 +617,9 @@ mod test {
                 normal_output_mmr.push(o.hash().to_vec()).unwrap();
             }
             let smt_key = KeyHash(o.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
-            //  let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
             let smt_value = o.smt_hash(block.header().height);
 
             smt_batch.push((smt_key, Some(smt_value.to_vec())));
-            // let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-            // let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
-            // output_smt.insert(smt_key, smt_node).unwrap();
 
             o.verify_metadata_signature().unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
@@ -648,9 +641,6 @@ mod test {
             .unwrap();
 
         for i in block.block().body.inputs() {
-            // let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-            // output_smt.delete(&smt_key).unwrap();
-
             let smt_key = KeyHash(
                 i.commitment()
                     .unwrap()
