@@ -26,7 +26,7 @@ use crate::PeerManager;
 
 #[cfg(test)]
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None).unwrap())
+    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None, None).unwrap())
 }
 
 #[cfg(not(test))]

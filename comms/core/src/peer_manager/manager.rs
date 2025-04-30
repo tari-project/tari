@@ -466,7 +466,7 @@ mod test {
     #[tokio::test]
     async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
         // Create 20 peers were the 1st and last one is bad
         assert!(peer_manager
@@ -577,7 +577,7 @@ mod test {
     async fn test_calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let mut test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -645,7 +645,7 @@ mod test {
     async fn test_closest_peers() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -677,7 +677,7 @@ mod test {
 
     #[tokio::test]
     async fn test_add_or_update_online_peer() {
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
         let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
         peer_manager.add_peer(peer.clone()).await.unwrap();
