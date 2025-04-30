@@ -235,8 +235,8 @@ where
             Ok(sp) => {
                 let _result = service_reply_channel
                     .send(Ok(TransactionServiceResponse::TransactionSent(self.id)))
-                    .inspect_err(|_| {
-                        warn!(target: LOG_TARGET, "Failed to send service reply");
+                    .inspect_err(|e| {
+                        warn!(target: LOG_TARGET, "Failed to send service reply: {:?}", e);
                     });
                 Ok(sp)
             },
@@ -244,8 +244,8 @@ where
                 let error_string = e.to_string();
                 let _size = service_reply_channel
                     .send(Err(TransactionServiceError::from(e)))
-                    .inspect_err(|_| {
-                        warn!(target: LOG_TARGET, "Failed to send service reply");
+                    .inspect_err(|e| {
+                        warn!(target: LOG_TARGET, "Failed to send service reply: {:?}", e);
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.id,

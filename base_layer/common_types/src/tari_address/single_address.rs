@@ -25,7 +25,6 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_max_size::MaxSizeBytes;
 use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
@@ -47,7 +46,6 @@ pub struct SingleAddress {
     network: Network,
     features: TariAddressFeatures,
     public_spend_key: CompressedPublicKey,
-    payment_id_user_data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
 impl SingleAddress {
@@ -56,24 +54,11 @@ impl SingleAddress {
         spend_key: CompressedPublicKey,
         network: Network,
         features: TariAddressFeatures,
-        payment_id_user_data: Option<Vec<u8>>,
     ) -> Result<SingleAddress, TariAddressError> {
-        let mut features = features;
-        let payment_id_user_data = match payment_id_user_data {
-            Some(data) => {
-                if data.len() > MAX_ENCRYPTED_DATA_SIZE {
-                    return Err(TariAddressError::PaymentIdTooLarge);
-                }
-                features.set(TariAddressFeatures::PAYMENT_ID, true);
-                MaxSizeBytes::from_bytes_truncate(data)
-            },
-            None => MaxSizeBytes::empty(),
-        };
         Ok(Self {
             network,
             features,
             public_spend_key: spend_key,
-            payment_id_user_data,
         })
     }
 
@@ -82,16 +67,7 @@ impl SingleAddress {
         spend_key: CompressedPublicKey,
         network: Network,
     ) -> Result<SingleAddress, TariAddressError> {
-        Self::new(spend_key, network, TariAddressFeatures::create_interactive_only(), None)
-    }
-
-    pub fn add_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
-        if data.len() > MAX_ENCRYPTED_DATA_SIZE {
-            return Err(TariAddressError::PaymentIdTooLarge);
-        }
-        self.features.set(TariAddressFeatures::PAYMENT_ID, true);
-        self.payment_id_user_data = MaxSizeBytes::from_bytes_truncate(data);
-        Ok(())
+        Self::new(spend_key, network, TariAddressFeatures::create_interactive_only())
     }
 
     /// helper function to convert emojis to u8
@@ -122,10 +98,6 @@ impl SingleAddress {
         Self::from_bytes(&bytes)
     }
 
-    pub fn get_payment_id_bytes(&self) -> Vec<u8> {
-        self.payment_id_user_data.as_ref().to_vec()
-    }
-
     /// Gets the network from the Tari Address
     pub fn network(&self) -> Network {
         self.network
@@ -152,9 +124,7 @@ impl SingleAddress {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
-        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE)
-            .contains(&length)
-        {
+        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE).contains(&length) {
             return Err(TariAddressError::InvalidSize);
         }
         if validate_checksum(bytes).is_err() {
@@ -164,26 +134,22 @@ impl SingleAddress {
         let features = TariAddressFeatures::from_bits(bytes[1]).ok_or(TariAddressError::InvalidFeatures)?;
         let public_spend_key = CompressedPublicKey::from_canonical_bytes(&bytes[2..34])
             .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let payment_id_user_data = MaxSizeBytes::from_bytes_truncate(&bytes[34..length - 1]);
         Ok(Self {
             network,
             features,
             public_spend_key,
-            payment_id_user_data,
         })
     }
 
     /// Convert Tari Address to bytes
     pub fn to_vec(&self) -> Vec<u8> {
-        let length = TARI_ADDRESS_INTERNAL_SINGLE_SIZE + self.payment_id_user_data.len();
-        let mut buf = vec![0; length];
+        let mut buf = [0u8; TARI_ADDRESS_INTERNAL_SINGLE_SIZE];
         buf[0] = self.network.as_byte();
         buf[1] = self.features.0;
         buf[2..34].copy_from_slice(self.public_spend_key.as_bytes());
-        buf[34..(length - 1)].copy_from_slice(self.payment_id_user_data.as_bytes());
-        let checksum = compute_checksum(&buf[0..(length - 1)]);
-        buf[length - 1] = checksum;
-        buf
+        let checksum = compute_checksum(&buf[0..34]);
+        buf[34] = checksum;
+        buf.to_vec()
     }
 
     /// Construct Tari Address from Base58
@@ -273,7 +239,6 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-            None,
         )
         .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
@@ -299,7 +264,6 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-            None,
         )
         .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &public_key);
@@ -362,7 +326,6 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-            None,
         )
         .unwrap();
 
@@ -399,7 +362,6 @@ mod test {
             public_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-            None,
         )
         .unwrap();
 
@@ -497,44 +459,5 @@ mod test {
         let checksum = compute_checksum(&bytes[0..34]);
         bytes[34] = checksum;
         assert_eq!(SingleAddress::from_bytes(&bytes), Err(TariAddressError::InvalidNetwork));
-    }
-
-    #[test]
-    fn valid_payment_id() {
-        // Generate random public key
-        let mut rng = rand::thread_rng();
-        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-
-        // Generate an emoji ID from the public key and ensure we recover it
-        let payment_id = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
-        let emoji_id_from_public_key = SingleAddress::new(
-            spend_key.clone(),
-            Network::Esmeralda,
-            TariAddressFeatures::default(),
-            Some(payment_id.clone()),
-        )
-        .unwrap();
-        assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
-        assert_eq!(
-            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
-            payment_id.as_slice()
-        );
-
-        // Check the size of the corresponding emoji string
-        let emoji_string = emoji_id_from_public_key.to_emoji_string();
-        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_SINGLE_SIZE + 8);
-
-        let features = emoji_id_from_public_key.features();
-        assert_eq!(features, TariAddressFeatures(7));
-        // Generate an emoji ID from the emoji string and ensure we recover it
-        let emoji_id_from_emoji_string = SingleAddress::from_emoji_string(&emoji_string).unwrap();
-        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
-
-        // Return to the original public keys for good measure
-        assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
-        assert_eq!(
-            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
-            payment_id.as_slice()
-        );
     }
 }

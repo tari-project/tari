@@ -3036,7 +3036,6 @@ where
                     source_pubkey,
                     self.resources.interactive_tari_address.network(),
                     TariAddressFeatures::INTERACTIVE,
-                    None,
                 )?
             };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);

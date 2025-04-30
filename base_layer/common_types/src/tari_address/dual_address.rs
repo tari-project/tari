@@ -583,4 +583,68 @@ mod test {
             payment_id.as_slice()
         );
     }
+
+    #[test]
+    fn valid_max_payment_id() {
+        // Generate random public key
+        let mut rng = rand::thread_rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE + 1];
+
+        // Generate an emoji ID from the public key and ensure we recover it
+        let _emoji_id_from_public_key = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(payment_id.clone()),
+        )
+        .unwrap_err();
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+
+        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE];
+
+        // Generate an emoji ID from the public key and ensure we recover it
+        let emoji_id_from_public_key = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(payment_id.clone()),
+        )
+        .unwrap();
+
+        assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
+        assert_eq!(
+            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
+        );
+
+        // Check the size of the corresponding emoji string
+        let emoji_string = emoji_id_from_public_key.to_emoji_string();
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE + 256);
+
+        let features = emoji_id_from_public_key.features();
+        assert_eq!(features, TariAddressFeatures(7));
+        // Generate an emoji ID from the emoji string and ensure we recover it
+        let emoji_id_from_emoji_string = DualAddress::from_emoji_string(&emoji_string).unwrap();
+        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
+
+        // Return to the original public keys for good measure
+        assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
+        assert_eq!(
+            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
+        );
+        let bas58 = emoji_id_from_emoji_string.to_base58();
+        if bas58.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
+            dbg!(bas58.len());
+            panic!("Base58 is too long");
+        }
+        if bas58.len() < INTERNAL_DUAL_BASE58_MIN_SIZE {
+            dbg!(bas58.len());
+            panic!("Base58 is too short");
+        }
+    }
 }
