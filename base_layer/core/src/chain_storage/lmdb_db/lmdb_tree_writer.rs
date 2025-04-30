@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashMap;
+
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
 use log::{info, warn};
-use std::collections::HashMap;
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
