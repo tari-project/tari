@@ -108,7 +108,6 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 lmdb_fetch_matching_after(&self.txn, &self.unique_key_db, &value_key.1 .0)?;
             let mut existing_history = vec![];
             for (key, x) in existing_values {
-                dbg!(&key);
                 let version = u64::from_be_bytes(key[32..].try_into().unwrap());
                 existing_history.push((version, x));
             }
