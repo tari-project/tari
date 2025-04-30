@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.16.1-pre.0](https://github.com/tari-project/tari/compare/v1.16.0-pre.0...v1.16.1-pre.0) (2025-04-30)
+
+
+### Features
+
+* add double spend check ([#7001](https://github.com/tari-project/tari/issues/7001)) ([ffeeea9](https://github.com/tari-project/tari/commit/ffeeea9269b4f683771a45252c172fde6ccfb6fb))
+* add min peer version option ([#7006](https://github.com/tari-project/tari/issues/7006)) ([1455029](https://github.com/tari-project/tari/commit/1455029065ce710a9896e60af01c2e5e1d266455))
+* **dns:** update tari pulse DNS for esmeralda ([#7004](https://github.com/tari-project/tari/issues/7004)) ([3687b23](https://github.com/tari-project/tari/commit/3687b23f39e17dd107fb431d9c4a8791cd339fab))
+
+
+### Bug Fixes
+
+* fix grpc address format ([#7000](https://github.com/tari-project/tari/issues/7000)) ([bb5ceed](https://github.com/tari-project/tari/commit/bb5ceed0de9daac54827402a97ce07ad8084ff15))
+* payment id tari address usage ([#7002](https://github.com/tari-project/tari/issues/7002)) ([2e4fdb5](https://github.com/tari-project/tari/commit/2e4fdb50a095ab283cc9ffb4dfd7945f28c0b1d2))
+
 ## [1.16.0-pre.0](https://github.com/tari-project/tari/compare/v1.15.0-pre.0...v1.16.0-pre.0) (2025-04-29)
 
 
