@@ -23,7 +23,9 @@
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
 use log::{info, warn};
+use std::collections::HashMap;
 use tari_storage::lmdb_store::DatabaseRef;
+use tari_utilities::hex::Hex;
 
 use super::lmdb::lmdb_insert;
 use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with};
@@ -84,12 +86,21 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             borsh::BorshSerialize::serialize(&node_key.nibble_path(), &mut lmdb_key)?;
             lmdb_insert(self.txn, &self.node_db, &lmdb_key, &node, "jmt_node_table")?;
         }
+        // let mut duplicates = HashMap::new();
         for (value_key, value) in node_batch.values() {
             let mut lmdb_key: Vec<u8> = vec![];
             lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
             lmdb_key.extend_from_slice(&value_key.1 .0);
             let val_bytes = bincode::serialize(value)?;
             lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, "jmt_value_table")?;
+
+            // *duplicates.entry(value_key.1 .0.clone()).or_insert(0) += 1;
+            // if duplicates[&value_key.1 .0] > 1 {
+            //     dbg!(value_key.1 .0.clone());
+            //     todo!("Duplicate value key found in batch");
+            //     warn!(target: LOG_TARGET, "Duplicate value key found in batch");
+            // }
+
             match value {
                 Some(_v) => {
                     lmdb_insert(
@@ -101,15 +112,12 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     )?;
                 },
                 None => {
-                    xxx remove genesis check 
-                    
                     let version = value_key.0;
                     if version != 0 {
                         // No need to delete for the first version, zero conf spends are only allowed in first version.
                         lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")?;
                     }
                 },
-                
             };
         }
         info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
