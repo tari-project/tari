@@ -1,6 +1,8 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::fmt::Display;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -230,6 +232,17 @@ impl QuorumCertificate {
             .finalize()
             .into()
     }
+
+    pub fn calculate_id(&self, epoch: u64) -> FixedHash {
+        layer2::quorum_certificate_hasher()
+            .chain(&epoch)
+            .chain(&self.header_hash)
+            .chain(&self.parent_id)
+            .chain(&self.signatures)
+            .chain(&self.decision)
+            .finalize()
+            .into()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
@@ -237,6 +250,54 @@ pub enum QuorumDecision {
     Accept,
     Reject,
 }
+
+impl QuorumDecision {
+    pub fn is_accept(&self) -> bool {
+        matches!(self, QuorumDecision::Accept)
+    }
+
+    pub fn is_reject(&self) -> bool {
+        matches!(self, QuorumDecision::Reject)
+    }
+}
+
+impl QuorumDecision {
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            QuorumDecision::Accept => 0,
+            QuorumDecision::Reject => 1,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Option<Self> {
+        match v {
+            0 => Some(QuorumDecision::Accept),
+            1 => Some(QuorumDecision::Reject),
+            _ => None,
+        }
+    }
+}
+
+impl TryFrom<u8> for QuorumDecision {
+    type Error = InvalidQuorumDecisionByteError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Self::from_u8(value).ok_or(InvalidQuorumDecisionByteError(value))
+    }
+}
+
+impl Display for QuorumDecision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QuorumDecision::Accept => write!(f, "Accept"),
+            QuorumDecision::Reject => write!(f, "Reject"),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid quorum decision byte: {0}")]
+pub struct InvalidQuorumDecisionByteError(u8);
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorQcSignature {
