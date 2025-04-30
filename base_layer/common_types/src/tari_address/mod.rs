@@ -44,7 +44,7 @@ use crate::{
 pub const TARI_ADDRESS_INTERNAL_DUAL_SIZE: usize = 67; // number of bytes used for the internal representation
 pub const TARI_ADDRESS_INTERNAL_SINGLE_SIZE: usize = 35; // number of bytes used for the internal representation
 const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the internal representation
-const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 441; // number of bytes used for the internal representation
+const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 443; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
 const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
@@ -128,6 +128,8 @@ pub enum TariAddressError {
     CreationError(String),
     #[error("Too large payment_id")]
     PaymentIdTooLarge,
+    #[error("Payment_id not supported on single addresses")]
+    PaymentIdNotSupported,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,7 +253,7 @@ impl TariAddress {
                 address.add_payment_id(data)?;
                 Ok(TariAddress::Dual(address))
             },
-            TariAddress::Single(_) => Err(TariAddressError::PaymentIdTooLarge),
+            TariAddress::Single(_) => Err(TariAddressError::PaymentIdNotSupported),
         }
     }
 

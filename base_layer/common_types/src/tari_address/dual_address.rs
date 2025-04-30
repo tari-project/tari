@@ -601,8 +601,6 @@ mod test {
             Some(payment_id.clone()),
         )
         .unwrap_err();
-        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-
         let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE];
 
         // Generate an emoji ID from the public key and ensure we recover it

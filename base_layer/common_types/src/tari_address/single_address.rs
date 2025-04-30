@@ -35,7 +35,6 @@ use crate::{
         TariAddressFeatures,
         INTERNAL_SINGLE_MAX_BASE58_SIZE,
         INTERNAL_SINGLE_MIN_BASE58_SIZE,
-        MAX_ENCRYPTED_DATA_SIZE,
         TARI_ADDRESS_INTERNAL_SINGLE_SIZE,
     },
     types::CompressedPublicKey,
@@ -74,9 +73,7 @@ impl SingleAddress {
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
         let length = emoji.chars().count();
-        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE + MAX_ENCRYPTED_DATA_SIZE)
-            .contains(&length)
-        {
+        if length != TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
 
@@ -124,7 +121,7 @@ impl SingleAddress {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
         let length = bytes.len();
-        if !(TARI_ADDRESS_INTERNAL_SINGLE_SIZE..=TARI_ADDRESS_INTERNAL_SINGLE_SIZE).contains(&length) {
+        if length != TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             return Err(TariAddressError::InvalidSize);
         }
         if validate_checksum(bytes).is_err() {
