@@ -3,12 +3,35 @@ Welcome to the Tari Frequently-Asked Questions. On this page, we have provided t
 
 - [General](#general) - Covers the coin name, official resources, general overview of architecture and more 
 - [Tokenomics](#tokenomics) - Covers the planned economics of Tari
-- [Installation and Operational Requiremnents](#installation-and-operational-requirements) - Covers installation and configuration of Tari, as well as operational elements for the network, such as available networks, upgrade process, public nodes lists, available networks and mode.
+- [Installation and Operational Requirements](#installation-and-operational-requirements) - Covers installation and configuration of Tari, as well as operational elements for the network, such as available networks, upgrade process, public nodes lists, available networks and mode.
 - [Technical Characteristics](#technical-characteristics-of-tari) - Covers the technical characteristics of Tari. Network throughput, address format, consensus model and more.
 - [Development](#development) - Questions related to development and development resources.
-- [Exchanges](#exchanges)- Information specific to exchanges.
+- [Exchanges](#exchanges) - Information specific to exchanges.
 
 ## General
+
+### What is Tari?
+Tari is a decentralized, privacy-first, highly scalable and open-source blockchain protocol that aims to be infinitely scalable and provide high throughput. Tari aims to be accessible to everyone regardless of their hardware or finances.
+
+### What is Tari Universe?
+Tari Universe is a desktop application for mining Tari on Mac or PC. It works by harnessing your computers computational power to solve blocks on the Tari network. In doing so, you're helping to secure the Tari network while earning Tari token (XTM) rewards. Tari Universe simplfies the setup of Tari while providing a beautiful interface for interacting with Tari.
+
+### How is Tari Universe different from other apps?
+Tari Universe focuses on providing a unique user experience to the mining experience in several areas. Tari Universe focuses on key areas that simplify the mining process and making it accessible to a much wider audience.
+- One-click setup and installation
+- A clean interface that clearly communicates information and settings.
+- Automatic updates
+- Built-in wallet
+
+### What is Tari Universe's minimum and recommended requirements?
+| Component     | **Minimum Desktop Spec**                             | **Recommended Desktop Spec**                                  |
+|---------------|-------------------------------------------------------|----------------------------------------------------------------|
+| **CPU**       | 4-core (Intel i5, Ryzen 5)                            | 6–8 core (Intel i7, Ryzen 7/9)                                 |
+| **GPU**       | NVIDIA GTX 1660 or AMD RX 580 (4GB VRAM min)          | RTX 3060 / RX 6800 or better (8GB+ VRAM)                      |
+| **RAM**       | 16 GB                                                 | 32 GB                           |
+| **Storage**   | At least 100 GB free space, SSD                       | 250 GB or more free NVMe space SSD                                |
+| **OS**        | Windows 10/11 or macOS 12+                            | Windows 11 or macOS 13+                                      |
+
 ### What are the official channels/website/social network profiles for Tari.
 - Official Website: [www.tari.com](www.tari.com)
 - Twitter: [https://twitter.com/tari/](https://twitter.com/tari/)
@@ -149,10 +172,10 @@ Minotari can be traded at 0.000001 XTM. Fractional Minotari is referred to as Mi
 Bitcoin, Grin, Beam, Litecoin
 
 ### Does Tari have "super nodes"?
-No. This is sssuming that "super nodes" in this context is a high-performance, specialized node that play a critical role in validation, governance, or network infrastructure, then **no**. All base nodes have an equal role in ensuring the security of the network.
+No. Asssuming that "super nodes" in this context is a high-performance, specialized node that play a critical role in validation, governance, or network infrastructure, then **no**. All base nodes have an equal role in ensuring the security of the network.
 
 ### What is the transaction expiration policy in the transaction pool? Is there a timeout duration after which unconfirmed transactions are removed?
-Completed transactions are never removed. Pending transactions have a timeout of three (3) days; if they have not been completed within that period, the base node will reject it and it will be removed from the mempool, meaning that it will not be added to the blockchain.
+Completed transactions are never removed. Pending transactions have a timeout of three (3) days; if they have not been completed within that period, the wallet will remove that transaction and mark it as canceled.
 
 ### How does Tari prevent forks?
 Tari, like most blockchains, cannot definitively prevent forks, but has a number of mechanisms to minimise the chance of forks and to deal with fork occurence:
@@ -242,10 +265,10 @@ The address is a base58-encoded and adheres to the following bytes/rules:
 - 1 - Features: Indicates whether the feature set for this address is for a one-sided address or an interactive address. Valid values for these are 1 and 2 respectively.
 - 2 to 33 - Public view key
 - 34 to 65 - Public Spend Key
-- 66 - Checksum using the DammSumm algorithm using 0,1 and the Public Spent Key to calculate.
+- 66 - Checksum using the DammSumm algorithm
 
 ### Does Tari support memo functions like EOS?
-No.
+Yes. The memo function in this case is the Payment ID, and is encrypted with each output.
 
 ## Exchanges
 ### How many block confirmations are required to ensure safe transactions/credit?
