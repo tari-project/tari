@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{convert::TryFrom, sync::Arc};
 
+use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -28,7 +29,7 @@ use tari_common_types::{
 };
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
-    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     kernel_mr_hash_from_mmr,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
@@ -36,22 +37,12 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
         transaction_components::{
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
+            CoinBaseExtra, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
+            TransactionKernel, TransactionKernelVersion, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
-    KernelMmr,
-    OutputSmt,
-    PrunedOutputMmr,
+    KernelMmr, OutputSmt, PrunedOutputMmr,
 };
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
@@ -169,17 +160,23 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let mut header = BlockHeader::from(header);
     let kernel_mmr = KernelMmr::new(kernel_hashes);
     header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr)?;
-    let mut mmr = OutputSmt::new();
+    let mock_store = MockTreeStore::new(true);
+    let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
     let mut output_mr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let mut batch = vec![];
     for output in body.outputs() {
         output_mr.push(output.hash().to_vec()).unwrap();
-        let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-        let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-        mmr.insert(smt_key, smt_node).unwrap();
+        if !output.is_burned() {
+            let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            let smt_value = output.smt_hash(header.height);
+
+            batch.push((smt_key, Some(smt_value.to_vec())));
+        }
     }
     header.output_smt_size = body.outputs().len() as u64;
 
-    header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
+    let (root, _) = jmt.put_value_set(batch, 0).unwrap();
+    header.output_mr = FixedHash::try_from(root.0.as_slice()).unwrap();
     header.block_output_mr = FixedHash::try_from(output_mr.get_merkle_root().unwrap()).unwrap();
     Ok(Block { header, body })
 }
@@ -195,15 +192,18 @@ pub async fn create_genesis_block_with_coinbase_value(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         output,
     )
@@ -236,15 +236,18 @@ pub async fn create_genesis_block_with_utxos(
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
+        ChainBlock::try_construct(
+            block.into(),
+            BlockHeaderAccumulatedData {
+                hash,
+                total_kernel_offset: Default::default(),
+                achieved_difficulty: Difficulty::min(),
+                total_accumulated_difficulty: 1.into(),
+                accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+                target_difficulty: Difficulty::min(),
+            },
+        )
         .unwrap(),
         outputs,
     )

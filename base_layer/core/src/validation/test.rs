@@ -20,16 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use std::{cmp, sync::Arc};
-
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction, SmtHasher},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
@@ -118,9 +119,10 @@ mod header_validators {
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
             .unwrap_err();
-        assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
-            version: u16::MAX
-        }));
+        assert!(matches!(
+            err,
+            ValidationError::InvalidBlockchainVersion { version: u16::MAX }
+        ));
     }
 
     #[tokio::test]
@@ -158,10 +160,10 @@ mod header_validators {
                 None,
             )
             .unwrap_err();
-        assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {
-            actual: 5,
-            expected: 4
-        }));
+        assert!(matches!(
+            err,
+            ValidationError::IncorrectNumberOfTimestampsProvided { actual: 5, expected: 4 }
+        ));
     }
 }
 
@@ -200,16 +202,39 @@ async fn chain_balance_validation() {
     let mut utxo_sum = UncompressedCommitment::default();
     let mut kernel_sum = UncompressedCommitment::default();
     let burned_sum = UncompressedCommitment::default();
+    let mock_store = MockTreeStore::new(true);
+    let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
+    let mut batch = vec![];
     for output in gen_block.body.outputs() {
         utxo_sum = &output.commitment.to_commitment().unwrap() + &utxo_sum;
+        let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+        let smt_value = output.smt_hash(0);
+
+        batch.push((smt_key, Some(smt_value.to_vec())));
     }
     for input in gen_block.body.inputs() {
         utxo_sum = &utxo_sum - &input.commitment().unwrap().to_commitment().unwrap();
+        let smt_key = KeyHash(
+            input
+                .commitment()
+                .unwrap()
+                .as_bytes()
+                .try_into()
+                .expect("Commitment is 32 bytes"),
+        );
+        batch.push((smt_key, None));
     }
     for kernel in gen_block.body.kernels() {
         kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     }
-    let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
+    let root = smt.put_value_set(batch, 0).unwrap();
+
+    gen_block.header.output_mr = root.0 .0.try_into().expect("Output MMR root is 32 bytes");
+    let mut accum = genesis.accumulated_data().clone();
+    accum.hash = gen_block.header.hash();
+
+    let genesis = ChainBlock::try_construct(Arc::new(gen_block), accum).unwrap();
+
     let total_pre_mine = pre_mine_value + consensus_manager.consensus_constants(0).pre_mine_value();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
