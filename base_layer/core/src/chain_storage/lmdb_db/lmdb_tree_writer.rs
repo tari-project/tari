@@ -23,17 +23,11 @@
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
 use log::{info, warn};
-use tari_common_types::types::FixedHash;
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::{
-    lmdb_delete,
-    lmdb_delete_keys_starting_with,
-    lmdb_fetch_matching_after,
-    lmdb_get_prefix_cursor,
-};
+use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with, lmdb_fetch_matching_after};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
@@ -124,9 +118,10 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
                     lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
                     lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
-                    warn!(target: LOG_TARGET, "Deleted unique key {} effective from version {}", value_key.1 .0.to_hex(), value_key.0);
+                    // warn!(target: LOG_TARGET, "Deleted unique key {} effective from version {}", value_key.1
+                    // .0.to_hex(), value_key.0);
                 },
-                (Some(_v), Some(x)) => {
+                (Some(_v), Some(_x)) => {
                     warn!(target: LOG_TARGET, "Found existing unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
                     return Err(anyhow::anyhow!("Duplicate value key found in batch"));
                 },
@@ -135,12 +130,13 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 // Technically this is allowed
                 // return Err(anyhow::anyhow!("Duplicate value key found in batch"));
                 // },
-                (Some(v), None) => {
+                (Some(_v), None) => {
                     let mut lmdb_key: Vec<u8> = vec![];
                     lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
                     lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
                     lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
-                    warn!(target: LOG_TARGET, "Inserted unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
+                    // warn!(target: LOG_TARGET, "Inserted unique key {} for version {}", value_key.1 .0.to_hex(),
+                    // value_key.0);
                 },
             };
         }
