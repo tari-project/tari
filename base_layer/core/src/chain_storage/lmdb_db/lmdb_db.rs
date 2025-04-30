@@ -1610,7 +1610,7 @@ impl LMDBDatabase {
         let inputs =
             lmdb_fetch_matching_after::<TransactionInputRowData>(write_txn, &self.inputs_db, block_hash.as_slice())?;
 
-        for input_data in inputs {
+        for (_input_key, input_data) in inputs {
             let input = input_data.input;
             // From 'utxo_commitment_index::utxo_commitment_index'
             if let SpentOutput::OutputData { commitment, .. } = input.spent_output.clone() {
@@ -2156,7 +2156,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         Ok(lmdb_fetch_matching_after(&txn, &self.kernels_db, header_hash.deref())?
             .into_iter()
-            .map(|f: TransactionKernelRowData| f.kernel)
+            .map(|(_, f): (Vec<u8>, TransactionKernelRowData)| f.kernel)
             .collect())
     }
 
@@ -2206,7 +2206,7 @@ impl BlockchainBackend for LMDBDatabase {
         let mut outputs: Vec<(TransactionOutput, bool)> =
             lmdb_fetch_matching_after::<TransactionOutputRowData>(&txn, &self.utxos_db, header_hash.deref())?
                 .into_iter()
-                .map(|row| (row.output, false))
+                .map(|(_, row)| (row.output, false))
                 .collect();
         if let Some(header_hash) = spend_status_at_header {
             let header_height =
@@ -2259,7 +2259,11 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash.as_slice())
+        lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash.as_slice()).map(|rows| {
+            rows.into_iter()
+                .map(|(_, row): (Vec<u8>, TransactionOutputRowData)| row.output)
+                .collect()
+        })
     }
 
     fn fetch_inputs_in_block(
@@ -2270,7 +2274,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(
             lmdb_fetch_matching_after(&txn, &self.inputs_db, previous_header_hash.as_slice())?
                 .into_iter()
-                .map(|f: TransactionInputRowData| f.input)
+                .map(|(_, f): (_, TransactionInputRowData)| f.input)
                 .collect(),
         )
     }

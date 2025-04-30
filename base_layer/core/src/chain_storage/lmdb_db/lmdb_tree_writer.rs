@@ -23,11 +23,17 @@
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
 use log::{info, warn};
+use tari_common_types::types::FixedHash;
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
 use super::lmdb::lmdb_insert;
-use crate::chain_storage::lmdb_db::lmdb::{lmdb_delete, lmdb_delete_keys_starting_with};
+use crate::chain_storage::lmdb_db::lmdb::{
+    lmdb_delete,
+    lmdb_delete_keys_starting_with,
+    lmdb_fetch_matching_after,
+    lmdb_get_prefix_cursor,
+};
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_tree_writer";
 
 pub(crate) struct LmdbTreeWriter<'a> {
@@ -66,14 +72,18 @@ impl<'a> LmdbTreeWriter<'a> {
                 return Err(anyhow::anyhow!("Value key is too short"));
             }
             lmdb_key.extend_from_slice(&value_key[8..]);
-            // lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
-            // lmdb_key.extend_from_slice(&value_key.1 .0);
-            lmdb_delete(&self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table")?;
+            lmdb_key.extend_from_slice(&value_key[0..8]);
+            match lmdb_delete(&self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table") {
+                Ok(_) => {
+                    warn!(target: LOG_TARGET, "Deleted unique key {} for version {}", lmdb_key.to_hex(), version);
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to delete unique key {} for version {}: {}", lmdb_key.to_hex(), version, e);
+                },
+            }
         }
-        // todo!("delete unique keys for version {}", version);
 
         Ok(())
-        // todo!("implement delete all for version")
     }
 }
 
@@ -93,28 +103,45 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             let val_bytes = bincode::serialize(value)?;
             lmdb_insert(self.txn, &self.value_db, &lmdb_key, &val_bytes, "jmt_value_table")?;
 
-            // *duplicates.entry(value_key.1 .0.clone()).or_insert(0) += 1;
-            // if duplicates[&value_key.1 .0] > 1 {
-            //     dbg!(value_key.1 .0.clone());
-            //     todo!("Duplicate value key found in batch");
-            //     warn!(target: LOG_TARGET, "Duplicate value key found in batch");
-            // }
+            // see if there are any values already.
+            let existing_values: Vec<(Vec<u8>, Option<Vec<u8>>)> =
+                lmdb_fetch_matching_after(&self.txn, &self.unique_key_db, &value_key.1 .0)?;
+            let mut existing_history = vec![];
+            for (key, x) in existing_values {
+                dbg!(&key);
+                let version = u64::from_be_bytes(key[32..].try_into().unwrap());
+                existing_history.push((version, x));
+            }
+            // sort by version
+            existing_history.sort_by(|a, b| a.0.cmp(&b.0));
 
-            match value {
-                Some(_v) => {
-                    lmdb_insert(
-                        &self.txn,
-                        &self.unique_key_db,
-                        &value_key.1 .0,
-                        &lmdb_key,
-                        "jmt_unique_key_table",
-                    )?;
+            let latest_value = existing_history.last().map(|x| x.1.clone()).flatten();
+            match (value, &latest_value) {
+                (None, _) => {
+                    if latest_value.is_none() {
+                        warn!(target: LOG_TARGET, "Found no existing JMT unique key for version {}, creating it as None", value_key.0);
+                    }
+                    let mut lmdb_key: Vec<u8> = vec![];
+                    lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
+                    lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+                    lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
+                    warn!(target: LOG_TARGET, "Deleted unique key {} effective from version {}", value_key.1 .0.to_hex(), value_key.0);
                 },
-                None => {
-                    let _res = lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")
-                        .inspect_err(|e| {
-                            warn!(target: LOG_TARGET, "Failed to delete unique key {}: {}", value_key.1 .0.to_hex(), e);
-                        });
+                (Some(_v), Some(x)) => {
+                    warn!(target: LOG_TARGET, "Found existing unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
+                    return Err(anyhow::anyhow!("Duplicate value key found in batch"));
+                },
+                // (None, None) => {
+                // warn!(target: LOG_TARGET, "Found no existing unique key for version {}", value_key.0);
+                // Technically this is allowed
+                // return Err(anyhow::anyhow!("Duplicate value key found in batch"));
+                // },
+                (Some(v), None) => {
+                    let mut lmdb_key: Vec<u8> = vec![];
+                    lmdb_key.extend_from_slice(value_key.1 .0.as_slice());
+                    lmdb_key.extend_from_slice(&value_key.0.to_be_bytes());
+                    lmdb_insert(self.txn, &self.unique_key_db, &lmdb_key, value, "jmt_unique_key_table")?;
+                    warn!(target: LOG_TARGET, "Inserted unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
                 },
             };
         }

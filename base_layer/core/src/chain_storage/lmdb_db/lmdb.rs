@@ -353,14 +353,14 @@ pub fn lmdb_fetch_matching_after<V>(
     txn: &ConstTransaction<'_>,
     db: &Database,
     key_prefix: &[u8],
-) -> Result<Vec<V>, ChainStorageError>
+) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
 where
     V: DeserializeOwned,
 {
     let mut cursor = lmdb_get_prefix_cursor(txn, db, key_prefix)?;
     let mut result = vec![];
-    while let Some((_, val)) = cursor.next()? {
-        result.push(val);
+    while let Some((k, val)) = cursor.next()? {
+        result.push((k, val));
     }
     Ok(result)
 }
