@@ -444,6 +444,10 @@ impl From<TariAddressError> for LibWalletError {
                 code: 709,
                 message: format!("{:?}", e),
             },
+            TariAddressError::PaymentIdNotSupported => Self {
+                code: 710,
+                message: format!("{:?}", e),
+            },
         }
     }
 }

@@ -319,8 +319,23 @@ impl CommsBuilder {
             Some(storage) => {
                 #[cfg(not(test))]
                 PeerManager::migrate_lmdb(&storage.inner())?;
-
-                let peer_manager = PeerManager::new(storage, file_lock).map_err(CommsBuilderError::PeerManagerError)?;
+                let min_peer_version = if self
+                    .connection_manager_config
+                    .peer_validation_config
+                    .min_peer_version
+                    .is_empty()
+                {
+                    None
+                } else {
+                    Some(
+                        self.connection_manager_config
+                            .peer_validation_config
+                            .min_peer_version
+                            .clone(),
+                    )
+                };
+                let peer_manager = PeerManager::new(storage, file_lock, min_peer_version)
+                    .map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
             None => Err(CommsBuilderError::PeerStorageNotProvided),

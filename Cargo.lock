@@ -7099,6 +7099,7 @@ dependencies = [
  "pin-project 1.1.7",
  "prost 0.13.4",
  "rand",
+ "semver",
  "serde",
  "serde_derive",
  "serde_json",

@@ -330,3 +330,7 @@ database_url = "data/base_node/dht.db"
 #                or
 #   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
 excluded_dial_addresses = []
+
+# setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
+# peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
+#peer_validator_config.min_peer_version = ""

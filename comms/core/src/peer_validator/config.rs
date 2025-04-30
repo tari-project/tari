@@ -35,6 +35,9 @@ pub struct PeerValidatorConfig {
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
+    /// The minimum version of peers this node will accept, if the peer agent string does not match X/{version} it will
+    /// also be rejected if this is set
+    pub min_peer_version: String,
 }
 
 impl Default for PeerValidatorConfig {
@@ -49,6 +52,7 @@ impl Default for PeerValidatorConfig {
             // This must always be true for internal crate tests
             #[cfg(test)]
             allow_test_addresses: true,
+            min_peer_version: "".to_string(),
         }
     }
 }

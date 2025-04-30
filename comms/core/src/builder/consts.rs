@@ -23,7 +23,7 @@
 /// Buffer size for actor requests to connectivity manager.
 pub const CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Buffer size for connectivity events
-pub const CONNECTIVITY_MANAGER_EVENTS_BUFFER_SIZE: usize = 50;
+pub const CONNECTIVITY_MANAGER_EVENTS_BUFFER_SIZE: usize = 500;
 /// Buffer size for actor requests to connection manager. A lower value is ok because the connection manager shouldn't
 /// need to handle a ton of requests concurrently.
 pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;

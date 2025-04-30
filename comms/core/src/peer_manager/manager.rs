@@ -23,6 +23,7 @@
 use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
+use semver::Version;
 use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
 use tokio::sync::RwLock;
 
@@ -51,15 +52,25 @@ pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
     peer_storage: RwLock<PeerStorage<CachedStore<PeerId, Peer, KeyValueWrapper<CommsDatabase>>>>,
     _file_lock: Option<File>,
+    min_peer_version: Option<Version>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(database: CommsDatabase, file_lock: Option<File>) -> Result<PeerManager, PeerManagerError> {
+    pub fn new(
+        database: CommsDatabase,
+        file_lock: Option<File>,
+        min_peer_version: Option<String>,
+    ) -> Result<PeerManager, PeerManagerError> {
         let storage = PeerStorage::new_indexed(CachedStore::new(KeyValueWrapper::new(database)))?;
+        let min_peer_version = match min_peer_version {
+            Some(v) => Some(Version::parse(&v).map_err(|_| PeerManagerError::InvalidVersionString)?),
+            None => None,
+        };
         Ok(Self {
             peer_storage: RwLock::new(storage),
             _file_lock: file_lock,
+            min_peer_version,
         })
     }
 
@@ -75,6 +86,22 @@ impl PeerManager {
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        if !peer.is_seed() {
+            if let Some(version) = &self.min_peer_version {
+                let parts: Vec<&str> = peer.user_agent.split('/').collect();
+                if parts.is_empty() || peer.user_agent.is_empty() {
+                    return Err(PeerManagerError::InvalidVersionString);
+                }
+                let peer_version = Version::parse(parts.last().expect("we already checked its no empty"))
+                    .map_err(|_| PeerManagerError::InvalidVersionString)?;
+                if peer_version < *version {
+                    return Err(PeerManagerError::PeerVersionTooOld {
+                        min_version: version.to_string(),
+                        peer_version: peer_version.to_string(),
+                    });
+                }
+            }
+        }
         let mut lock = self.peer_storage.write().await;
         let peer_id = lock.add_peer(peer)?;
         #[cfg(feature = "metrics")]
