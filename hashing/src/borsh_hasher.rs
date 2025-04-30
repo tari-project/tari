@@ -59,12 +59,12 @@ impl<D: Digest + Default, M: DomainSeparation> DomainSeparatedBorshHasher<M, D> 
     }
 
     /// Update the hasher using the Borsh encoding of the input, which is assumed to be canonical.
-    pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
+    pub fn update_consensus_encode<T: BorshSerialize + ?Sized>(&mut self, data: &T) {
         BorshSerialize::serialize(data, &mut self.writer)
             .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
     }
 
-    pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
+    pub fn chain<T: BorshSerialize + ?Sized>(mut self, data: &T) -> Self {
         self.update_consensus_encode(data);
         self
     }
