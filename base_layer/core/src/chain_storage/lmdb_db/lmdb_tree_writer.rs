@@ -113,11 +113,10 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     )?;
                 },
                 None => {
-                    let version = value_key.0;
-                    if version != 0 {
-                        // No need to delete for the first version, zero conf spends are only allowed in first version.
-                        lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")?;
-                    }
+                    let _res = lmdb_delete(&self.txn, &self.unique_key_db, &value_key.1 .0, "jmt_unique_key_table")
+                        .inspect_err(|e| {
+                            warn!(target: LOG_TARGET, "Failed to delete unique key {}: {}", value_key.1 .0.to_hex(), e);
+                        });
                 },
             };
         }
