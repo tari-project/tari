@@ -158,7 +158,7 @@ pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, 
     let res = block.clone();
     let (mut block, mmr_roots) = match db.calculate_mmr_roots(block) {
         Ok(mmr_roots) => mmr_roots,
-        Err(e) => {
+        Err(_) => {
             // Sometimes the block is not at the tip, so we can't calculate the MMR roots.
             // Tests should set the mmr elsewhere.
             return res;

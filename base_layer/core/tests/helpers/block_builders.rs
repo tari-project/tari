@@ -51,13 +51,9 @@ use tari_core::{
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
     KernelMmr,
-    OutputSmt,
     PrunedOutputMmr,
 };
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
-};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_script::script;
 use tari_utilities::ByteArray;
 

@@ -29,7 +29,6 @@ use std::{
 
 use jmt::{
     mock::MockTreeStore,
-    restore::JellyfishMerkleRestore,
     storage::{TreeReader, TreeUpdateBatch, TreeWriter},
     JellyfishMerkleTree,
     KeyHash,

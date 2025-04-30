@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
-
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
 use log::{info, warn};
@@ -179,7 +177,7 @@ mod test {
         let (_sk, commitment) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let smt_key = KeyHash(commitment.as_bytes().try_into().expect("Key hash is always 32 bytes"));
         let value = b"test_value".to_vec();
-        let (root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
+        let (_root, updates) = jmt.put_value_set(vec![(smt_key, Some(value.clone()))], 0).unwrap();
         tree_writer.write_node_batch(&updates.node_batch).unwrap();
 
         txn.commit().unwrap();
