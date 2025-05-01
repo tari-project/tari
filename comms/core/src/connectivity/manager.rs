@@ -440,9 +440,15 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
+                
+                let node_id = conn.peer_node_id().clone();
+                
+                // Record the disconnection in history
+                self.connection_history.record_disconnection(&node_id);
+                
                 match disconnect_silent_with_timeout(conn, Minimized::No, None).await {
                     Ok(_) => {
-                        node_ids.push(conn.peer_node_id().clone());
+                        node_ids.push(node_id);
                     },
                     Err(err) => {
                         debug!(
@@ -660,16 +666,21 @@ impl ConnectivityManagerActor {
         // Disconnect all remaining peers above the threshold
         let len = connections.len();
         for conn in connections.iter_mut().skip(threshold) {
+            let node_id = conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
                 "minimize_connections: ({}) Disconnecting '{}' because the node is not among the {} closest peers",
                 task_id,
-                conn.peer_node_id(),
+                node_id,
                 threshold
             );
+            
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(&node_id);
+            
             match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    self.pool.remove(conn.peer_node_id());
+                    self.pool.remove(&node_id);
                 },
                 Err(err) => {
                     debug!(
@@ -712,16 +723,21 @@ impl ConnectivityManagerActor {
                 continue;
             }
 
+            let node_id = conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
                 "({}) Disconnecting '{}' because connection was inactive ({} handles)",
                 task_id,
-                conn.peer_node_id().short_str(),
+                node_id.short_str(),
                 conn.handle_count()
             );
+            
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(&node_id);
+            
             match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    nodes_to_remove.push(conn.peer_node_id().clone());
+                    nodes_to_remove.push(node_id);
                 },
                 Err(err) => {
                     debug!(
@@ -891,6 +907,9 @@ impl ConnectivityManagerActor {
                         return Ok(());
                     }
                 }
+                
+                // Remember that we recently spoke to this peer
+                self.connection_history.record_disconnection(node_id);
             },
             PeerViolation { peer_node_id, details } => {
                 self.ban_peer(
@@ -1244,6 +1263,9 @@ impl ConnectivityManagerActor {
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(node_id);
+            
             disconnect_with_timeout(conn, Minimized::Yes, None).await?;
             let status = self.pool.get_connection_status(node_id);
             debug!(
