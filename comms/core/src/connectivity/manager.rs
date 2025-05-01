@@ -474,6 +474,12 @@ impl ConnectivityManagerActor {
             self.pool.count_connected_clients()
         );
 
+        // Clean up old connection history
+        self.connection_history.cleanup(self.config.node_reconnection_cooldown * 2);
+        
+        // Perform scheduled rotation
+        self.rotate_connections(task_id).await?;
+        
         self.clean_connection_pool();
         if self.config.is_connection_reaping_enabled {
             self.reap_inactive_connections(task_id).await;
@@ -483,6 +489,94 @@ impl ConnectivityManagerActor {
         }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
+        Ok(())
+    }
+
+    async fn rotate_connections(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        // Check if it's time for daily rotation
+        if self.last_daily_rotation.elapsed() >= self.config.daily_rotation_interval {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Performing daily connection rotation", task_id
+            );
+            self.rotate_connection_group(
+                self.config.daily_rotation_connections,
+                self.config.long_lived_connections,
+                task_id
+            ).await?;
+            self.last_daily_rotation = Instant::now();
+        }
+        
+        // Check if it's time for frequent rotation
+        if self.last_frequent_rotation.elapsed() >= self.config.frequent_rotation_interval {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Performing frequent connection rotation", task_id
+            );
+            let start_index = self.config.long_lived_connections + self.config.daily_rotation_connections;
+            self.rotate_connection_group(
+                self.config.frequent_rotation_connections,
+                start_index,
+                task_id
+            ).await?;
+            self.last_frequent_rotation = Instant::now();
+        }
+        
+        Ok(())
+    }
+
+    // Helper method to rotate a specific group of connections
+    async fn rotate_connection_group(
+        &mut self, 
+        count: usize, 
+        start_index: usize, 
+        task_id: u64
+    ) -> Result<(), ConnectivityError> {
+        // Get all active outbound connections
+        let mut connections = self.pool
+            .get_outbound_connections_mut()
+            .into_iter()
+            .filter(|conn| conn.is_connected())
+            .collect::<Vec<_>>();
+        
+        // Sort by some deterministic criteria (e.g., node_id)
+        connections.sort_by(|a, b| a.peer_node_id().cmp(b.peer_node_id()));
+        
+        // Select the connections to rotate
+        let end_index = (start_index + count).min(connections.len());
+        if start_index >= connections.len() {
+            return Ok(());
+        }
+        
+        for conn in &mut connections[start_index..end_index] {
+            let node_id = conn.peer_node_id().clone();
+            debug!(
+                target: LOG_TARGET,
+                "({}) Rotating connection to '{}' as part of scheduled rotation",
+                task_id,
+                node_id.short_str()
+            );
+            
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(&node_id);
+            
+            // Disconnect
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
+                Ok(_) => {
+                    self.pool.remove(&node_id);
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Error disconnecting peer '{}' during rotation: {:?}",
+                        task_id,
+                        node_id.short_str(),
+                        err
+                    );
+                }
+            }
+        }
+        
         Ok(())
     }
 
