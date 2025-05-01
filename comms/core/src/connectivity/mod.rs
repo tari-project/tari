@@ -44,6 +44,8 @@ pub use manager::ConnectivityStatus;
 #[cfg(feature = "metrics")]
 mod metrics;
 
+pub mod connection_history;
+
 mod requester;
 pub(crate) use requester::ConnectivityRequest;
 pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
