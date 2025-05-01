@@ -385,10 +385,12 @@ impl ConnectivityManagerActor {
         
         // Check if the node is in cooldown
         if self.connection_history.is_in_cooldown(&node_id, self.config.node_reconnection_cooldown) {
-            debug!(
+            info!(  // Use info level for testing
                 target: LOG_TARGET,
-                "Not dialing peer '{}' because it's in cooldown period",
-                node_id.short_str()
+                "Not dialing peer '{}' because it's in cooldown period ({}m remaining)",
+                node_id.short_str(),
+                (self.config.node_reconnection_cooldown.as_secs() - 
+                 self.connection_history.time_since_disconnection(&node_id).unwrap_or_default().as_secs()) / 60
             );
             
             if let Some(reply) = reply_tx {
@@ -501,9 +503,11 @@ impl ConnectivityManagerActor {
     async fn rotate_connections(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
         // Check if it's time for daily rotation
         if self.last_daily_rotation.elapsed() >= self.config.daily_rotation_interval {
-            debug!(
+            info!(  // Use info level for testing
                 target: LOG_TARGET,
-                "({}) Performing daily connection rotation", task_id
+                "({}) Performing daily connection rotation (every {} minutes)",
+                task_id,
+                self.config.daily_rotation_interval.as_secs() / 60
             );
             self.rotate_connection_group(
                 self.config.daily_rotation_connections,
@@ -515,9 +519,11 @@ impl ConnectivityManagerActor {
         
         // Check if it's time for frequent rotation
         if self.last_frequent_rotation.elapsed() >= self.config.frequent_rotation_interval {
-            debug!(
+            info!(  // Use info level for testing
                 target: LOG_TARGET,
-                "({}) Performing frequent connection rotation", task_id
+                "({}) Performing frequent connection rotation (every {} minutes)",
+                task_id,
+                self.config.frequent_rotation_interval.as_secs() / 60
             );
             let start_index = self.config.long_lived_connections + self.config.daily_rotation_connections;
             self.rotate_connection_group(
