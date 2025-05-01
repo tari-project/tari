@@ -616,7 +616,7 @@ mod test {
             PeerFeatures::COMMUNICATION_NODE,
         ));
 
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
 
         let mock_state = dht_mock.get_shared_state();
@@ -664,7 +664,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         task::spawn(dht_mock.run());
         let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let spy = service_spy();
@@ -706,7 +706,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         task::spawn(dht_mock.run());
         let (dht_discover_requester, discovery_mock) = create_dht_discovery_mock(Duration::from_secs(10));
         let dht_discovery_state = discovery_mock.get_shared_state();

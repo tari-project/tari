@@ -54,8 +54,8 @@ const LOG_TARGET: &str = "mock::outbound_requester";
 /// Creates a mock outbound request "handler" for testing purposes.
 ///
 /// Each time a request is expected, handle_next should be called.
-pub fn create_outbound_service_mock(size: usize) -> (OutboundMessageRequester, OutboundServiceMock) {
-    let (tx, rx) = mpsc::channel(size);
+pub fn create_outbound_service_mock() -> (OutboundMessageRequester, OutboundServiceMock) {
+    let (tx, rx) = mpsc::unbounded_channel();
     (OutboundMessageRequester::new(tx), OutboundServiceMock::new(rx))
 }
 
@@ -172,12 +172,12 @@ impl Default for OutboundServiceMockState {
 }
 
 pub struct OutboundServiceMock {
-    receiver: mpsc::Receiver<DhtOutboundRequest>,
+    receiver: mpsc::UnboundedReceiver<DhtOutboundRequest>,
     mock_state: OutboundServiceMockState,
 }
 
 impl OutboundServiceMock {
-    pub fn new(receiver: mpsc::Receiver<DhtOutboundRequest>) -> Self {
+    pub fn new(receiver: mpsc::UnboundedReceiver<DhtOutboundRequest>) -> Self {
         Self {
             receiver,
             mock_state: OutboundServiceMockState::new(),

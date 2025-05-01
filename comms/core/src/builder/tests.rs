@@ -62,7 +62,7 @@ async fn spawn_node(
 ) -> (
     CommsNode,
     mpsc::Receiver<InboundMessage>,
-    mpsc::Sender<OutboundMessage>,
+    mpsc::UnboundedSender<OutboundMessage>,
     MessagingEventSender,
 ) {
     let addr = format!("/memory/{}", memsocket::acquire_next_memsocket_port())
@@ -72,7 +72,7 @@ async fn spawn_node(
     node_identity.add_public_address(addr.clone());
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings.
@@ -249,7 +249,7 @@ async fn peer_to_peer_messaging() {
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             reply_tx.into(),
         );
-        outbound_tx1.send(outbound_msg).await.unwrap();
+        outbound_tx1.send(outbound_msg).unwrap();
     }
 
     let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -269,7 +269,7 @@ async fn peer_to_peer_messaging() {
             node_identity1.node_id().clone(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
-        outbound_tx2.send(outbound_msg).await.unwrap();
+        outbound_tx2.send(outbound_msg).unwrap();
     }
 
     let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -357,7 +357,7 @@ async fn peer_to_peer_messaging_simultaneous() {
                 node_identity2.node_id().clone(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
-            outbound_tx1.send(outbound_msg).await.unwrap();
+            outbound_tx1.send(outbound_msg).unwrap();
         }
     });
 
@@ -367,7 +367,7 @@ async fn peer_to_peer_messaging_simultaneous() {
                 node_identity1.node_id().clone(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
-            outbound_tx2.send(outbound_msg).await.unwrap();
+            outbound_tx2.send(outbound_msg).unwrap();
         }
     });
 

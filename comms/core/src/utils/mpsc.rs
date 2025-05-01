@@ -31,3 +31,13 @@ pub async fn send_all<T, I: IntoIterator<Item = T>>(
     }
     Ok(())
 }
+
+pub fn send_all_unbounded<T, I: IntoIterator<Item = T>>(
+    sender: &mpsc::UnboundedSender<T>,
+    iter: I,
+) -> Result<(), mpsc::error::SendError<T>> {
+    for item in iter {
+        sender.send(item)?;
+    }
+    Ok(())
+}

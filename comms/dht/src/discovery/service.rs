@@ -393,7 +393,7 @@ mod test {
     async fn send_discovery() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());
 
@@ -401,7 +401,7 @@ mod test {
         // Requester which timeout instantly
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
         let shutdown = Shutdown::new();
-        let (dht, _mock) = create_dht_actor_mock(1);
+        let (dht, _mock) = create_dht_actor_mock();
 
         DhtDiscoveryService::new(
             Default::default(),

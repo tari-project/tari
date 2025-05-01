@@ -61,7 +61,6 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht";
 
-const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
 const DHT_EVENT_BROADCAST_CHANNEL_SIZE: usize = 100;
 
@@ -86,9 +85,9 @@ pub struct Dht {
     /// Dht configuration
     config: Arc<DhtConfig>,
     /// Used to create a OutboundMessageRequester.
-    outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+    outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>,
     /// Sender for DHT requests
-    dht_sender: mpsc::Sender<DhtRequest>,
+    dht_sender: mpsc::UnboundedSender<DhtRequest>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connectivity actor requester
@@ -104,11 +103,11 @@ impl Dht {
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        outbound_tx: mpsc::Sender<DhtOutboundRequest>,
+        outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>,
         connectivity: ConnectivityRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, DhtInitializationError> {
-        let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
+        let (dht_sender, dht_receiver) = mpsc::unbounded_channel();
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
@@ -152,7 +151,7 @@ impl Dht {
     fn actor(
         &self,
         conn: DbConnection,
-        request_receiver: mpsc::Receiver<DhtRequest>,
+        request_receiver: mpsc::UnboundedReceiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> DhtActor {
         DhtActor::new(
@@ -421,7 +420,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::unbounded_channel();
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()
@@ -474,7 +473,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
-        let (out_tx, _) = mpsc::channel(10);
+        let (out_tx, _) = mpsc::unbounded_channel();
 
         let shutdown = Shutdown::new();
         let dht = Dht::builder()
@@ -528,7 +527,7 @@ mod test {
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         let (connectivity, _) = create_connectivity_mock();
-        let (oms_requester, oms_mock) = create_outbound_service_mock(1);
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
 
         // Send all outbound requests to the mock
         let dht = Dht::builder()

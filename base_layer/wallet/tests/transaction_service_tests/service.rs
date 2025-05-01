@@ -341,7 +341,7 @@ async fn setup_transaction_service_no_comms(
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
-    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
+    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock();
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);

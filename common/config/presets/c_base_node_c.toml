@@ -226,7 +226,7 @@ listener_self_liveness_check_interval = 15
 # The `DbConnectionUrl` for the Dht database. Default: In-memory database
 database_url = "data/base_node/dht.db"
 # The size of the buffer (channel) which holds pending outbound message requests. Default: 20
-#outbound_buffer_size = 20
+#outbound_buffer_size = 200
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
 #num_neighbouring_nodes = 6
 # Number of random peers to include. Default: 4

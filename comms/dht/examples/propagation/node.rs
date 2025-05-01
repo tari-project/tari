@@ -94,7 +94,7 @@ pub async fn create<P: AsRef<Path>>(
         .disable_connection_reaping();
 
     let (inbound_tx, inbound_rx) = mpsc::channel(1);
-    let (outbound_tx, outbound_rx) = mpsc::channel(1);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
     let (event_tx, _) = broadcast::channel(1);
 
     let mut hs_builder = tor::HiddenServiceBuilder::new()

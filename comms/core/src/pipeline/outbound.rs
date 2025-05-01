@@ -129,12 +129,11 @@ mod test {
     #[tokio::test]
     async fn run() {
         const NUM_ITEMS: usize = 10;
-        let (tx, mut in_receiver) = mpsc::channel(NUM_ITEMS);
-        utils::mpsc::send_all(
+        let (tx, mut in_receiver) = mpsc::unbounded_channel();
+        utils::mpsc::send_all_unbounded(
             &tx,
             (0..NUM_ITEMS).map(|i| OutboundMessage::new(Default::default(), Bytes::copy_from_slice(&i.to_be_bytes()))),
         )
-        .await
         .unwrap();
         in_receiver.close();
 

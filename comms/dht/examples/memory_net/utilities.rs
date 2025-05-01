@@ -716,7 +716,7 @@ async fn setup_comms_dht(
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()

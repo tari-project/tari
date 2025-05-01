@@ -66,7 +66,7 @@ async fn setup(
     let (connectivity, mock) = create_connectivity_mock();
     let connectivity_state = mock.get_shared_state();
     mock.spawn();
-    let (dht_requester, mock) = create_dht_actor_mock(1);
+    let (dht_requester, mock) = create_dht_actor_mock();
     let dht_state = mock.get_shared_state();
     mock.spawn();
     let (event_publisher, _) = broadcast::channel(1);

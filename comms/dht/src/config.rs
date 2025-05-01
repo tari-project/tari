@@ -171,7 +171,7 @@ impl Default for DhtConfig {
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,
-            outbound_buffer_size: 20,
+            outbound_buffer_size: 200,
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,

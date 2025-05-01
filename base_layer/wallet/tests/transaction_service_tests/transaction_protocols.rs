@@ -152,7 +152,7 @@ pub async fn setup() -> (
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
     let core_key_manager_service_handle = create_memory_db_key_manager().unwrap();
 
-    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
+    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock();
     let outbound_mock_state = mock_outbound_service.get_state();
     task::spawn(mock_outbound_service.run());
 

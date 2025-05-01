@@ -477,7 +477,7 @@ mod test {
         mock.spawn();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-        let (outbound_tx, _) = mpsc::channel(10);
+        let (outbound_tx, _) = mpsc::unbounded_channel();
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
@@ -514,7 +514,7 @@ mod test {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
@@ -594,7 +594,7 @@ mod test {
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
-        let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
+        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         let metadata = Metadata::new();
@@ -631,7 +631,7 @@ mod test {
 
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
-        let (outbound_tx, _) = mpsc::channel(10);
+        let (outbound_tx, _) = mpsc::unbounded_channel();
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         let mut metadata = Metadata::new();

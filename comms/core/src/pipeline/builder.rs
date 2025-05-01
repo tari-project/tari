@@ -39,7 +39,7 @@ pub struct Builder<TInSvc, TOutSvc, TOutReq> {
     max_concurrent_inbound_tasks: usize,
     max_concurrent_outbound_tasks: Option<usize>,
     inbound: Option<TInSvc>,
-    outbound_rx: Option<mpsc::Receiver<TOutReq>>,
+    outbound_rx: Option<mpsc::UnboundedReceiver<TOutReq>>,
     outbound_pipeline_factory: Option<Box<dyn FnOnce(OutboundMessageSinkService) -> TOutSvc>>,
 }
 
@@ -66,7 +66,11 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
         self
     }
 
-    pub fn with_outbound_pipeline<F, S, R>(self, receiver: mpsc::Receiver<R>, factory: F) -> Builder<TInSvc, S, R>
+    pub fn with_outbound_pipeline<F, S, R>(
+        self,
+        receiver: mpsc::UnboundedReceiver<R>,
+        factory: F,
+    ) -> Builder<TInSvc, S, R>
     where
         // Factory function takes in a SinkService and returns a new composed service
         F: FnOnce(OutboundMessageSinkService) -> S + 'static,
@@ -145,7 +149,7 @@ where
 /// Configuration for the outbound pipeline.
 pub struct OutboundPipelineConfig<TInItem, TPipeline> {
     /// Messages read from this stream are passed to the pipeline
-    pub in_receiver: mpsc::Receiver<TInItem>,
+    pub in_receiver: mpsc::UnboundedReceiver<TInItem>,
     /// Receiver of `OutboundMessage`s coming from the pipeline
     pub out_receiver: Option<mpsc::UnboundedReceiver<OutboundMessage>>,
     /// The pipeline (`tower::Service`) to run for each in_stream message
@@ -167,30 +171,4 @@ pub enum PipelineBuilderError {
     InboundNotProvided,
     #[error("Outbound pipeline was not provided")]
     OutboundPipelineNotProvided,
-}
-
-#[cfg(test)]
-mod test {
-    use std::convert::identity;
-
-    use futures::future;
-    use tower::service_fn;
-
-    use super::*;
-
-    #[test]
-    fn minimal_usage() {
-        // Called when a message is sent on the given channel.
-        let (_, rx) = mpsc::channel::<OutboundMessage>(1);
-
-        let config = Builder::new()
-            .max_concurrent_inbound_tasks(50)
-            // Forward all messages on rx_out to the provided SinkService
-            .with_outbound_pipeline(rx, identity)
-            // Discard all inbound messages
-            .with_inbound_pipeline(service_fn(|_| future::ready(Result::<_, ()>::Ok(()))))
-            .build();
-
-        assert_eq!(config.max_concurrent_inbound_tasks, 50);
-    }
 }

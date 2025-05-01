@@ -186,7 +186,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let dht = Dht::builder()
         .local_test()
@@ -350,7 +350,7 @@ async fn configure_comms_and_dht(
     let node_identity = comms.node_identity();
     let shutdown_signal = comms.shutdown_signal();
     // Create outbound channel
-    let (outbound_tx, outbound_rx) = mpsc::channel(config.dht.outbound_buffer_size);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
