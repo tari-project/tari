@@ -94,8 +94,9 @@ pub enum ConnectionManagerError {
     AllPeerAddressesAreExcluded(String),
     #[error("Yamux error: {0}")]
     YamuxControlError(#[from] YamuxControlError),
+    #[error("Peer is in cooldown period")]
+    PeerInCooldown,
 }
-
 impl From<yamux::ConnectionError> for ConnectionManagerError {
     fn from(err: yamux::ConnectionError) -> Self {
         ConnectionManagerError::YamuxConnectionError(err.to_string())

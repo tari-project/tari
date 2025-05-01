@@ -165,6 +165,9 @@ struct ConnectivityManagerActor {
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
+    connection_history: ConnectionHistory,
+    last_daily_rotation: Instant,
+    last_frequent_rotation: Instant,
 }
 
 impl ConnectivityManagerActor {
@@ -375,6 +378,21 @@ impl ConnectivityManagerActor {
                 return;
             },
         }
+        
+        // Check if the node is in cooldown
+        if self.connection_history.is_in_cooldown(&node_id, self.config.node_reconnection_cooldown) {
+            debug!(
+                target: LOG_TARGET,
+                "Not dialing peer '{}' because it's in cooldown period",
+                node_id.short_str()
+            );
+            
+            if let Some(reply) = reply_tx {
+                let _result = reply.send(Err(ConnectionManagerError::PeerInCooldown));
+            }
+            return;
+        }
+        
         match self.pool.get(&node_id) {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.
             Some(state) if state.is_connected() => {
