@@ -921,6 +921,7 @@ service Wallet {
   // - **amount** (uint64): Transaction amount in microTari.
   // - **payment_id** (bytes): Payment ID associated with the transaction.
   //
+
   // ### Example JavaScript gRPC client usage:
   // ```javascript
   // const call = client.streamTransactionEvents({});
