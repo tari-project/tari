@@ -21,6 +21,7 @@
 
 use std::io;
 
+use tari_common_sqlite::error::StorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     message::OutboundMessage,
@@ -70,6 +71,8 @@ pub enum Error {
     UnexpectedEof,
     #[error("Internal reply canceled")]
     ReplyCanceled(#[from] oneshot::error::RecvError),
+    #[error("StorageError: {0}")]
+    StorageError(#[from] StorageError),
 }
 
 impl From<MessageFormatError> for Error {

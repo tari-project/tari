@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
+use std::{collections::HashSet, convert::identity, hash::Hash, iter, time::Duration};
 
 use bytes::Bytes;
 use futures::stream::FuturesUnordered;
+use rand::{distributions::Alphanumeric, Rng};
+use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -42,7 +43,11 @@ use crate::{
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Substream,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        Peer,
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{
@@ -55,6 +60,14 @@ use crate::{
     transports::MemoryTransport,
     CommsNode,
 };
+
+fn random_name() -> String {
+    let mut rng = rand::thread_rng();
+    iter::repeat(())
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .take(8)
+        .collect::<String>()
+}
 
 async fn spawn_node(
     protocols: Protocols<Substream>,
@@ -74,6 +87,9 @@ async fn spawn_node(
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
+    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection);
+
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings.
         // <IrrelevantCalls>
@@ -81,7 +97,7 @@ async fn spawn_node(
         .with_shutdown_signal(shutdown_sig)
         // </IrrelevantCalls>
         .with_listener_address(addr)
-        .with_peer_storage(HashmapDatabase::new(), None)
+        .with_peer_storage(peers_db)
 
         .with_node_identity(node_identity)
         .build()

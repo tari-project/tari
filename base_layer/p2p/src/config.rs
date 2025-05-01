@@ -120,7 +120,7 @@ pub struct P2pConfig {
     pub public_addresses: MultiaddrList,
     /// Transport configuration
     pub transport: TransportConfig,
-    /// Path to the LMDB data files.
+    /// Path to the SQLite data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database
     pub peer_database_name: String,

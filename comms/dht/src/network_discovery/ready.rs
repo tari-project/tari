@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::peer_manager::PeerFeatures;
+use tari_comms::peer_manager::{PeerFeatures, STALE_PEER_THRESHOLD_DURATION};
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
@@ -140,11 +140,14 @@ impl DiscoveryReady {
                     );
                     self.context
                         .peer_manager
-                        .closest_peers(
+                        .closest_n_active_peers(
                             self.context.node_identity.node_id(),
                             num_peers_to_select,
                             self.context.all_attempted_peers.read().await.as_slice(),
                             Some(PeerFeatures::COMMUNICATION_NODE),
+                            Some(STALE_PEER_THRESHOLD_DURATION),
+                            true,
+                            None,
                         )
                         .await?
                         .into_iter()

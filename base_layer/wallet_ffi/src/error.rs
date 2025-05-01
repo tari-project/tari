@@ -26,7 +26,7 @@ use minotari_wallet::{
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
 use tari_common_types::tari_address::TariAddressError;
-use tari_comms::multiaddr;
+use tari_comms::{multiaddr, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_core::transactions::transaction_key_manager::error::KeyManagerServiceError;
 use tari_crypto::{
@@ -541,6 +541,16 @@ impl From<KeyManagerServiceError> for LibWalletError {
         error!(target: LOG_TARGET, "{}", format!("{:?}", err));
         Self {
             code: 458,
+            message: format!("{:?}", err),
+        }
+    }
+}
+
+impl From<PeerManagerError> for LibWalletError {
+    fn from(err: PeerManagerError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 459,
             message: format!("{:?}", err),
         }
     }

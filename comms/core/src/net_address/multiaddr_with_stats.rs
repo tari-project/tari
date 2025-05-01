@@ -58,6 +58,36 @@ impl MultiaddrWithStats {
         addr
     }
 
+    /// Constructs a new net address with stats. The caller must ensure that all the values are valid, including the
+    /// quality score.
+    pub fn new_with_stats(
+        address: Multiaddr,
+        last_seen: Option<NaiveDateTime>,
+        connection_attempts: u32,
+        avg_initial_dial_time: Option<Duration>,
+        initial_dial_time_sample_count: u32,
+        avg_latency: Option<Duration>,
+        latency_sample_count: u32,
+        last_attempted: Option<NaiveDateTime>,
+        last_failed_reason: Option<String>,
+        quality_score: Option<i32>,
+        source: PeerAddressSource,
+    ) -> Self {
+        Self {
+            address,
+            last_seen,
+            connection_attempts,
+            avg_initial_dial_time,
+            initial_dial_time_sample_count,
+            avg_latency,
+            latency_sample_count,
+            last_attempted,
+            last_failed_reason,
+            quality_score,
+            source,
+        }
+    }
+
     pub fn merge(&mut self, other: &Self) {
         if self.address == other.address {
             trace!(

@@ -20,10 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::iter;
+
+use rand::{distributions::Alphanumeric, Rng};
+use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 
 use crate::{
+    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
     protocol::rpc::{
         test::mock::{MockRpcClient, MockRpcService},
         RpcError,
@@ -33,9 +38,16 @@ use crate::{
     },
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
-    types::CommsDatabase,
     CommsBuilder,
 };
+
+fn random_name() -> String {
+    let mut rng = rand::thread_rng();
+    iter::repeat(())
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .take(8)
+        .collect::<String>()
+}
 
 #[tokio::test]
 async fn run_service() {
@@ -43,11 +55,13 @@ async fn run_service() {
     let rpc_service = MockRpcService::new();
     let mock_state = rpc_service.shared_state();
     let shutdown = Shutdown::new();
+    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection);
     let comms1 = CommsBuilder::new()
         .with_listener_address(node_identity1.first_public_address().unwrap())
         .with_node_identity(node_identity1)
         .with_shutdown_signal(shutdown.to_signal())
-        .with_peer_storage(CommsDatabase::new(), None)
+        .with_peer_storage(peers_db)
         .build()
         .unwrap()
         .add_rpc_server(RpcServer::new().add_service(rpc_service))
@@ -56,11 +70,13 @@ async fn run_service() {
         .unwrap();
 
     let node_identity2 = build_node_identity(Default::default());
+    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection);
     let comms2 = CommsBuilder::new()
         .with_listener_address(node_identity2.first_public_address().unwrap())
         .with_shutdown_signal(shutdown.to_signal())
         .with_node_identity(node_identity2.clone())
-        .with_peer_storage(CommsDatabase::new(), None)
+        .with_peer_storage(peers_db)
         .build()
         .unwrap();
 

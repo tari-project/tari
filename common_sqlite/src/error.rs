@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::Error;
 use std::num::TryFromIntError;
 
 use diesel::r2d2;
-use tari_utilities::message_format::MessageFormatError;
+use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 use thiserror::Error;
 use tokio::task;
 
@@ -63,10 +64,26 @@ pub enum StorageError {
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]
     DieselR2d2Error(#[from] SqliteStorageError),
+    #[error("Hex conversion error: `{0}`")]
+    HexError(String),
+    #[error("Json conversion error: `{0}`")]
+    JsonError(String),
+    #[error("TryFromInt conversion error: `{0}`")]
+    TryFromIntError(#[from] TryFromIntError),
+    #[error("The requested peer does not exist")]
+    PeerNotFoundError,
+    #[error("Error: `{0}`")]
+    Error(#[from] Error),
 }
 
 impl From<MessageFormatError> for StorageError {
     fn from(value: MessageFormatError) -> Self {
         StorageError::MessageFormatError(value.to_string())
+    }
+}
+
+impl From<HexError> for StorageError {
+    fn from(value: HexError) -> Self {
+        StorageError::HexError(value.to_string())
     }
 }

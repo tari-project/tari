@@ -56,6 +56,13 @@ bitflags! {
     }
 }
 
+impl PeerFlags {
+    /// Returns the bits of the PeerFlags as an i32
+    pub fn to_i32(&self) -> i32 {
+        i32::from_le_bytes([self.bits(), 0, 0, 0])
+    }
+}
+
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
@@ -116,6 +123,40 @@ impl Peer {
             user_agent,
             metadata: HashMap::new(),
             deleted_at: None,
+        }
+    }
+
+    /// Constructs a new peer with stats.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_stats(
+        id: Option<PeerId>,
+        public_key: CommsPublicKey,
+        node_id: NodeId,
+        addresses: MultiaddressesWithStats,
+        flags: PeerFlags,
+        banned_until: Option<NaiveDateTime>,
+        banned_reason: String,
+        features: PeerFeatures,
+        supported_protocols: Vec<ProtocolId>,
+        added_at: NaiveDateTime,
+        user_agent: String,
+        metadata: HashMap<u8, Vec<u8>>,
+        deleted_at: Option<NaiveDateTime>,
+    ) -> Peer {
+        Peer {
+            id,
+            public_key,
+            node_id,
+            addresses,
+            flags,
+            features,
+            banned_until,
+            banned_reason,
+            added_at,
+            supported_protocols,
+            user_agent,
+            metadata,
+            deleted_at,
         }
     }
 

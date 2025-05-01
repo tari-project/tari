@@ -23,8 +23,11 @@
 use std::sync::PoisonError;
 
 use multiaddr::Multiaddr;
+use tari_common_sqlite::error::StorageError;
 use tari_storage::KeyValStoreError;
+use tari_utilities::hex::HexError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use crate::peer_manager::NodeId;
 
@@ -39,6 +42,10 @@ pub enum PeerManagerError {
     BannedPeer,
     #[error("A problem has been encountered with the database: {0}")]
     DatabaseError(#[from] KeyValStoreError),
+    #[error("A problem has been encountered with the sql database: {0}")]
+    StorageError(String),
+    #[error("A problem has been encountered with the sql database: {0}")]
+    SqlDatabaseError(String),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),
     #[error("Identity signature is invalid")]
@@ -59,6 +66,22 @@ pub enum PeerManagerError {
     InvalidVersionString,
     #[error("Peer version {peer_version} to older than the minimum required version {min_version}")]
     PeerVersionTooOld { min_version: String, peer_version: String },
+    #[error("Hex conversion error: `{0}`")]
+    HexError(String),
+    #[error("Tokio task join error: `{0}`")]
+    JoinError(String),
+}
+
+impl From<JoinError> for PeerManagerError {
+    fn from(err: JoinError) -> Self {
+        PeerManagerError::JoinError(err.to_string())
+    }
+}
+
+impl From<StorageError> for PeerManagerError {
+    fn from(err: StorageError) -> Self {
+        PeerManagerError::StorageError(err.to_string())
+    }
 }
 
 impl PeerManagerError {
@@ -71,5 +94,17 @@ impl PeerManagerError {
 impl<T> From<PoisonError<T>> for PeerManagerError {
     fn from(_: PoisonError<T>) -> Self {
         PeerManagerError::DatabaseError(KeyValStoreError::PoisonedAccess)
+    }
+}
+
+impl From<HexError> for PeerManagerError {
+    fn from(value: HexError) -> Self {
+        PeerManagerError::HexError(value.to_string())
+    }
+}
+
+impl From<std::io::Error> for PeerManagerError {
+    fn from(value: std::io::Error) -> Self {
+        PeerManagerError::StorageError(value.to_string())
     }
 }

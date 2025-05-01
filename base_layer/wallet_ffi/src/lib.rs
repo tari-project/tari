@@ -135,7 +135,7 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
-    peer_manager::{NodeIdentity, PeerQuery},
+    peer_manager::NodeIdentity,
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
@@ -6774,8 +6774,13 @@ pub unsafe extern "C" fn wallet_create(
 
             // Lets set the base node peers
             let peer_manager = w.comms.peer_manager();
-            let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
+            let peers = match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+                Ok(peers) => peers,
+                Err(e) => {
+                    *error_out = LibWalletError::from(e).code;
+                    return ptr::null_mut();
+                },
+            };
 
             if !peers.is_empty() {
                 let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
@@ -7686,17 +7691,20 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
         return ptr::null_mut();
     }
     let peer_manager = (*wallet).wallet.comms.peer_manager();
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    #[allow(clippy::blocks_in_conditions)]
-    match (*wallet).runtime.block_on(async move {
-        let peers = peer_manager.perform_query(query).await?;
-        let mut public_keys = Vec::with_capacity(peers.len());
-        for peer in peers {
-            public_keys.push(peer.public_key);
-        }
-        Result::<_, WalletError>::Ok(public_keys)
-    }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+        Ok(peers) => {
+            let public_keys = peers.iter().map(|p| p.public_key.clone()).collect::<Vec<_>>();
+            Box::into_raw(Box::new(TariPublicKeys(public_keys)))
+        },
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -9612,22 +9620,20 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            return false;
+        },
+    };
     let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_public_keys = if base_node_public_keys.is_null() {
         let peer_manager = (*wallet).wallet.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_seed());
-        #[allow(clippy::blocks_in_conditions)]
-        match (*wallet).runtime.block_on(async move {
-            let peers = peer_manager.perform_query(query).await?;
-            let mut public_keys = Vec::with_capacity(peers.len());
-            for peer in peers {
-                public_keys.push(peer.public_key);
-            }
-            Result::<_, WalletError>::Ok(public_keys)
-        }) {
-            Ok(public_keys) => public_keys,
+        match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+            Ok(peers) => peers.iter().map(|p| p.public_key.clone()).collect::<Vec<_>>(),
             Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::NullError(format!("{}", e))).code;
+                *error_out = LibWalletError::from(e).code;
                 return false;
             },
         }
@@ -9647,13 +9653,6 @@ pub unsafe extern "C" fn wallet_start_recovery(
         };
         recovery_task_builder.with_recovery_message(message_str);
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return false;
-        },
-    };
     let mut recovery_task = match runtime.block_on(async {
         recovery_task_builder
             .with_peers(peer_public_keys)

@@ -59,7 +59,7 @@ fn setup_connectivity_manager(
     ConnectionManagerMockState,
     Shutdown,
 ) {
-    let peer_manager = build_peer_manager();
+    let peer_manager = build_peer_manager().unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (cm_requester, mock) = create_connection_manager_mock();
     let cm_mock_state = mock.get_shared_state();
@@ -154,7 +154,7 @@ async fn online_then_offline_then_online() {
     let client_connections = future::join_all(
         clients
             .iter()
-            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer.to_peer())),
+            .map(async |peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer.to_peer()).await),
     )
     .await
     .into_iter()
@@ -164,7 +164,7 @@ async fn online_then_offline_then_online() {
     let connections = future::join_all(
         (0..5)
             .map(|i| peers[i].clone())
-            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
+            .map(async |peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer).await),
     )
     .await
     .into_iter()
@@ -173,11 +173,13 @@ async fn online_then_offline_then_online() {
 
     connectivity
         .dial_many_peers(peers.iter().map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
     connectivity
         .dial_many_peers(clients.iter().map(|p| p.node_id().clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
@@ -327,7 +329,7 @@ async fn peer_selection() {
         peers
             .iter()
             .cloned()
-            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
+            .map(async |peer| create_peer_connection_mock_pair(peer, node_identity.to_peer()).await),
     )
     .await
     .into_iter()
@@ -336,6 +338,7 @@ async fn peer_selection() {
 
     connectivity
         .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
@@ -390,7 +393,7 @@ async fn pool_management() {
         peers
             .iter()
             .cloned()
-            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
+            .map(async |peer| create_peer_connection_mock_pair(peer, node_identity.to_peer()).await),
     )
     .await
     .into_iter()
@@ -399,6 +402,7 @@ async fn pool_management() {
 
     connectivity
         .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 

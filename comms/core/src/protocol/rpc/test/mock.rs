@@ -177,7 +177,7 @@ pub(crate) fn create_mocked_rpc_context() -> (RpcCommsBackend, ConnectivityManag
     let (connectivity, mock) = create_connectivity_mock();
     let mock_state = mock.get_shared_state();
     mock.spawn();
-    let peer_manager = build_peer_manager();
+    let peer_manager = build_peer_manager().unwrap();
 
     (RpcCommsBackend::new(peer_manager, connectivity), mock_state)
 }

@@ -72,7 +72,7 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
         Self {
             public_key: node_identity.public_key().to_vec(),
             addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
-            peer_features: node_identity.features().bits(),
+            peer_features: node_identity.features().bits().into(),
             nonce: OsRng.next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
         }
@@ -86,7 +86,7 @@ impl fmt::Display for dht::JoinMessage {
             "JoinMessage(PK = {}, {} Addresses, Features = {:?})",
             self.public_key.to_hex(),
             self.addresses.len(),
-            PeerFeatures::from_bits(self.peer_features),
+            PeerFeatures::from_bits_u32_truncate(self.peer_features),
         )
     }
 }
@@ -106,7 +106,7 @@ impl From<PeerIdentityClaim> for rpc::PeerIdentityClaim {
     fn from(value: PeerIdentityClaim) -> Self {
         Self {
             addresses: value.addresses.iter().map(|a| a.to_vec()).collect(),
-            peer_features: value.features.bits(),
+            peer_features: value.features.bits().into(),
             identity_signature: Some((&value.signature).into()),
         }
     }
@@ -138,7 +138,8 @@ impl TryFrom<rpc::PeerIdentityClaim> for PeerIdentityClaim {
             .filter_map(|addr| Multiaddr::try_from(addr).ok())
             .collect::<Vec<_>>();
 
-        let features = PeerFeatures::from_bits(value.peer_features).ok_or_else(|| anyhow!("Invalid peer features"))?;
+        let features = PeerFeatures::from_bits_u32_truncate(value.peer_features)
+            .ok_or_else(|| anyhow!("Invalid peer features"))?;
         let signature = value
             .identity_signature
             .map(TryInto::try_into)

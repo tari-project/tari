@@ -37,7 +37,7 @@ use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
     types::CommsPublicKey,
     PeerConnection,
 };
@@ -787,55 +787,23 @@ impl DhtActor {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        let mut connect_ineligable_count = 0;
-        let mut banned_count = 0;
-        let mut excluded_count = 0;
-        let mut filtered_out_node_count = 0;
-
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                if peer.is_banned() {
-                    banned_count += 1;
-                    return false;
-                }
-
-                if !peer.features.contains(features) {
-                    filtered_out_node_count += 1;
-                    return false;
-                }
-
-                if peer.is_offline() {
-                    connect_ineligable_count += 1;
-                    return false;
-                }
-
-                let is_excluded = excluded_peers.contains(&peer.node_id);
-                if is_excluded {
-                    excluded_count += 1;
-                    return false;
-                }
-
-                true
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
-            .limit(n);
-
-        let peers = peer_manager.perform_query(query).await?;
-        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
-                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
-                 explicitly excluded",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
+        let peers = peer_manager
+            .closest_n_active_peers(
+                node_id,
+                n,
+                excluded_peers,
+                Some(features),
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
+            .await?;
+        debug!(
+            target: LOG_TARGET,
+            "👨‍👧‍👦 Closest Peer Selection: {} peer(s) selected, {} explicitly excluded",
+            peers.len(),
+            excluded_peers.len(),
+        );
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
@@ -905,7 +873,7 @@ impl DiscoveryDialTask {
     }
 
     pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
-        if self.peer_manager.exists(&public_key).await {
+        if self.peer_manager.exists(&public_key).await? {
             let node_id = NodeId::from_public_key(&public_key);
             match self.connectivity.dial_peer(node_id).await {
                 Ok(conn) => Ok(conn),

@@ -53,7 +53,7 @@ use crate::{
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
-    let peer_manager = build_peer_manager();
+    let peer_manager = build_peer_manager()?;
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
@@ -89,7 +89,7 @@ async fn smoke() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager().unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -108,7 +108,7 @@ async fn smoke() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager().unwrap();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
@@ -192,7 +192,7 @@ async fn banned() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager().unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -216,7 +216,7 @@ async fn banned() {
 
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager().unwrap();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
@@ -266,7 +266,7 @@ async fn excluded_yes() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager().unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -285,7 +285,7 @@ async fn excluded_yes() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager().unwrap();
     let connection_manager_config = ConnectionManagerConfig {
         excluded_dial_addresses: vec![address.to_string().parse().unwrap()],
         ..Default::default()
@@ -335,7 +335,7 @@ async fn excluded_no() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager().unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -354,7 +354,7 @@ async fn excluded_no() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager().unwrap();
     let connection_manager_config = ConnectionManagerConfig {
         excluded_dial_addresses: vec![],
         ..Default::default()

@@ -944,8 +944,17 @@ impl AppStateInner {
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
         for c in &connections {
-            if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
-                peers.push(p);
+            match peer_manager.find_by_node_id(c.peer_node_id()).await {
+                Ok(Some(p)) => peers.push(p),
+                Ok(None) => {}, // not found – ignore
+                Err(e) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Failed to look up peer {}: {}",
+                        c.peer_node_id(),
+                        e
+                    );
+                },
             }
         }
         self.data.connected_peers = peers;

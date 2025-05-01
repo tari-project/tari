@@ -25,7 +25,7 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
     connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     test_utils::{
         count_string_occurrences,
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
@@ -104,7 +104,15 @@ async fn initialize() {
         setup(config, make_node_identity(), peers).await;
     dht_connectivity.spawn();
     let neighbours = peer_manager
-        .closest_peers(node_identity.node_id(), 4, &[], Some(PeerFeatures::COMMUNICATION_NODE))
+        .closest_n_active_peers(
+            node_identity.node_id(),
+            4,
+            &[],
+            Some(PeerFeatures::COMMUNICATION_NODE),
+            Some(STALE_PEER_THRESHOLD_DURATION),
+            true,
+            None,
+        )
         .await
         .unwrap()
         .into_iter()

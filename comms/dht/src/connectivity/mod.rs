@@ -50,7 +50,7 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
-    peer_manager::{NodeDistance, NodeId, Peer, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
     Minimized,
     NodeIdentity,
     PeerConnection,
@@ -556,14 +556,15 @@ impl DhtConnectivity {
     }
 
     async fn pool_peers_with_active_connections_by_distance(&self) -> Result<Vec<Peer>, DhtConnectivityError> {
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                self.connection_handles
-                    .iter()
-                    .any(|conn| conn.peer_node_id() == &peer.node_id)
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(self.node_identity.node_id()));
-        let peers_by_distance = self.peer_manager.perform_query(query).await?;
+        let peer_list = self
+            .connection_handles
+            .iter()
+            .map(|conn| conn.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut peers_by_distance = self.peer_manager.get_peers_by_node_ids(&peer_list).await?;
+        peers_by_distance.sort_by_key(|a| a.node_id.distance(self.node_identity.node_id()));
+
         debug!(
             target: LOG_TARGET,
             "minimize_connections: Filtered peers: {}, Handles: {}",
@@ -944,69 +945,48 @@ impl DhtConnectivity {
     ) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let peer_allow_list = self.peer_allow_list().await?;
         let neighbour_distance = self.max_neighbour_distance_all_conncetions().await?;
-        let peer_manager = &self.peer_manager;
         let self_node_id = self.node_identity.node_id();
-        let connected_pool_peers = self.connected_pool_peers_iter().collect::<Vec<_>>();
-
         let mut excluded = excluded.to_vec();
+
+        // Exclude allowlist and already-connected peers at DB level
         excluded.extend(peer_allow_list);
+        excluded.extend(self.connected_pool_peers_iter().cloned());
 
-        // Fetch to all n nearest neighbour Communication Nodes
-        // which are eligible for connection.
+        // Set query options based on whether we're reviving
+        let (stale_peer_threshold, exclude_if_all_address_failed) = if try_revive_connections {
+            (Some(STALE_PEER_THRESHOLD_DURATION), false)
+        } else {
+            (Some(self.config.offline_peer_cooldown), true)
+        };
+
+        // Apply optional distance constraint only if minimize_connections is enabled
+        let exclusion_distance = if self.config.minimize_connections {
+            Some(neighbour_distance)
+        } else {
+            None
+        };
+
+        // Fetch n nearest neighbour Communication Nodes which are eligible for connection.
         // Currently, that means:
-        // - The peer isn't banned,
-        // - it has the required features
-        // - it didn't recently fail to connect, and
-        // - it is not in the exclusion list in closest_request
-        let offline_cooldown = self.config.offline_peer_cooldown;
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                if peer.is_banned() {
-                    return false;
-                }
+        // - the peer isn't banned;
+        // - it has the required feature;
+        // - it didn't recently fail to connect; and
+        // - it is not in the exclusion list in closest_request.
+        let peers = self
+            .peer_manager
+            .closest_n_active_peers(
+                self_node_id,
+                n,
+                &excluded,
+                Some(PeerFeatures::COMMUNICATION_NODE),
+                stale_peer_threshold,
+                exclude_if_all_address_failed,
+                exclusion_distance,
+            )
+            .await?;
 
-                if peer.features.is_client() {
-                    return false;
-                }
-
-                if connected_pool_peers.contains(&&peer.node_id) {
-                    return false;
-                }
-
-                if !try_revive_connections {
-                    if peer
-                        .offline_since()
-                        .map(|since| since <= offline_cooldown)
-                        .unwrap_or(false)
-                    {
-                        return false;
-                    }
-                    // we have tried to connect to this peer, and we have never made a successful attempt at connection
-                    if peer.all_addresses_failed() {
-                        return false;
-                    }
-                }
-
-                let is_excluded = excluded.contains(&peer.node_id);
-                if is_excluded {
-                    return false;
-                }
-
-                if self.config.minimize_connections {
-                    // If the peer is not closer, return false
-                    if self_node_id.distance(&peer.node_id) >= neighbour_distance {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(self_node_id))
-            .limit(n);
-
-        let peers = peer_manager.perform_query(query).await?;
-
-        Ok(peers.into_iter().map(|p| p.node_id).take(n).collect())
+        // Return up to n node IDs
+        Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 
     async fn fetch_random_peers(&mut self, n: usize, excluded: &[NodeId]) -> Result<Vec<NodeId>, DhtConnectivityError> {

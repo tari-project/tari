@@ -61,7 +61,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures, PeerQuery},
+    peer_manager::{Peer, PeerFeatures},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -347,11 +347,10 @@ pub async fn set_peer_and_get_base_node_peer_config(
             }
         }
     }
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    let peer_seeds = wallet.comms.peer_manager().perform_query(query).await.map_err(|err| {
+    let peer_seeds = wallet.comms.peer_manager().get_seed_peers().await.map_err(|err| {
         ExitError::new(
             ExitCode::InterfaceError,
-            format!("Could net get seed peers from peer manager: {}", err),
+            format!("Could not get seed peers from peer manager: {}", err),
         )
     })?;
     // config

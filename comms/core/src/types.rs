@@ -31,12 +31,8 @@ use tari_crypto::{
     signatures::{CompressedSchnorrSignature, SchnorrSignature},
 };
 use tari_storage::lmdb_store::LMDBStore;
-#[cfg(test)]
-use tari_storage::HashmapDatabase;
-#[cfg(not(test))]
-use tari_storage::LMDBWrapper;
 
-use crate::peer_manager::{Peer, PeerId};
+use crate::peer_manager::database::PeerDatabaseSql;
 
 /// Public key type
 pub type CommsPublicKey = CompressedKey<RistrettoPublicKey>;
@@ -56,9 +52,6 @@ pub type CommsRng = rand::rngs::OsRng;
 /// Datastore and Database used for persistence storage
 pub type CommsDataStore = LMDBStore;
 
-#[cfg(not(test))]
-pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
-#[cfg(test)]
-pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
+pub type CommsDatabase = PeerDatabaseSql;
 
 hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);

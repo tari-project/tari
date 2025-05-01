@@ -35,7 +35,7 @@ mod placeholder;
 #[cfg(test)]
 mod tests;
 
-use std::{fs::File, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, mpsc};
@@ -71,7 +71,10 @@ use crate::{
 /// # #[tokio::main]
 /// # async fn main() {
 /// use std::env::temp_dir;
+/// use tari_common_sqlite::connection::DbConnection;
 /// use tari_comms::connectivity::ConnectivityConfig;
+/// use tari_comms::peer_manager::database::{PeerDatabaseSql, MIGRATIONS};
+/// use tari_comms::test_utils::peer_manager::random_name;
 ///
 /// use tari_storage::{
 ///     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -84,21 +87,13 @@ use crate::{
 /// ));
 /// node_identity.sign();
 /// let mut shutdown = Shutdown::new();
-/// let datastore = LMDBBuilder::new()
-///     .set_path(temp_dir())
-///     .set_env_config(LMDBConfig::default())
-///     .set_max_number_of_databases(1)
-///     .add_database("peers", lmdb_zero::db::CREATE)
-///     .build()
-///     .unwrap();
-///
-/// let peer_database = datastore.get_handle("peers").unwrap();
-/// let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+/// let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+/// let peer_database = PeerDatabaseSql::new(db_connection);
 ///
 /// let unspawned_node = CommsBuilder::new()
 ///   // .with_listener_address("/ip4/0.0.0.0/tcp/18000".parse().unwrap())
 ///   .with_node_identity(node_identity)
-///   .with_peer_storage(peer_database, None)
+///   .with_peer_storage(peer_database)
 ///   .with_shutdown_signal(shutdown.to_signal())
 ///   .build()
 ///   .unwrap();
@@ -121,7 +116,6 @@ use crate::{
 /// [CommsBuilder]: crate::CommsBuilder
 pub struct CommsBuilder {
     peer_storage: Option<CommsDatabase>,
-    peer_storage_file_lock: Option<File>,
     node_identity: Option<Arc<NodeIdentity>>,
     dial_backoff: BoxedBackoff,
     hidden_service_ctl: Option<tor::HiddenServiceController>,
@@ -135,7 +129,6 @@ impl Default for CommsBuilder {
     fn default() -> Self {
         Self {
             peer_storage: None,
-            peer_storage_file_lock: None,
             node_identity: None,
             dial_backoff: Box::new(ConstantBackoff::new(Duration::from_millis(500))),
             hidden_service_ctl: None,
@@ -281,9 +274,8 @@ impl CommsBuilder {
     }
 
     /// Set the peer storage database to use.
-    pub fn with_peer_storage(mut self, peer_storage: CommsDatabase, file_lock: Option<File>) -> Self {
+    pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);
-        self.peer_storage_file_lock = file_lock;
         self
     }
 
@@ -313,29 +305,9 @@ impl CommsBuilder {
     }
 
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
-        let file_lock = self.peer_storage_file_lock.take();
-
         match self.peer_storage.take() {
             Some(storage) => {
-                #[cfg(not(test))]
-                PeerManager::migrate_lmdb(&storage.inner())?;
-                let min_peer_version = if self
-                    .connection_manager_config
-                    .peer_validation_config
-                    .min_peer_version
-                    .is_empty()
-                {
-                    None
-                } else {
-                    Some(
-                        self.connection_manager_config
-                            .peer_validation_config
-                            .min_peer_version
-                            .clone(),
-                    )
-                };
-                let peer_manager = PeerManager::new(storage, file_lock, min_peer_version)
-                    .map_err(CommsBuilderError::PeerManagerError)?;
+                let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
             None => Err(CommsBuilderError::PeerStorageNotProvided),

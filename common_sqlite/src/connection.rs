@@ -117,6 +117,13 @@ impl DbConnection {
     pub fn connect_url(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
 
+        // Ensure the path exists
+        if let DbConnectionUrl::File(ref path) = db_url {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
         let mut pool = SqliteConnectionPool::new(
             db_url.to_url_string(),
             SQLITE_POOL_SIZE,
@@ -127,6 +134,14 @@ impl DbConnection {
         pool.create_pool()?;
 
         Ok(Self::new(pool))
+    }
+
+    /// Connect and migrate the database in memory, once complete, a handle to the migrated database is returned.
+    pub fn connect_memory_and_migrate(name: String, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
+        let conn = Self::connect_memory(name)?;
+        let output = conn.migrate(migrations)?;
+        debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
+        Ok(conn)
     }
 
     /// Connect and migrate the database, once complete, a handle to the migrated database is returned.

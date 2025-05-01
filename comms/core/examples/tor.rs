@@ -1,27 +1,38 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::identity,
+    env,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process,
+    sync::Arc,
+};
 
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
 use rand::{rngs::OsRng, thread_rng, RngCore};
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId},
     tor,
     CommsBuilder,
     CommsNode,
-};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
 };
 use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
@@ -159,15 +170,9 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     ),
     Error,
 > {
-    let datastore = LMDBBuilder::new()
-        .set_path(database_path.to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle("peerdb").unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+    let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+    let peer_database = PeerDatabaseSql::new(db_connection);
 
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
@@ -191,7 +196,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
         .with_listener_address(hs_controller.proxied_address())
-        .with_peer_storage(peer_database, None)
+        .with_peer_storage(peer_database)
         .build()
         .unwrap();
 

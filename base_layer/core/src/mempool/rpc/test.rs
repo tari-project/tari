@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
-use tempfile::{tempdir, TempDir};
 
 use crate::{
     mempool::{
@@ -31,13 +30,12 @@ use crate::{
     test_helpers::create_peer_manager,
 };
 
-fn setup() -> (MempoolRpcService, MempoolMockState, RpcRequestMock, TempDir) {
-    let tmp = tempdir().unwrap();
-    let peer_manager = create_peer_manager(&tmp);
+fn setup() -> (MempoolRpcService, MempoolMockState, RpcRequestMock) {
+    let peer_manager = create_peer_manager();
     let request_mock = RpcRequestMock::new(peer_manager);
     let (handle, state) = create_mempool_service_mock();
     let service = MempoolRpcService::new(handle);
-    (service, state, request_mock, tmp)
+    (service, state, request_mock)
 }
 
 mod get_stats {
@@ -46,7 +44,7 @@ mod get_stats {
 
     #[tokio::test]
     async fn it_returns_the_stats() {
-        let (service, mempool, req_mock, _tmpdir) = setup();
+        let (service, mempool, req_mock) = setup();
         let expected_stats = StatsResponse {
             unconfirmed_txs: 2,
 
@@ -70,7 +68,7 @@ mod get_state {
 
     #[tokio::test]
     async fn it_returns_the_state() {
-        let (service, mempool, req_mock, _tmpdir) = setup();
+        let (service, mempool, req_mock) = setup();
         let expected_state = StateResponse {
             unconfirmed_pool: vec![],
 
@@ -100,7 +98,7 @@ mod get_tx_state_by_excess_sig {
 
     #[tokio::test]
     async fn it_returns_the_storage_status() {
-        let (service, mempool, req_mock, _tmpdir) = setup();
+        let (service, mempool, req_mock) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_get_tx_by_excess_sig_stats_response(expected.clone()).await;
 
@@ -122,7 +120,7 @@ mod get_tx_state_by_excess_sig {
 
     #[tokio::test]
     async fn it_errors_on_invalid_signature() {
-        let (service, _, req_mock, _tmpdir) = setup();
+        let (service, _, req_mock) = setup();
         let status = service
             .get_transaction_state_by_excess_sig(req_mock.request_no_context(Default::default()))
             .await
@@ -146,7 +144,7 @@ mod submit_transaction {
 
     #[tokio::test]
     async fn it_submits_transaction() {
-        let (service, mempool, req_mock, _tmpdir) = setup();
+        let (service, mempool, req_mock) = setup();
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_submit_transaction_response(expected.clone()).await;
         let txn = Transaction {
@@ -173,7 +171,7 @@ mod submit_transaction {
 
     #[tokio::test]
     async fn it_errors_on_invalid_transaction() {
-        let (service, _, req_mock, _tmpdir) = setup();
+        let (service, _, req_mock) = setup();
         let status = service
             .submit_transaction(req_mock.request_with_context(Default::default(), Default::default()))
             .await

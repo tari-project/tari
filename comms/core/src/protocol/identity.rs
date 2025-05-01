@@ -67,7 +67,7 @@ where
     // Send this node's identity
     let msg_bytes = PeerIdentityMsg {
         addresses: node_identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
-        features: node_identity.features().bits(),
+        features: u32::from(node_identity.features().bits()),
         supported_protocols,
         user_agent: network_info.user_agent,
         identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
@@ -265,7 +265,7 @@ mod test {
         let identity2 = result1.unwrap();
         let identity1 = result2.unwrap();
 
-        assert_eq!(identity1.features, node_identity1.features().bits());
+        assert_eq!(identity1.features, u32::from(node_identity1.features().bits()));
         assert_eq!(
             identity1.addresses,
             node_identity1
@@ -275,7 +275,7 @@ mod test {
                 .collect::<Vec<_>>()
         );
 
-        assert_eq!(identity2.features, node_identity2.features().bits());
+        assert_eq!(identity2.features, u32::from(node_identity2.features().bits()));
         assert_eq!(
             identity2.addresses,
             node_identity2

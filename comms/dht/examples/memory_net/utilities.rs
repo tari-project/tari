@@ -32,11 +32,17 @@ use std::{
 use futures::future;
 use once_cell::sync::Lazy;
 use rand::{distributions, rngs::OsRng, Rng};
-use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{
@@ -59,11 +65,7 @@ use tari_comms_dht::{
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
-use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
+use tari_test_utils::{random, streams::convert_unbounded_mpsc_to_stream};
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},
@@ -200,6 +202,7 @@ pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
                 .peer_manager()
                 .exists_node_id(wallet.node_identity().node_id())
                 .await
+                .unwrap()
             {
                 num_known += 1;
             }
@@ -632,19 +635,10 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     ))
 }
 
-fn create_peer_storage() -> CommsDatabase {
+fn create_peer_storage() -> PeerDatabaseSql {
     let database_name = random::string(8);
-    let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path().to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    PeerStorage::new_indexed(peer_database).unwrap().into()
+    let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
+    PeerDatabaseSql::new(db_connection)
 }
 
 pub async fn make_node(
@@ -725,7 +719,7 @@ async fn setup_comms_dht(
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(1)
-        .with_peer_storage(storage,None)
+        .with_peer_storage(storage)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();

@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2019 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,37 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::PeerManagerError,
-    protocol::rpc::{RpcError, RpcStatus},
-};
-use tokio::task::JoinError;
-
-use crate::peer_validator::DhtPeerValidatorError;
-
-#[derive(thiserror::Error, Debug)]
-pub enum NetworkDiscoveryError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("RPC status error: {0}")]
-    RpcStatus(#[from] RpcStatus),
-    #[error("Peer manager error: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Connectivity error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Sync peer sent invalid peer: {0}")]
-    PeerValidationError(#[from] DhtPeerValidatorError),
-    #[error("Sync peer sent empty peer message")]
-    EmptyPeerMessageReceived,
-    #[error("Sync peer sent too many peers")]
-    TooManyPeersReceived,
-    #[error("Sync peer sent duplicate peer")]
-    DuplicatePeerReceived,
-    #[error("Sync peer sent invalid peer data: {0}")]
-    InvalidPeerDataReceived(anyhow::Error),
-    #[error("Tokio task join error: `{0}`")]
-    JoinError(#[from] JoinError),
-}
+pub mod database;
+pub mod schema;

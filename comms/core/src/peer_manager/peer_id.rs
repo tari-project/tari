@@ -25,6 +25,18 @@ use rand::{rngs::OsRng, RngCore};
 /// Represents a local peer id. This number is meaningless outside of this node.
 pub type PeerId = u64;
 
+/// Generates a random peer key that is guaranteed to be positive '< u64::MAX'.
 pub fn generate_peer_key() -> PeerId {
     OsRng.next_u64().saturating_sub(1)
+}
+
+/// Generates a random peer key that is guaranteed to be positive '< i64::MAX'.
+pub fn generate_peer_id_as_i64() -> i64 {
+    i64::try_from(generate_peer_key() % u64::try_from(i64::MAX).expect("infallible")).expect("infallible")
+}
+
+/// Converts a positive i64 to a PeerId. This is infallible as the value is guaranteed to be positive.
+pub fn peer_id_from_i64(value: i64) -> PeerId {
+    let value = if value == i64::MIN { i64::MAX } else { value.abs() };
+    u64::try_from(value).expect("infallible")
 }

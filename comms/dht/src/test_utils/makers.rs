@@ -22,16 +22,24 @@
 use std::{convert::TryInto, sync::Arc};
 
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::DbConnection;
 use tari_comms::{
     message::{InboundMessage, MessageExt, MessageTag},
     net_address::MultiaddressesWithStats,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManager,
+    },
     transports::MemoryTransport,
-    types::{CommsDHKE, CommsDatabase, CommsPublicKey, CommsSecretKey},
+    types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-use tari_test_utils::{paths::create_temporary_data_path, random};
+use tari_test_utils::random;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -231,21 +239,9 @@ pub fn make_dht_envelope<T: prost::Message>(
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    let database_name = random::string(8);
-    let path = create_temporary_data_path();
-    let datastore = LMDBBuilder::new()
-        .set_path(path.to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-
-    PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None, None)
-        .map(Arc::new)
-        .unwrap()
+    let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection);
+    Arc::new(PeerManager::new(peers_db).unwrap())
 }
 
 pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
