@@ -538,27 +538,30 @@ impl ConnectivityManagerActor {
         start_index: usize, 
         task_id: u64
     ) -> Result<(), ConnectivityError> {
-        // Get all active outbound connections
-        let mut connections = self.pool
-            .get_outbound_connections_mut()
-            .into_iter()
+        // Snapshot the outbound **NodeIds** first so that `self.pool` is no longer borrowed
+        let mut node_ids = self
+            .pool
+            .get_outbound_connections()
+            .iter()
             .filter(|conn| conn.is_connected())
+            .map(|conn| conn.peer_node_id().clone())
             .collect::<Vec<_>>();
-        
-        // Sort by some deterministic criteria (e.g., node_id)
-        connections.sort_by(|a, b| a.peer_node_id().cmp(b.peer_node_id()));
+
+        // Sort deterministically
+        node_ids.sort();
         
         // Select the connections to rotate
-        let end_index = (start_index + count).min(connections.len());
-        if start_index >= connections.len() {
+        let end_index = (start_index + count).min(node_ids.len());
+        if start_index >= node_ids.len() {
             return Ok(());
         }
         
         // Collect node IDs to disconnect
         let mut nodes_to_remove = Vec::new();
         
-        for conn in &mut connections[start_index..end_index] {
-            let node_id = conn.peer_node_id().clone();
+        for node_id in &node_ids[start_index..end_index] {
+            let Some(mut conn) = self.pool.get_connection_mut(node_id) else { continue };
+            
             debug!(
                 target: LOG_TARGET,
                 "({}) Rotating connection to '{}' as part of scheduled rotation",
@@ -567,12 +570,12 @@ impl ConnectivityManagerActor {
             );
             
             // Record the disconnection in history
-            self.connection_history.record_disconnection(&node_id);
+            self.connection_history.record_disconnection(node_id);
             
             // Disconnect
-            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
+            match disconnect_with_timeout(&mut conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    nodes_to_remove.push(node_id);
+                    nodes_to_remove.push(node_id.clone());
                 },
                 Err(err) => {
                     debug!(
