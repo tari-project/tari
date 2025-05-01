@@ -39,6 +39,7 @@ use tracing::{span, Instrument, Level};
 
 use super::{
     config::ConnectivityConfig,
+    connection_history::ConnectionHistory,
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
@@ -108,6 +109,9 @@ impl ConnectivityManager {
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
             allow_list: vec![],
+            connection_history: ConnectionHistory::new(),
+            last_daily_rotation: Instant::now(),
+            last_frequent_rotation: Instant::now(),
         }
         .spawn()
     }

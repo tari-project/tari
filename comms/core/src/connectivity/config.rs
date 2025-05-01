@@ -78,6 +78,12 @@ impl Default for ConnectivityConfig {
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
             maintain_n_closest_connections_only: None,
+            long_lived_connections: 16,
+            daily_rotation_connections: 12,
+            frequent_rotation_connections: 4,
+            node_reconnection_cooldown: Duration::from_secs(7 * 24 * 60 * 60), // 7 days
+            daily_rotation_interval: Duration::from_secs(24 * 60 * 60), // 24 hours
+            frequent_rotation_interval: Duration::from_secs(2 * 60 * 60), // 2 hours
         }
     }
 }
