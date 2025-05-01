@@ -182,6 +182,15 @@ impl ConnectionPool {
             .collect()
     }
 
+    /// Get all outbound connections (non-mutable references)
+    pub fn get_outbound_connections(&self) -> Vec<&PeerConnection> {
+        self.connections
+            .values()
+            .filter_map(|c| c.connection())
+            .filter(|conn| conn.is_connected() && conn.direction().is_outbound())
+            .collect()
+    }
+
     pub(in crate::connectivity) fn filter_drain<P>(&mut self, mut predicate: P) -> Vec<PeerConnectionState>
     where P: FnMut(&PeerConnectionState) -> bool {
         let (keep, remove) = self
