@@ -377,3 +377,21 @@ impl CommsBuilder {
         })
     }
 }
+impl CommsBuilder {
+    // ... existing methods ...
+    
+    /// Configure connection rotation settings
+    pub fn with_connection_rotation(
+        mut self, 
+        long_lived: usize, 
+        daily_rotation: usize, 
+        frequent_rotation: usize,
+        cooldown_days: u64
+    ) -> Self {
+        self.connectivity_config.long_lived_connections = long_lived;
+        self.connectivity_config.daily_rotation_connections = daily_rotation;
+        self.connectivity_config.frequent_rotation_connections = frequent_rotation;
+        self.connectivity_config.node_reconnection_cooldown = Duration::from_secs(cooldown_days * 24 * 60 * 60);
+        self
+    }
+}
