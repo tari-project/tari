@@ -30,7 +30,12 @@ impl ConnectionHistory {
             false
         }
     }
-    
+
+    /// Get the time elapsed since disconnection for a node
+    pub fn time_since_disconnection(&self, node_id: &NodeId) -> Option<Duration> {
+        self.last_disconnected.get(node_id).map(|time| time.elapsed())
+    }
+
     /// Clean up old history entries
     pub fn cleanup(&mut self, max_age: Duration) {
         self.last_disconnected.retain(|_, time| time.elapsed() < max_age);
