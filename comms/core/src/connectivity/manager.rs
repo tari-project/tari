@@ -548,6 +548,9 @@ impl ConnectivityManagerActor {
             return Ok(());
         }
         
+        // Collect node IDs to disconnect
+        let mut nodes_to_remove = Vec::new();
+        
         for conn in &mut connections[start_index..end_index] {
             let node_id = conn.peer_node_id().clone();
             debug!(
@@ -563,7 +566,7 @@ impl ConnectivityManagerActor {
             // Disconnect
             match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    self.pool.remove(&node_id);
+                    nodes_to_remove.push(node_id);
                 },
                 Err(err) => {
                     debug!(
@@ -577,9 +580,13 @@ impl ConnectivityManagerActor {
             }
         }
         
+        // Now remove the nodes from the pool
+        for node_id in nodes_to_remove {
+            self.pool.remove(&node_id);
+        }
+        
         Ok(())
     }
-
     async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
         let start = Instant::now();
         match tokio::time::timeout(
