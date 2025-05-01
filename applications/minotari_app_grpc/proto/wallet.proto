@@ -254,10 +254,22 @@ service Wallet {
   // }
   // ```
   rpc Transfer (TransferRequest)  returns (TransferResponse);
+  
   // Returns the transaction details for the given transaction IDs.
   //
-  // This RPC retrieves detailed information about specific transactions based on their IDs. 
+  // The GetTransactionInfo RPC retrieves detailed information about specific transactions based on their IDs.
   // The response includes details such as transaction status, direction, amount, fee, and more.
+  //
+  // ### Request Parameters:
+  //
+  // - `transaction_ids` (required):  
+  //   - **Type**: `repeated uint64`  
+  //   - **Description**: A list of transaction IDs to query.  
+  //   - **Restrictions**:  
+  //     - Must contain at least one ID.
+  //     - All IDs must be valid unsigned 64-bit integers.
+  //     - Duplicates will be ignored; only the first occurrence is processed.
+  //     - If a transaction ID is not found, it will be returned with a `status` of `NOT_FOUND`.
   //
   // ### Example JavaScript gRPC client usage:
   //
@@ -292,40 +304,655 @@ service Wallet {
   // }
   // ```
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
-  
-  rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
-  // Returns all transactions' details
+  // Streams completed transactions for a given user payment ID.
+  //
+  // The `GetCompletedTransactions` call retrieves all completed wallet transactions,
+  // optionally filtered by a specific `payment_id`. The response is streamed back to the client
+  // one transaction at a time, with each transaction including details such as status, direction,
+  // amount, fees, and associated metadata.
+  //
+  // ### Request Parameters:
+  //
+  // - `payment_id` (optional):
+  //   - **Type**: `UserPaymentId` (a flexible ID object)
+  //   - **Description**: Allows filtering the completed transactions by a specific payment ID.
+  //   - **Accepted Formats** (must provide **only one**):
+  //     - `u256`: a 32-byte hexadecimal string.
+  //     - `utf8_string`: a UTF-8 string.
+  //     - `user_bytes`: raw bytes.
+  //   - **Restrictions**:
+  //     - Exactly **one format must be set**. Providing more than one or none results in an error.
+  //     - If no `payment_id` is provided, all completed transactions will be returned.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   payment_id: {
+  //     utf8_string: "invoice-001"
+  //   }
+  // };
+  // const call = client.getCompletedTransactions(request);
+  // call.on('data', (response) => {
+  //   console.log(response.transaction);
+  // });
+  // call.on('error', console.error);
+  // call.on('end', () => console.log("Stream ended"));
+  // ```
+  //
+  // ### Sample Streamed JSON Response:
+  //
+  // ```json
+  // {
+  //   "transaction": {
+  //     "tx_id": 12345,
+  //     "source_address": "0x1234abcd...",
+  //     "dest_address": "0x5678efgh...",
+  //     "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
+  //     "direction": "TRANSACTION_DIRECTION_INBOUND",
+  //     "amount": 500000,
+  //     "fee": 20,
+  //     "is_cancelled": false,
+  //     "excess_sig": "0xabcdef...",
+  //     "timestamp": 1681234567,
+  //     "payment_id": "0xdeadbeef...",
+  //     "mined_in_block_height": 1523493
+  //   }
+  // }
+  // ```
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
-  // Returns the balance, but uses a debouncer in the background to prevent spamming the wallet
+  // Returns the wallet balance details.
+  //
+  // The `GetBalance` call retrieves the current balance status of the wallet,
+  // optionally filtered by a specific `payment_id`. The response includes detailed
+  // breakdowns of available, pending incoming/outgoing, and timelocked balances.
+  //
+  // ### Request Parameters:
+  //
+  // - `payment_id` (optional):
+  //   - **Type**: `UserPaymentId` (one of several formats).
+  //   - **Description**: An optional filter to retrieve the balance associated with a specific payment ID.
+  //   - **Accepted Formats** (must provide **only one**):
+  //     - `u256`: a 32-byte hexadecimal identifier.
+  //     - `utf8_string`: a human-readable string ID.
+  //     - `user_bytes`: raw binary bytes.
+  //   - **Restrictions**:
+  //     - Only one format must be provided at a time.
+  //     - If multiple or no formats are provided within `payment_id`, the request will return an error.
+  //     - If `payment_id` is omitted, the total wallet balance is returned.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   payment_id: {
+  //     utf8_string: "invoice-002"
+  //   }
+  // };
+  // client.getBalance(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Balance:", response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "available_balance": 950000,
+  //   "pending_incoming_balance": 200000,
+  //   "pending_outgoing_balance": 50000,
+  //   "timelocked_balance": 100000
+  // }
+  // ```
   rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
-  // Returns unspent amounts
+  // Returns the total value of unspent outputs in the wallet.
+  //
+  // The `GetUnspentAmounts` call retrieves the sum of all unspent output amounts
+  // currently held by the wallet. These are outputs that have not yet been spent or time-locked,
+  // and are available for future transactions.
+  //
+  // ### Request Parameters:
+  //
+  // - *(none)*  
+  //   - This method uses an empty request body (`google.protobuf.Empty`).
+  //   - No filters or arguments are required.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // client.getUnspentAmounts({}, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Total unspent amount:", response.amount);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "amount": 1250000
+  // }
+  // ```
   rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
-  // Request the wallet perform a coinsplit
+  // Creates a transaction that splits funds into multiple smaller outputs.
+  //
+  // The `CoinSplit` call initiates a transaction that divides wallet funds into several equal-sized outputs.
+  // This is useful for preparing a wallet for many small transactions (e.g., for micropayments or batching).
+  // The resulting transaction is broadcast and can be tracked via its transaction ID.
+  //
+  // ### Request Parameters:
+  //
+  // - `amount_per_split` (required):  
+  //   - **Type**: `uint64`  
+  //   - **Description**: The value of each individual output in the split.  
+  //   - **Restrictions**: Must be greater than zero.
+  //
+  // - `split_count` (required):  
+  //   - **Type**: `uint64`  
+  //   - **Description**: The number of outputs to create.  
+  //   - **Restrictions**: Must be greater than zero and within practical system limits.
+  //
+  // - `fee_per_gram` (required):  
+  //   - **Type**: `uint64`  
+  //   - **Description**: The transaction fee rate (per gram of weight).  
+  //   - **Restrictions**: Should be set high enough to ensure confirmation.
+  //
+  // - `lock_height` (optional):  
+  //   - **Type**: `uint64`  
+  //   - **Description**: The earliest block height at which the transaction becomes valid.  
+  //   - **Restrictions**: Defaults to 0 if not specified.
+  //
+  // - `payment_id` (optional):  
+  //   - **Type**: `bytes`  
+  //   - **Description**: A user-defined identifier for tracking or referencing the transaction.  
+  //   - **Restrictions**: Optional; can be left empty.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   amount_per_split: 100000,
+  //   split_count: 5,
+  //   fee_per_gram: 25,
+  //   lock_height: 0,
+  //   payment_id: new Uint8Array([])
+  // };
+  // client.coinSplit(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Created CoinSplit Tx ID:", response.tx_id);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "tx_id": 987654321
+  // }
+  // ```
   rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
-  // Import Utxo to wallet
+  // Imports UTXOs into the wallet as spendable outputs.
+  //
+  // The `ImportUtxos` call allows you to manually insert one or more previously received UTXOs
+  // into the wallet, marking them as spendable without needing rewindable metadata.
+  // Each UTXO is associated with a transaction ID in the response.
+  //
+  // ### Request Parameters:
+  //
+  // - `outputs` (required):  
+  //   - **Type**: `repeated UnblindedOutput`  
+  //   - **Description**: A list of unblinded outputs to import into the wallet.  
+  //   - **Restrictions**:  
+  //     - Each output must be valid and convertible to an internal UTXO format.
+  //     - The list must contain at least one item.
+  //
+  // - `payment_id` (optional):  
+  //   - **Type**: `bytes`  
+  //   - **Description**: An optional user-defined identifier to associate with the imported outputs.  
+  //   - **Restrictions**:  
+  //     - Can be left empty if not needed.
+  //     - Must be a valid byte string if provided.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   outputs: [/* array of unblinded outputs */],
+  //   payment_id: new Uint8Array([])
+  // };
+  // client.importUtxos(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Imported Tx IDs:", response.tx_ids);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "tx_ids": [101, 102, 103]
+  // }
+  // ```
   rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
-  // Get Base Node network connectivity status
+  // Returns the wallet's current network connectivity status.
+  //
+  // The `GetNetworkStatus` call provides a snapshot of the wallet’s connection to the Tari network,
+  // including whether it is online, the number of active peer connections, and the average latency
+  // to the configured base node.
+  //
+  // ### Request Parameters:
+  //
+  // - *(none)*  
+  //   - This method uses an empty request body (`google.protobuf.Empty`).
+  //   - No filters or arguments are required.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // client.getNetworkStatus({}, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Network Status:", response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "status": "ONLINE",
+  //   "avg_latency_ms": 142,
+  //   "num_node_connections": 8
+  // }
+  // ```
+  //
+  // ### Status Field Values:
+  //
+  // The `status` field indicates the current network connectivity of the wallet. Possible values are:
+  //
+  // - `ONLINE`:  
+  //   - The wallet is fully connected to the network and functioning normally.  
+  //   - The node has enough active peer connections to operate efficiently.
+  //
+  // - `DEGRADED`:  
+  //   - The wallet is connected to some peers but not enough to maintain full functionality.  
+  //   - This could indicate issues with network connectivity, such as intermittent disconnections or insufficient peers, leading to reduced performance or reliability.
+  //
+  // - `OFFLINE`:  
+  //   - The wallet is not connected to any peers.  
+  //   - This status means the wallet is unable to communicate with the network and cannot perform any network-related operations.
+  //
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
-  // List currently connected peers
+  // Returns a list of peers currently connected to the wallet.
+  //
+  // The `ListConnectedPeers` call retrieves information about peers that the wallet is currently
+  // connected to. This includes details such as peer addresses, connection status, supported protocols,
+  // and other metadata relevant to the connection.
+  //
+  // ### Request Parameters:
+  //
+  // - *(none)*  
+  //   - This method uses an empty request body (`google.protobuf.Empty`).
+  //   - No filters or arguments are required.
+  //
+  // ### Response Fields:
+  //
+  // - **connected_peers**: List of peers currently connected to the wallet.
+  //   - **public_key**: The peer's public key (bytes).
+  //   - **node_id**: The unique node ID of the peer (bytes).
+  //   - **addresses**: List of the peer's addresses (repeated Address).
+  //   - **last_connection**: The timestamp of the last connection attempt (uint64).
+  //   - **flags**: Flags associated with the peer (uint32).
+  //   - **banned_until**: The timestamp until which the peer is banned (uint64, 0 if not banned).
+  //   - **banned_reason**: The reason for banning the peer (string, empty if not banned).
+  //   - **offline_at**: The timestamp indicating when the peer went offline (uint64, 0 if online).
+  //   - **features**: The features supported by the peer (uint32).
+  //   - **supported_protocols**: List of supported protocols by the peer (repeated bytes).
+  //   - **user_agent**: The user agent advertised by the peer (string).
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // client.listConnectedPeers({}, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Connected Peers:", response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "connected_peers": [
+  //     {
+  //       "public_key": "0x1234abcd...",
+  //       "node_id": "0x5678efgh...",
+  //       "addresses": [
+  //         "127.0.0.1:18080",
+  //         "192.168.1.2:18080"
+  //       ],
+  //       "last_connection": 1625493123,
+  //       "flags": 1,
+  //       "banned_until": 0,
+  //       "banned_reason": "",
+  //       "offline_at": 0,
+  //       "features": 10,
+  //       "supported_protocols": [
+  //         "protocol_v1",
+  //         "protocol_v2"
+  //       ],
+  //       "user_agent": "TariBaseNode/1.0.0"
+  //     }
+  //   ]
+  // }
+  // ```
   rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
-  // Cancel pending transaction
+  // Cancels a specific transaction by its ID.
+  //
+  // The `CancelTransaction` call allows a transaction to be cancelled by its unique transaction ID (TxId).
+  // If the cancellation is successful, the response will indicate success. Otherwise, the response will 
+  // contain a failure message with the reason for the failure.
+  //
+  // ### Request Parameters:
+  //
+  // - **tx_id**: The unique identifier for the transaction to be cancelled (uint64).
+  //
+  // ### Response Fields:
+  //
+  // - **is_success**: A boolean indicating whether the cancellation was successful (bool).
+  //   - `true` if the cancellation was successful, `false` if not.
+  // - **failure_message**: A string that provides the reason for the failure, if applicable (string).
+  //   - This field will be empty if the cancellation was successful.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = { tx_id: 12345 };
+  // client.cancelTransaction(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "is_success": true,
+  //   "failure_message": ""
+  // }
+  // ```
   rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
   // Will trigger a complete revalidation of all wallet outputs.
   rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
   // Will trigger a validation of all wallet outputs.
   rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
-  // This will send a XTR SHA Atomic swap transaction
+  // Sends a XTR SHA Atomic Swap transaction.
+  //
+  // The `SendShaAtomicSwapTransaction` call is used to initiate an Atomic Swap 
+  // transaction using SHA. It allows the sender to send a payment to the recipient 
+  // in exchange for an atomic swap, with SHA used as the secret for the swap.
+  // The method accepts the recipient's information and initiates the transaction.
+  //
+  // ### Request Parameters:
+  // - **recipient** (required): A PaymentRecipient object containing the recipient's address, 
+  //   the amount to be swapped, the fee per gram, and the payment ID to identify the transaction.
+  //
+  // ### Response Fields:
+  // - **transaction_id**: The ID of the transaction.
+  // - **pre_image**: The SHA pre-image of the atomic swap.
+  // - **output_hash**: The hash of the output associated with the transaction.
+  // - **is_success**: Indicates whether the transaction was successful (true) or failed (false).
+  // - **failure_message**: Provides an error message if the transaction failed.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   recipient: {
+  //     address: "t1abc12345",
+  //     amount: 1000000,
+  //     fee_per_gram: 10,
+  //     payment_id: "0xdeadbeef"
+  //   }
+  // };
+  // client.sendShaAtomicSwapTransaction(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "transaction_id": 123456789,
+  //   "pre_image": "0xabcdef1234567890",
+  //   "output_hash": "0x123456abcdef7890",
+  //   "is_success": true,
+  //   "failure_message": ""
+  // }
   rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
-  // This will create a burn transaction
+  // Creates a burn transaction for burning a specified amount of Tari currency.
+  //
+  // The `CreateBurnTransaction` call facilitates burning a certain amount of Tari
+  // by initiating a burn transaction. It allows the user to specify the amount to burn,
+  // along with a fee per gram and optionally a payment ID and claim public key.
+  //
+  // ### Request Parameters:
+  // - **amount** (required): The amount of Tari to be burned.
+  // - **fee_per_gram** (required): The fee per gram for the transaction.
+  // - **claim_public_key** (optional): The public key to claim ownership of the burned coins.
+  // - **payment_id** (optional): A unique identifier for the payment associated with the burn transaction.
+  //
+  // ### Response Fields:
+  // - **transaction_id**: The ID of the burn transaction.
+  // - **is_success**: Indicates whether the burn transaction was successfully created.
+  // - **failure_message**: Provides an error message if the transaction creation failed.
+  // - **commitment**: The commitment associated with the burn transaction.
+  // - **ownership_proof**: A proof of ownership for the burned coins.
+  // - **range_proof**: The range proof associated with the burned coins.
+  // - **reciprocal_claim_public_key**: The public key of the reciprocal claim for the burn.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   amount: 1000000,
+  //   fee_per_gram: 10,
+  //   claim_public_key: "0xabcdef1234567890",
+  //   payment_id: "0xdeadbeef"
+  // };
+  // client.createBurnTransaction(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "transaction_id": 123456789,
+  //   "is_success": true,
+  //   "failure_message": "",
+  //   "commitment": "0xcommitmenthash",
+  //   "ownership_proof": "0xownershipproof",
+  //   "range_proof": "0xrangeproof",
+  //   "reciprocal_claim_public_key": "0xreciprocalpublickey"
+  // }
   rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
-  // This will claim a XTR SHA Atomic swap transaction
+  // Claims a SHA Atomic Swap transaction using a pre-image and output hash.
+  //
+  // The `ClaimShaAtomicSwapTransaction` call allows the user to unlock and claim funds from
+  // a hash-time-locked contract (HTLC) by supplying the correct pre-image that matches a
+  // previously committed SHA-256 hash. This pre-image proves the user’s knowledge of the
+  // secret required to spend the output.
+  //
+  // ### Request Parameters:
+  // - **output** (required): The hex-encoded output hash (SHA-256 digest) that was locked in the atomic swap.
+  // - **pre_image** (required): The hex-encoded original pre-image (raw bytes, *not* hashed) which, when hashed with SHA-256, must match the `output` hash.
+  // - **fee_per_gram** (required): The transaction fee per gram, specified as an unsigned integer.
+  //
+  // ### Input Validation:
+  // - `output` must be a valid hex-encoded SHA-256 hash (64 hex characters).
+  // - `pre_image` must be a valid hex string representing the original secret (any byte length, commonly 32 bytes).
+  // - `fee_per_gram` must be a non-zero `uint64`; a fee of `0` may be rejected or deprioritized by the network.
+  //
+  // ### Response Fields:
+  // - **results**: A `TransferResult` object containing transaction ID, success status, and an error message if applicable.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   output: "3e1f89af...e923", // SHA-256 hash of the expected pre-image
+  //   pre_image: "6a1b2c...eaf1", // raw pre-image (not hashed)
+  //   fee_per_gram: 10
+  // };
+  // client.claimShaAtomicSwapTransaction(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response.results);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "results": {
+  //     "address": "",
+  //     "transaction_id": 789654,
+  //     "is_success": true,
+  //     "failure_message": ""
+  //   }
+  // }
   rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
-  // This will claim a HTLC refund transaction
+  // Claims an HTLC refund transaction after the timelock period has passed.
+  //
+  // The `ClaimHtlcRefundTransaction` call enables the original sender of a Hash Time-Locked Contract (HTLC)
+  // to reclaim the locked funds if the recipient has not claimed them in time using the correct pre-image.
+  // This is possible only after the output's timelock has expired.
+  //
+  // ### Request Parameters:
+  // - **output_hash** (required): Hex-encoded SHA-256 hash of the HTLC output being refunded.
+  // - **fee_per_gram** (required): Transaction fee per gram, specified as a `uint64`.
+  //
+  // ### Input Validation:
+  // - `output_hash` must be a valid 64-character hex string representing the hash of the HTLC output.
+  // - `fee_per_gram` must be a non-zero `uint64` value.
+  //
+  // ### Response Fields:
+  // - **results**: A `TransferResult` object including transaction ID, success status, and failure reason if any.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   output_hash: "aabbccddeeff0011...99",
+  //   fee_per_gram: 20
+  // };
+  // client.claimHtlcRefundTransaction(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log(response.results);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "results": {
+  //     "address": "",
+  //     "transaction_id": 889977,
+  //     "is_success": true,
+  //     "failure_message": ""
+  //   }
+  // }
   rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
+  // The SetBaseNode call configures the base node peer for the wallet.
+  //
+  // This RPC sets the public key and network address of the base node peer that the wallet should communicate with.
+  //
+  // ### Request Fields:
+  // - `public_key_hex` (string): The public key of the base node, provided as a hex string.
+  // - `net_address` (string): The multiaddress of the base node (e.g., `/ip4/127.0.0.1/tcp/18141`).
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   public_key_hex: "0281bdfc...",
+  //   net_address: "/ip4/127.0.0.1/tcp/18141"
+  // };
+  // client.setBaseNode(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Base node set successfully");
+  // });
+  // ```
+  //
+  // ### Sample JSON Request:
+  // ```json
+  // {
+  //   "public_key_hex": "0281bdfc...",
+  //   "net_address": "/ip4/127.0.0.1/tcp/18141"
+  // }
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {}
+  // ```
   rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
-
+  // Streams real-time wallet transaction events to the client.
+  //
+  // The `StreamTransactionEvents` RPC provides a continuous stream of transaction events as they occur within the wallet.
+  // This allows clients to react to changes in transaction status such as received, sent, mined, or cancelled transactions,
+  // making it ideal for real-time UI updates or external monitoring.
+  //
+  // ### Request Parameters:
+  // - _(none)_ – This RPC does not take any parameters.
+  //
+  // ### Response Stream:
+  // - Each message in the response stream is a `TransactionEventResponse` containing:
+  //   - **transaction**: A `TransactionEvent` object representing the latest event related to a wallet transaction.
+  //
+  // ### `TransactionEvent` Fields:
+  // - **event** (string): Human-readable event type. Examples include: `"Received"`, `"Mined"`, `"Cancelled"`, `"Sent"`.
+  // - **tx_id** (string): Transaction identifier.
+  // - **source_address** (bytes): Sender address, if applicable.
+  // - **dest_address** (bytes): Recipient address, if applicable.
+  // - **status** (string): Current status of the transaction. E.g., `"Completed"`, `"Pending"`, `"Cancelled"`.
+  // - **direction** (string): `"Inbound"` or `"Outbound"`.
+  // - **amount** (uint64): Transaction amount in microTari.
+  // - **payment_id** (bytes): Payment ID associated with the transaction.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const call = client.streamTransactionEvents({});
+  //
+  // call.on("data", (response) => {
+  //   console.log("Transaction Event:", response.transaction);
+  // });
+  //
+  // call.on("end", () => {
+  //   console.log("Stream ended.");
+  // });
+  //
+  // call.on("error", (err) => {
+  //   console.error("Stream error:", err);
+  // });
+  // ```
+  //
+  // ### Sample JSON Streamed Response:
+  // ```json
+  // {
+  //   "transaction": {
+  //     "event": "Mined",
+  //     "tx_id": "103248",
+  //     "source_address": "0xabc123...",
+  //     "dest_address": "0xdef456...",
+  //     "status": "Completed",
+  //     "direction": "Outbound",
+  //     "amount": 100000000,
+  //     "payment_id": "0xdeadbeef..."
+  //   }
+  // }
+  // ```
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
@@ -519,7 +1146,10 @@ message GetCompletedTransactionsResponse {
   TransactionInfo transaction = 1;
 }
 
+// Request message for GetBalance RPC.
 message GetBalanceRequest {
+  // Optional: A user-defined payment ID to filter balance data.
+  // Must provide only one of the following fields: u256, utf8_string, or user_bytes.
   UserPaymentId payment_id = 1;
 }
 
@@ -548,28 +1178,44 @@ message GetStateResponse {
   NetworkStatusResponse network = 3;
 }
 
+// Response message for GetUnspentAmounts RPC.
 message GetUnspentAmountsResponse {
-  repeated uint64 amount = 1;
+  // Total value of all unspent outputs, in the smallest unit (e.g., microTari).
+  uint64 amount = 1;
 }
 
+// Request message for the CoinSplit RPC.
 message CoinSplitRequest {
+  // The value of each output to create.
   uint64 amount_per_split = 1;
+  // The number of outputs to create in total.
   uint64 split_count = 2;
+  // Fee rate per weight unit (gram).
   uint64 fee_per_gram = 3;
+  // Block height when the transaction becomes valid.
   uint64 lock_height = 5;
+  // Optional identifier for referencing the transaction.
   bytes payment_id = 6;
 }
 
+// Response message containing the transaction ID of the coin split.
 message CoinSplitResponse {
+  // The unique ID of the transaction created.
   uint64 tx_id = 1;
 }
 
+// Request message for importing UTXOs into the wallet.
 message ImportUtxosRequest {
+  // List of unblinded outputs to be imported as UTXOs.
   repeated UnblindedOutput outputs = 1;
+
+  // Optional payment ID to tag the imported outputs.
   bytes payment_id = 2;
 }
 
+// Response message containing transaction IDs for the imported outputs.
 message ImportUtxosResponse {
+  // Transaction IDs corresponding to the imported UTXOs.
   repeated uint64 tx_ids = 1;
 }
 
@@ -583,12 +1229,18 @@ message CreateTemplateRegistrationResponse {
   bytes template_address = 2;
 }
 
+// Request message for the CancelTransaction RPC.
 message CancelTransactionRequest {
+  // The transaction ID to be cancelled.
   uint64 tx_id = 1;
 }
 
+// Response message for the CancelTransaction RPC.
 message CancelTransactionResponse {
+  // Indicates whether the cancellation was successful.
   bool is_success = 1;
+
+  // The failure message if the cancellation was not successful.
   string failure_message = 2;
 }
 
