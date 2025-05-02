@@ -19,7 +19,7 @@ The following dependencies are required, and will be installed as you proceed th
 * SQLite3
 * (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
 
-> Note regarding UAC: Occasionally, you will require UAC related privileges in order perform specific actions. This may cause some actions to fail silently due to a lack of UAC credentials being provided. Please refer to the following [link](https://support.microsoft.com/en-us/windows/user-account-control-settings-d5b2046b-dcb8-54eb-f732-059f321afe18#:~:text=You%20can%20change%20the%20UAC,OK%20to%20save%20your%20changes) for more information about UAC.
+> Note regarding UAC: Occasionally, you will require UAC related privileges in order perform specific actions. This may cause some actions to fail silently due to a lack of UAC credentials being provided. Please refer to the following [link](https://support.microsoft.com/en-us/windows/user-account-control-settings-d5b2046b-dcb8-54eb-f732-059f321afe18#:~:text=You%20can%20change%20the%20UAC,OK%20to%20save%20your%20changes) for more information about UAC. The default setting should be acceptable.
 
 ## Setting up ```winget``` and ```App Installer```
 
