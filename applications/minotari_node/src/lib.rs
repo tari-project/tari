@@ -49,12 +49,16 @@ use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
+    MAX_GRPC_MESSAGE_SIZE,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
-use tonic::transport::{Identity, Server, ServerTlsConfig};
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Identity, Server, ServerTlsConfig},
+};
 
 use crate::cli::Cli;
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
@@ -189,7 +193,11 @@ async fn run_grpc(
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
         .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
-    let service = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::with_interceptor(grpc, auth);
+
+    let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
+        .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+        .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = if let Some(identity) = tls_identity {
         Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?

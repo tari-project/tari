@@ -50,6 +50,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
+    MAX_GRPC_MESSAGE_SIZE,
 };
 use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
@@ -308,7 +309,9 @@ async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient,
     let node_conn = ShaP2PoolClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }
@@ -343,7 +346,9 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }

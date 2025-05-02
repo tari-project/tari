@@ -61,7 +61,9 @@ impl WalletGrpcClient<tonic::transport::Channel> {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
                 ClientAuthenticationInterceptor::create(auth_config)?,
-            ),
+            )
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         })
     }
 }

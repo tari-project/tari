@@ -29,11 +29,17 @@ use log::*;
 use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
-use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_common::{
+    exit_codes::{ExitCode, ExitError},
+    MAX_GRPC_MESSAGE_SIZE,
+};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tokio::{runtime::Handle, sync::broadcast};
-use tonic::transport::{Identity, Server, ServerTlsConfig};
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Identity, Server, ServerTlsConfig},
+};
 use tui::backend::CrosstermBackend;
 
 use crate::{
@@ -501,7 +507,11 @@ async fn run_grpc(
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
-    let service = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::with_interceptor(grpc, auth);
+
+    let sized_server = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc)
+        .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+        .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
+    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = if let Some(identity) = tls_identity {
         Server::builder()
