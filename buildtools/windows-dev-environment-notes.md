@@ -16,7 +16,7 @@ The following dependencies are required, and will be installed as you proceed th
 * Visual Studio BuildTools 2022
 * CMake
 * Protocol buffers (otherwise known as protobuf)
-* SQLIte3
+* SQLite3
 * (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
 
 ## Setting up ```winget``` and ```App Installer```
@@ -51,6 +51,21 @@ If you do not see the above, it can be the result of several issues, listed belo
 * **Terminal displays a blank result**: this means that ```App Installer```, and by extension ```winget```, is not installed. You will need to manually install it via the Microsoft Store. Use Microsoft Edge, and open the following URL in the browser: https://www.microsoft.com/p/app-installer/9nblggh4nns1#activetab=pivot:overviewtab, then click the install button to install it. It is best to restart the machine following the installation.
 
 Then we can start installing components that will be needed to compile the ```Tari protocol tools``` locally.
+
+## Install `SQLite3` with vcpkg
+```powershell
+vcpkg install sqlite3:x64-windows-static
+```
+
+Sample output:
+```powershell
+PS C:\Users\leet> vcpkg install sqlite3:x64-windows-static
+Computing installation plan...
+...
+sqlite3:x64-windows-static package ABI: <hash>
+Total install time: <time>
+```
+
 
 ## Install Visual Studio BuildTools 2022
 To install, run the following command:
