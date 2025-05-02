@@ -52,21 +52,6 @@ If you do not see the above, it can be the result of several issues, listed belo
 
 Then we can start installing components that will be needed to compile the ```Tari protocol tools``` locally.
 
-## Install `SQLite3` with vcpkg
-```powershell
-vcpkg install sqlite3:x64-windows-static
-```
-
-Sample output:
-```powershell
-PS C:\Users\leet> vcpkg install sqlite3:x64-windows-static
-Computing installation plan...
-...
-sqlite3:x64-windows-static package ABI: <hash>
-Total install time: <time>
-```
-
-
 ## Install Visual Studio BuildTools 2022
 To install, run the following command:
 ```Powershell
@@ -126,9 +111,6 @@ Logs are saved under `C:\ProgramData\Microsoft\VisualStudio\Packages\_Instances\
    - `0`: Success
    - `1603`: Fatal install error (common if prerequisites fail)
    - `3010`: Success but requires reboot
-
-
-
 
 ## Install ```git``` 
 
@@ -244,8 +226,21 @@ Validating signature... done.
 vcpkg package management program version 2024-11-12-eb492805e92a2c14a230f5c3deb3e89f6771c321
 ```
 
-## Install ```OpenSSL``` with vcpkg
+## Install `SQLite3` with vcpkg
+```powershell
+vcpkg install sqlite3:x64-windows-static
+```
 
+Sample output:
+```powershell
+PS C:\Users\leet> vcpkg install sqlite3:x64-windows-static
+Computing installation plan...
+...
+sqlite3:x64-windows-static package ABI: <hash>
+Total install time: <time>
+```
+
+## Install ```OpenSSL``` with vcpkg
 To install ```OpenSSL```, run the following commands:
 
 ```powershell
