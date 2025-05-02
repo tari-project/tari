@@ -1,5 +1,5 @@
 # Tari FAQ
-Welcome to the Tari Frequently-Asked Questions. On this page, we have provided the answers to many common questions, categorised into appropriate sections. You can check the 
+Welcome to the Tari Frequently-Asked Questions. On this page, we have provided the answers to many common questions, categorised into appropriate sections. You can check the sections below for your relevant interest:
 
 - [General](#general) - Covers the coin name, official resources, general overview of architecture and more 
 - [Tokenomics](#tokenomics) - Covers the planned economics of Tari
@@ -14,7 +14,7 @@ Welcome to the Tari Frequently-Asked Questions. On this page, we have provided t
 Tari is a decentralized, privacy-first, highly scalable and open-source blockchain protocol that aims to be infinitely scalable and provide high throughput. Tari aims to be accessible to everyone regardless of their hardware or finances.
 
 ### What is Tari Universe?
-Tari Universe is a desktop application for mining Tari on Mac or PC. It works by harnessing your computers computational power to solve blocks on the Tari network. In doing so, you're helping to secure the Tari network while earning Tari token (XTM) rewards. Tari Universe simplfies the setup of Tari while providing a beautiful interface for interacting with Tari.
+Tari Universe is a desktop application for mining Tari on Mac or PC. It works by harnessing your computer's computational power to solve blocks on the Tari network. In doing so, you're helping to secure the Tari network while earning Tari token (XTM) rewards. Tari Universe simplfies the setup of Tari while providing a beautiful interface for interacting with Tari.
 
 ### How is Tari Universe different from other apps?
 Tari Universe focuses on key areas that simplify the mining process and make it accessible to a much wider audience.  
@@ -32,7 +32,7 @@ Tari Universe focuses on key areas that simplify the mining process and make it 
 | **Storage**   | At least 100 GB free space, SSD                       | 250 GB or more free NVMe space SSD                                |
 | **OS**        | Windows 10/11 or macOS 12+                            | Windows 11 or macOS 13+                                      |
 
-### What are the official channels/website/social network profiles for Tari.
+### What are the official channels, websites, and social network profiles for Tari?
 - Official Website: [www.tari.com](www.tari.com)
 - Twitter: [https://twitter.com/tari/](https://twitter.com/tari/)
 - Discord: [https://discord.gg/tari](https://discord.gg/tari)
@@ -45,8 +45,8 @@ Users have the three options available:
 - [Tari Universe Mobile](https://aurora.tari.com) - A mobile application for Android and iOS.
 - [Tari Universe](https://airdrop.tari.com) - a desktop application that includes the entire Tari suite, including a Minotari wallet built directly into the application.
 
-### What is the coin name? And what is it abbreviation and symbol?
-Minotari. The abbreviation and symbol is XTM.
+### What is the coin name, and what are its abbreviation and symbol? 
+MinoTari. The abbreviation and symbol is XTM.
 
 ### Is Tari open-source?
 Yes.
@@ -55,7 +55,8 @@ Yes.
 Tari Project's repos can be found in [https://github.com/tari-project/](https://github.com/tari-project/). The main project is [https://github.com/tari-project/tari/](https://github.com/tari-project/)
 
 ### Where can I find installation instructions for Tari?
-Normal users can utilise the binaries found on Tari's main website under [www.tari.com/downloads](https://tari.com/downloads/). Developers should refer to the instructions available on in the main Tari repo at [https://github.com/tari-project/tari/](https://github.com/tari-project/)
++ Normal users can utilise the binaries at [https://www.tari.com/downloads]. Developers should refer to the instructions in the main Tari repo at [https://github.com/tari-project/tari/].  
+
 
 ### Explain the general architecture of the Tari solution? What components make up Tari?
 Tari consists of several components. While it is not necessary to run all of these as a casual user, all are required if you wish to run a full base node with mining capabilities. The components are:
@@ -221,7 +222,7 @@ Once the decaying rewards reach a minimum threshold, Tari introduces a tail emis
 The emission schedule also incorporates inflation during the tail emission phase. The inflation rate is recalculated at periodic intervals (epochs) based on the current circulating supply and is designed to remain minimal. This ensures that while the total supply continues to increase, the rate of new issuance slows significantly, maintaining economic stability within the Tari ecosystem.
 
 ### What is Tari's finality model?
-While a transaction is never technically finalized in Tari, given the use of the use of the UTXO model, as time progresses and more blocks are mined it becomes statistically unlikely that a transaction can be reversed. We normally recommend at least 6 blocks to ensure transaction finality, which would be considered 99% finalized given the computational power required to rewrite the blockchain at that point.
+While a transaction is never technically finalized in Tari, given the UTXO model, as time progresses and more blocks are mined it becomes statistically unlikely that a transaction can be reversed. We normally recommend at least 6 blocks to ensure transaction finality, which would be considered 99% finalized given the computational power required to rewrite the blockchain at that point.
 
 ### What is the transaction throughput of the Tari network?
 Tari is capable of approximately 8.3 transactions per second.
