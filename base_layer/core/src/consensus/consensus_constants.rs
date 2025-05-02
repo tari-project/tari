@@ -700,13 +700,13 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 256,
         };
         let mut con_2 = con_1.clone();
-        con_2.coinbase_min_maturity = 540; //18 hours
+        con_2.coinbase_min_maturity = 540; // 18 hours
         con_2.effective_from_height = 30 * 24 * 7; // 1 week
         let mut con_3 = con_2.clone();
         con_3.coinbase_min_maturity = 360;
         con_3.effective_from_height = 30 * 24 * 7 * 2; // 2 weeks
         let mut con_4 = con_3.clone();
-        con_4.coinbase_min_maturity = 180; //6 hours
+        con_4.coinbase_min_maturity = 180; // 6 hours
         con_4.effective_from_height = 30 * 24 * 7 * 3; // 3 weeks
         let consensus_constants = vec![con_1, con_2, con_3, con_4];
         consensus_constants
