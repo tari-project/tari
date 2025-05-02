@@ -415,3 +415,22 @@ PS C:\Users\user\src\tari> cargo build --release --bin minotari_miner
 ```
 
 This will build the Minotari Miner executable in your ```releases``` folder for the repo. Note that the ```minotari_miner``` is just one of several tools that are available. Others include the ```minotari_node``` and ```minotari_console_wallet```. You can review the project for more details on each of these.
+
+To build the entire project, you can run the following command (note that a full build of the Tari suite could take anything up to an hour, dependent on your hardware and available resources):
+
+```powershell
+& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+cargo build --release 
+```
+
+### Troubleshooting
+
+If you encounter an error during the build process (a common one you may encounter is `randomx-rs`), you can attempt to run the build via the `Developer Command Prompt for Visual Studio`. This command prompt is a special terminal that sets all the necessary environment variables (like PATH, INCLUDE, LIB, etc.) so you can use the C++ compiler (cl.exe), cmake, nmake, and other build tools without manually configuring anything.
+
+Open your Windows search bar and search for `Developer Command Prompt for VS 2022`, and launch it. Navigate to your source folder and then run the following command:
+
+```cmd
+cargo build --release --bin minotari_miner
+```
+
+This should resolve this particular issue.
