@@ -4,7 +4,7 @@ This basic guide uses much information sourced from https://github.com/KhronosGr
 
 > This guide assumes that you are installing most of these components for the first time (excluding ```App Installer```, which is normally packaged with Windows.).
 
-This guide utilises the PowerShell command line to install the dependencies 
+This guide utilises the PowerShell command line to install the dependencies.
 
 You will require the following package managers to set up the development environment:
 * winget
@@ -18,6 +18,8 @@ The following dependencies are required, and will be installed as you proceed th
 * Protocol buffers (otherwise known as protobuf)
 * SQLite3
 * (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
+
+> Note regarding UAC: Occasionally, you will require UAC related privileges in order to 
 
 ## Setting up ```winget``` and ```App Installer```
 
@@ -111,6 +113,12 @@ Logs are saved under `C:\ProgramData\Microsoft\VisualStudio\Packages\_Instances\
    - `0`: Success
    - `1603`: Fatal install error (common if prerequisites fail)
    - `3010`: Success but requires reboot
+
+If you have failed to install the components, you can manually launch the **Visual Studio Installer**. You’ll see all installed versions of Visual Studio. Click **Modify** next to **Visual Studio 2022**.
+
+Switch to the **Individual Components** tab (at the top). Use the search bar or scroll to find and check the boxes for specific components.
+
+After selecting everything you need, click **Modify** (bottom right). Wait for the installer to download and install the new components. Restart Visual Studio after the process completes.
 
 ## Install ```git``` 
 
