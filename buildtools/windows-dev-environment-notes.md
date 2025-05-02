@@ -57,7 +57,7 @@ Then we can start installing components that will be needed to compile the ```Ta
 ## Install Visual Studio BuildTools 2022
 To install, run the following command:
 ```Powershell
-winget install "Visual Studio BuildTools 2022 installer"
+winget install --id=Microsoft.VisualStudio.2022.BuildTools  -e
 ```
 Sample output would look something like:
 
