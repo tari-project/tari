@@ -4,6 +4,12 @@ This basic guide uses much information sourced from https://github.com/KhronosGr
 
 > This guide assumes that you are installing most of these components for the first time (excluding ```App Installer```, which is normally packaged with Windows.).
 
+The minimum system requirements for compiling the Tari suite are as follows:
+- 64-bit processor
+- 8gb RAM minimum
+- 4gb download bandwidth for the various packages.
+- A minimum of 40gb free space
+
 This guide utilises the PowerShell command line to install the dependencies.
 
 You will require the following package managers to set up the development environment:
@@ -267,8 +273,6 @@ setx /m PATH "$Env:Path;C:\vcpkg"
 
 Then either restart the PowerShell or open a new PowerShell with administrative rights, then run `vcpkg list` to confirm the environment path has been properly set.
 
-
-
 ## Install `SQLite3` with vcpkg
 ```powershell
 vcpkg install sqlite3:x64-windows-static
@@ -332,28 +336,7 @@ Once installed, you'll need to also set the OpenSSL environmental path. Use the 
 setx /m PATH "C:\vcpkg\installed\x64-windows-static\bin;$Env:Path"
 ```
 
-Now verify that the installation has been done correctly with the following command:
-
-```PowerShell
-echo $env:OPENSSL_CONF $env:OPENSSL_DIR  
-```
-
-- C:\vcpkg\installed\x64-windows-static\bin\openssl.cfg
-- C:\vcpkg\installed\x64-windows-static
-
-This must show where OpenSSL is installed. The one installed here must be listed first if multiple versions are installed.
-
-```PowerShell
-Get-Command openssl -All
-
-CommandType     Name                                               Version    Source  
------------     ----                                               -------    ------  
-Application     openssl.exe                                        3.4.0.0    C:\vcpkg\installed\x64-windows-static\bin\openssl.exe  
-Application     openssl.exe                                        1.1.1.9    C:\Strawberry\c\bin\openssl.exe  
-```
-
 # Install Rust
-
 Next, we need to install support for the Rust language 
 
 ```PowerShell
@@ -391,41 +374,44 @@ setx /m VCPKG_ROOT "C:\vcpkg"
 setx /m OPENSSL_DIR "C:\vcpkg\packages\openssl_x64-windows-static"
 ```
 
-Once you've set your environment variables, we can build the tools:
+Once you've set your environment variables, we can build the tools. Let's test this out by building one of the Tari applications. Use the following command to begin building the Minotari Miner:
 
 ```Powershell
-"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-cargo build --release
-
-# Build Tari Tools
-```PowerShell
-$Env:VCPKG_ROOT = 'C:\vcpkg'
-$Env:OPENSSL_DIR = 'C:\vcpkg\packages\openssl_x64-windows-static'
+& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 cargo build --release --bin minotari_miner
 ```
-sample output:
-```
-PS C:\Users\leet> cd src\tari
-PS C:\Users\leet\src\tari> cargo build --release --bin minotari_miner
-info: syncing channel updates for 'stable-x86_64-pc-windows-msvc'
-info: latest update on 2024-07-07, rust version 1.81.0-nightly (ed7e35f34 2024-07-06)
-info: downloading component 'cargo'
-info: downloading component 'clippy'
-info: downloading component 'rust-docs'
-info: downloading component 'rust-std'
-info: downloading component 'rustc'
-info: downloading component 'rustfmt'
-info: installing component 'cargo'
-info: installing component 'clippy'
-info: installing component 'rust-docs'
-info: installing component 'rust-std'
-info: installing component 'rustc'
-info: installing component 'rustfmt'
-    Updating git repository `https://github.com/tari-project/lmdb-rs`
-    Updating git submodule `https://github.com/LMDB/lmdb.git`
-    Updating crates.io index
-    Updating git repository `https://github.com/Zondax/ledger-rs`
- Downloading 516 crates
+Below a sample output of what you can expect:
+```Powershell
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\user\src\tari> & "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+**********************************************************************
+** Visual Studio 2022 Developer Command Prompt v17.13.6
+** Copyright (c) 2022 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+PS C:\Users\user\src\tari> cargo build --release --bin minotari_miner
+   Compiling proc-macro2 v1.0.92
+   Compiling unicode-ident v1.0.14
+   Compiling cfg-if v1.0.0
+   Compiling version_check v0.9.5
+   Compiling typenum v1.17.0
+   Compiling serde v1.0.215
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling autocfg v1.4.0
+   Compiling subtle v2.6.1
+   Compiling syn v1.0.109
+   Compiling shlex v1.3.0
+   Compiling jobserver v0.1.32
+   Compiling const-oid v0.9.6
+   Compiling memchr v2.7.4
+   Compiling thiserror v1.0.69
+   Compiling getrandom v0.2.15
+   Compiling portable-atomic v1.10.0
+    Building [                           ] 2/814: getrandom, version_check, thiserror(build.rs), autocfg, subtle, ...
 ```
 
-This will build the Minotari miner executable in your ```releases``` folder for the repo. Note that the ```minotari_miner``` is just one of several tools that are available. Others include the ```minotari_node``` and ```minotari_console_wallet```. You can review the project for more details on each of these.
+This will build the Minotari Miner executable in your ```releases``` folder for the repo. Note that the ```minotari_miner``` is just one of several tools that are available. Others include the ```minotari_node``` and ```minotari_console_wallet```. You can review the project for more details on each of these.
