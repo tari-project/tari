@@ -46,6 +46,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+pub const MAX_KERNEL_SIZE: usize = 132; // 127 (max size from unit test) + 5 (margin)
+
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
@@ -270,5 +273,40 @@ impl PartialOrd for TransactionKernel {
 impl Ord for TransactionKernel {
     fn cmp(&self, other: &Self) -> Ordering {
         self.excess_sig.cmp(&other.excess_sig)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature};
+    use tari_utilities::hex::Hex;
+
+    use crate::{
+        borsh::SerializedSize,
+        transactions::transaction_components::{transaction_kernel::MAX_KERNEL_SIZE, KernelBuilder},
+    };
+
+    #[test]
+    fn verify_max_size_const() {
+        let s = PrivateKey::from_hex("6c6eebc5a9c02e1f3c16a69ba4331f9f63d0718401dea10adc4f9d3b879a2c09").unwrap();
+        let r =
+            CompressedPublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
+        let sig = Signature::new(r, s);
+        let excess =
+            CompressedCommitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+        let tx_kernel = KernelBuilder::new()
+            .with_signature(sig)
+            .with_fee(100.into())
+            .with_excess(&excess)
+            .with_lock_height(500)
+            .build()
+            .unwrap();
+
+        let tx_kernel_size = tx_kernel.get_serialized_size().unwrap();
+
+        // tx_kernel_size: 127
+        // println!("tx_kernel_size: {}", tx_kernel_size);
+
+        assert!(MAX_KERNEL_SIZE >= tx_kernel_size);
     }
 }

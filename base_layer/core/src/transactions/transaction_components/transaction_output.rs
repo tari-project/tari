@@ -74,6 +74,15 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+pub const MAX_OUTPUT_SIZE_NO_FEATURES: usize = 1000; // 983 (max size from unit test) + 17 (margin)
+#[cfg(test)]
+const VALIDATOR_NODE_FEATURES_SIZE: usize = 125;
+#[cfg(test)]
+const COINBASE_FEATURES_SIZE: usize = 56;
+#[cfg(test)]
+const NORMAL_OUTPUT_FEATURES_SIZE: usize = 56;
+
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded/masked value for the output while the range proof guarantees the commitment includes a positive value
 /// without overflow and the ownership of the private key.
@@ -600,14 +609,33 @@ pub(crate) fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::transactions::{
-        tari_amount::MicroMinotari,
-        test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{OutputFeatures, RangeProofType},
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
-        CryptoFactories,
+    use chacha20poly1305::aead::OsRng;
+    use tari_utilities::hex::Hex;
+    use tari_common_types::types::CompressedPublicKey;
+    use tari_script::{push_pubkey_script, ExecutionStack};
+    use super::{
+        batch_verify_range_proofs,
+        TransactionOutput,
+        COINBASE_FEATURES_SIZE,
+        MAX_OUTPUT_SIZE_NO_FEATURES,
+        NORMAL_OUTPUT_FEATURES_SIZE,
+        VALIDATOR_NODE_FEATURES_SIZE,
     };
+    use crate::{
+        borsh::SerializedSize,
+        transactions::{
+            tari_amount::MicroMinotari,
+            test_helpers::{TestParams, UtxoTestParams},
+            transaction_components::{OutputFeatures, OutputType, RangeProofType, ValidatorNodeSignature},
+            transaction_key_manager::{
+                create_memory_db_key_manager,
+                MemoryDbKeyManager,
+                TransactionKeyManagerInterface,
+            },
+            CryptoFactories,
+        },
+    };
+    use crate::transactions::transaction_components::encrypted_data::PaymentId;
 
     #[tokio::test]
     async fn it_builds_correctly() {
@@ -631,6 +659,60 @@ mod test {
         assert!(tx_output.verify_metadata_signature().is_ok());
         let (_, recovered_value, _) = key_manager.try_output_key_recovery(&tx_output, None).await.unwrap();
         assert_eq!(recovered_value, value);
+    }
+
+    #[tokio::test]
+    async fn verify_max_size_const() {
+        // tx_output_size:                     983
+        // coinbase_output_size:               660
+        //
+        // tx_output_features_size:             56
+        // coinbase_output_features_size:       56
+        // validator_node_features_size:       125
+        //
+        // tx_output_size_no_features:         927
+        // coinbase_output_size_no_features:   604
+
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let test_params = TestParams::new(&key_manager).await;
+
+        let value = MicroMinotari(10);
+        let minimum_value_promise = MicroMinotari(10);
+        let (tx_output, coinbase_output) =
+            create_output_with_max_size(&test_params, value, minimum_value_promise, &key_manager)
+                .await
+                .unwrap();
+
+        let tx_output_size = tx_output.get_serialized_size().unwrap();
+        let tx_output_features_size = tx_output.get_features_and_scripts_size().unwrap();
+        let tx_output_size_no_features = tx_output_size - tx_output_features_size;
+        let coinbase_output_size = coinbase_output.get_serialized_size().unwrap();
+        let coinbase_output_features_size = tx_output.get_features_and_scripts_size().unwrap();
+        let coinbase_output_size_no_features = coinbase_output_size - coinbase_output_features_size;
+
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let signature = ValidatorNodeSignature::sign(&sk, &[]);
+        let validator_node_features =
+            OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone());
+        let validator_node_features_size = validator_node_features.get_serialized_size().unwrap();
+
+        let test = true;
+        if test {
+            assert!(MAX_OUTPUT_SIZE_NO_FEATURES >= tx_output_size_no_features);
+            assert!(MAX_OUTPUT_SIZE_NO_FEATURES >= coinbase_output_size_no_features);
+            assert_eq!(VALIDATOR_NODE_FEATURES_SIZE, validator_node_features_size);
+            assert_eq!(NORMAL_OUTPUT_FEATURES_SIZE, tx_output_features_size);
+            assert_eq!(COINBASE_FEATURES_SIZE, coinbase_output_features_size);
+        } else {
+            println!("tx_output_size: {}", tx_output_size);
+            println!("coinbase_output_size: {}", coinbase_output_size);
+            println!("tx_output_features_size: {}", tx_output_features_size);
+            println!("coinbase_output_features_size: {}", coinbase_output_features_size);
+            println!("tx_output_size_no_features: {}", tx_output_size_no_features);
+            println!("coinbase_output_size_no_features: {}", coinbase_output_size_no_features);
+            println!("validator_node_features_size: {}", validator_node_features_size);
+        }
+
     }
 
     #[tokio::test]
@@ -825,6 +907,70 @@ mod test {
             .to_transaction_output(key_manager)
             .await
             .map_err(|e| e.to_string())
+    }
+    async fn create_output_with_max_size(
+        test_params: &TestParams,
+        value: MicroMinotari,
+        minimum_value_promise: MicroMinotari,
+        key_manager: &MemoryDbKeyManager,
+    ) -> Result<(TransactionOutput, TransactionOutput), String> {
+        // Create the first output with `RangeProofType::BulletProofPlus` and `OutputType::Standard`
+        let s = "06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da50500f7c695528c858cde76dab3076908e0122\
+        8b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa2\
+        6b48e745de834571534ca253ea82435f08ebbc7c";
+        let stack = ExecutionStack::from_hex(s).unwrap();
+        let normal_output = test_params
+            .create_output(
+                UtxoTestParams {
+                    value,
+                    minimum_value_promise,
+                    features: OutputFeatures {
+                        range_proof_type: RangeProofType::BulletProofPlus,
+                        output_type: OutputType::Standard,
+                        coinbase_extra: vec![].try_into().unwrap(),
+                        sidechain_feature: None,
+                        ..Default::default()
+                    },
+                    payment_id: PaymentId::Open { user_data: vec![1, 2, 3], tx_type: Default::default() },
+                    script: push_pubkey_script(&Default::default()),
+                    input_data: Some(stack),
+                    ..Default::default()
+                },
+                key_manager,
+            )
+            .await?
+            .to_transaction_output(key_manager)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Create the second output with `RangeProofType::RevealedValue` and `OutputType::Coinbase`
+        let coinbase_output = test_params
+            .create_output(
+                UtxoTestParams {
+                    value,
+                    minimum_value_promise,
+                    features: OutputFeatures {
+                        range_proof_type: RangeProofType::RevealedValue,
+                        output_type: OutputType::Coinbase,
+                        coinbase_extra: vec![0u8; normal_output.features.coinbase_extra.max_size()]
+                            .try_into()
+                            .unwrap(),
+                        sidechain_feature: None,
+                        ..Default::default()
+                    },
+                    payment_id: PaymentId::Open { user_data: vec![1, 2, 3], tx_type: Default::default() },
+                    script: push_pubkey_script(&Default::default()),
+                    input_data: None,
+                    ..Default::default()
+                },
+                key_manager,
+            )
+            .await?
+            .to_transaction_output(key_manager)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok((normal_output, coinbase_output))
     }
 
     async fn create_invalid_output(

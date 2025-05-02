@@ -67,8 +67,12 @@ mod side_chain;
 mod transaction;
 mod transaction_builder;
 mod transaction_input;
+#[cfg(test)]
+pub use transaction_input::{MAX_INPUT_SIZE_AVERAGE_STACK, MAX_INPUT_SIZE_LARGE_STACK};
 mod transaction_input_version;
 mod transaction_kernel;
+#[cfg(test)]
+pub use transaction_kernel::MAX_KERNEL_SIZE;
 mod transaction_kernel_version;
 pub mod transaction_output;
 mod transaction_output_version;

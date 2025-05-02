@@ -39,11 +39,11 @@ pub struct WeightParams {
 impl WeightParams {
     pub const fn v1() -> Self {
         Self {
-            kernel_weight: 10,
-            input_weight: 8,
-            output_weight: 53,
+            kernel_weight: 5,
+            input_weight: 18,
+            output_weight: 43,
             // SAFETY: the value isn't 0. NonZeroU64::new(x).expect(...) is not const so cannot be used in const fn
-            features_and_scripts_bytes_per_gram: unsafe { NonZeroU64::new_unchecked(16) },
+            features_and_scripts_bytes_per_gram: unsafe { NonZeroU64::new_unchecked(23) },
         }
     }
 }
@@ -151,7 +151,18 @@ impl From<WeightParams> for TransactionWeight {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+
     use super::*;
+    use crate::{
+        consensus::ConsensusManager,
+        transactions::transaction_components::{
+            transaction_output::{MAX_OUTPUT_SIZE_NO_FEATURES},
+            MAX_INPUT_SIZE_AVERAGE_STACK,
+            MAX_INPUT_SIZE_LARGE_STACK,
+            MAX_KERNEL_SIZE,
+        },
+    };
 
     #[test]
     fn round_up_features_and_scripts_size() {
@@ -177,5 +188,138 @@ mod test {
         let weighting = TransactionWeight::latest();
         let body = AggregateBody::empty();
         assert_eq!(weighting.calculate_body(&body).unwrap(), 0);
+    }
+
+    // The purpose of this test is to ensure that the weight params are proportional to the size of the individual
+    // components that makes up a transaction and ultimately the block size.
+    #[test]
+    fn weight_params_sanity_chack() {
+        let weighting = TransactionWeight::latest();
+        let weight_params = weighting.0;
+        let esmeralda_max_weight = ConsensusManager::builder(Network::Esmeralda)
+            .build()
+            .unwrap()
+            .consensus_constants(0)
+            .max_block_transaction_weight();
+        let nextnet_max_weight = ConsensusManager::builder(Network::NextNet)
+            .build()
+            .unwrap()
+            .consensus_constants(0)
+            .max_block_transaction_weight();
+        let mainnet_max_weight = ConsensusManager::builder(Network::MainNet)
+            .build()
+            .unwrap()
+            .consensus_constants(0)
+            .max_block_transaction_weight();
+
+        let output_ratio_bytes_per_gram = MAX_OUTPUT_SIZE_NO_FEATURES as f64 / weight_params.output_weight as f64;
+        let input_ratio_bytes_per_gram = MAX_INPUT_SIZE_AVERAGE_STACK as f64 / weight_params.input_weight as f64;
+        let kernel_ratio_bytes_per_gram = MAX_KERNEL_SIZE as f64 / weight_params.kernel_weight as f64;
+        let features_ratio_bytes_per_gram = weight_params.features_and_scripts_bytes_per_gram.get() as f64;
+        let average_ratio_bytes_per_gram = (output_ratio_bytes_per_gram +
+            input_ratio_bytes_per_gram +
+            kernel_ratio_bytes_per_gram +
+            features_ratio_bytes_per_gram) /
+            4.0;
+
+        let adjusted_weight_params = WeightParams {
+            kernel_weight: (MAX_KERNEL_SIZE as f64 / average_ratio_bytes_per_gram) as u64,
+            input_weight: (MAX_INPUT_SIZE_LARGE_STACK as f64 / average_ratio_bytes_per_gram) as u64,
+            output_weight: (MAX_OUTPUT_SIZE_NO_FEATURES as f64 / average_ratio_bytes_per_gram) as u64,
+            features_and_scripts_bytes_per_gram: unsafe {
+                NonZeroU64::new_unchecked(average_ratio_bytes_per_gram as u64)
+            },
+        };
+
+        let adjusted_weighting = TransactionWeight(adjusted_weight_params);
+
+        // Test case - block on esmeralda that could not be propagated via grpc:
+        //  - weight 127770,
+        //  - input(s): 6541,
+        //  - output(s): 1126,
+        //  - kernel(s): 563,
+        //  - byte size: 5316326
+        //  - average feature byte size: 144
+        let inputs = 6541;
+        let outputs = 1126;
+        let kernels = 563;
+        let average_feature_size = 144;
+
+        let inputs_reduced = 4645;
+        let outputs_reduced = 800;
+        let kernels_reduced = 400;
+
+        let size_1 = kernels * MAX_KERNEL_SIZE +
+            inputs * MAX_INPUT_SIZE_AVERAGE_STACK +
+            outputs * MAX_OUTPUT_SIZE_NO_FEATURES +
+            outputs * average_feature_size;
+        let size_2 = kernels * MAX_KERNEL_SIZE +
+            inputs * MAX_INPUT_SIZE_LARGE_STACK +
+            outputs * MAX_OUTPUT_SIZE_NO_FEATURES +
+            outputs * average_feature_size;
+        let weight = weighting.calculate(kernels, inputs, outputs, outputs * average_feature_size);
+        let adjusted_weight = adjusted_weighting.calculate(kernels, inputs, outputs, outputs * average_feature_size);
+        let reduced_weight = adjusted_weighting.calculate(kernels_reduced, inputs_reduced, outputs_reduced, outputs * average_feature_size);
+
+        // output_ratio_bytes_per_gram:   23.26
+        // input_ratio_bytes_per_gram:    19.72
+        // kernel_ratio_bytes_per_gram:   26.40
+        // features_ratio_bytes_per_gram: 23.00
+        // average_ratio_bytes_per_gram:  23.09
+        // weight_params:                 WeightParams { kernel_weight: 5, input_weight: 18, output_weight: 43,
+        //                                               features_and_scripts_bytes_per_gram: 23 }
+        // adjusted_weight_params:        WeightParams { kernel_weight: 5, input_weight: 18, output_weight: 43,
+        //                                               features_and_scripts_bytes_per_gram: 23 }
+        // average_feature_size:          144
+        // weight:          176020, size_1: 3684515, size_2: 4207795
+        // adjusted_weight: 176020, size_1: 3684515, size_2: 4207795
+        // reduced_weight: 127059, size_1: 3684515, size_2: 4207795
+
+        let test = true;
+        if test {
+            // We allow some margins away from the size proportionate weights, but not much as this will skew the block size
+            assert!(
+                (weight_params.input_weight.saturating_sub(1)..
+                    weight_params.input_weight + 1).contains(&adjusted_weight_params.input_weight)
+            );
+            assert!(
+                (weight_params.output_weight.saturating_sub(1)..
+                    weight_params.output_weight + 1).contains(&adjusted_weight_params.output_weight)
+            );
+            assert!(
+                (weight_params.kernel_weight.saturating_sub(1)..
+                    weight_params.kernel_weight + 1).contains(&adjusted_weight_params.kernel_weight)
+            );
+            assert!(
+                (weight_params
+                    .features_and_scripts_bytes_per_gram
+                    .get()
+                    .saturating_sub(1)..
+                    weight_params.features_and_scripts_bytes_per_gram.get() +
+                        1).contains(&adjusted_weight_params.features_and_scripts_bytes_per_gram.get())
+            );
+            assert!((weight.saturating_sub(100)..weight + 100).contains(&adjusted_weight));
+            assert!(reduced_weight < esmeralda_max_weight);
+            assert!(reduced_weight < nextnet_max_weight);
+            assert!(reduced_weight < mainnet_max_weight);
+        } else {
+            println!("output_ratio_bytes_per_gram:   {:.2}", output_ratio_bytes_per_gram);
+            println!("input_ratio_bytes_per_gram:    {:.2}", input_ratio_bytes_per_gram);
+            println!("kernel_ratio_bytes_per_gram:   {:.2}", kernel_ratio_bytes_per_gram);
+            println!("features_ratio_bytes_per_gram: {:.2}", features_ratio_bytes_per_gram);
+            println!("average_ratio_bytes_per_gram:  {:.2}", average_ratio_bytes_per_gram);
+            println!("weight_params:                 {:?}", weight_params);
+            println!("adjusted_weight_params:        {:?}", adjusted_weight_params);
+            println!("average_feature_size:          {}", average_feature_size);
+            println!("weight:          {}, size_1: {}, size_2: {}", weight, size_1, size_2);
+            println!(
+                "adjusted_weight: {}, size_1: {}, size_2: {}",
+                adjusted_weight, size_1, size_2
+            );
+            println!(
+                "reduced_weight:  {}, size_1: {}, size_2: {}",
+                reduced_weight, size_1, size_2
+            );
+        }
     }
 }

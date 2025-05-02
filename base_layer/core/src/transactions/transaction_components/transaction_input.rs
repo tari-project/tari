@@ -61,6 +61,11 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+pub const MAX_INPUT_SIZE_LARGE_STACK: usize = 435; // 422 (max size from unit test) + 13 (margin)
+#[cfg(test)]
+pub const MAX_INPUT_SIZE_AVERAGE_STACK: usize = 355; // 347 (max size from unit test) + 8 (margin)
+
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
@@ -625,5 +630,72 @@ impl SpentOutput {
             rangeproof_hash: rp_hash,
             minimum_value_promise: output.minimum_value_promise,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::convert::TryInto;
+
+    use tari_common_types::types::ComAndPubSignature;
+    use tari_crypto::ristretto::RistrettoComAndPubSig;
+    use tari_script::ExecutionStack;
+    use tari_utilities::{
+        hex::{from_hex, Hex},
+        message_format::MessageFormat,
+    };
+
+    use crate::{
+        borsh::SerializedSize,
+        transactions::transaction_components::{
+            transaction_input::{MAX_INPUT_SIZE_AVERAGE_STACK, MAX_INPUT_SIZE_LARGE_STACK},
+            SpentOutput,
+            TransactionInput,
+        },
+    };
+
+    #[test]
+    fn verify_max_size_const() {
+        let hash = vec![0u8; 32].try_into().unwrap();
+        let spent_output = SpentOutput::OutputHash(hash);
+
+        const SERDE_ENCODED_BYTES: &str = "ce0000000000000006fdf9fc345d2cdd8aff624a55f824c7c9ce3cc9\
+        72e011b4e750e417a90ecc5da50456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc\
+        7c0556c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c6db1023d5c46d78a97da8eb\
+        6c5a37e00d5f2fee182dcb38c1b6c65e90a43c10906fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e7\
+        50e417a90ecc5da501d2040000000000000356c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435\
+        f08ebbc7c";
+        let stack = ExecutionStack::from_binary(&from_hex(SERDE_ENCODED_BYTES).unwrap()).unwrap();
+
+        let tx_input = TransactionInput::new_current_version(
+            spent_output,
+            stack,
+            ComAndPubSignature::new_from_capk_signature(RistrettoComAndPubSig::default()),
+        );
+
+        let tx_input_size = tx_input.get_serialized_size().unwrap();
+
+        // tx_input_size: 422
+        // println!("tx_input_size: {}", tx_input_size);
+
+        assert!(MAX_INPUT_SIZE_LARGE_STACK >= tx_input_size);
+
+        let s = "06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da50500f7c695528c858cde76dab3076908e0122\
+        8b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa2\
+        6b48e745de834571534ca253ea82435f08ebbc7c";
+        let stack = ExecutionStack::from_hex(s).unwrap();
+
+        let tx_input = TransactionInput::new_current_version(
+            SpentOutput::OutputHash(hash),
+            stack,
+            ComAndPubSignature::new_from_capk_signature(RistrettoComAndPubSig::default()),
+        );
+
+        let tx_input_size = tx_input.get_serialized_size().unwrap();
+
+        // tx_input_size: 347
+        // println!("tx_input_size: {}", tx_input_size);
+
+        assert!(MAX_INPUT_SIZE_AVERAGE_STACK >= tx_input_size);
     }
 }
