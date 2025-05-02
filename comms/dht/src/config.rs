@@ -36,9 +36,6 @@ pub struct DhtConfig {
     pub protocol_version: DhtProtocolVersion,
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
     pub database_url: DbConnectionUrl,
-    /// The size of the buffer (channel) which holds pending outbound message requests.
-    /// Default: 20
-    pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
     /// Default: 8
     pub num_neighbouring_nodes: usize,
@@ -171,7 +168,6 @@ impl Default for DhtConfig {
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,
-            outbound_buffer_size: 200,
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,
