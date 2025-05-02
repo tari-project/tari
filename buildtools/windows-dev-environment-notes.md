@@ -210,6 +210,7 @@ To install ```vcpkg```, run the following commands:
 git clone https://github.com/microsoft/vcpkg.git \vcpkg
 cd \vcpkg
 .\bootstrap-vcpkg.bat
+vcpkg integrate install
 ```
 
 Below is a sample of the successful execution of the commands above:
@@ -233,6 +234,40 @@ Validating signature... done.
 
 vcpkg package management program version 2024-11-12-eb492805e92a2c14a230f5c3deb3e89f6771c321
 ```
+
+To confirm `vcpkg` is installed and working, run the following command:
+```bash
+vcpkg list
+```
+
+A successful message should show the following:
+```bash
+PS C:\Users\leet> vcpkg list
+vcpkg-cmake-config:x64-windows                    2024-05-23
+vcpkg-cmake-get-vars:x64-windows                  2024-09-22
+vcpkg-cmake:x64-windows                           2024-04-23
+```
+
+If you get an error like the one below:
+
+```bash
+vcpkg : The term 'vcpkg' is not recognized as the name of a cmdlet, function, script file, or operable program. Check
+the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ vcpkg list
++ ~~~~~
+    + CategoryInfo          : ObjectNotFound: (vcpkg:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+```
+Then `vcpkg` has not been added to your path. Run the following command (you will require a PowerShell terminal running as administrator for this):
+
+```bash
+setx /m PATH "$Env:Path;C:\vcpkg"
+```
+
+Then either restart the PowerShell or open a new PowerShell with administrative rights, then run `vcpkg list` to confirm the environment path has been properly set.
+
+
 
 ## Install `SQLite3` with vcpkg
 ```powershell
