@@ -13,19 +13,19 @@ The minimum system requirements for compiling the Tari suite are as follows:
 This guide utilises the PowerShell command line to install the dependencies.
 
 You will require the following package managers to set up the development environment:
-* winget
-* Choclately
-* vcpkg
+- winget
+- Choclately
+- vcpkg
 
 The following dependencies are required, and will be installed as you proceed through this guide:
-* OpenSSL
-* Visual Studio BuildTools 2022
-* CMake
-* Protocol buffers (otherwise known as protobuf)
-* SQLite3
-* (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
+- OpenSSL
+- Visual Studio BuildTools 2022
+- CMake
+- Protocol buffers (otherwise known as protobuf)
+- SQLite3
+- (Optional) Tor. While not required to build the project, Tari does leverage Tor for various functions.
 
-> Note regarding UAC: Occasionally, you will require UAC related privileges in order perform specific actions. This may cause some actions to fail silently due to a lack of UAC credentials being provided. Please refer to the following [link](https://support.microsoft.com/en-us/windows/user-account-control-settings-d5b2046b-dcb8-54eb-f732-059f321afe18#:~:text=You%20can%20change%20the%20UAC,OK%20to%20save%20your%20changes) for more information about UAC. The default setting should be acceptable.
+> Note regarding UAC: Occasionally, you will require UAC related privileges in order to perform specific actions. This may cause some actions to fail silently due to a lack of UAC credentials being provided. Please refer to the following [link](https://support.microsoft.com/en-us/windows/user-account-control-settings-d5b2046b-dcb8-54eb-f732-059f321afe18#:~:text=You%20can%20change%20the%20UAC,OK%20to%20save%20your%20changes) for more information about UAC. The default setting should be acceptable.
 
 ## Setting up ```winget``` and ```App Installer```
 
@@ -148,9 +148,9 @@ Successfully installed
 ```
 
 ## Install ```chocolatey``` package manager 
-```chocolatey``` is a Window's package manager that draws from a different set of repos than ```winget```, but will make the process of installing further required dependencies and packages such as ```protobuf``` easier.
+```chocolatey``` is a Windows package manager that draws from a different set of repos than ```winget```, but will make the process of installing further required dependencies and packages such as ```protobuf``` easier.
 
-To install, , run the following command:
+To install, run the following command:
 
 ```PowerShell
 winget install --id chocolatey.chocolatey
@@ -173,7 +173,7 @@ Notes: The Chocolatey CLI MSI is intended for installation only! If upgrading fr
 
 ## Install Protobuf with chocolatey
 
-Using a new PowerShell console (note that PowerShell needs be run as Administrator, otherwise protobuf will not install), run the following command:
+Using a new PowerShell console (note that PowerShell needs to be run as Administrator, otherwise protobuf will not install), run the following command:
 
 ```PowerShell
 choco upgrade protoc -y
@@ -242,12 +242,12 @@ vcpkg package management program version 2024-11-12-eb492805e92a2c14a230f5c3deb3
 ```
 
 To confirm `vcpkg` is installed and working, run the following command:
-```bash
+```powershell
 vcpkg list
 ```
 
 A successful message should show the following:
-```bash
+```powershell
 PS C:\Users\leet> vcpkg list
 vcpkg-cmake-config:x64-windows                    2024-05-23
 vcpkg-cmake-get-vars:x64-windows                  2024-09-22
@@ -256,7 +256,7 @@ vcpkg-cmake:x64-windows                           2024-04-23
 
 If you get an error like the one below:
 
-```bash
+```powershell
 vcpkg : The term 'vcpkg' is not recognized as the name of a cmdlet, function, script file, or operable program. Check
 the spelling of the name, or if a path was included, verify that the path is correct and try again.
 At line:1 char:1
@@ -267,7 +267,7 @@ At line:1 char:1
 ```
 Then `vcpkg` has not been added to your path. Run the following command (you will require a PowerShell terminal running as administrator for this):
 
-```bash
+```powershell
 setx /m PATH "$Env:Path;C:\vcpkg"
 ```
 
@@ -287,8 +287,8 @@ sqlite3:x64-windows-static package ABI: <hash>
 Total install time: <time>
 ```
 
-## Install ```OpenSSL``` with vcpkg
-To install ```OpenSSL```, run the following commands:
+## Install OpenSSL with vcpkg
+To install `OpenSSL`, run the following commands:
 
 ```powershell
 $Env:Path += ';C:\vcpkg'
@@ -330,7 +330,7 @@ openssl is compatible with built-in CMake targets:
   target_link_libraries(main PRIVATE OpenSSL::Crypto)
 ```
 
-Once installed, you'll need to also set the OpenSSL environmental path. Use the following command to set an system-wide environmental path for OpenSSL:
+Once installed, you'll need to also set the OpenSSL environmental path. Use the following command to set a system-wide environmental path for OpenSSL:
 
 ```powershell
 setx /m PATH "C:\vcpkg\installed\x64-windows-static\bin;$Env:Path"
