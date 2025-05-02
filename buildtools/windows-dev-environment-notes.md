@@ -423,8 +423,22 @@ To build the entire project, you can run the following command (note that a full
 cargo build --release 
 ```
 
-### Troubleshooting
+Artifacts and binaries should be available in your `target\release` folder.
 
+You can then run any of the binaries using the `cargo run` command, an example of which is below:
+
+```PowerShell
+PS C:\Users\leet\src\tari> cargo run --bin minotari_miner --release -- --version
+    Finished `release` profile [optimized] target(s) in 3.48s
+     Running `target\release\minotari_miner.exe --version`
+minotari_miner 1.16.1-pre.0
+```
+
+Consider replacing `--version` with `--help` to retrieve documentation on the binary itself.
+
+Congratulations! You have successfully built Tari.
+
+### Troubleshooting Builds
 If you encounter an error during the build process (a common one you may encounter is `randomx-rs`), you can attempt to run the build via the `Developer Command Prompt for Visual Studio`. This command prompt is a special terminal that sets all the necessary environment variables (like PATH, INCLUDE, LIB, etc.) so you can use the C++ compiler (cl.exe), cmake, nmake, and other build tools without manually configuring anything.
 
 Open your Windows search bar and search for `Developer Command Prompt for VS 2022`, and launch it. Navigate to your source folder and then run the following command:
