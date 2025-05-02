@@ -37,6 +37,7 @@ use rand::rngs::OsRng;
 use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
+    MAX_GRPC_MESSAGE_SIZE,
 };
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
@@ -219,7 +220,12 @@ pub async fn spawn_base_node_with_config(
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
-        Ok(BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port)).await?)
+        Ok(
+            BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port))
+                .await?
+                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
+        )
     }
 
     pub fn kill(&mut self) {

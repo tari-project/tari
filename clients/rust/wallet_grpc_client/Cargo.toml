@@ -12,6 +12,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { path = "../../../applications/minotari_app_grpc" }
 tari_common_types = { path = "../../../base_layer/common_types" }
+tari_common = { path = "../../../common" }
 
 thiserror = "1.0.35"
 tonic = { version = "0.12.3", default-features = false, features = ["codegen", "transport", "tls"] }

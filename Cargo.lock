@@ -4361,6 +4361,7 @@ name = "minotari_wallet_grpc_client"
 version = "0.1.0"
 dependencies = [
  "minotari_app_grpc",
+ "tari_common",
  "tari_common_types",
  "thiserror 1.0.69",
  "tokio",

@@ -25,7 +25,10 @@ use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 #[tokio::test]
 async fn it_works() {
     // Basic test that only works if a wallet is running on localhost:18143
-    match WalletGrpcClient::connect("http://127.0.0.1:18143").await {
+    match WalletGrpcClient::connect("http://127.0.0.1:18143")
+        .max_encoding_message_size(8 + 1024 + 1024)
+        .await
+    {
         Ok(mut client) => {
             let _res = client.identify(grpc::GetIdentityRequest {}).await;
             #[cfg(debug_assertions)]
