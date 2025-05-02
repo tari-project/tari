@@ -672,7 +672,7 @@ impl ConsensusConstants {
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
-            max_block_transaction_weight: 100_000,
+            max_block_transaction_weight: 90_000,
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
