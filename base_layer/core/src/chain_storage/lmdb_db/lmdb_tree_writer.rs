@@ -22,7 +22,7 @@
 
 use jmt::storage::{Node, TreeWriter};
 use lmdb_zero::WriteTransaction;
-use log::{info, warn};
+use log::*;
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::hex::Hex;
 
@@ -54,9 +54,9 @@ impl<'a> LmdbTreeWriter<'a> {
 
     pub fn delete_all_for_version(&self, version: u64) -> anyhow::Result<()> {
         let key = version.to_be_bytes();
-        let nodes = lmdb_delete_keys_starting_with::<Node>(&self.txn, &self.node_db, &key)?;
+        let nodes = lmdb_delete_keys_starting_with::<Node>(self.txn, &self.node_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} nodes for version {}", nodes.len(), version);
-        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(&self.txn, &self.value_db, &key)?;
+        let values = lmdb_delete_keys_starting_with::<Vec<u8>>(self.txn, &self.value_db, &key)?;
         warn!(target: LOG_TARGET, "Deleted {} values for version {}", values.len(), version);
 
         for (value_key, _) in values {
@@ -67,12 +67,12 @@ impl<'a> LmdbTreeWriter<'a> {
             }
             lmdb_key.extend_from_slice(&value_key[8..]);
             lmdb_key.extend_from_slice(&value_key[0..8]);
-            match lmdb_delete(&self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table") {
+            match lmdb_delete(self.txn, &self.unique_key_db, &lmdb_key, "jmt_unique_key_table") {
                 Ok(_) => {
-                    warn!(target: LOG_TARGET, "Deleted unique key {} for version {}", lmdb_key.to_hex(), version);
+                    debug!(target: LOG_TARGET, "Deleted unique key {} for version {}", lmdb_key.to_hex(), version);
                 },
                 Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to delete unique key {} for version {}: {}", lmdb_key.to_hex(), version, e);
+                    debug!(target: LOG_TARGET, "Failed to delete unique key {} for version {}: {}", lmdb_key.to_hex(), version, e);
                 },
             }
         }
@@ -99,7 +99,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
 
             // see if there are any values already.
             let existing_values: Vec<(Vec<u8>, Option<Vec<u8>>)> =
-                lmdb_fetch_matching_after(&self.txn, &self.unique_key_db, &value_key.1 .0)?;
+                lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &value_key.1 .0)?;
             let mut existing_history = vec![];
             for (key, x) in existing_values {
                 let version = u64::from_be_bytes(key[32..].try_into().unwrap());
@@ -108,7 +108,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
             // sort by version
             existing_history.sort_by(|a, b| a.0.cmp(&b.0));
 
-            let latest_value = existing_history.last().map(|x| x.1.clone()).flatten();
+            let latest_value = existing_history.last().and_then(|x| x.1.clone());
             match (value, &latest_value) {
                 (None, _) => {
                     if latest_value.is_none() {
@@ -140,7 +140,7 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                 },
             };
         }
-        info!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
+        trace!(target: LOG_TARGET, "Wrote JMT batch of {} nodes and {} values", node_batch.nodes().len(), node_batch.values().len());
         Ok(())
     }
 }

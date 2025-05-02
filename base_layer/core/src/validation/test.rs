@@ -229,7 +229,7 @@ async fn chain_balance_validation() {
     }
     let root = smt.put_value_set(batch, 0).unwrap();
 
-    gen_block.header.output_mr = root.0 .0.try_into().expect("Output MMR root is 32 bytes");
+    gen_block.header.output_mr = root.0 .0.into();
     let mut accum = genesis.accumulated_data().clone();
     accum.hash = gen_block.header.hash();
 
@@ -457,7 +457,7 @@ async fn chain_balance_validation_burned() {
     }
     let root = smt.put_value_set(batch, 0).unwrap();
 
-    gen_block.header.output_mr = root.0 .0.try_into().expect("Output MMR root is 32 bytes");
+    gen_block.header.output_mr = root.0 .0.into();
     let mut accum = genesis.accumulated_data().clone();
     accum.hash = gen_block.header.hash();
     let genesis = ChainBlock::try_construct(Arc::new(gen_block), accum).unwrap();

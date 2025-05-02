@@ -437,7 +437,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .into_iter()
                 .map(|o| o.wallet_output.value.as_u64())
                 .filter(|&a| a > 0)
-                .collect(),
+                .collect::<Vec<_>>()
+                .into_iter()
+                .sum(),
         }))
     }
 

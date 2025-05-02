@@ -316,7 +316,7 @@ where
                     }
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
                          byte {:x?} not received. Error: {}",

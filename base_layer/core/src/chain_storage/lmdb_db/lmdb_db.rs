@@ -1848,7 +1848,7 @@ impl LMDBDatabase {
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         let res = LmdbTreeWriter::new(
-            &txn,
+            txn,
             self.jmt_node_data.clone(),
             self.jmt_value_data.clone(),
             self.jmt_unique_key_data.clone(),

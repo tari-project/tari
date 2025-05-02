@@ -637,11 +637,9 @@ mod test {
         );
         let bas58 = emoji_id_from_emoji_string.to_base58();
         if bas58.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
-            dbg!(bas58.len());
             panic!("Base58 is too long");
         }
         if bas58.len() < INTERNAL_DUAL_BASE58_MIN_SIZE {
-            dbg!(bas58.len());
             panic!("Base58 is too short");
         }
     }
