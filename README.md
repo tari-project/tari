@@ -23,8 +23,8 @@ The recommended running versions of each network are:
 | Network   | Version        |
 |-----------|----------------|
 | Stagenet  | 1.0.0-alpha.0a |
-| Nextnet   | 1.9.0-rc.0     |
-| Esmeralda | 1.9.0-pre.0    |
+| Nextnet   | 1.16.1-rc.0    |
+| Esmeralda | 1.16.1-pre.0   |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -38,7 +38,7 @@ cargo install cargo-nextest
 Then run the tests with:
 
 ```bash
-cargo ci-test
+cargo +nightly ci-test
 ```
 
 ### Download
@@ -131,11 +131,6 @@ brew install coreutils tor openssl \
   cmake make libtool autoconf automake protobuf
 ```
 
-#### (macOS M1 chipset)
-
-If RandomX unit tests are failing, please update the Mac to ensure it's running at least `Darwin Kernel Version 22.3.0`.
-
-
 #### (Ubuntu 18.04, including WSL-2 on Windows)
 
 ```
@@ -211,22 +206,10 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-start the Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
-`~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
+start the Tor service `%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` if running on Windows. 
+Tor is included in the binary if running on Linux or Mac. 
 
-To run from any directory of your choice, where the executable is visible in the path (first-time use):
-
-    minotari_node --init
-    minotari_node
-
-    minotari_console_wallet --init
-
-    minotari_merge_mining_proxy
-
-    minotari_miner --init
-
-Consecutive runs:
+Running+:
 
     minotari_node
 
@@ -237,24 +220,13 @@ Consecutive runs:
     minotari_miner
 
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
-flag if you want to run in debug mode (first time use):
+flag if you want to run in debug mode:
 
-    cargo run --bin minotari_node --release --  --init
     cargo run --bin minotari_node --release
 
     cargo run --bin minotari_merge_mining_proxy --release
-
-    cargo run --bin minotari_console_wallet --release --  --init
-
-    cargo run --bin minotari_miner --release
-
-On consecutive runs:
-
-    cargo run --bin minotari_node --release
 
     cargo run --bin minotari_console_wallet --release
-
-    cargo run --bin minotari_merge_mining_proxy --release
 
     cargo run --bin minotari_miner --release
 
@@ -280,7 +252,7 @@ version: "3"
 
 services:
   minotari_node:
-    image: quay.io/tarilabs/minotari_node:v0.5.4
+    image: quay.io/tarilabs/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
       - ./data:/root/.tari
@@ -333,41 +305,12 @@ Syncing 5229/5233
 
 ---
 
-### Building a Docker image
-
-If you don't want to use the Docker images provided by the community, you can roll your own!
-
-First, clone the Tari repo:
-
-```bash
-git clone git@github.com:tari-project/tari.git
-```
-
-Then build the image using the dockerfile in `buildtools`. The base node dockerfile builds the application and then
-places the binary inside a small container, keeping the executable binary to a minimum:
-
-    docker build -t minotari_node:latest -f ./buildtools/base_node.Dockerfile .
-
-Test your image:
-
-    docker run --rm -ti minotari_node minotari_node --help
-
-Run the base node:
-
-    docker run -ti -v /path/to/config/dir:/root/.tari minotari_node
-
-Default Docker builds for base x86-64 CPU. Better performing builds can be created by passing build options:
-
-    docker build -t minotari_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
-
----
-
 ## Mining
 
 The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
 Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
-standalone and pooled SHA3 mining have been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
-This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
+standalone and pooled SHA3 mining have been apportioned to approximately 50% and with Monero merged mining to approximately 50%.
+This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 50/50 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
 approximately 120 seconds. Each mining algorithm makes use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
 the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
@@ -415,7 +358,7 @@ the Minotari Base Node and the Minotari Wallet, if they are not enabled already.
 ```
 [wallet]
 
-grpc_address = "127.0.0.1:18143"
+grpc_address = "http://127.0.0.1:18143"
 ```
 
 ```
@@ -423,12 +366,8 @@ grpc_address = "127.0.0.1:18143"
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
+grpc_base_node_address = "http://127.0.0.1:18142"
 ```
-
-For MiningCore:
-
-See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
 
 For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
 
@@ -442,11 +381,11 @@ For the Minotari Miner there are some additional settings under section **`miner
 
 # GRPC address of base node
 # Default: value from `base_node.grpc_base_node_address`
-#base_node_grpc_address = "127.0.0.1:18142"
+#base_node_grpc_address = "http://127.0.0.1:18142"
 
 # GRPC address of console wallet
 # Default: value from `wallet.grpc_address`
-#wallet_grpc_address = "127.0.0.1:18143"
+#wallet_grpc_address = "http://127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
 # and current block height is on the tip of network
@@ -460,19 +399,6 @@ For the Minotari Miner there are some additional settings under section **`miner
 #validate_tip_timeout_sec=30
 ```
 
-For pooled SHA3 mining:
-
-```
-[miner]
-# Number of mining threads
-# Default: number of logical CPU cores
-#num_mining_threads=8
-
-# Stratum Mode configuration
-# mining_pool_address = "miningcore.tari.com:3052"
-# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
-# mining_worker_name = "worker1"
-```
 
 Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration.
 `mining_worker_name` is an optional configuration field allowing you to name your worker.
@@ -482,12 +408,11 @@ Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values t
 - For SHA3 mining:
   Tor and the required Tari applications must be started and preferably in this order:
 
-  - Tor:
+  - Tor(windows only):
 
-    - Linux/OSX: Execute `start_tor.sh`.
     - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
-    - Tari Base Node:
+  - Tari Base Node:
 
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
@@ -519,36 +444,6 @@ and performing mining:
   witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2,
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
 ```
-
-- For pooled SHA3 Mining:
-
-  - Pool Operators:
-    Tor and the required Minotari applications must be started in this order:
-
-    - Tor:
-
-      - Linux/OSX: Execute `start_tor.sh`.
-      - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
-
-    - Minotari Base Node:
-
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-        `start_minotari_node` shortcut in the Tari installation folder.
-
-    - Minotari Wallet:
-
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
-        `start_tari_console_wallet` shortcut in the Tari installation folder.
-
-    - MiningCore
-
-  - Miners:
-    - Minotari Miner:
-      - Linux/OSX: As per [Runtime links](#runtime-links).
-      - Windows: As per [Runtime links](#runtime-links) or `Start Miner` menu item
-        or `start_tari_miner` shortcut in the Tari installation folder.
 
 ### Tari merge mining
 
@@ -588,13 +483,13 @@ they are not enabled already:
 - For the Minotari Base Node and the Minotari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
-  grpc_address = "127.0.0.1:18143"
+  grpc_address = "http://127.0.0.1:18143"
   ```
   ```
   [base_node.esmeralda]
   transpo*_r_*t = "tor"
   allow_test_addresses = false
-  base_node_grpc_address = "127.0.0.1:18142"
+  base_node_grpc_address = "http://127.0.0.1:18142"
   ```
 
 Depending on if you are using solo mining or self-select mining, you will use one of the following:
@@ -788,9 +683,7 @@ activity for that address. The configuration file used for this exercise is show
 
 Tor and the required Minotari applications must be started, preferably in this order:
 
-- Tor:
-
-  - Linux/OSX: Execute `start_tor.sh`.
+- Tor(windows only):
   - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
 - Tari Base Node:

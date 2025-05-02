@@ -134,7 +134,6 @@ pub struct DecryptedDhtMessage {
     pub authenticated_origin: Option<CommsPublicKey>,
     pub dht_header: DhtMessageHeader,
     pub is_saf_message: bool,
-    pub is_saf_stored: Option<bool>,
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
     pub dedup_hit_count: u32,
@@ -165,7 +164,6 @@ impl DecryptedDhtMessage {
             authenticated_origin,
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
-            is_saf_stored: None,
             is_already_forwarded: false,
             decryption_result: Ok(message_body),
             dedup_hit_count: message.dedup_hit_count,
@@ -180,7 +178,6 @@ impl DecryptedDhtMessage {
             authenticated_origin: None,
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
-            is_saf_stored: None,
             is_already_forwarded: false,
             decryption_result: Err(message.body),
             dedup_hit_count: message.dedup_hit_count,
@@ -231,10 +228,6 @@ impl DecryptedDhtMessage {
         }
     }
 
-    pub fn set_saf_stored(&mut self, is_stored: bool) {
-        self.is_saf_stored = Some(is_stored);
-    }
-
     pub fn set_already_forwarded(&mut self, is_already_forwarded: bool) {
         self.is_already_forwarded = is_already_forwarded;
     }
@@ -244,8 +237,8 @@ impl Display for DecryptedDhtMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, is_saf_stored = \
-             {:?}, source_peer = {}, tag = {}",
+            "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, source_peer = {}, \
+             tag = {}",
             self.major_version(),
             self.authenticated_origin
                 .as_ref()
@@ -257,7 +250,6 @@ impl Display for DecryptedDhtMessage {
                 .unwrap_or_else(|_| "Failed".to_string()),
             self.dht_header,
             self.is_saf_message,
-            self.is_saf_stored,
             self.source_peer.node_id,
             self.tag
         )

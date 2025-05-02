@@ -68,6 +68,7 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .collect(),
             }),
             header: Some(header),
+            is_mempool_in_sync: block.is_mempool_in_sync,
         })
     }
 }
@@ -105,6 +106,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
             target_difficulty: Default::default(),
             reward: Default::default(),
             total_fees: Default::default(),
+            is_mempool_in_sync: block.is_mempool_in_sync,
         })
     }
 }

@@ -125,7 +125,7 @@ depending on the choices you make when prompted:
 
 - To delete log files, delete the `.\log` folder.
 - To re-sync the blockchain, delete the `.\stibbons` folder.
-- To destroy your wallet and loose all your hard-earned tXTR Tari coins, delete
+- To destroy your wallet and loose all your hard-earned XTM Tari coins, delete
   the `.\wallet` folder.
 
 ## Manual Installation

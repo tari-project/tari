@@ -102,6 +102,7 @@ where
             num_retries: 1,
             mode: self.mode.clone(),
             shutdown_signal,
+            birthday_offset: self.resources.birthday_offset,
         }
     }
 
@@ -197,6 +198,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub factories: CryptoFactories,
     pub recovery_message: String,
     pub one_sided_payment_message: String,
+    pub birthday_offset: u16,
 }
 
 #[derive(Debug, Clone)]

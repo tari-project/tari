@@ -39,7 +39,7 @@ use tari_comms::{
     test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
+use tari_comms_dht::{ DhtConfig};
 use tari_contacts::contacts_service::{
     handle::ContactsLivenessEvent,
     service::ContactMessageType,

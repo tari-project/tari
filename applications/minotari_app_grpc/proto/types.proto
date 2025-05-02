@@ -143,4 +143,5 @@ message ConsensusConstants {
     repeated PermittedRangeProofs permitted_range_proof_types = 34;
     uint64 inflation_bips = 35;
     uint64 tail_epoch_length = 36;
+    uint64 max_block_coinbase_count = 37;
 }

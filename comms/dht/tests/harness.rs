@@ -23,6 +23,7 @@
 use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures},
@@ -37,7 +38,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht, DhtConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -215,7 +216,6 @@ pub async fn setup_comms_dht(
 pub fn dht_config() -> DhtConfig {
     let mut config = DhtConfig::default_local_test();
     config.peer_validator_config.allow_test_addresses = true;
-    config.saf.auto_request = false;
     config.discovery_request_timeout = Duration::from_secs(60);
     config.num_neighbouring_nodes = 8;
     config

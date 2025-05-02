@@ -25,7 +25,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
@@ -48,12 +48,12 @@ pub struct InboundTransaction {
     pub amount: MicroMinotari,
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub payment_id: PaymentId,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
 }
 
 impl InboundTransaction {
@@ -63,8 +63,8 @@ impl InboundTransaction {
         amount: MicroMinotari,
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
+        payment_id: PaymentId,
+        timestamp: DateTime<Utc>,
     ) -> Self {
         Self {
             tx_id,
@@ -72,7 +72,7 @@ impl InboundTransaction {
             amount,
             receiver_protocol,
             status,
-            message,
+            payment_id,
             timestamp,
             cancelled: false,
             direct_send_success: false,
@@ -90,12 +90,12 @@ pub struct OutboundTransaction {
     pub fee: MicroMinotari,
     pub sender_protocol: SenderTransactionProtocol,
     pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub payment_id: PaymentId,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
 }
 
 impl OutboundTransaction {
@@ -106,8 +106,8 @@ impl OutboundTransaction {
         fee: MicroMinotari,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
+        payment_id: PaymentId,
+        timestamp: DateTime<Utc>,
         direct_send_success: bool,
     ) -> Self {
         Self {
@@ -117,7 +117,7 @@ impl OutboundTransaction {
             fee,
             sender_protocol,
             status,
-            message,
+            payment_id,
             timestamp,
             cancelled: false,
             direct_send_success,
@@ -136,18 +136,17 @@ pub struct CompletedTransaction {
     pub fee: MicroMinotari,
     pub transaction: Transaction,
     pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: DateTime<Utc>,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub send_count: u32,
-    pub last_send_timestamp: Option<NaiveDateTime>,
+    pub last_send_timestamp: Option<DateTime<Utc>>,
     pub transaction_signature: Signature,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
-    pub mined_timestamp: Option<NaiveDateTime>,
-    pub payment_id: Option<PaymentId>,
+    pub mined_timestamp: Option<DateTime<Utc>>,
+    pub payment_id: PaymentId,
 }
 
 impl CompletedTransaction {
@@ -159,12 +158,11 @@ impl CompletedTransaction {
         fee: MicroMinotari,
         transaction: Transaction,
         status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
+        timestamp: DateTime<Utc>,
         direction: TransactionDirection,
         mined_height: Option<u64>,
-        mined_timestamp: Option<NaiveDateTime>,
-        payment_id: Option<PaymentId>,
+        mined_timestamp: Option<DateTime<Utc>>,
+        payment_id: PaymentId,
     ) -> Result<Self, TransactionStorageError> {
         if status == TransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
@@ -182,7 +180,6 @@ impl CompletedTransaction {
             fee,
             transaction,
             status,
-            message,
             timestamp,
             cancelled: None,
             direction,
@@ -206,7 +203,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             amount: ct.amount,
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: ct.status,
-            message: ct.message,
+            payment_id: ct.payment_id,
             timestamp: ct.timestamp,
             cancelled: ct.cancelled.is_some(),
             direct_send_success: false,
@@ -225,7 +222,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             fee: ct.fee,
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: ct.status,
-            message: ct.message,
+            payment_id: ct.payment_id,
             timestamp: ct.timestamp,
             cancelled: ct.cancelled.is_some(),
             direct_send_success: false,
@@ -257,7 +254,6 @@ impl From<OutboundTransaction> for CompletedTransaction {
             amount: tx.amount,
             fee: tx.fee,
             status: tx.status,
-            message: tx.message,
             timestamp: tx.timestamp,
             cancelled: if tx.cancelled {
                 Some(TxCancellationReason::UserCancelled)
@@ -273,7 +269,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: None,
+            payment_id: tx.payment_id,
         }
     }
 }
@@ -287,7 +283,6 @@ impl From<InboundTransaction> for CompletedTransaction {
             amount: tx.amount,
             fee: MicroMinotari::from(0),
             status: tx.status,
-            message: tx.message,
             timestamp: tx.timestamp,
             cancelled: if tx.cancelled {
                 Some(TxCancellationReason::UserCancelled)
@@ -303,7 +298,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: None,
+            payment_id: tx.payment_id,
         }
     }
 }

@@ -136,7 +136,7 @@ impl PathIterator<'_> {
     }
 }
 
-impl<'a> Iterator for PathIterator<'a> {
+impl Iterator for PathIterator<'_> {
     type Item = TraverseDirection;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -155,7 +155,7 @@ impl<'a> Iterator for PathIterator<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for PathIterator<'a> {
+impl DoubleEndedIterator for PathIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.cursor_front >= self.cursor_back {
             return None;
@@ -171,7 +171,7 @@ impl<'a> DoubleEndedIterator for PathIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for PathIterator<'a> {
+impl ExactSizeIterator for PathIterator<'_> {
     fn len(&self) -> usize {
         self.cursor_back.saturating_sub(self.cursor_front)
     }
@@ -670,7 +670,7 @@ mod test {
             1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
             29, 30, 31, 32,
         ]);
-        let bin =  "0000000100000010000000110000010000000101000001100000011100001000\
+        let bin = "0000000100000010000000110000010000000101000001100000011100001000\
                          0000100100001010000010110000110000001101000011100000111100010000\
                          0001000100010010000100110001010000010101000101100001011100011000\
                          0001100100011010000110110001110000011101000111100001111100100000";

@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::sync::{Arc, RwLock};
-
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::ChainBlock,
@@ -30,13 +28,12 @@ use tari_core::{
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, T},
         transaction_components::WalletOutput,
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     txn_schema,
     validation::DifficultyCalculator,
-    OutputSmt,
 };
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
@@ -257,14 +254,12 @@ pub async fn create_new_blockchain_lmdb(
         .build()
         .unwrap();
     let db = TempDatabase::new();
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    let db = BlockchainDatabase::new(
+    let db = BlockchainDatabase::start_new(
         db,
         consensus_manager.clone(),
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        smt,
     )
     .unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager, key_manager)

@@ -98,7 +98,7 @@ where B: BlockchainBackend + 'static
         start_header: BlockHeader,
         end_header: BlockHeader,
     ) -> Result<(), RpcStatus> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Starting stream task with start_header: {} and end_header: {}",
             start_header.hash().to_hex(),
@@ -110,7 +110,7 @@ where B: BlockchainBackend + 'static
             let timer = Instant::now();
             let current_header_hash = current_header.hash();
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "current header = {} ({})",
                 current_header.height,
@@ -133,7 +133,7 @@ where B: BlockchainBackend + 'static
                 .collect::<Result<Vec<proto::types::TransactionOutput>, String>>()
                 .map_err(|err| RpcStatus::general(&err))?;
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Streaming {} UTXO(s) for block #{} (Hash: {})",
                 outputs.len(),
@@ -167,7 +167,7 @@ where B: BlockchainBackend + 'static
                 }
             }
 
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Streamed utxos in {:.2?} (including stream backpressure)",
                 timer.elapsed()
@@ -190,7 +190,7 @@ where B: BlockchainBackend + 'static
                 })?;
         }
 
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "UTXO sync by block completed to UTXO {} (Header hash = {})",
             current_header.output_smt_size,

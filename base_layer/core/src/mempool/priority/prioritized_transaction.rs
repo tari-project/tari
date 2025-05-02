@@ -26,7 +26,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use tari_common_types::types::{HashOutput, PrivateKey, PublicKey};
+use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::transactions::{
@@ -60,15 +60,12 @@ impl FeePriority {
         priority[8..16].copy_from_slice(&age_priority[..]);
         // Use the aggregate signature and nonce.
         // If a transaction has many kernels, unless they are all identical, the fee priority will be different.
-        let (agg_sig, agg_nonce) = transaction
-            .body
-            .kernels()
-            .iter()
-            .map(|k| (k.excess_sig.get_signature(), k.excess_sig.get_public_nonce()))
-            .fold(
-                (PrivateKey::default(), PublicKey::default()),
-                |(agg_sk, agg_nonce), (sig, nonce)| (agg_sk + sig, agg_nonce + nonce),
-            );
+        let mut agg_sig = PrivateKey::default();
+        let mut agg_nonce = UncompressedPublicKey::default();
+        for tx in transaction.body.kernels() {
+            agg_nonce = agg_nonce + tx.excess_sig.get_compressed_public_nonce().to_public_key()?;
+            agg_sig = agg_sig + tx.excess_sig.get_signature();
+        }
         priority[16..48].copy_from_slice(agg_sig.as_bytes());
         priority[48..80].copy_from_slice(agg_nonce.as_bytes());
         Ok(Self(priority))
@@ -130,9 +127,9 @@ impl Display for PrioritizedTransaction {
 mod tests {
     use super::*;
     use crate::transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::create_tx,
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
 
     async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &MemoryDbKeyManager) -> Transaction {

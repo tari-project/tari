@@ -135,7 +135,7 @@ pub struct BaseNodeConfig {
     pub status_line_interval: Duration,
     /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
-    /// Liveness meta data auto ping interval between peers
+    /// Liveness metadata auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
     /// The state_machine config settings
@@ -145,6 +145,9 @@ pub struct BaseNodeConfig {
     // Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_interval: Duration,
+    // Interval to check if the base node is still in sync with the network
+    #[serde(with = "serializers::seconds")]
+    pub tari_pulse_health_check: Duration,
 }
 
 impl Default for BaseNodeConfig {
@@ -184,6 +187,7 @@ impl Default for BaseNodeConfig {
             state_machine: Default::default(),
             report_grpc_error: false,
             tari_pulse_interval: Duration::from_secs(120),
+            tari_pulse_health_check: Duration::from_secs(60 * 10),
         }
     }
 }

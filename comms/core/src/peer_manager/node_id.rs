@@ -248,7 +248,7 @@ where D: Deserializer<'de> {
         marker: PhantomData<K>,
     }
 
-    impl<'de> de::Visitor<'de> for KeyStringVisitor<NodeId> {
+    impl de::Visitor<'_> for KeyStringVisitor<NodeId> {
         type Value = NodeId;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -265,7 +265,7 @@ where D: Deserializer<'de> {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::keys::{PublicKey, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::types::CommsSecretKey;

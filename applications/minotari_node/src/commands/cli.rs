@@ -96,7 +96,7 @@ fn box_tabular_data_rows(
 fn multiline_find_display_length(lines: &str) -> usize {
     let mut result = 0;
     if let Some(line) = lines.lines().max_by(|x, y| x.chars().count().cmp(&y.chars().count())) {
-        result = line.as_bytes().len();
+        result = line.len();
         result /= 2;
         result -= result / 10;
     }
@@ -164,7 +164,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     println!(
         "{}",
         box_data(
-            format!("Copyright 2019-{}. {}", Utc::now().year(), consts::APP_AUTHOR),
+            format!("Copyright 2019-{}. {}", Utc::now().year(), "The Tari Project"),
             target_line_length
         )
     );

@@ -24,6 +24,7 @@ use std::{convert::TryFrom, io::BufRead, ptr::null, time::Duration};
 
 use cucumber::{given, then, when};
 use tari_common_types::tari_address::TariAddress;
+use tari_core::transactions::transaction_components::encrypted_data::{PaymentId, TxType};
 use tari_integration_tests::{
     wallet_ffi::{create_contact, create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
     TariWorld,
@@ -209,8 +210,11 @@ async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: Stri
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, false);
+    let payment_id = PaymentId::open_from_string(
+        &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
+        TxType::PaymentToOther,
+    );
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, false);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 
@@ -219,8 +223,11 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
-    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, message, true);
+    let payment_id = PaymentId::open_from_string(
+        &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
+        TxType::PaymentToOther,
+    );
+    let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, true);
     assert_ne!(tx_id, 0, "Send transaction was not successful");
 }
 
@@ -297,7 +304,7 @@ async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, sta
     );
 }
 
-#[then(expr = "I want to view the transaction kernels for completed transactions in ffi wallet {word}")]
+#[then(expr = "I want to view the transaction information for completed transactions in ffi wallet {word}")]
 async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let completed_transactions = ffi_wallet.get_completed_transactions();
@@ -311,6 +318,44 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
         println!("Nonce {}", kernel.get_excess_public_nonce_hex());
         assert!(!kernel.get_excess_signature_hex().is_empty());
         println!("Signature {}", kernel.get_excess_signature_hex());
+        let address = completed_transaction.get_destination_tari_address();
+        assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
+        let address = completed_transaction.get_source_tari_address();
+        assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
+        let amount = completed_transaction.get_amount();
+        assert!(amount > 0, "Amount '{}', expected > 0", amount);
+        let fee = completed_transaction.get_fee();
+        assert!(fee > 0, "Fee '{}', expected > 0", fee);
+        let timestamp = completed_transaction.get_timestamp();
+        assert!(timestamp > 0, "Timestamp '{}', expected > 0", timestamp);
+        let payment_id = completed_transaction.get_payment_id();
+        assert!(
+            !payment_id.is_empty(),
+            "Payment id '{}', expected not empty",
+            payment_id
+        );
+        let transaction_type = completed_transaction.get_transaction_type();
+        assert_ne!(
+            transaction_type, 99,
+            "Transaction type '{}', expected not 99",
+            transaction_type
+        );
+        let status = completed_transaction.get_status();
+        assert_ne!(status, -1, "Status '{}', expected not -1", status);
+        let confirmations = completed_transaction.get_confirmations();
+        assert!(
+            if status == 6 { confirmations >= 1 } else { true },
+            "Confirmations '{}' (with status '{}'), expected >= 1",
+            confirmations,
+            status
+        );
+        let cancellation_reason = completed_transaction.get_cancellation_reason();
+        assert!(
+            if status == 6 { cancellation_reason == -1 } else { true },
+            "Cancellation reason '{}' (with status '{}'), expected -1",
+            cancellation_reason,
+            status
+        );
     }
 }
 

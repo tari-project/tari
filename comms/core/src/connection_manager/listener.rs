@@ -49,6 +49,7 @@ use super::{
     peer_connection::{self, PeerConnection},
     ConnectionManagerConfig,
     ConnectionManagerEvent,
+    PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
@@ -242,7 +243,7 @@ where
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
+            metrics::pending_connections(ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_wire_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -286,7 +287,7 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
@@ -328,7 +329,7 @@ where
             }
 
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
+            metrics::pending_connections(ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 
@@ -411,12 +412,17 @@ where
 
         let peer = common::create_or_update_peer_from_validated_peer_identity(
             known_peer,
-            authenticated_public_key,
+            authenticated_public_key.clone(),
             &valid_peer_identity,
             latency,
         );
 
-        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
+        let peer_connection_info = PeerConnectionInfo::new(
+            Some(authenticated_public_key.clone()),
+            Some(valid_peer_identity.claim.features),
+            Some(valid_peer_identity.metadata.user_agent.clone()),
+        );
+        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         let conn = peer_connection::create(

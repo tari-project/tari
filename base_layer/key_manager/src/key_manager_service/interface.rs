@@ -260,8 +260,8 @@ mod test {
     use std::str::FromStr;
 
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-    use tari_common_types::types::{PrivateKey, PublicKey};
-    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_crypto::keys::SecretKey as SK;
 
     use crate::key_manager_service::KeyId;
 
@@ -274,7 +274,7 @@ mod test {
 
     #[test]
     fn key_id_converts_correctly() {
-        let managed_key_id: KeyId<PublicKey> = KeyId::Managed {
+        let managed_key_id: KeyId<CompressedPublicKey> = KeyId::Managed {
             branch: random_string(8),
             index: {
                 let mut rng = rand::thread_rng();
@@ -282,11 +282,11 @@ mod test {
                 random_value
             },
         };
-        let imported_key_id: KeyId<PublicKey> = KeyId::Imported {
-            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        let imported_key_id: KeyId<CompressedPublicKey> = KeyId::Imported {
+            key: CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         };
-        let zero_key_id: KeyId<PublicKey> = KeyId::Zero;
-        let derived_key_id: KeyId<PublicKey> = KeyId::Derived {
+        let zero_key_id: KeyId<CompressedPublicKey> = KeyId::Zero;
+        let derived_key_id: KeyId<CompressedPublicKey> = KeyId::Derived {
             key: (&managed_key_id).into(),
         };
 

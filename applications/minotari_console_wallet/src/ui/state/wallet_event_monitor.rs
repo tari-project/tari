@@ -154,11 +154,6 @@ impl WalletEventMonitor {
                                         format!("Transaction Broadcast to Mempool - TxId: {}", tx_id)
                                     ).await;
                                 },
-                                TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
-                                TransactionEvent::TransactionImported(tx_id)  => {
-                                    self.trigger_tx_state_refresh(tx_id).await;
-                                    self.trigger_balance_refresh();
-                                },
                                 TransactionEvent::TransactionCompletedImmediately(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();

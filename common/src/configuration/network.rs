@@ -52,6 +52,11 @@ impl Network {
     /// The reserved wire byte for liveness ('LIVENESS_WIRE_MODE')
     pub const RESERVED_WIRE_BYTE: u8 = 0xa7;
 
+    /// Alias for `get_current_or_user_setting_or_default`
+    pub fn get_current() -> Self {
+        Self::get_current_or_user_setting_or_default()
+    }
+
     pub fn get_current_or_user_setting_or_default() -> Self {
         match CURRENT_NETWORK.get() {
             Some(&network) => network,
@@ -100,13 +105,13 @@ impl Network {
             // Choose a value in 'STAGE_NET_RANGE' or assign 'self.as_byte()'
             Network::StageNet => self.as_byte(),
             // Choose a value in 'NEXT_NET_RANGE' or assign 'self.as_byte()'
-            Network::NextNet => 80,
+            Network::NextNet => 81,
             // Choose a value in 'LOCAL_NET_RANGE' or assign 'self.as_byte()'
             Network::LocalNet => self.as_byte(),
             // Choose a value in 'IGOR_RANGE' or assign 'self.as_byte()'
             Network::Igor => self.as_byte(),
             // Choose a value in 'ESMERALDA_RANGE' or assign 'self.as_byte()'
-            Network::Esmeralda => 201,
+            Network::Esmeralda => 202,
         };
         // The reserved wire byte for liveness ('LIVENESS_WIRE_MODE') is defined in another module, which is not
         // accessible from here.

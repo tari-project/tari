@@ -23,7 +23,7 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use minotari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
@@ -45,16 +45,15 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
+    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -62,13 +61,13 @@ use tari_core::{
             TransactionOutputVersion,
             WalletOutput,
         },
+        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
@@ -92,7 +91,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_message("Yo!".to_string())
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -102,6 +101,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             Covenant::default(),
             MicroMinotari::zero(),
             amount,
+            TariAddress::default(),
         )
         .await
         .unwrap();
@@ -117,7 +117,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let stp = builder.build().await.unwrap();
 
-    let messages = ["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
+    let messages = ["Hey!", "Yo!", "Sup!"];
     let amounts = [
         MicroMinotari::from(10_000),
         MicroMinotari::from(23_000),
@@ -129,10 +129,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         outbound_txs.push(OutboundTransaction {
             tx_id,
             destination_address: address,
@@ -140,8 +141,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -162,8 +163,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         assert_eq!(&retrieved_outbound_tx, i);
         assert_eq!(retrieved_outbound_tx.send_count, 0);
         assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
-
-        assert_eq!(&retrieved_outbound_txs.get(&i.tx_id).unwrap(), &i);
+        assert!(retrieved_outbound_txs.iter().any(|tx| tx == i));
     }
 
     db.increment_send_count(outbound_txs[0].tx_id).unwrap();
@@ -182,7 +182,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await
         .unwrap();
-    let script_key_id = KeyId::Derived {
+    let script_key_id = TariKeyId::Derived {
         key: (&commitment_mask_key.key_id).into(),
     };
 
@@ -242,10 +242,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let tx_id = TxId::from(i);
         inbound_txs.push(InboundTransaction {
             tx_id,
@@ -253,8 +254,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -269,7 +270,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_inbound_txs = db.get_pending_inbound_transactions().unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
     for i in inbound_txs.iter().take(messages.len()) {
-        let retrieved_tx = retrieved_inbound_txs.get(&i.tx_id).unwrap();
+        let retrieved_tx = retrieved_inbound_txs.iter().find(|tx| tx.tx_id == i.tx_id).unwrap();
         assert_eq!(&retrieved_tx, &i);
         assert_eq!(retrieved_tx.send_count, 0);
         assert!(retrieved_tx.last_send_timestamp.is_none());
@@ -312,15 +313,17 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     for i in 0..messages.len() {
         let source_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let dest_address = TariAddress::new_dual_address_with_default_features(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         completed_txs.push(CompletedTransaction {
             tx_id: outbound_txs[i].tx_id,
             source_address,
@@ -333,8 +336,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 1 => TransactionStatus::Broadcast,
                 _ => TransactionStatus::MinedUnconfirmed,
             },
-            message: messages[i].clone(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: Utc::now(),
             cancelled: None,
             direction: TransactionDirection::Outbound,
             send_count: 0,
@@ -345,7 +347,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: Some(PaymentId::Empty),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -356,19 +358,25 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     }
 
-    let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+    let retrieved_completed_txs = db.get_completed_transactions(None).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
     for i in 0..messages.len() {
         assert_eq!(
-            retrieved_completed_txs.get(&inbound_txs[i].tx_id).unwrap(),
+            retrieved_completed_txs
+                .iter()
+                .find(|tx| tx.tx_id == inbound_txs[i].tx_id)
+                .unwrap(),
             &CompletedTransaction {
                 tx_id: inbound_txs[i].tx_id,
                 ..completed_txs[i].clone()
             }
         );
         assert_eq!(
-            retrieved_completed_txs.get(&outbound_txs[i].tx_id).unwrap(),
+            retrieved_completed_txs
+                .iter()
+                .find(|tx| tx.tx_id == outbound_txs[i].tx_id)
+                .unwrap(),
             &completed_txs[i]
         );
     }
@@ -408,23 +416,23 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs_map = db.get_completed_transactions().unwrap();
-    let num_completed_txs = completed_txs_map.len();
+    let completed_txs = db.get_completed_transactions(None).unwrap();
+    let num_completed_txs = completed_txs.len();
     assert_eq!(db.get_cancelled_completed_transactions().unwrap().len(), 0);
 
-    let cancelled_tx_id = completed_txs_map[&1u64.into()].tx_id;
+    let cancelled_tx_id = completed_txs[1].tx_id;
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
     db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
         .unwrap();
-    let completed_txs_map = db.get_completed_transactions().unwrap();
-    assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
+    let completed_txs = db.get_completed_transactions(None).unwrap();
+    assert_eq!(completed_txs.len(), num_completed_txs - 1);
 
     db.get_cancelled_completed_transaction(cancelled_tx_id)
         .expect("Should find cancelled transaction");
 
-    let mut cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&cancelled_tx_id).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == cancelled_tx_id));
 
     let any_cancelled_completed_tx = db.get_any_transaction(cancelled_tx_id).unwrap().unwrap();
     if let WalletTransaction::Completed(tx) = any_cancelled_completed_tx {
@@ -433,10 +441,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled completed tx");
     }
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     db.add_pending_inbound_transaction(
         999u64.into(),
         InboundTransaction::new(
@@ -445,8 +454,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            "To be cancelled".to_string(),
-            Utc::now().naive_utc(),
+            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
+            Utc::now(),
         ),
     )
     .unwrap();
@@ -481,14 +490,15 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled inbound tx");
     }
 
-    let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&999u64.into()).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == TxId::from(999u64)));
     let address = TariAddress::new_dual_address_with_default_features(
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     db.add_pending_outbound_transaction(
         998u64.into(),
         OutboundTransaction::new(
@@ -498,8 +508,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             stp.get_fee_amount().unwrap(),
             stp,
             TransactionStatus::Pending,
-            "To be cancelled".to_string(),
-            Utc::now().naive_utc(),
+            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
+            Utc::now(),
             false,
         ),
     )
@@ -530,9 +540,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     assert_eq!(db.get_pending_outbound_transactions().unwrap().len(), 0);
 
-    let mut cancelled_txs = db.get_cancelled_pending_outbound_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_pending_outbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&998u64.into()).is_some());
+    assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == TxId::from(998u64)));
 
     let any_cancelled_outbound_tx = db.get_any_transaction(998u64.into()).unwrap().unwrap();
     if let WalletTransaction::PendingOutbound(tx) = any_cancelled_outbound_tx {
@@ -591,12 +601,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::Imported,
-        "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(5),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-        None,
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -621,12 +630,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::OneSidedUnconfirmed,
-        "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(6),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-        None,
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -651,12 +659,11 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::OneSidedConfirmed,
-        "message".to_string(),
-        Utc::now().naive_utc(),
+        Utc::now(),
         TransactionDirection::Inbound,
         Some(7),
-        Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-        None,
+        Some(DateTime::from_timestamp(0, 0).unwrap()),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 

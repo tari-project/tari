@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::{epoch::VnEpoch, types::PublicKey};
+use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 use tari_utilities::hex::to_hex;
 
 use super::{CommandContext, HandleCommand};
@@ -43,7 +43,7 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
-    async fn print_validator_nodes_list(&mut self, vns: &[(PublicKey, [u8; 32])]) {
+    async fn print_validator_nodes_list(&mut self, vns: &[(CompressedPublicKey, [u8; 32])]) {
         let num_vns = vns.len();
         let mut table = Table::new();
         table.set_titles(vec!["Public Key", "Shard ID"]);

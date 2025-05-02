@@ -61,7 +61,12 @@ pub struct Cli {
     pub recovery: bool,
     /// Supply the optional wallet seed words for recovery on the command line. They should be in one string space
     /// separated. e.g. --seed-words "seed1 seed2 ..."
-    #[clap(long, alias = "seed-words")]
+    #[clap(
+        long,
+        alias = "seed-words",
+        env = "MINOTARI_WALLET_SEED_WORDS",
+        hide_env_values = true
+    )]
     pub seed_words: Option<SeedWords>,
     /// Supply the optional file name to save the wallet seed words into
     #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
@@ -94,6 +99,11 @@ pub struct Cli {
     pub view_private_key: Option<String>,
     #[clap(long)]
     pub spend_key: Option<String>,
+    #[clap(long)]
+    pub birthday: Option<u16>,
+    /// Path to the libtor data directory
+    #[clap(short = 'z', long, parse(from_os_str))]
+    pub libtor_data_dir: Option<PathBuf>,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -136,11 +146,11 @@ pub enum CliCommands {
     SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
     PreMineSpendGetOutputStatus,
-    PreMineSpendSessionInfo(PreMineSpendSessionInfoArgs),
-    PreMineSpendPartyDetails(PreMineSpendPartyDetailsArgs),
-    PreMineSpendEncumberAggregateUtxo(PreMineSpendEncumberAggregateUtxoArgs),
-    PreMineSpendInputOutputSigs(PreMineSpendInputOutputSigArgs),
-    PreMineSpendAggregateTransaction(PreMineSpendAggregateTransactionArgs),
+    PreMineStart(PreMineStartSessionArgs),
+    PreMineStartParty(PreMineSpendPartyDetailsArgs),
+    PreMineEncumber(PreMineSpendEncumberAggregateUtxoArgs),
+    PreMineSigs(PreMineSpendInputOutputSigArgs),
+    PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
     MakeItRain(MakeItRainArgs),
@@ -176,19 +186,19 @@ pub struct SendMinotariArgs {
     pub amount: MicroMinotari,
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct BurnMinotariArgs {
     pub amount: MicroMinotari,
     #[clap(short, long, default_value = "Burn funds")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct PreMineSpendSessionInfoArgs {
-    #[clap(long)]
+pub struct PreMineStartSessionArgs {
+    #[clap(long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
     pub recipient_info: Vec<CliRecipientInfo>,
@@ -248,28 +258,28 @@ impl FromStr for CliRecipientInfo {
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendPartyDetailsArgs {
     #[clap(long)]
-    pub input_file: PathBuf,
+    pub input_file: Option<String>,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
-    #[clap(long)]
-    pub recipient_info: Vec<CliRecipientInfo>,
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub alias: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendEncumberAggregateUtxoArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
-    pub input_file_names: Vec<String>,
+    pub member: Vec<String>,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine encumber aggregate UTXO")]
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendInputOutputSigArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
@@ -277,15 +287,15 @@ pub struct PreMineSpendInputOutputSigArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendAggregateTransactionArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "")]
     pub session_id: String,
     #[clap(long)]
-    pub input_file_names: Vec<String>,
+    pub member: Vec<String>,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct PreMineSpendBackupUtxoArgs {
-    #[clap(long)]
+    #[clap(long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(long)]
     pub output_index: usize,
@@ -293,6 +303,8 @@ pub struct PreMineSpendBackupUtxoArgs {
     pub recipient_address: TariAddress,
     #[clap(long)]
     pub pre_mine_file_path: Option<PathBuf>,
+    #[clap(short, long, default_value = "Spend pre-mine backup UTXO")]
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -313,7 +325,7 @@ pub struct MakeItRainArgs {
     #[clap(short, long)]
     pub burn_tari: bool,
     #[clap(short, long, default_value = "Make it rain")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 impl MakeItRainArgs {
@@ -361,7 +373,7 @@ pub struct CoinSplitArgs {
     #[clap(short, long, default_value = "1")]
     pub fee_per_gram: MicroMinotari,
     #[clap(short, long, default_value = "Coin split")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -430,7 +442,7 @@ pub struct FinaliseShaAtomicSwapArgs {
     #[clap(short, long)]
     pub pre_image: UniPublicKey,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
@@ -442,7 +454,7 @@ pub struct ClaimShaAtomicSwapRefundArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -452,7 +464,7 @@ pub struct RegisterValidatorNodeArgs {
     pub validator_node_public_nonce: UniPublicKey,
     pub validator_node_signature: Vec<u8>,
     #[clap(short, long, default_value = "Registering VN")]
-    pub message: String,
+    pub payment_id: String,
 }
 
 #[derive(Debug, Args, Clone)]

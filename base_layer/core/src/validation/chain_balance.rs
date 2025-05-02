@@ -23,7 +23,7 @@
 use std::marker::PhantomData;
 
 use log::*;
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::{CompressedCommitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::{
@@ -57,9 +57,9 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         &self,
         backend: &B,
         height: u64,
-        total_utxo_sum: &Commitment,
-        total_kernel_sum: &Commitment,
-        total_burned_sum: &Commitment,
+        total_utxo_sum: &CompressedCommitment,
+        total_kernel_sum: &CompressedCommitment,
+        total_burned_sum: &CompressedCommitment,
     ) -> Result<(), ValidationError> {
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;
@@ -74,9 +74,10 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
             total_utxo_sum,
             total_burned_sum,
         );
-        let input = &(&emission_h + total_kernel_sum) + &total_offset;
+        let input =
+            &(&emission_h.to_commitment()? + &total_kernel_sum.to_commitment()?) + &total_offset.to_commitment()?;
 
-        if (total_utxo_sum + total_burned_sum) != input {
+        if (&total_utxo_sum.to_commitment()? + &total_burned_sum.to_commitment()?) != input {
             return Err(ValidationError::ChainBalanceValidationFailed(height));
         }
 
@@ -85,13 +86,15 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
 }
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
-    fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<Commitment, ValidationError> {
+    fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<CompressedCommitment, ValidationError> {
         let chain_header = backend.fetch_chain_header_by_height(height)?;
         let offset = &chain_header.accumulated_data().total_kernel_offset;
-        Ok(self.factories.commitment.commit(offset, &0u64.into()))
+        Ok(CompressedCommitment::from_commitment(
+            self.factories.commitment.commit(offset, &0u64.into()),
+        ))
     }
 
-    fn get_emission_commitment_at(&self, height: u64) -> Commitment {
+    fn get_emission_commitment_at(&self, height: u64) -> CompressedCommitment {
         // With inflating tail emission, we **must** know the value of the premine as part of the supply calc in order
         // to determine the correct inflation curve. Therefore, the premine is already included in the supply
         let total_supply = self.rules.get_total_emission_at(height);
@@ -103,7 +106,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     #[inline]
-    fn commit_value(&self, v: MicroMinotari) -> Commitment {
-        self.factories.commitment.commit_value(&PrivateKey::default(), v.into())
+    fn commit_value(&self, v: MicroMinotari) -> CompressedCommitment {
+        CompressedCommitment::from_commitment(self.factories.commitment.commit_value(&PrivateKey::default(), v.into()))
     }
 }

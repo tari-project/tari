@@ -27,8 +27,16 @@
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
 # (Default: peer_seeds = [])
 dns_seeds = ["seeds.nextnet.tari.com"]
-# Custom specified peer seed nodes (Default: peer_seeds = [])
-#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+peer_seeds = [
+    "18a07e52ef6616d74a31b4c26d34fb7debdbe6d8b0261f6fff67e5801da8ee5d::/onion3/6huatttx2xvnhg7pui22rqweegmyjp7mr6wkppqjwrcqgzqqnv2okfad:18141",
+    "928b89d44afcebd5ae305113409f0d0c6237278a6451e19e270245358d945b1e::/ip6/2001:41d0:701:1000::4716/tcp/18189",
+    "0c42312a2bdd7d17b12047b515d36c982e56573cc5e9d6d19cf29210624ec02b::/ip4/148.113.143.145/tcp/18189",
+    "0c42312a2bdd7d17b12047b515d36c982e56573cc5e9d6d19cf29210624ec02b::/onion3/on77pvjtgvpsyrfzzmusvtdknuy6l44av5ifxaeo2hvaarcanccta4qd:18141",
+    "0e99cc89439546d3a59d02fb498d6e1bd7dbeee17c2cecea1966244b8f83b77d::/onion3/kjwvw4tg4pvgqrzaks7atnf7kjesteoxt5wpjd4b6lusezkqxgiktoqd:18141",
+    "928b89d44afcebd5ae305113409f0d0c6237278a6451e19e270245358d945b1e::/ip4/51.75.94.140/tcp/18189",
+    "463cb7d9238a30901b88370dac817da738a722f5fb0d340ab4eb52b747f3e149::/onion3/qugw4hf5zsopghjlrbcm6crggzbozp4tfbu4duadrf55nyb5dijm6pqd:18141",
+    "0e99cc89439546d3a59d02fb498d6e1bd7dbeee17c2cecea1966244b8f83b77d::/ip4/57.128.24.58/tcp/18189",
+]
 
 [stagenet.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
@@ -56,4 +64,6 @@ dns_seeds = ["seeds.igor.tari.com"]
 # (Default: peer_seeds = [])
 dns_seeds = ["seeds.mainnet.tari.com"]
 # Custom specified peer seed nodes (Default: peer_seeds = [])
-peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+peer_seeds = [
+    "a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189",
+] # Custom specified peer seed nodes (Default: peer_seeds = [])

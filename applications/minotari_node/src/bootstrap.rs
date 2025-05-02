@@ -172,6 +172,7 @@ where B: BlockchainBackend + 'static
             ))
             .add_initializer(TariPulseServiceInitializer::new(
                 base_node_config.tari_pulse_interval,
+                base_node_config.tari_pulse_health_check,
                 base_node_config.network,
             ))
             .build()

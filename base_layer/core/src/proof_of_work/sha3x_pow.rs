@@ -99,8 +99,8 @@ pub mod test {
     #[cfg(tari_target_network_testnet)]
     fn validate_max_target() {
         let mut header = get_header();
-        header.nonce = 631;
+        header.nonce = 4;
         println!("{:?}", header);
-        assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(13).unwrap());
+        assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(2366).unwrap());
     }
 }

@@ -60,6 +60,8 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, ValidationError> {
+    let mut timestamps: Vec<EpochTime> = timestamps.to_vec();
+    timestamps.sort();
     trace!(
         target: LOG_TARGET,
         "Calculate the median timestamp from {} timestamps",
@@ -104,17 +106,17 @@ pub fn check_header_timestamp_greater_than_median(
     }
 
     let median_timestamp = calc_median_timestamp(timestamps)?;
-    if block_header.timestamp < median_timestamp {
+    if block_header.timestamp <= median_timestamp {
         warn!(
             target: LOG_TARGET,
-            "Block header timestamp {} is less than median timestamp: {} for block:{}",
+            "Block header timestamp {} is less or equal than median timestamp: {} for block:{}",
             block_header.timestamp,
             median_timestamp,
             block_header.hash().to_hex()
         );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp(format!(
-                "The timestamp `{}` was less than the median timestamp `{}`",
+                "The timestamp `{}` was less or equal than the median timestamp `{}`",
                 block_header.timestamp, median_timestamp
             )),
         ));
@@ -564,7 +566,7 @@ mod test {
             assert_eq!(median_timestamp, 3.into());
 
             let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
-            assert_eq!(median_timestamp, 100.into());
+            assert_eq!(median_timestamp, 0.into());
 
             let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 2.into());
@@ -580,8 +582,8 @@ mod test {
         use super::*;
         use crate::transactions::{
             aggregated_body::AggregateBody,
-            key_manager::create_memory_db_key_manager,
             transaction_components::{RangeProofType, TransactionError},
+            transaction_key_manager::create_memory_db_key_manager,
         };
 
         #[tokio::test]
@@ -604,7 +606,7 @@ mod test {
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
-            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+            body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap();
         }
 
@@ -627,7 +629,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
@@ -654,7 +656,7 @@ mod test {
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
-                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
+                .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height, 1)
                 .unwrap_err();
             unpack_enum!(TransactionError::InvalidCoinbase = err);
         }

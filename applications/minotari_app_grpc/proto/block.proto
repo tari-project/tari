@@ -134,5 +134,8 @@ message NewBlockTemplate {
     // This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
     // has been called. This may be false even if all components are sorted.
     AggregateBody body = 2;
+    // Sometimes the mempool has not synced to the latest tip, this flag indicates if the mempool is out of sync.
+    // In most cases the next call to get_new_block_template will return a block with the mempool in sync.
+    bool is_mempool_in_sync = 3;
 }
 

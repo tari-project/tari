@@ -169,13 +169,13 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
         matches!(
             command,
             CliCommands::PreMineSpendGetOutputStatus |
-                CliCommands::PreMineSpendSessionInfo(_) |
-                CliCommands::PreMineSpendEncumberAggregateUtxo(_) |
-                CliCommands::PreMineSpendPartyDetails(_) |
-                CliCommands::PreMineSpendInputOutputSigs(_) |
+                CliCommands::PreMineStart(_) |
+                CliCommands::PreMineEncumber(_) |
+                CliCommands::PreMineStartParty(_) |
+                CliCommands::PreMineSigs(_) |
                 CliCommands::PreMineSpendBackupUtxo(_)
         ),
-        matches!(command, CliCommands::PreMineSpendAggregateTransaction(_)),
+        matches!(command, CliCommands::PreMineSpendTx(_)),
     )
 }
 
@@ -534,8 +534,7 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn clap_parses_user_defined_commands_as_expected() {
-        let script =
-            "
+        let script = "
             # Beginning of script file
 
             get-balance
@@ -544,38 +543,30 @@ mod test {
 
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            send-minotari --message Our_secret! 125T \
-             f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
+            send-minotari --payment-id Our_secret! 125T \
+                      f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
             
-            burn-minotari --message Ups_these_funds_will_be_burned! 100T
+            burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
 
             pre-mine-spend-get-output-status
 
-            pre-mine-spend-session-info --fee-per-gram 2 \
-             --recipient-info=[1,123,313]:\
-             f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
-             --verify-unspent-outputs --use-pre-mine-input-file
+            pre-mine-start \
+                      --recipient-info=[1,123,313]:\
+                      f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA
 
-            pre-mine-spend-party-details --input-file ./step_1_session_info.txt --alias alice \
-             --recipient-info=[1,123,313]:\
-             f4LR9f6WwwcPiKJjK5ciTkU1ocNhANa3FPw1wkyVUwbuKpgiihawCXy6PFszunUWQ4Te8KVFnyWVHHwsk9x5Cg7ZQiA \
-             --pre-mine-file-path ./pre_mine_file.txt
+            pre-mine-start-party --alias alice --input-file './step_1_session_info.json'
 
-            pre-mine-spend-encumber-aggregate-utxo --session-id ee1643655c \
-             --input-file-names=step_2_for_leader_from_alice.txt --input-file-names=step_2_for_leader_from_bob.txt \
-             --input-file-names=step_2_for_leader_from_carol.txt
+            pre-mine-encumber --session-id 20250306070544 --member=alice --member=bob
 
-            pre-mine-spend-input-output-sigs --session-id ee1643655c
+            pre-mine-sigs --session-id 20250306070544
 
-            pre-mine-spend-aggregate-transaction --session-id ee1643655c \
-             --input-file-names=step_4_for_leader_from_alice.txt --input-file-names=step_4_for_leader_from_bob.txt \
-             --input-file-names=step_4_for_leader_from_carol.txt
+            pre-mine-spend-tx --session-id 20250306070544 --member=alice --member=bob
 
-            coin-split --message Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
+            coin-split --payment-id Make_many_dust_UTXOs! --fee-per-gram 2 0.001T 499
 
             make-it-rain --duration 100 --transactions-per-second 10 --start-amount 0.009200T --increase-amount 0T \
-             --start-time now --message Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
-             f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
+                      --start-time now --payment-id Stressing_it_a_bit...!_(from_Feeling-a-bit-Generous) \
+                      f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
 
             export-tx 123456789 --output-file pie.txt
 
@@ -583,7 +574,7 @@ mod test {
 
             # End of script file
             "
-            .to_string();
+        .to_string();
 
         let commands = parse_command_file(script).unwrap();
 
@@ -608,11 +599,11 @@ mod test {
                 CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
-                CliCommands::PreMineSpendSessionInfo(_) => pre_mine_spend_session_info = true,
-                CliCommands::PreMineSpendPartyDetails(_) => pre_mine_spend_party_details = true,
-                CliCommands::PreMineSpendEncumberAggregateUtxo(_) => pre_mine_spend_encumber_aggregate_utxo = true,
-                CliCommands::PreMineSpendInputOutputSigs(_) => pre_mine_spend_input_output_sigs = true,
-                CliCommands::PreMineSpendAggregateTransaction(_) => pre_mine_spend_aggregate_transaction = true,
+                CliCommands::PreMineStart(_) => pre_mine_spend_session_info = true,
+                CliCommands::PreMineStartParty(_) => pre_mine_spend_party_details = true,
+                CliCommands::PreMineEncumber(_) => pre_mine_spend_encumber_aggregate_utxo = true,
+                CliCommands::PreMineSigs(_) => pre_mine_spend_input_output_sigs = true,
+                CliCommands::PreMineSpendTx(_) => pre_mine_spend_aggregate_transaction = true,
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,

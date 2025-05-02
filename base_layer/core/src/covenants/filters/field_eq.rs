@@ -76,7 +76,7 @@ impl Filter for FieldEqFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
     use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::Hex;
@@ -85,7 +85,7 @@ mod test {
     use crate::{
         covenant,
         covenants::test::{create_context, create_input, create_outputs},
-        transactions::{key_manager::create_memory_db_key_manager, transaction_components::OutputType},
+        transactions::{transaction_components::OutputType, transaction_key_manager::create_memory_db_key_manager},
     };
 
     #[tokio::test]
@@ -107,7 +107,8 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_sender_offset_public_key() {
-        let pk = PublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
+        let pk =
+            CompressedPublicKey::from_hex("5615a327e1d19da34e5aa8bbd2ecc97addf29b158844b885bfc4efa0dab17052").unwrap();
         let key_manager = create_memory_db_key_manager().unwrap();
         let covenant = covenant!(field_eq(
             @field::sender_offset_public_key,
@@ -131,7 +132,7 @@ mod test {
     async fn it_filters_commitment() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let commitment =
-            Commitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
+            CompressedCommitment::from_hex("7ca31ba517d8b563609ed6707fedde5a2be64ac1d67b254cb5348bc2f680557f").unwrap();
         let covenant = covenant!(field_eq(
             @field::commitment,
             @commitment(commitment.clone())

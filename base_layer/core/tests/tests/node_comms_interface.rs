@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
-
 use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_comms::test_utils::mocks::create_connectivity_mock;
@@ -42,7 +40,6 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
@@ -53,14 +50,18 @@ use tari_core::{
             WalletOutput,
             WalletOutputBuilder,
         },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+        },
         transaction_protocol::transaction_initializer::SenderTransactionInitializer,
         SenderTransactionProtocol,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
-    OutputSmt,
 };
-use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -302,7 +303,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
             .await
             .unwrap();
 
-        let script_key_id = KeyId::Derived {
+        let script_key_id = TariKeyId::Derived {
             key: (&commitment_mask_key.key_id).into(),
         };
 
@@ -444,9 +445,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         pruning_interval: 1,
         ..Default::default()
     };
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    let store =
-        create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config, smt);
+    let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
     let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),

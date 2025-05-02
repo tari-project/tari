@@ -178,7 +178,7 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
                 kernel.excess.to_hex(),
                 header_hash.to_hex(),
                 db_kernel.excess.to_hex(),
-                db_kernel.excess_sig.get_public_nonce().to_hex(),
+                db_kernel.excess_sig.get_compressed_public_nonce().to_hex(),
                 db_kernel.excess_sig.get_signature().to_hex(),
             );
             return Err(ValidationError::DuplicateKernelError(msg));

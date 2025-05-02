@@ -91,6 +91,8 @@ pub async fn run_base_node(
         grpc_enabled: false,
         mining_enabled: false,
         second_layer_grpc_enabled: false,
+        disable_splash_screen: false,
+        libtor_data_dir: None,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
@@ -111,12 +113,6 @@ pub async fn run_base_node_with_cli(
             &config.metrics,
             shutdown.to_signal(),
         );
-    }
-
-    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
-    log_mdc::insert("node-id", node_identity.node_id().to_string());
-    if let Some(grpc) = config.base_node.grpc_address.as_ref() {
-        log_mdc::insert("grpc", grpc.to_string());
     }
 
     if cli.rebuild_db {
@@ -151,6 +147,9 @@ pub async fn run_base_node_with_cli(
         task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
     }
 
+    ctx.start()
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
+
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
     let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
@@ -170,8 +169,7 @@ pub async fn run_base_node_with_cli(
     }
 
     info!(target: LOG_TARGET, "Minotari base node has STARTED");
-    main_loop.cli_loop().await;
-
+    main_loop.cli_loop(cli.disable_splash_screen).await;
     ctx.wait_for_shutdown().await;
 
     println!("Goodbye!");

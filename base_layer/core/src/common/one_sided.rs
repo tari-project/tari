@@ -22,7 +22,7 @@
 
 use blake2::Blake2b;
 use digest::consts::U64;
-use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, WalletHasher};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hash_domain,
@@ -68,7 +68,7 @@ pub fn secret_key_to_output_encryption_key(secret_key: &PrivateKey) -> Result<Pr
 }
 
 /// Generate an output encryption key from a public key
-pub fn public_key_to_output_encryption_key(public_key: &PublicKey) -> Result<PrivateKey, ByteArrayError> {
+pub fn public_key_to_output_encryption_key(public_key: &CompressedPublicKey) -> Result<PrivateKey, ByteArrayError> {
     PrivateKey::from_uniform_bytes(
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(public_key.as_bytes())

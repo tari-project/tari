@@ -22,7 +22,7 @@
 
 use log::*;
 use minotari_wallet::{error::WalletStorageError, WalletSqlite};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::CompressedPublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
@@ -58,7 +58,7 @@ pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> 
 
     match (custom_base_node_peer_pubkey, custom_base_node_peer_address) {
         (Some(public_key), Some(address)) => {
-            let pub_key_str = PublicKey::from_hex(public_key.as_str());
+            let pub_key_str = CompressedPublicKey::from_hex(public_key.as_str());
             let addr_str = address.parse::<Multiaddr>();
             let (pub_key, address) = match (pub_key_str, addr_str) {
                 (Ok(pk), Ok(addr)) => (pk, addr),

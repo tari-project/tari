@@ -1,0 +1,22 @@
+[
+  {
+    "image_name": "minotari_node",
+    "app_name":   "node",
+    "app_exec":   "minotari_node"
+  },
+  {
+    "image_name": "minotari_console_wallet",
+    "app_name":   "wallet",
+    "app_exec":   "minotari_console_wallet"
+  },
+  {
+    "image_name": "minotari_merge_mining_proxy",
+    "app_name":   "merge_mining_proxy",
+    "app_exec":   "minotari_merge_mining_proxy"
+  },
+  {
+    "image_name": "minotari_sha3_miner",
+    "app_name":   "sha3_miner",
+    "app_exec":   "minotari_miner"
+  }
+]

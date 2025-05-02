@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use core::convert;
 use std::{iter, sync::Arc, time::Duration};
 
 use futures::future;
@@ -129,7 +128,7 @@ async fn it_resolves_many_pending_rpc_session_requests() {
     mock_state.add_active_connection(conn).await;
 
     let results = future::join_all(pending_requests).await;
-    assert!(results.into_iter().map(Result::unwrap).all(convert::identity));
+    assert!(results.into_iter().all(Result::unwrap));
 }
 
 #[tokio::test]

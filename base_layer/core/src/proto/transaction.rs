@@ -28,7 +28,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
+use tari_common_types::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey, PrivateKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -63,7 +63,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: proto::types::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_canonical_bytes(
+        let excess = CompressedCommitment::from_canonical_bytes(
             &kernel
                 .excess
                 .ok_or_else(|| "Excess not provided in kernel".to_string())?
@@ -78,7 +78,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
         let commitment = match kernel.burn_commitment {
             Some(burn_commitment) => {
-                Some(Commitment::from_canonical_bytes(&burn_commitment.data).map_err(|e| e.to_string())?)
+                Some(CompressedCommitment::from_canonical_bytes(&burn_commitment.data).map_err(|e| e.to_string())?)
             },
             None => None,
         };
@@ -127,14 +127,15 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
 
         // Check if the received Transaction input is in compact form or not
         if let Some(commitment) = input.commitment {
-            let commitment = Commitment::from_canonical_bytes(&commitment.data).map_err(|e| e.to_string())?;
+            let commitment = CompressedCommitment::from_canonical_bytes(&commitment.data).map_err(|e| e.to_string())?;
             let features = input
                 .features
                 .map(TryInto::try_into)
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key = PublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("{:?}", err))?;
+            let sender_offset_public_key =
+                CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
+                    .map_err(|err| format!("{:?}", err))?;
 
             let metadata_signature = input
                 .metadata_signature
@@ -265,12 +266,13 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let commitment = output
             .commitment
-            .map(|commit| Commitment::from_canonical_bytes(&commit.data))
+            .map(|commit| CompressedCommitment::from_canonical_bytes(&commit.data))
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        let sender_offset_public_key = PublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-            .map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key =
+            CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("{:?}", err))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)

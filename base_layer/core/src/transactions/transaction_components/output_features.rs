@@ -28,7 +28,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, Signature};
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
 use super::OutputFeaturesVersion;
@@ -129,7 +129,7 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output with confidential output data
-    pub fn create_burn_confidential_output(claim_public_key: PublicKey) -> OutputFeatures {
+    pub fn create_burn_confidential_output(claim_public_key: CompressedPublicKey) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::Burn,
             sidechain_feature: Some(SideChainFeature::ConfidentialOutput(ConfidentialOutputData {
@@ -149,7 +149,7 @@ impl OutputFeatures {
     }
 
     pub fn for_validator_node_registration(
-        validator_node_public_key: PublicKey,
+        validator_node_public_key: CompressedPublicKey,
         validator_node_signature: Signature,
     ) -> OutputFeatures {
         OutputFeatures {
@@ -165,7 +165,7 @@ impl OutputFeatures {
     }
 
     pub fn for_code_template_registration(
-        author_public_key: PublicKey,
+        author_public_key: CompressedPublicKey,
         author_signature: Signature,
         template_name: MaxSizeString<32>,
         template_version: u16,

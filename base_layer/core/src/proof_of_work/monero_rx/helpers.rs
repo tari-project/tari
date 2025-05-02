@@ -221,7 +221,7 @@ pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, Me
 where T: AsRef<[u8]> {
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
-        .map_err(|_| MergeMineError::ValidationError("blocktemplate blob invalid".to_string()))?;
+        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
     Ok(obj)
 }
 

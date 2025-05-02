@@ -35,10 +35,10 @@ use crate::{
         BlockSpec,
     },
     transactions::{
-        key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::T,
         test_helpers::schema_to_transaction,
         transaction_components::{Transaction, WalletOutput},
+        transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
     txn_schema,
 };
@@ -57,6 +57,7 @@ async fn create_next_block(
 ) -> (Arc<Block>, WalletOutput) {
     let rules = db.rules();
     let (block, output) = create_block(
+        db,
         rules,
         prev_block,
         BlockSpec::new()
@@ -72,7 +73,7 @@ async fn create_next_block(
     (Arc::new(block), output)
 }
 
-fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
+pub fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
@@ -115,7 +116,7 @@ async fn add_many_chained_blocks(
 
 mod fetch_blocks {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -206,7 +207,7 @@ mod fetch_blocks {
 
 mod fetch_headers {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -294,7 +295,7 @@ mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
 
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -349,7 +350,7 @@ mod find_headers_after_hash {
 
 mod fetch_block_hashes_from_header_tip {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -418,7 +419,7 @@ mod get_stats {
 
 mod fetch_total_size_stats {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
@@ -441,7 +442,8 @@ mod prepare_new_block {
     fn it_errors_for_genesis_block() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T).unwrap();
+        let template =
+            NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T, true).unwrap();
         let err = db.prepare_new_block(template).unwrap_err();
         assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
     }
@@ -452,7 +454,7 @@ mod prepare_new_block {
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let mut template =
-            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T, true).unwrap();
         // This would cause a panic if the sanity checks were not there
         template.header.height = 100;
         let err = db.prepare_new_block(template.clone()).unwrap_err();
@@ -468,7 +470,7 @@ mod prepare_new_block {
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let template =
-            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T, true).unwrap();
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
     }
@@ -476,7 +478,7 @@ mod prepare_new_block {
 
 mod fetch_header_containing_kernel_mmr {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
     #[tokio::test]
     async fn it_returns_corresponding_header() {
         let db = setup();
@@ -525,7 +527,7 @@ mod fetch_header_containing_kernel_mmr {
 
 mod clear_all_pending_headers {
     use super::*;
-    use crate::transactions::key_manager::create_memory_db_key_manager;
+    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_clears_no_headers() {
@@ -586,15 +588,14 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::types::PublicKey;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_common_types::types::CompressedPublicKey;
 
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
         transactions::{
-            key_manager::create_memory_db_key_manager,
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
+            transaction_key_manager::create_memory_db_key_manager,
         },
         ValidatorNodeBMT,
     };
@@ -614,7 +615,7 @@ mod validator_node_merkle_root {
         let key_manager = create_memory_db_key_manager().unwrap();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
-        let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut OsRng);
         let signature = ValidatorNodeSignature::sign(&sk, &[]);
         let features =
             OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone());

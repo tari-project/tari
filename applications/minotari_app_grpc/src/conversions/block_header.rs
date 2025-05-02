@@ -77,7 +77,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             timestamp: EpochTime::from(header.timestamp),
             input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
-            block_output_mr: FixedHash::try_from(header.block_output_mr).unwrap_or_default(),
+            block_output_mr: FixedHash::try_from(header.block_output_mr).map_err(|err| err.to_string())?,
             output_smt_size: header.output_mmr_size,
             kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,

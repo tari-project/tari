@@ -326,11 +326,13 @@ mod test {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
-            let next = BlockHeader::from_previous(tip.header());
+            let mut next = BlockHeader::from_previous(tip.header());
+            next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
-            let next = BlockHeader::from_previous(tip.header());
+            let mut next = BlockHeader::from_previous(tip.header());
+            next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }

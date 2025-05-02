@@ -34,13 +34,10 @@ use multiaddr::Multiaddr;
 use rand::rngs::OsRng;
 use tari_comms::{
     peer_manager::{NodeId, PeerFeatures},
+    types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_crypto::{
-    keys::PublicKey,
-    ristretto::RistrettoPublicKey,
-    tari_utilities::{message_format::MessageFormat, ByteArray},
-};
+use tari_crypto::tari_utilities::{message_format::MessageFormat, ByteArray};
 use tokio::{sync::mpsc, task, task::JoinHandle};
 
 #[tokio::main]
@@ -91,7 +88,7 @@ fn spawn_identity_miners(
 fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Result<(), anyhow::Error> {
     let mut node_id_hex = String::with_capacity(26);
     for i in 0u64.. {
-        let (k, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (k, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_public_key(&pk);
         node_id_hex.clear();
         for byte in node_id.as_bytes() {

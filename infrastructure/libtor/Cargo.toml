@@ -1,17 +1,18 @@
 [package]
 name = "tari_libtor"
-version = "1.9.0-pre.0"
-edition = "2021"
-license = "BSD-3-Clause"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-tari_common = { path = "../../common" }
-tari_p2p = { path = "../../base_layer/p2p" }
+tari_common = { workspace = true }
+tari_p2p = { workspace = true }
 
 derivative = "2.2.0"
 log = "0.4.8"
 rand = "0.8"
-tempfile = "3.1.0"
 tor-hash-passwd = "1.0.1"
 
 [target.'cfg(unix)'.dependencies]

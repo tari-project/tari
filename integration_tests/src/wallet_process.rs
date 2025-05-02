@@ -31,8 +31,9 @@ use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
@@ -234,7 +235,9 @@ pub fn get_default_cli() -> Cli {
         command2: None,
         profile_with_tokio_console: false,
         view_private_key: None,
+        birthday: None,
         spend_key: None,
+        libtor_data_dir: None,
     }
 }
 

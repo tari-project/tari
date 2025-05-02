@@ -53,9 +53,6 @@ pub use makers::*;
 mod service;
 pub use service::service_spy;
 
-mod store_and_forward_mock;
-pub use store_and_forward_mock::create_store_and_forward_mock;
-
 pub fn assert_send_static_service<T, S>(_: &S)
 where
     S: tower::Service<T> + Send + 'static,

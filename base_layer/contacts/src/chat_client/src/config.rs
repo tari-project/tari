@@ -33,7 +33,8 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
+use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_comms_dht::{DhtConfig, NetworkDiscoveryConfig};
 use tari_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
@@ -86,7 +87,7 @@ pub struct ChatClientConfig {
     pub p2p: P2pConfig,
     /// If set this node will only sync to the nodes in this set
     pub force_sync_peers: StringList,
-    /// Liveness meta data auto ping interval between peers
+    /// Liveness metadata auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
     /// The location of the log path
@@ -167,10 +168,6 @@ impl ChatClientConfig {
                         enabled: true,
                         initial_peer_sync_delay: None,
                         ..NetworkDiscoveryConfig::default()
-                    },
-                    saf: SafConfig {
-                        auto_request: true,
-                        ..Default::default()
                     },
                     ..DhtConfig::default_local_test()
                 },

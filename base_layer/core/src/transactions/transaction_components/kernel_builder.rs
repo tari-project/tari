@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::{Commitment, Signature};
+use tari_common_types::types::{CompressedCommitment, Signature};
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
@@ -35,9 +35,9 @@ pub struct KernelBuilder {
     features: KernelFeatures,
     fee: MicroMinotari,
     lock_height: u64,
-    excess: Option<Commitment>,
+    excess: Option<CompressedCommitment>,
     excess_sig: Option<Signature>,
-    burn_commitment: Option<Commitment>,
+    burn_commitment: Option<CompressedCommitment>,
 }
 
 /// Implementation of the transaction kernel
@@ -60,7 +60,7 @@ impl KernelBuilder {
     }
 
     /// Build a transaction kernel with the provided burn commitment
-    pub fn with_burn_commitment(mut self, burn_commitment: Option<Commitment>) -> KernelBuilder {
+    pub fn with_burn_commitment(mut self, burn_commitment: Option<CompressedCommitment>) -> KernelBuilder {
         self.burn_commitment = burn_commitment;
         self
     }
@@ -72,7 +72,7 @@ impl KernelBuilder {
     }
 
     /// Add the excess (sum of public spend keys minus the offset)
-    pub fn with_excess(mut self, excess: &Commitment) -> KernelBuilder {
+    pub fn with_excess(mut self, excess: &CompressedCommitment) -> KernelBuilder {
         self.excess = Some(excess.clone());
         self
     }

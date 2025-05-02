@@ -22,15 +22,12 @@
 
 use std::io;
 
-use hickory_client::{error::ClientError, proto::error::ProtoError};
-use hickory_resolver::error::ResolveError;
+use hickory_resolver::ResolveError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DnsClientError {
-    #[error("Client failure: {0}")]
-    ClientError(#[from] ClientError),
-    #[error("DNS Protocol error: {0}")]
-    ProtoError(#[from] ProtoError),
+    #[error("Proto error: {0}")]
+    ProtoError(#[from] hickory_proto::ProtoError),
     #[error("DNS timeout error")]
     Timeout,
     #[error("Failed to parse name server string")]

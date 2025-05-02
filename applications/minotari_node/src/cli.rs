@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
@@ -43,14 +45,24 @@ pub struct Cli {
     /// Watch a command in the non-interactive mode.
     #[clap(long)]
     pub watch: Option<String>,
+    /// Run in test profile mode
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    /// Enable gRPC
     #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
     pub grpc_enabled: bool,
+    /// Enable mining
     #[clap(long, env = "MINOTARI_NODE_ENABLE_MINING", alias = "enable-mining")]
     pub mining_enabled: bool,
+    /// Enable the second layer gRPC server
     #[clap(long, env = "MINOTARI_NODE_SECOND_LAYER_GRPC_ENABLED", alias = "enable-second-layer")]
     pub second_layer_grpc_enabled: bool,
+    /// Disable the splash screen
+    #[clap(long)]
+    pub disable_splash_screen: bool,
+    /// Path to the libtor data directory
+    #[clap(short = 'z', long, parse(from_os_str))]
+    pub libtor_data_dir: Option<PathBuf>,
 }
 
 impl ConfigOverrideProvider for Cli {

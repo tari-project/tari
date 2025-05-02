@@ -23,6 +23,7 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::PeerFeatures,
@@ -35,7 +36,7 @@ use tari_comms::{
     CommsNode,
     NodeIdentity,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht};
+use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
@@ -112,7 +113,6 @@ pub async fn create<P: AsRef<Path>>(
 
     let dht = tari_comms_dht::Dht::builder()
         .with_database_url(DbConnectionUrl::File(database_path.as_ref().join("dht.sqlite")))
-        .set_auto_store_and_forward_requests(false)
         .with_outbound_sender(outbound_tx)
         .enable_auto_join()
         .build(

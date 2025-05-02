@@ -35,10 +35,7 @@ use tari_comms::{
     Minimized,
     PeerManager,
 };
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundMessageRequester},
-};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
 use tokio::{sync::RwLock, time, time::MissedTickBehavior};
@@ -257,8 +254,7 @@ where
                 OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
                 "Send ping".to_string(),
             )
-            .await
-            .map_err(Into::<DhtOutboundError>::into)?;
+            .await?;
 
         Ok(nonce)
     }
@@ -437,7 +433,6 @@ mod test {
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
         DhtProtocolVersion,
     };
-    use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
@@ -466,7 +461,7 @@ mod test {
 
         let peer_database = datastore.get_handle(&database_name).unwrap();
 
-        PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None)
+        PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None, None)
             .map(Arc::new)
             .unwrap()
     }

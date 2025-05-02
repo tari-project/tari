@@ -30,7 +30,15 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        HashOutput,
+        PrivateKey,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+    },
 };
 use tari_comms::types::CommsDHKE;
 use tari_core::{
@@ -45,10 +53,9 @@ use tari_core::{
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -60,19 +67,19 @@ use tari_core::{
             WalletOutput,
             WalletOutputBuilder,
         },
+        transaction_key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
-use tari_key_manager::key_manager_service::{KeyAndId, KeyId, SerializedKeyString};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
     inputs,
     push_pubkey_script,
     script,
-    CheckSigSchnorrSignature,
+    CompressedCheckSigSchnorrSignature,
     ExecutionStack,
     Opcode,
     StackItem,
@@ -108,6 +115,7 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -147,6 +155,7 @@ where
         network: Network,
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
+        utxo_scanner_handle: UtxoScannerHandle,
     ) -> Result<Self, OutputManagerError> {
         let view_key = key_manager.get_view_key().await?;
         let spend_key = key_manager.get_spend_key().await?;
@@ -161,9 +170,10 @@ where
             comms_key.pub_key,
             network,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )?;
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = OutputManagerResources {
             config,
             db,
@@ -175,6 +185,7 @@ where
             shutdown_signal,
             one_sided_tari_address,
             interactive_tari_address,
+            utxo_scanner_handle,
         };
 
         Ok(Self {
@@ -198,6 +209,8 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
+        let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
+
         debug!(target: LOG_TARGET, "Output Manager Service started");
         // Outputs marked as shorttermencumbered are not yet stored as transactions in the TMS, so lets clear them
         self.resources.db.clear_short_term_encumberances()?;
@@ -207,6 +220,12 @@ where
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg),
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    }
+                },
+                event = utxo_scanner_events.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_utxo_scanner_service_event(msg),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
                     }
                 },
                 Some(request_context) = request_stream.next() => {
@@ -258,6 +277,7 @@ where
                 recipient_address,
                 original_maturity,
                 use_output,
+                payment_id,
             } => self
                 .encumber_aggregate_utxo(
                     tx_id,
@@ -269,14 +289,14 @@ where
                     metadata_ephemeral_public_key_shares,
                     dh_shared_secret_shares,
                     recipient_address,
-                    PaymentId::Empty,
+                    payment_id,
                     original_maturity,
                     RangeProofType::BulletProofPlus,
                     0.into(),
                     use_output,
                 )
                 .await
-                .map(OutputManagerResponse::EncumberAggregateUtxo),
+                .map(|val| (OutputManagerResponse::EncumberAggregateUtxo(Box::new(val)))),
             OutputManagerRequest::SpendBackupPreMineUtxo {
                 tx_id,
                 fee_per_gram,
@@ -290,7 +310,10 @@ where
                     output_hash,
                     expected_commitment,
                     recipient_address,
-                    PaymentId::Empty,
+                    PaymentId::Open {
+                        user_data: output_hash.to_vec(),
+                        tx_type: TxType::PaymentToOther,
+                    },
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -312,6 +335,14 @@ where
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
+            OutputManagerRequest::GetBalancePaymentId(payment_id) => {
+                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
+                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
+                    Err(_) => None,
+                };
+                self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
+                    .map(OutputManagerResponse::Balance)
+            },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
                 .get_default_recipient_transaction(tsm)
                 .await
@@ -323,10 +354,11 @@ where
                 output_features,
                 fee_per_gram,
                 tx_meta,
-                message,
                 script,
                 covenant,
                 minimum_value_promise,
+                recipient_address,
+                payment_id,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -334,11 +366,12 @@ where
                     selection_criteria,
                     fee_per_gram,
                     tx_meta,
-                    message,
                     *output_features,
                     script,
                     covenant,
                     minimum_value_promise,
+                    recipient_address,
+                    payment_id,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -349,6 +382,7 @@ where
                 output_features,
                 fee_per_gram,
                 lock_height,
+                payment_id,
             } => self
                 .create_pay_to_self_transaction(
                     tx_id,
@@ -357,6 +391,7 @@ where
                     *output_features,
                     fee_per_gram,
                     lock_height,
+                    payment_id,
                 )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
@@ -400,8 +435,12 @@ where
                         .await?,
                 ))
             },
-            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
-                .scrape_wallet(tx_id, fee_per_gram)
+            OutputManagerRequest::ScrapeWallet {
+                tx_id,
+                fee_per_gram,
+                recipient_address,
+            } => self
+                .scrape_wallet(tx_id, fee_per_gram, recipient_address)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
 
@@ -441,8 +480,9 @@ where
             OutputManagerRequest::CreateCoinJoin {
                 commitments,
                 fee_per_gram,
+                payment_id,
             } => self
-                .create_coin_join(commitments, fee_per_gram)
+                .create_coin_join(commitments, fee_per_gram, payment_id)
                 .await
                 .map(OutputManagerResponse::Transaction),
 
@@ -472,9 +512,10 @@ where
                 outputs,
                 fee_per_gram,
                 selection_criteria,
+                payment_id,
             } => {
                 let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram)
+                    .create_pay_to_self_containing_outputs(outputs, selection_criteria, fee_per_gram, payment_id)
                     .await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
                     transaction: Box::new(transaction),
@@ -521,7 +562,7 @@ where
     async fn claim_sha_atomic_swap_with_hash(
         &mut self,
         output_hash: HashOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
@@ -535,6 +576,23 @@ where
             .map(OutputManagerResponse::ClaimHtlcTransaction)
     }
 
+    fn handle_utxo_scanner_service_event(&mut self, event: UtxoScannerEvent) {
+        match event {
+            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
+            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
+            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
+            UtxoScannerEvent::ScanningRoundFailed { .. } => {},
+            UtxoScannerEvent::Progress { .. } => {},
+            UtxoScannerEvent::Completed { .. } => {
+                let _id = self.validate_outputs().map_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                    e
+                });
+            },
+            UtxoScannerEvent::ScanningFailed => {},
+        }
+    }
+
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
         match (*event).clone() {
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
@@ -545,14 +603,11 @@ where
             },
             BaseNodeEvent::NewBlockDetected(_hash, height) => {
                 self.last_seen_tip_height = Some(height);
-                let _id = self.validate_outputs().map_err(|e| {
-                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                    e
-                });
             },
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
         let current_base_node = self
             .resources
@@ -572,6 +627,7 @@ where
         let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
+        let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
         tokio::spawn(async move {
             // Note: We do not want the validation task to be queued
             let mut _lock = match validation_in_progress.try_lock() {
@@ -590,60 +646,67 @@ where
                     return;
                 },
             };
-
-            let exec_fut = txo_validation.execute();
-            tokio::pin!(exec_fut);
-            loop {
-                tokio::select! {
-                    result = &mut exec_fut => {
-                        match result {
-                            Ok(id) => {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "UTXO Validation Protocol (Id: {}) completed successfully", id
-                                );
-                                return;
-                            },
-                            Err(OutputManagerProtocolError { id, error }) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
-                                );
-                                let event_payload = match error {
-                                    OutputManagerError::InconsistentBaseNodeDataError(_) |
-                                    OutputManagerError::BaseNodeChanged |
-                                    OutputManagerError::Shutdown |
-                                    OutputManagerError::RpcError(_) =>
-                                        OutputManagerEvent::TxoValidationCommunicationFailure(id),
-                                    _ => OutputManagerEvent::TxoValidationInternalFailure(id),
-                                };
-                                if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
-                                    debug!(
+            'outer: loop {
+                let local_run = txo_validation.clone();
+                let exec_fut = local_run.execute();
+                tokio::pin!(exec_fut);
+                loop {
+                    tokio::select! {
+                        result = &mut exec_fut => {
+                            match result {
+                                Ok(id) => {
+                                    info!(
                                         target: LOG_TARGET,
-                                        "Error sending event because there are no subscribers: {:?}", e
+                                        "UTXO Validation Protocol (Id: {}) completed successfully", id
                                     );
-                                }
+                                    return;
+                                },
+                                Err(OutputManagerProtocolError { id, error }) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
+                                    );
+                                    let event_payload = match error {
+                                        OutputManagerError::InconsistentBaseNodeDataError(_) |
+                                        OutputManagerError::BaseNodeChanged |
+                                        OutputManagerError::Shutdown |
+                                        OutputManagerError::RpcError(_) =>
+                                            OutputManagerEvent::TxoValidationCommunicationFailure(id),
+                                        _ => OutputManagerEvent::TxoValidationInternalFailure(id),
+                                    };
+                                    if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
+                                        debug!(
+                                            target: LOG_TARGET,
+                                            "Error sending event because there are no subscribers: {:?}", e
+                                        );
+                                    }
 
-                                return;
-                            },
-                        }
-                    },
-                    _ = shutdown.wait() => {
-                        debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
-                            is shutting down", id);
-                        return;
-                    },
-                    _ = base_node_watch.changed() => {
-                        if let Some(peer) = base_node_watch.borrow().as_ref() {
-                            if peer.get_current_peer().node_id != current_base_node {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "TXO Validation Protocol (Id: {}) cancelled because base node changed", id
-                                );
-                                return;
+                                    return;
+                                },
+                            }
+                        },
+                        _ = shutdown.wait() => {
+                            debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
+                                is shutting down", id);
+                            return;
+                        },
+                        event = utxo_scanner_service_event_stream.recv() => {
+                            if let Ok(UtxoScannerEvent::Completed{..}) = event {
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                continue 'outer;
                             }
                         }
-
+                        _ = base_node_watch.changed() => {
+                            if let Some(peer) = base_node_watch.borrow().as_ref() {
+                                if peer.get_current_peer().node_id != current_base_node {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
+                                    );
+                                    continue 'outer;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -751,6 +814,19 @@ where
         Ok(balance)
     }
 
+    fn get_balance_payment_id(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerError> {
+        let balance = self
+            .resources
+            .db
+            .get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
+        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        Ok(balance)
+    }
+
     /// Request a receiver transaction be generated from the supplied Sender Message
     #[allow(clippy::too_many_lines)]
     async fn get_default_recipient_transaction(
@@ -793,7 +869,14 @@ where
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
-        let payment_id = PaymentId::Address(single_round_sender_data.sender_address.clone());
+        let payment_id = PaymentId::AddressAndData {
+            sender_address: single_round_sender_data.sender_address.clone(),
+            amount: single_round_sender_data.amount,
+            fee: single_round_sender_data.metadata.fee,
+            sender_one_sided: false,
+            tx_type: TxType::PaymentToOther,
+            user_data: vec![],
+        };
         let encrypted_data = self
             .resources
             .key_manager
@@ -960,18 +1043,17 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
-        message: String,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
         recipient_minimum_value_promise: MicroMinotari,
+        recipient_address: TariAddress,
+        payment_id: PaymentId,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction. Amount: {}. UTXO Selection: {}. Fee per gram: {}. ",
-            amount,
-            selection_criteria,
-            fee_per_gram,
+            "Preparing to send transaction - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, selection: {}",
+            tx_id, amount, fee_per_gram, payment_id, selection_criteria,
         );
         let features_and_scripts_byte_size = self
             .resources
@@ -1011,10 +1093,11 @@ where
                 recipient_covenant,
                 recipient_minimum_value_promise,
                 amount,
+                recipient_address,
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_message(message)
+            .with_payment_id(payment_id)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -1087,6 +1170,7 @@ where
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop]?;
@@ -1131,7 +1215,8 @@ where
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(false)
-            .with_kernel_features(KernelFeatures::empty());
+            .with_kernel_features(KernelFeatures::empty())
+            .with_payment_id(payment_id);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
@@ -1213,26 +1298,34 @@ where
         &self,
         payment_id: PaymentId,
         tx_id: TxId,
-    ) -> Result<KeyAndId<PublicKey>, OutputManagerError> {
-        if let PaymentId::U64(index) = payment_id {
-            let script_key_id = KeyId::Managed {
-                branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                index,
-            };
-            Ok(KeyAndId::<PublicKey> {
-                pub_key: self
-                    .resources
-                    .key_manager
-                    .get_public_key_at_key_id(&script_key_id)
-                    .await?,
-                key_id: script_key_id,
-            })
-        } else {
-            Err(OutputManagerError::ServiceError(format!(
-                "Invalid payment id (TxId: {}): expected 'PaymentId::U64(_)', received {:?}",
-                tx_id, payment_id
-            )))
-        }
+    ) -> Result<TariKeyAndId, OutputManagerError> {
+        let index = match payment_id {
+            PaymentId::U256(index) => u64::try_from(index).expect("we dont go over u64"),
+            PaymentId::Open { user_data: data, .. } => {
+                let bytes: [u8; size_of::<u64>()] = data.try_into().map_err(|_| {
+                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
+                })?;
+                u64::from_le_bytes(bytes)
+            },
+            _ => {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
+                    tx_id, payment_id
+                )))
+            },
+        };
+        let script_key_id = TariKeyId::Managed {
+            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+            index,
+        };
+        Ok(TariKeyAndId {
+            pub_key: self
+                .resources
+                .key_manager
+                .get_public_key_at_key_id(&script_key_id)
+                .await?,
+            key_id: script_key_id,
+        })
     }
 
     /// Create a partial transaction in order to prepare output
@@ -1242,14 +1335,14 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        expected_commitment: PedersenCommitment,
-        mut script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-        script_signature_public_nonces: Vec<PublicKey>,
-        sender_offset_public_key_shares: Vec<PublicKey>,
-        metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-        dh_shared_secret_shares: Vec<PublicKey>,
+        expected_commitment: CompressedCommitment,
+        mut script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+        script_signature_public_nonces: Vec<CompressedPublicKey>,
+        sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+        metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+        dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        tx_payment_id: PaymentId,
         original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
@@ -1259,10 +1352,10 @@ where
             Transaction,
             MicroMinotari,
             MicroMinotari,
-            PublicKey,
-            PublicKey,
-            PublicKey,
-            PublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
+            CompressedPublicKey,
         ),
         OutputManagerError,
     > {
@@ -1279,7 +1372,7 @@ where
                         output_hash, tx_id
                     ))
                 })?,
-            UseOutput::AsProvided(ref val) => val.clone(),
+            UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
@@ -1292,14 +1385,16 @@ where
         let (multi_sig_public_keys, threshold) = get_multi_sig_script_components(&output.script, tx_id)?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: retrieved public keys from script");
         // Create a deterministic encryption key from the sum of the public keys
-        let sum_public_keys = multi_sig_public_keys
-            .iter()
-            .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
-        let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
-        let mut aggregated_script_public_key_shares = PublicKey::default();
+        let mut sum_public_keys = UncompressedPublicKey::default();
+        for key in &multi_sig_public_keys {
+            sum_public_keys = &sum_public_keys + key.to_public_key()?;
+        }
+        let encryption_private_key =
+            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(sum_public_keys))?;
+        let mut aggregated_script_public_key_shares = UncompressedPublicKey::default();
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created deterministic encryption key");
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
-        let input = if let Ok((amount, commitment_mask, payment_id)) =
+        let (input, payment_id) = if let Ok((amount, commitment_mask, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
         {
             if output.verify_mask(&self.resources.factories.range_proof, &commitment_mask, amount.as_u64())? {
@@ -1317,12 +1412,13 @@ where
 
                 // the order here is important, we need to add the signatures in the same order as public keys were
                 // added to the script originally
-                for key in multi_sig_public_keys {
-                    if let Some(signature) = script_input_shares.get(&key) {
+                for key in &multi_sig_public_keys {
+                    if let Some(signature) = script_input_shares.get(key) {
                         script_signatures.push(StackItem::Signature(signature.clone()));
                         // our own key should not be aggregated yet, it will be added with the script signing
-                        if key != script_key.pub_key {
-                            aggregated_script_public_key_shares = aggregated_script_public_key_shares + key;
+                        if key != &script_key.pub_key {
+                            aggregated_script_public_key_shares =
+                                aggregated_script_public_key_shares + key.to_public_key()?;
                         }
                     }
                 }
@@ -1335,21 +1431,24 @@ where
                     )));
                 }
                 let commitment_mask_key_id = self.resources.key_manager.import_key(commitment_mask).await?;
-                WalletOutput::new_with_rangeproof(
-                    output.version,
-                    amount,
-                    commitment_mask_key_id,
-                    output.features,
-                    output.script,
-                    ExecutionStack::new(script_signatures),
-                    script_key.key_id.clone(), // Only of the master wallet
-                    output.sender_offset_public_key,
-                    output.metadata_signature,
-                    0,
-                    output.covenant,
-                    output.encrypted_data,
-                    output.minimum_value_promise,
-                    output.proof,
+                (
+                    WalletOutput::new_with_rangeproof(
+                        output.version,
+                        amount,
+                        commitment_mask_key_id,
+                        output.features,
+                        output.script,
+                        ExecutionStack::new(script_signatures),
+                        script_key.key_id.clone(), // Only of the master wallet
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
+                        0,
+                        output.covenant,
+                        output.encrypted_data,
+                        output.minimum_value_promise,
+                        output.proof,
+                        payment_id.clone(),
+                    ),
                     payment_id,
                 )
             } else {
@@ -1408,6 +1507,7 @@ where
                 Covenant::default(),
                 minimum_value_promise,
                 amount,
+                recipient_address.clone(),
             )
             .await?
             .with_change_data(
@@ -1417,7 +1517,8 @@ where
                 TariKeyId::default(),
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
-            );
+            )
+            .with_payment_id(payment_id);
         let mut stp = builder
             .build()
             .await
@@ -1450,9 +1551,9 @@ where
                 )))?;
 
         let shared_secret = {
-            let mut key_sum = PublicKey::default();
+            let mut key_sum = UncompressedPublicKey::default();
             for key in &dh_shared_secret_shares {
-                key_sum = key_sum + key;
+                key_sum = key_sum + key.to_public_key()?;
             }
             let shared_secret_self = self
                 .resources
@@ -1467,7 +1568,7 @@ where
                         )))?,
                 )
                 .await?;
-            key_sum = key_sum + &PublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
+            key_sum = key_sum + &UncompressedPublicKey::from_vec(&shared_secret_self.as_bytes().to_vec())?;
             CommsDHKE::from_canonical_bytes(key_sum.as_bytes())?
         };
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created dh shared secret");
@@ -1483,19 +1584,25 @@ where
             .key_manager
             .get_public_key_at_key_id(&sender_offset_private_key_id_self)
             .await?;
-        let aggregated_sender_offset_public_key_shares = sender_offset_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
-        let sender_offset_public_key = &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self;
+        let mut aggregated_sender_offset_public_key_shares = UncompressedPublicKey::default();
+        for key in &sender_offset_public_key_shares {
+            aggregated_sender_offset_public_key_shares =
+                aggregated_sender_offset_public_key_shares + &key.to_public_key()?;
+        }
+
+        let sender_offset_public_key =
+            &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self.to_public_key()?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
             stp.get_single_round_message(&self.resources.key_manager)
                 .await
                 .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
         );
-        let aggregated_metadata_ephemeral_public_key_shares = metadata_ephemeral_public_key_shares
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+        let mut aggregated_metadata_ephemeral_public_key_shares = UncompressedPublicKey::default();
+        for key in &metadata_ephemeral_public_key_shares {
+            aggregated_metadata_ephemeral_public_key_shares =
+                aggregated_metadata_ephemeral_public_key_shares + &key.to_public_key()?;
+        }
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: prepared inputs for partial metadata signature");
 
         let script_spending_key = self
@@ -1519,26 +1626,26 @@ where
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
-                payment_id.clone(),
+                tx_payment_id.clone(),
             )
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
-            .with_sender_offset_public_key(sender_offset_public_key.clone())
+            .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().await?.key_id)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
                 &sender_offset_private_key_id_self,
-                &aggregated_sender_offset_public_key_shares,
-                &aggregated_metadata_ephemeral_public_key_shares,
+                &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
+                &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
-        let total_metadata_ephemeral_public_key =
-            aggregated_metadata_ephemeral_public_key_shares + output.metadata_signature.ephemeral_pubkey();
+        let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
+            &output.metadata_signature.ephemeral_pubkey().to_public_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
@@ -1558,22 +1665,24 @@ where
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: finalized partial transaction");
 
-        let aggregated_script_signature_public_nonces = script_signature_public_nonces
-            .iter()
-            .fold(PublicKey::default(), |acc, x| acc + x);
+        let mut aggregated_script_signature_public_nonces = UncompressedPublicKey::default();
+        for key in &script_signature_public_nonces {
+            aggregated_script_signature_public_nonces =
+                aggregated_script_signature_public_nonces + &key.to_public_key()?;
+        }
 
         // Update the input's script signature
         let (updated_input, total_script_public_key) = input
             .to_transaction_input_with_multi_party_script_signature(
-                &aggregated_script_signature_public_nonces,
-                &aggregated_script_public_key_shares,
+                &CompressedPublicKey::new_from_pk(aggregated_script_signature_public_nonces.clone()),
+                &CompressedPublicKey::new_from_pk(aggregated_script_public_key_shares),
                 &self.resources.key_manager,
             )
             .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: updated script input signature");
 
-        let total_script_nonce =
-            aggregated_script_signature_public_nonces + updated_input.script_signature.ephemeral_pubkey();
+        let total_script_nonce = aggregated_script_signature_public_nonces +
+            &updated_input.script_signature.ephemeral_pubkey().to_public_key()?;
         let mut tx = stp.get_transaction()?.clone();
         let mut tx_body = tx.body;
         tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
@@ -1584,20 +1693,20 @@ where
 
         // shared secret does not support debug so we manually convert this to a public key
         let shared_secret_bytes = shared_secret.as_bytes();
-        let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret_bytes)?;
+        let shared_secret_public_key = CompressedPublicKey::from_canonical_bytes(shared_secret_bytes)?;
 
         // Transaction balance log
         //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + total_offset
-        let mut utxo_sum = Commitment::default();
+        let mut utxo_sum = UncompressedCommitment::default();
         for output in tx.body.outputs() {
-            utxo_sum = &utxo_sum + &output.commitment;
+            utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
         }
         for input in tx.body.inputs() {
-            utxo_sum = &utxo_sum - input.commitment()?;
+            utxo_sum = &utxo_sum - &input.commitment()?.to_commitment()?;
         }
-        let mut kernel_sum = Commitment::default();
+        let mut kernel_sum = UncompressedCommitment::default();
         for kernel in tx.body.kernels() {
-            kernel_sum = &kernel_sum + &kernel.excess;
+            kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
         }
         let total_offset = self.resources.factories.commitment.commit_value(&tx.offset, 0);
         trace!(target: LOG_TARGET, "total_offset:               {}", total_offset.to_hex());
@@ -1610,8 +1719,8 @@ where
             amount,
             fee,
             total_script_public_key,
-            total_metadata_ephemeral_public_key,
-            total_script_nonce,
+            CompressedPublicKey::new_from_pk(total_metadata_ephemeral_public_key),
+            CompressedPublicKey::new_from_pk(total_script_nonce),
             shared_secret_public_key,
         ))
     }
@@ -1622,7 +1731,7 @@ where
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
-        expected_commitment: PedersenCommitment,
+        expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
         payment_id: PaymentId,
         maturity: u64,
@@ -1658,10 +1767,12 @@ where
             )));
         };
         // Create a deterministic encryption key from the sum of the public keys
-        let sum_public_keys = public_keys
-            .iter()
-            .fold(tari_common_types::types::PublicKey::default(), |acc, x| acc + x);
-        let encryption_private_key = public_key_to_output_encryption_key(&sum_public_keys)?;
+        let mut sum_public_keys = UncompressedPublicKey::default();
+        for key in &public_keys {
+            sum_public_keys = &sum_public_keys + key.to_public_key()?;
+        }
+        let encryption_private_key =
+            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(sum_public_keys))?;
         // Decrypt the output secrets and create a new input as WalletOutput (unblinded)
         let input = if let Ok((amount, spending_key, payment_id)) =
             EncryptedData::decrypt_data(&encryption_private_key, &output.commitment, &output.encrypted_data)
@@ -1740,6 +1851,7 @@ where
                 Covenant::default(),
                 minimum_value_promise,
                 amount,
+                recipient_address.clone(),
             )
             .await?
             .with_change_data(
@@ -1749,7 +1861,8 @@ where
                 TariKeyId::default(),
                 Covenant::default(),
                 self.resources.one_sided_tari_address.clone(),
-            );
+            )
+            .with_payment_id(payment_id.clone());
         let mut stp = builder
             .build()
             .await
@@ -1817,11 +1930,14 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = match payment_id {
-            PaymentId::Open(v) => PaymentId::AddressAndData(self.resources.interactive_tari_address.clone(), v),
-            PaymentId::Empty => PaymentId::Address(self.resources.one_sided_tari_address.clone()),
-            _ => payment_id,
-        };
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.one_sided_tari_address.clone(),
+            true,
+            amount,
+            fee,
+            Some(TxType::PaymentToOther),
+        );
 
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(
@@ -1841,7 +1957,7 @@ where
             .await?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(sender_offset_public_key)
-            .with_script_key(KeyId::Zero)
+            .with_script_key(TariKeyId::Zero)
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
@@ -1877,6 +1993,7 @@ where
         Ok((tx, amount, fee))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
@@ -1885,6 +2002,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
+        payment_id: PaymentId,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         let covenant = Covenant::default();
 
@@ -1930,7 +2048,15 @@ where
             builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant).await?;
+        let (output, sender_offset_key_id) = self
+            .output_to_self(
+                output_features,
+                amount,
+                covenant,
+                payment_id,
+                input_selection.fee_without_change,
+            )
+            .await?;
 
         builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
@@ -1944,14 +2070,19 @@ where
             .key_manager
             .get_next_commitment_mask_and_script_key()
             .await?;
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_public_key.key_id.clone(),
-            change_commitment_mask_key_id.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
+        builder
+            .with_change_data(
+                script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
+                ExecutionStack::default(),
+                change_script_public_key.key_id.clone(),
+                change_commitment_mask_key_id.key_id,
+                Covenant::default(),
+                self.resources.interactive_tari_address.clone(),
+            )
+            .with_payment_id(PaymentId::open_from_string(
+                "Pay to self transaction",
+                TxType::PaymentToSelf,
+            ));
 
         let mut stp = builder
             .build()
@@ -2200,7 +2331,7 @@ where
 
     pub async fn preview_coin_join_with_commitments(
         &self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
@@ -2227,7 +2358,7 @@ where
 
     pub async fn preview_coin_split_with_commitments_no_amount(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         number_of_splits: usize,
         fee_per_gram: MicroMinotari,
     ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
@@ -2279,7 +2410,7 @@ where
 
     async fn create_coin_split_with_commitments(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         amount_per_split: Option<MicroMinotari>,
         number_of_splits: usize,
         fee_per_gram: MicroMinotari,
@@ -2381,6 +2512,13 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
+            .with_payment_id(PaymentId::open_from_string(
+                &format!(
+                    "Coin split transaction, {} into {} outputs",
+                    accumulated_amount, number_of_splits
+                ),
+                TxType::CoinSplit,
+            ))
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2404,7 +2542,13 @@ where
             };
 
             let (output, sender_offset_key_id) = self
-                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    PaymentId::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    fee,
+                )
                 .await?;
 
             tx_builder
@@ -2539,7 +2683,12 @@ where
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
         );
+        let payment_id = PaymentId::open_from_string(
+            &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
+            TxType::CoinSplit,
+        );
         tx_builder
+            .with_payment_id(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2559,7 +2708,13 @@ where
 
         for _ in 0..number_of_splits {
             let (output, sender_offset_key_id) = self
-                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    payment_id.clone(),
+                    final_fee,
+                )
                 .await?;
 
             tx_builder
@@ -2656,6 +2811,8 @@ where
         output_features: OutputFeatures,
         amount: MicroMinotari,
         covenant: Covenant,
+        payment_id: PaymentId,
+        fee: MicroMinotari,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
@@ -2663,7 +2820,15 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = PaymentId::Address(self.resources.interactive_tari_address.clone());
+        let payment_id = PaymentId::add_sender_address(
+            payment_id,
+            self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee,
+            Some(TxType::PaymentToSelf),
+        );
+
         let encrypted_data = self
             .resources
             .key_manager
@@ -2728,8 +2893,9 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn create_coin_join(
         &mut self,
-        commitments: Vec<Commitment>,
+        commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
@@ -2772,6 +2938,7 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
+            .with_payment_id(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2787,7 +2954,13 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(OutputFeatures::default(), accumulated_amount, Covenant::default())
+            .output_to_self(
+                OutputFeatures::default(),
+                accumulated_amount,
+                Covenant::default(),
+                payment_id.clone(),
+                fee,
+            )
             .await?;
 
         tx_builder
@@ -2831,6 +3004,7 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
+        recipient_address: TariAddress,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
@@ -2862,10 +3036,11 @@ where
                 Default::default(),
                 MicroMinotari::zero(),
                 accumulated_amount,
+                recipient_address,
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_message("".to_string())
+            .with_payment_id(PaymentId::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -2932,7 +3107,7 @@ where
     pub async fn create_claim_sha_atomic_swap_transaction(
         &mut self,
         output: TransactionOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
         let shared_secret = self
@@ -2959,8 +3134,8 @@ where
                     self.resources.key_manager.get_spend_key().await?.key_id,
                     output.sender_offset_public_key,
                     output.metadata_signature,
-                    // Although the technically the script does have a script lock higher than 0, this does not apply
-                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    // Although technically the script does have a script lock higher than 0, this does not apply
+                    // to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
                     output.encrypted_data,
@@ -2968,8 +3143,6 @@ where
                     output.proof,
                     payment_id,
                 );
-
-                let message = "SHA-XTR atomic swap".to_string();
 
                 // Create builder with no recipients (other than ourselves)
                 let mut builder = SenderTransactionProtocol::builder(
@@ -2979,7 +3152,10 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_message(message)
+                    .with_payment_id(PaymentId::open_from_string(
+                        "SHA-XTR atomic swap",
+                        TxType::ClaimAtomicSwap,
+                    ))
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3054,8 +3230,6 @@ where
 
         let amount = output.value;
 
-        let message = "SHA-XTR atomic refund".to_string();
-
         // Create builder with no recipients (other than ourselves)
         let mut builder = SenderTransactionProtocol::builder(
             self.resources.consensus_constants.clone(),
@@ -3064,7 +3238,10 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_message(message)
+            .with_payment_id(PaymentId::open_from_string(
+                "SHA-XTR atomic refund",
+                TxType::HtlcAtomicSwapRefund,
+            ))
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)
@@ -3342,13 +3519,13 @@ pub enum UseOutput {
     /// The transaction output will be fetched from the blockchain
     FromBlockchain(HashOutput),
     /// The transaction output must be provided
-    AsProvided(TransactionOutput),
+    AsProvided(Box<TransactionOutput>),
 }
 
 fn get_multi_sig_script_components(
     script: &TariScript,
     tx_id: TxId,
-) -> Result<(Vec<PublicKey>, u8), OutputManagerError> {
+) -> Result<(Vec<CompressedPublicKey>, u8), OutputManagerError> {
     if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(m, _n, keys, _msg)) = script.as_slice().get(3) {
         Ok((keys.clone(), *m))
     } else {

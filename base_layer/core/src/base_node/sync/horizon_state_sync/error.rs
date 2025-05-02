@@ -29,7 +29,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_crypto::errors::RangeProofError;
-use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
+use tari_mmr::error::MerkleMountainRangeError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
@@ -98,7 +98,7 @@ pub enum HorizonSyncError {
     #[error("Could not find peer info")]
     PeerNotFound,
     #[error("Sparse Merkle Tree error: {0}")]
-    SMTError(#[from] SMTError),
+    SMTError(anyhow::Error),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
     #[error("FixedHash size error: {0}")]

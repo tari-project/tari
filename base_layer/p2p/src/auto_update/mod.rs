@@ -112,7 +112,7 @@ pub async fn check_for_updates(
     let download_base_url = config.download_base_url.clone();
     let hashes_url = config.hashes_url.clone();
     let hashes_sig_url = config.hashes_sig_url.clone();
-    let dns_update = dns::DnsSoftwareUpdate::connect(config).await?;
+    let dns_update = dns::DnsSoftwareUpdate::connect(config)?;
 
     match dns_update.check_for_updates(app, arch, version).await? {
         Some(update_spec) => {

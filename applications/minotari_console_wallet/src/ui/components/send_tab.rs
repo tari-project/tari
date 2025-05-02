@@ -4,7 +4,10 @@
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_common_types::wallet_types::WalletType;
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::encrypted_data::{PaymentId, TxType},
+};
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -81,7 +84,6 @@ impl SendTab {
         let vert_chunks = Layout::default()
             .constraints(
                 [
-                    Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -171,21 +173,13 @@ impl SendTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
         f.render_widget(fee_input, amount_fee_layout[1]);
 
-        let message_input = Paragraph::new(self.message_field.as_ref())
-            .style(match self.send_input_mode {
-                SendInputMode::Message => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
-        f.render_widget(message_input, vert_chunks[3]);
-
         let payment_id_input = Paragraph::new(self.payment_id_field.as_ref())
             .style(match self.send_input_mode {
                 SendInputMode::PaymentId => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("(P)ayment-id:"));
-        f.render_widget(payment_id_input, vert_chunks[4]);
+        f.render_widget(payment_id_input, vert_chunks[3]);
 
         match self.send_input_mode {
             SendInputMode::None => (),
@@ -211,17 +205,11 @@ impl SendTab {
                 // Move one line down, from the border to the input line
                 amount_fee_layout[1].y + 1,
             ),
-            SendInputMode::Message => f.set_cursor(
-                // Put cursor past the end of the input text
-                vert_chunks[3].x + self.message_field.width() as u16 + 1,
-                // Move one line down, from the border to the input line
-                vert_chunks[3].y + 1,
-            ),
             SendInputMode::PaymentId => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[4].x + self.payment_id_field.width() as u16 + 1,
+                vert_chunks[3].x + self.payment_id_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
-                vert_chunks[4].y + 1,
+                vert_chunks[3].y + 1,
             ),
         }
     }
@@ -299,8 +287,7 @@ impl SendTab {
                                             amount.into(),
                                             UtxoSelectionCriteria::default(),
                                             fee_per_gram,
-                                            self.message_field.clone(),
-                                            self.payment_id_field.clone(),
+                                            PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
                                             tx,
                                         ),
                                     ) {
@@ -320,7 +307,7 @@ impl SendTab {
                                         amount.into(),
                                         UtxoSelectionCriteria::default(),
                                         fee_per_gram,
-                                        self.message_field.clone(),
+                                        PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
                                         tx,
                                     )) {
                                         Err(e) => {
@@ -372,7 +359,7 @@ impl SendTab {
                         if self.selected_unique_id.is_some() {
                             self.amount_field = "".to_string();
                         }
-                        self.send_input_mode = SendInputMode::Message
+                        self.send_input_mode = SendInputMode::PaymentId
                     },
                     c => {
                         if self.selected_unique_id.is_none() {
@@ -390,13 +377,6 @@ impl SendTab {
                         if c.is_numeric() {
                             self.fee_field.push(c);
                         }
-                        return KeyHandled::Handled;
-                    },
-                },
-                SendInputMode::Message => match c {
-                    '\n' => self.send_input_mode = SendInputMode::PaymentId,
-                    c => {
-                        self.message_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
@@ -439,7 +419,7 @@ impl<B: Backend> Component<B> for SendTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(17),
+                    Constraint::Length(14),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]
@@ -581,7 +561,6 @@ impl<B: Backend> Component<B> for SendTab {
                 self.send_input_mode = SendInputMode::Amount;
             },
             'f' => self.send_input_mode = SendInputMode::Fee,
-            'm' => self.send_input_mode = SendInputMode::Message,
             'p' => self.send_input_mode = SendInputMode::PaymentId,
             's' | 'o' => {
                 if let WalletType::Ledger(_) = self.wallet_type {
@@ -657,9 +636,6 @@ impl<B: Backend> Component<B> for SendTab {
             SendInputMode::Fee => {
                 let _ = self.fee_field.pop();
             },
-            SendInputMode::Message => {
-                let _ = self.message_field.pop();
-            },
             SendInputMode::PaymentId => {
                 let _ = self.payment_id_field.pop();
             },
@@ -673,7 +649,6 @@ pub enum SendInputMode {
     None,
     To,
     Amount,
-    Message,
     Fee,
     PaymentId,
 }

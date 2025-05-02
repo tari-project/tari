@@ -23,17 +23,16 @@
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_types::tari_address::TariAddressError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
+    transaction_key_manager::error::KeyManagerServiceError,
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::errors::RangeProofError;
-use tari_key_manager::{
-    error::{KeyManagerError, MnemonicError},
-    key_manager_service::KeyManagerServiceError,
-};
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -152,6 +151,8 @@ pub enum OutputManagerError {
     TooManyInputsToFulfillTransaction(String),
     #[error("Std I/O error: {0}")]
     StdIoError(#[from] std::io::Error),
+    #[error("Tari address error: `{0}`")]
+    TariAddressError(#[from] TariAddressError),
 }
 
 impl From<RangeProofError> for OutputManagerError {

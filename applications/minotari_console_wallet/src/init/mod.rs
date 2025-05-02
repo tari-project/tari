@@ -25,6 +25,7 @@
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use dialoguer::Input as InputPrompt;
 use digest::crypto_common::rand_core::OsRng;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
@@ -55,7 +56,7 @@ use tari_common::{
 };
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
@@ -67,8 +68,8 @@ use tari_comms::{
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
         transaction_components::TransactionError,
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
         CryptoFactories,
     },
 };
@@ -101,7 +102,7 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
-    ViewAndSpendKey,
+    ViewAndSpendKey { birthday: Option<u16> },
 }
 
 /// Get and confirm a passphrase from the user, with feedback
@@ -478,7 +479,7 @@ pub async fn init_wallet(
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
 
-    error!(
+    info!(
         target: LOG_TARGET,
         "Wallet started in {}ms", now.elapsed().as_millis()
     );
@@ -545,7 +546,10 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
     // to None
     let identity_sig = identity_sig.filter(|sig| {
         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        sig.is_valid(&comms_public_key, node_features, &node_addresses)
+        matches!(
+            sig.is_valid(&comms_public_key, node_features, &node_addresses),
+            Ok(true)
+        )
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
@@ -748,7 +752,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
     }
 
     if !wallet_exists && cli.view_private_key.is_some() && cli.spend_key.is_some() {
-        return Ok(WalletBoot::ViewAndSpendKey);
+        return Ok(WalletBoot::ViewAndSpendKey { birthday: cli.birthday });
     }
 
     if wallet_exists {
@@ -788,7 +792,15 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                             return Ok(WalletBoot::Recovery);
                         },
                         "3" => {
-                            return Ok(WalletBoot::ViewAndSpendKey);
+                            let mut birthday = InputPrompt::<u16>::new()
+                                .with_prompt("Please enter wallet birth, or enter to skip ")
+                                .default(0)
+                                .interact()
+                                .unwrap_or(0);
+                            let birthday_option = if birthday == 0 { None } else { Some(birthday) };
+                            return Ok(WalletBoot::ViewAndSpendKey {
+                                birthday: birthday_option,
+                            });
                         },
                         _ => continue,
                     }
@@ -830,7 +842,7 @@ pub(crate) fn boot_with_password(
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { .. } => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
@@ -846,12 +858,12 @@ pub fn prompt_wallet_type(
     view_private_key: Option<String>,
     spend_key: Option<String>,
 ) -> Option<WalletType> {
-    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey) {
+    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
         return Some(WalletType::default());
     }
 
     match boot_mode {
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { birthday } => {
             let view_key = if let Some(vk) = view_private_key {
                 match PrivateKey::from_hex(&vk) {
                     Ok(pk) => pk,
@@ -864,7 +876,7 @@ pub fn prompt_wallet_type(
                 prompt_private_key("Enter view key: ").expect("View key provided was invalid")
             };
             let spend_key = if let Some(sk) = spend_key {
-                match PublicKey::from_hex(&sk) {
+                match CompressedPublicKey::from_hex(&sk) {
                     Ok(pk) => pk,
                     Err(_) => {
                         println!("Invalid spend key provided");
@@ -880,6 +892,7 @@ pub fn prompt_wallet_type(
                 public_spend_key: spend_key,
                 private_spend_key: None,
                 private_comms_key: None,
+                birthday,
             }))
         },
         WalletBoot::New | WalletBoot::Recovery => {
@@ -959,7 +972,7 @@ pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
     }
 }
 
-pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
+pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
     // see what we type, as we type it
     let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
     disable_raw_mode().expect("Could not disable raw mode");
@@ -970,9 +983,9 @@ pub fn prompt_public_key(prompt: &str) -> Option<PublicKey> {
         enable_raw_mode().expect("Could not enable raw mode");
     }
     let input = input.trim();
-    match PublicKey::from_hex(input) {
+    match CompressedPublicKey::from_hex(input) {
         Ok(pk) => Some(pk),
-        Err(_) => match PublicKey::from_monero_base58(input) {
+        Err(_) => match CompressedPublicKey::from_monero_base58(input) {
             Ok(pk) => Some(pk),
             Err(_) => None,
         },

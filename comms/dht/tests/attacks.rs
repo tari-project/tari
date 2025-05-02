@@ -154,7 +154,7 @@ impl From<&IdentitySignature> for IdentitySignatureProto {
         Self {
             version: u32::from(identity_sig.version()),
             signature: identity_sig.signature().get_signature().to_vec(),
-            public_nonce: identity_sig.signature().get_public_nonce().to_vec(),
+            public_nonce: identity_sig.signature().get_compressed_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at().timestamp(),
         }
     }

@@ -209,17 +209,17 @@ mod test {
 
     use multiaddr::Multiaddr;
     use rand::rngs::OsRng;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
     use crate::{
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{peer::PeerFlags, PeerFeatures},
+        types::CommsPublicKey,
     };
 
     fn create_test_peer(ban_flag: bool) -> Peer {
-        let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
         let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
             vec!["/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap()],

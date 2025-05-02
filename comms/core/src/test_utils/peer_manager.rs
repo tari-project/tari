@@ -26,7 +26,7 @@ use crate::PeerManager;
 
 #[cfg(test)]
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None).unwrap())
+    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None, None).unwrap())
 }
 
 #[cfg(not(test))]
@@ -58,6 +58,6 @@ mod not_test {
             .build()
             .unwrap();
         let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-        Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
+        Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None, None).unwrap())
     }
 }

@@ -48,7 +48,7 @@ use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 /// Utility function that converts a `chrono::NaiveDateTime` to a `prost::Timestamp`
 pub fn naive_datetime_to_timestamp(datetime: chrono::NaiveDateTime) -> Timestamp {
     Timestamp {
-        seconds: datetime.timestamp(),
+        seconds: datetime.and_utc().timestamp(),
         nanos: 0,
     }
 }

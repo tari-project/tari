@@ -29,10 +29,7 @@ use chrono::Utc;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    tari_utilities::hex::serialize_to_hex,
-};
+use tari_crypto::{keys::SecretKey, tari_utilities::hex::serialize_to_hex};
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{

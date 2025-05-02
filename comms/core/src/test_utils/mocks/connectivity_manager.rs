@@ -254,8 +254,7 @@ impl ConnectivityManagerMock {
                                     .active_conns
                                     .get(&node_id)
                                     .cloned()
-                                    .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses)
-                                    .map_err(Into::into),
+                                    .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses),
                             );
                         },
                     })
@@ -298,6 +297,7 @@ impl ConnectivityManagerMock {
             },
             WaitStarted(reply) => reply.send(()).unwrap(),
             GetNodeIdentity(_) => unimplemented!(),
+            GetSeeds(_) => unimplemented!(),
             GetAllowList(reply) => {
                 let _result = reply.send(vec![]);
             },

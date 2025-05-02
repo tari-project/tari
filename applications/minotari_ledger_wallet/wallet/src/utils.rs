@@ -15,21 +15,24 @@ use ledger_device_sdk::{
     random::LedgerRng,
 };
 use rand_core::RngCore;
-use tari_crypto::{
-    hashing::DomainSeparatedHasher,
-    keys::SecretKey,
-    ristretto::RistrettoSecretKey,
-    tari_utilities::ByteArray,
-};
-use tari_hashing::{KeyManagerTransactionsHashDomain, LedgerHashDomain};
+use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
+    hash_domain,
+    crypto::{hashing::DomainSeparatedHasher, keys::RistrettoSecretKey},
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
 };
+
+hash_domain!(LedgerHashDomain, "com.tari.minotari_ledger_wallet", 0);
+hash_domain!(
+    KeyManagerTransactionsHashDomain,
+    "com.tari.base_layer.core.transactions.key_manager",
+    1
+);
 
 /// BIP32 path stored as an array of [`u32`].
 ///
@@ -153,7 +156,7 @@ fn cx_error_to_string(e: CxError) -> String {
 //       ever used in a subsequent key derivation function.
 fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     let mut key_buffer = Zeroizing::new([0u8; 64]);
-    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), Some(&mut [])) {
+    match bip32_derive(CurvesId::Secp256k1, path, key_buffer.as_mut(), None) {
         Ok(_) => {
             if key_buffer.deref() == &[0u8; 64] {
                 return Err(cx_error_to_string(CxError::InternalError));
@@ -161,7 +164,9 @@ fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
                 Ok(key_buffer)
             }
         },
-        Err(e) => return Err(cx_error_to_string(e)),
+        Err(e) => {
+            return Err(cx_error_to_string(e))
+        },
     }
 }
 
@@ -174,7 +179,6 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("raw_key")
         .chain(&raw_key_64.as_ref())
         .finalize_into(raw_key_hashed.as_mut().into());
-
     Ok(raw_key_hashed)
 }
 
@@ -203,11 +207,13 @@ pub fn derive_from_bip32_key(
         Err(e) => {
             let mut msg = "".to_string();
             msg.push_str("Err: raw key >>...");
+
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
             {
                 SingleMessage::new(&msg).show_and_wait();
                 SingleMessage::new(&e).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new().text(&msg).show(false);
@@ -233,6 +239,7 @@ pub fn get_key_from_uniform_bytes(bytes: &Zeroizing<[u8; 64]>) -> Result<Ristret
                 .event_loop();
                 SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -263,6 +270,7 @@ pub fn get_key_from_canonical_bytes<T: ByteArray>(bytes: &[u8]) -> Result<T, App
                 .event_loop();
                 SingleMessage::new(&format!("Error Length: {:?}", &bytes.len())).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -308,6 +316,7 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
                 MessageScroller::new(&format!("Err: nonce conversion {:?}", e.to_string())).event_loop();
                 SingleMessage::new(&e.to_string()).show_and_wait();
             }
+
             #[cfg(any(target_os = "stax", target_os = "flex"))]
             {
                 NbglStatus::new()
@@ -319,3 +328,5 @@ pub fn get_random_nonce() -> Result<RistrettoSecretKey, AppSW> {
         },
     }
 }
+
+hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);

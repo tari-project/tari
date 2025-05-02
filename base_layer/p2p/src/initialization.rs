@@ -76,7 +76,10 @@ use tari_storage::{
     LMDBWrapper,
 };
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
+use tokio::{
+    sync::{broadcast, mpsc},
+    time::timeout,
+};
 use tower::ServiceBuilder;
 
 use crate::{
@@ -482,7 +485,6 @@ impl P2pInitializer {
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into)
     }
 
     async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
@@ -509,7 +511,20 @@ impl P2pInitializer {
             P2pInitializer::get_dns_seed_resolver(config.dns_seeds_use_dnssec, &config.dns_seed_name_servers).await?;
         let resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
-            async move { (resolver.resolve(addr).await, addr) }
+            async move {
+                let timer = Instant::now();
+                let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
+                    Ok(res) => res,
+                    Err(_) => {
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{}`", addr);
+                        Err(DnsClientError::Timeout)
+                    },
+                };
+                // let res = (resolver.resolve(addr).await, addr);
+                let res = (seeds_res, addr.clone());
+                info!(target: LOG_TARGET, "Resolved DNS seed `{}` in {:.0?}", addr, timer.elapsed());
+                res
+            }
         });
 
         let peers = future::join_all(resolving)
@@ -518,7 +533,7 @@ impl P2pInitializer {
             // Log and ignore errors
             .filter_map(|(result, addr)| match result {
                 Ok(peers) => {
-                    debug!(
+                    info!(
                         target: LOG_TARGET,
                         "Found {} peer(s) from `{}` in {:.0?}",
                         peers.len(),
@@ -550,23 +565,15 @@ impl P2pInitializer {
         }
         let mut dns_errors = Vec::new();
         for dns in dns_seed_name_servers {
+            info!(target: LOG_TARGET, "Connecting to DNS name server: {}", dns);
             let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
-                (true, false) => DnsSeedResolver::connect_secure(dns.clone()).await,
-                (_, _) => DnsSeedResolver::connect(dns.clone()).await,
+                (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
+                (_, _) => DnsSeedResolver::connect(dns.clone()),
             };
             match res {
-                Ok(val) => {
-                    trace!(target: LOG_TARGET, "Found DNS client at '{}'", dns);
-                    return Ok(val);
-                },
+                Ok(resolver) => return Ok(resolver),
                 Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "DNS entry '{}' did not respond, trying the next one. You can edit 'dns_seed_name_servers' in \
-                        the config file. (Error: {})",
-                        dns,
-                        err.to_string(),
-                    );
+                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {}", err);
                     dns_errors.push(err.to_string())
                 },
             }
@@ -581,7 +588,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        debug!(target: LOG_TARGET, "Initializing P2P");
+        info!(target: LOG_TARGET, "Initializing P2P");
         let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
@@ -594,6 +601,7 @@ impl ServiceInitializer for P2pInitializer {
                 network_wire_byte: self.network.as_wire_byte(),
                 user_agent: self.user_agent.clone(),
             })
+            .with_peer_validator_config(config.dht.peer_validator_config.clone())
             .with_minimize_connections(if self.config.dht.minimize_connections {
                 Some(self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes)
             } else {

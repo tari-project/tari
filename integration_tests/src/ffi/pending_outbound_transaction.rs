@@ -118,10 +118,10 @@ impl PendingOutboundTransaction {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::pending_outbound_transaction_get_message(self.ptr, &mut error);
+            ptr = ffi_import::pending_outbound_transaction_get_payment_id(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_message error {}", error);
-                panic!("pending_outbound_transaction_get_message error");
+                println!("pending_outbound_transaction_get_payment_id error {}", error);
+                panic!("pending_outbound_transaction_get_payment_id error");
             }
         }
         FFIString::from_ptr(ptr as *mut i8).as_string()

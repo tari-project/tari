@@ -480,11 +480,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     let _result = r.send(Ok(()));
                 }
                 #[cfg(feature = "metrics")]
-                metrics::handshake_counter(&self.node_id, &self.protocol_id).inc();
+                metrics::handshake_counter(&self.protocol_id).inc();
             },
             Err(err) => {
                 #[cfg(feature = "metrics")]
-                metrics::handshake_errors(&self.node_id, &self.protocol_id).inc();
+                metrics::handshake_errors(&self.protocol_id).inc();
                 if let Some(r) = self.ready_tx.take() {
                     let _result = r.send(Err(err.into()));
                 }
@@ -500,7 +500,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             .unwrap_or_else(|| future::pending::<Option<NodeId>>().boxed());
 
         #[cfg(feature = "metrics")]
-        metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
+        metrics::num_sessions(&self.protocol_id).inc();
         loop {
             tokio::select! {
                 // Check the futures in the order they are listed
@@ -520,7 +520,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         Some(req) => {
                             if let Err(err) = self.handle_request(req).await {
                                 #[cfg(feature = "metrics")]
-                                metrics::client_errors(&self.node_id, &self.protocol_id).inc();
+                                metrics::client_errors(&self.protocol_id).inc();
                                 error!(
                                     target: LOG_TARGET,
                                     "(stream={}) Unexpected error: {}. Worker is terminating.",
@@ -542,7 +542,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             }
         }
         #[cfg(feature = "metrics")]
-        metrics::num_sessions(&self.node_id, &self.protocol_id).dec();
+        metrics::num_sessions(&self.protocol_id).dec();
 
         if let Err(err) = self.framed.close().await {
             debug!(
@@ -604,7 +604,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     start.elapsed()
                 );
                 #[cfg(feature = "metrics")]
-                metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
+                metrics::client_timeouts(&self.protocol_id).inc();
                 let _result = reply.send(Err(RpcStatus::timed_out("Response timed out")));
                 return Ok(());
             },
@@ -650,7 +650,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     ) -> Result<(), RpcError> {
         #[cfg(feature = "metrics")]
-        metrics::outbound_request_bytes(&self.node_id, &self.protocol_id).observe(request.get_ref().len() as f64);
+        metrics::outbound_request_bytes(&self.protocol_id).observe(request.get_ref().len() as f64);
 
         let request_id = self.next_request_id();
         let method = request.method.into();
@@ -684,7 +684,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         }
 
         #[cfg(feature = "metrics")]
-        let latency = metrics::request_response_latency(&self.node_id, &self.protocol_id);
+        let latency = metrics::request_response_latency(&self.protocol_id);
         #[cfg(feature = "metrics")]
         let mut metrics_timer = Some(latency.start_timer());
 
@@ -692,7 +692,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
             #[cfg(feature = "metrics")]
-            metrics::client_errors(&self.node_id, &self.protocol_id).inc();
+            metrics::client_errors(&self.protocol_id).inc();
             let _result = response_tx.send(Err(err.into())).await;
             return Ok(());
         }
@@ -757,7 +757,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         "Request {} (method={}) timed out", request_id, method,
                     );
                     #[cfg(feature = "metrics")]
-                    metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
+                    metrics::client_timeouts(&self.protocol_id).inc();
                     if response_tx.is_closed() {
                         self.premature_close(request_id, method).await?;
                     } else {
@@ -870,8 +870,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         reader.bytes_read()
                     );
                     #[cfg(feature = "metrics")]
-                    metrics::inbound_response_bytes(&self.node_id, &self.protocol_id)
-                        .observe(reader.bytes_read() as f64);
+                    metrics::inbound_response_bytes(&self.protocol_id).observe(reader.bytes_read() as f64);
                     let time_to_first_msg = reader.time_to_first_msg();
                     break (resp, time_to_first_msg);
                 },

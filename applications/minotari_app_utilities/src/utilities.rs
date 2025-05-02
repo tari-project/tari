@@ -28,7 +28,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
-    types::{BlockHash, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::hex::{Hex, HexError};
@@ -48,7 +48,7 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::from_str(&key.trim().replace('|', ""))
-        .map(|emoji_id| PublicKey::from(&emoji_id))
+        .map(|emoji_id| CompressedPublicKey::from(&emoji_id))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
 }
@@ -73,15 +73,15 @@ pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
 }
 
 #[derive(Debug, Clone)]
-pub struct UniPublicKey(PublicKey);
+pub struct UniPublicKey(CompressedPublicKey);
 
 impl FromStr for UniPublicKey {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
         if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
-            Ok(Self(PublicKey::from(&emoji_id)))
-        } else if let Ok(public_key) = PublicKey::from_hex(key) {
+            Ok(Self(CompressedPublicKey::from(&emoji_id)))
+        } else if let Ok(public_key) = CompressedPublicKey::from_hex(key) {
             Ok(Self(public_key))
         } else {
             Err(UniIdError::UnknownIdType)
@@ -89,7 +89,7 @@ impl FromStr for UniPublicKey {
     }
 }
 
-impl From<UniPublicKey> for PublicKey {
+impl From<UniPublicKey> for CompressedPublicKey {
     fn from(id: UniPublicKey) -> Self {
         id.0
     }
@@ -97,7 +97,7 @@ impl From<UniPublicKey> for PublicKey {
 
 #[derive(Debug, Clone)]
 pub enum UniNodeId {
-    PublicKey(PublicKey),
+    PublicKey(CompressedPublicKey),
     NodeId(NodeId),
     TariAddress(TariAddress),
 }
@@ -115,8 +115,8 @@ impl FromStr for UniNodeId {
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
         if let Ok(emoji_id) = EmojiId::from_str(&key.trim().replace('|', "")) {
-            Ok(Self::PublicKey(PublicKey::from(&emoji_id)))
-        } else if let Ok(public_key) = PublicKey::from_hex(key) {
+            Ok(Self::PublicKey(CompressedPublicKey::from(&emoji_id)))
+        } else if let Ok(public_key) = CompressedPublicKey::from_hex(key) {
             Ok(Self::PublicKey(public_key))
         } else if let Ok(node_id) = NodeId::from_hex(key) {
             Ok(Self::NodeId(node_id))
@@ -128,7 +128,7 @@ impl FromStr for UniNodeId {
     }
 }
 
-impl TryFrom<UniNodeId> for PublicKey {
+impl TryFrom<UniNodeId> for CompressedPublicKey {
     type Error = UniIdError;
 
     fn try_from(id: UniNodeId) -> Result<Self, Self::Error> {
@@ -149,7 +149,7 @@ impl FromStr for UniSignature {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = s.split(',').collect::<Vec<_>>();
         let signature = PrivateKey::from_hex(data[0])?;
-        let public_nonce = PublicKey::from_hex(data[1])?;
+        let public_nonce = CompressedPublicKey::from_hex(data[1])?;
 
         let signature = Signature::new(public_nonce, signature);
         Ok(Self(signature))

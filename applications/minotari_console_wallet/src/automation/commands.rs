@@ -34,6 +34,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
@@ -63,7 +64,17 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{Commitment, FixedHash, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        Signature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -78,10 +89,9 @@ use tari_core::{
     covenants::Covenant,
     one_sided::shared_secret_to_output_encryption_key,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             EncryptedData,
             OutputFeatures,
             Transaction,
@@ -93,21 +103,18 @@ use tari_core::{
             UnblindedOutput,
             WalletOutput,
         },
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     dhke::DiffieHellmanSharedSecret,
-    ristretto::{pedersen::PedersenCommitment, RistrettoSecretKey},
+    ristretto::RistrettoSecretKey,
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{KeyId, KeyManagerInterface},
-    SeedWords,
-};
+use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
-use tari_script::{push_pubkey_script, CheckSigSchnorrSignature};
+use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
@@ -168,7 +175,7 @@ pub async fn send_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     destination: TariAddress,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_transaction(
@@ -177,7 +184,7 @@ pub async fn send_tari(
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram * uT,
-            message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -187,14 +194,14 @@ pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
             amount,
             UtxoSelectionCriteria::default(),
             fee_per_gram * uT,
-            message,
+            payment_id,
             None,
         )
         .await
@@ -207,16 +214,28 @@ pub async fn burn_tari(
 async fn encumber_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
-    expected_commitment: PedersenCommitment,
-    script_input_shares: HashMap<PublicKey, CheckSigSchnorrSignature>,
-    script_signature_public_nonces: Vec<PublicKey>,
-    sender_offset_public_key_shares: Vec<PublicKey>,
-    metadata_ephemeral_public_key_shares: Vec<PublicKey>,
-    dh_shared_secret_shares: Vec<PublicKey>,
+    expected_commitment: CompressedCommitment,
+    script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+    script_signature_public_nonces: Vec<CompressedPublicKey>,
+    sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+    dh_shared_secret_shares: Vec<CompressedPublicKey>,
     recipient_address: TariAddress,
     original_maturity: u64,
     use_output: UseOutput,
-) -> Result<(TxId, Transaction, PublicKey, PublicKey, PublicKey, PublicKey), CommandError> {
+    payment_id: PaymentId,
+) -> Result<
+    (
+        TxId,
+        Transaction,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+    ),
+    CommandError,
+> {
+    println!("Getting connection to BaseNode and retrieving output(s)...");
     wallet_transaction_service
         .encumber_aggregate_utxo(
             fee_per_gram,
@@ -229,6 +248,7 @@ async fn encumber_aggregate_utxo(
             recipient_address,
             original_maturity,
             use_output,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -238,11 +258,18 @@ async fn spend_backup_pre_mine_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: MicroMinotari,
     output_hash: HashOutput,
-    expected_commitment: PedersenCommitment,
+    expected_commitment: CompressedCommitment,
     recipient_address: TariAddress,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
-        .spend_backup_pre_mine_utxo(fee_per_gram, output_hash, expected_commitment, recipient_address)
+        .spend_backup_pre_mine_utxo(
+            fee_per_gram,
+            output_hash,
+            expected_commitment,
+            recipient_address,
+            payment_id,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -257,18 +284,23 @@ async fn finalise_aggregate_utxo(
 ) -> Result<TxId, CommandError> {
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
 
-    let mut meta_sig = Signature::default();
+    let mut meta_sig = UncompressedSignature::default();
     for sig in &meta_signatures {
-        meta_sig = &meta_sig + sig;
+        meta_sig = &meta_sig + sig.to_schnorr_signature()?;
     }
-    let mut script_sig = Signature::default();
+    let mut script_sig = UncompressedSignature::default();
     for sig in &script_signatures {
-        script_sig = &script_sig + sig;
+        script_sig = &script_sig + sig.to_schnorr_signature()?;
     }
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: aggregated signatures");
 
     wallet_transaction_service
-        .finalize_aggregate_utxo(tx_id, meta_sig, script_sig, wallet_script_secret_key)
+        .finalize_aggregate_utxo(
+            tx_id,
+            Signature::new_from_schnorr(meta_sig),
+            Signature::new_from_schnorr(script_sig),
+            wallet_script_secret_key,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -280,10 +312,10 @@ pub async fn init_sha_atomic_swap(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    message: String,
-) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
+    payment_id: PaymentId,
+) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -294,15 +326,15 @@ pub async fn finalise_sha_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
-    pre_image: PublicKey,
+    pre_image: CompressedPublicKey,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_claim_sha_atomic_swap_transaction(output_hash, pre_image, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
     Ok(tx_id)
 }
@@ -313,13 +345,13 @@ pub async fn claim_htlc_refund(
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_htlc_refund_transaction(output_hash, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
     Ok(tx_id)
 }
@@ -327,11 +359,11 @@ pub async fn claim_htlc_refund(
 pub async fn register_validator_node(
     amount: MicroMinotari,
     mut wallet_transaction_service: TransactionServiceHandle,
-    validator_node_public_key: PublicKey,
+    validator_node_public_key: CompressedPublicKey,
     validator_node_signature: Signature,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
@@ -340,7 +372,7 @@ pub async fn register_validator_node(
             validator_node_signature,
             selection_criteria,
             fee_per_gram,
-            message,
+            payment_id,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -352,7 +384,6 @@ pub async fn send_one_sided_to_stealth_address(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    message: String,
     payment_id: PaymentId,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
@@ -362,7 +393,6 @@ pub async fn send_one_sided_to_stealth_address(
             selection_criteria,
             OutputFeatures::default(),
             fee_per_gram * uT,
-            message,
             payment_id,
         )
         .await
@@ -373,7 +403,7 @@ pub async fn coin_split(
     amount_per_split: MicroMinotari,
     num_splits: usize,
     fee_per_gram: MicroMinotari,
-    message: String,
+    payment_id: PaymentId,
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
@@ -381,7 +411,7 @@ pub async fn coin_split(
         .create_coin_split(vec![], amount_per_split, num_splits, fee_per_gram)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, amount, message)
+        .submit_transaction(tx_id, tx, amount, payment_id)
         .await?;
 
     Ok(tx_id)
@@ -412,7 +442,7 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
 
 async fn set_base_node_peer(
     mut wallet: WalletSqlite,
-    public_key: PublicKey,
+    public_key: CompressedPublicKey,
     address: Multiaddr,
 ) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
     println!("Setting base node peer...");
@@ -425,7 +455,7 @@ async fn set_base_node_peer(
 
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
-    dest_public_key: PublicKey,
+    dest_public_key: CompressedPublicKey,
 ) -> Result<(), CommandError> {
     let start = Instant::now();
     println!("🌎 Peer discovery started.");
@@ -460,7 +490,7 @@ pub async fn make_it_rain(
     start_time: DateTime<Utc>,
     destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
-    message: String,
+    payment_id: PaymentId,
 ) -> Result<(), CommandError> {
     // Limit the transactions per second to a reasonable range
     // Notes:
@@ -475,8 +505,9 @@ pub async fn make_it_rain(
         let now = Utc::now();
         let delay_ms = if start_time > now {
             println!(
-                "`make-it-rain` scheduled to start at {}: msg \"{}\"",
-                start_time, message
+                "`make-it-rain` scheduled to start at {}: payment_id \"{}\"",
+                start_time,
+                payment_id.user_data_as_string()
             );
             (start_time - now).num_milliseconds() as u64
         } else {
@@ -500,8 +531,11 @@ pub async fn make_it_rain(
         }
         println!(
             "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
-            num_txs, transaction_type, message
+            num_txs,
+            transaction_type,
+            payment_id.user_data_as_string()
         );
+        let payment_id_clone = payment_id.clone();
         let (sender, mut receiver) = mpsc::channel(num_txs);
         {
             let sender = sender;
@@ -538,13 +572,13 @@ pub async fn make_it_rain(
                 let sender_clone = sender.clone();
                 let fee = fee_per_gram;
                 let address = destination.clone();
-                let msg = message.clone();
+                let payment_id_clone = payment_id.clone();
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = match transaction_type {
                         MakeItRainTransactionType::Interactive => {
-                            send_tari(tx_service, fee, amount, address.clone(), msg.clone()).await
+                            send_tari(tx_service, fee, amount, address.clone(), payment_id_clone).await
                         },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
@@ -553,12 +587,11 @@ pub async fn make_it_rain(
                                 amount,
                                 UtxoSelectionCriteria::default(),
                                 address.clone(),
-                                msg.clone(),
-                                PaymentId::Empty,
+                                payment_id_clone,
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, msg.clone())
+                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
                             .await
                             .map(|(tx_id, _)| tx_id),
                     };
@@ -617,7 +650,7 @@ pub async fn make_it_rain(
             "\n`make-it-rain` concluded {} {} transactions (\"{}\") at {}",
             num_txs,
             transaction_type,
-            message,
+            payment_id_clone.user_data_as_string(),
             Utc::now(),
         );
     });
@@ -783,7 +816,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    args.message,
+                    PaymentId::open_from_string(&args.payment_id, TxType::Burn),
                 )
                 .await
                 {
@@ -793,7 +826,7 @@ pub async fn command_runner(
                         println!("The following can be used to claim the burnt funds:");
                         println!();
                         println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
-                        println!("commitment: {}", proof.commitment.as_public_key());
+                        println!("commitment: {}", proof.commitment.to_public_key()?);
                         println!("ownership_proof: {:?}", proof.ownership_proof);
                         println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
@@ -861,15 +894,7 @@ pub async fn command_runner(
                 println!("Pre-mine output spent status saved to: '{}'", csv_file_name);
                 println!();
             },
-            PreMineSpendSessionInfo(args) => {
-                match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
-                        break;
-                    },
-                }
-
+            PreMineStart(args) => {
                 let args_recipient_info = sort_args_recipient_info(args.recipient_info);
                 if let Err(e) = verify_no_duplicate_indexes(&args_recipient_info) {
                     eprintln!("\nError: {} duplicate output indexes detected!\n", e);
@@ -968,7 +993,11 @@ pub async fn command_runner(
                     args.fee_per_gram,
                     output_hash,
                     commitment.clone(),
-                    args.recipient_address,
+                    args.recipient_address.clone(),
+                    PaymentId::open_from_string(
+                        &args.payment_id,
+                        detect_tx_metadata(&wallet, args.recipient_address).await,
+                    ),
                 )
                 .await
                 {
@@ -984,59 +1013,46 @@ pub async fn command_runner(
                     },
                 }
             },
-            PreMineSpendPartyDetails(args) => {
-                match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
-                        break;
-                    },
+            PreMineStartParty(args) => {
+                let mut alias = args.alias.clone();
+                loop {
+                    if alias.is_empty() || alias.contains(" ") {
+                        eprintln!("\nError: Alias cannot contain spaces!\n");
+                        alias = InputPrompt::<String>::new()
+                            .with_prompt("Please enter an alias to use")
+                            .interact()
+                            .unwrap();
+                        continue;
+                    }
+                    if alias.chars().any(|c| !c.is_alphanumeric() && c != '_') {
+                        eprintln!(
+                            "\nError: Alias contains invalid characters! Only alphanumeric and '_' are allowed.\n"
+                        );
+                        alias = InputPrompt::<String>::new()
+                            .with_prompt("Please enter an alias to use")
+                            .interact()
+                            .unwrap();
+                        continue;
+                    }
+                    break;
+                }
+                let mut input_file_path = args.input_file.clone();
+                while input_file_path.is_none() {
+                    eprintln!("\nError: Missing input file path!\n");
+                    input_file_path = Some(
+                        InputPrompt::<String>::new()
+                            .with_prompt("Please enter the path to the input file")
+                            .interact()
+                            .unwrap(),
+                    );
                 }
 
-                if args.alias.is_empty() || args.alias.contains(" ") {
-                    eprintln!("\nError: Alias cannot contain spaces!\n");
-                    break;
-                }
-                if args.alias.chars().any(|c| !c.is_alphanumeric() && c != '_') {
-                    eprintln!("\nError: Alias contains invalid characters! Only alphanumeric and '_' are allowed.\n");
-                    break;
-                }
-                let args_recipient_info = sort_args_recipient_info(args.recipient_info);
-                if let Err(e) = verify_no_duplicate_indexes(&args_recipient_info) {
-                    eprintln!("\nError: {} duplicate output indexes detected!\n", e);
-                    break;
-                }
+                let file_path = PathBuf::from(input_file_path.unwrap());
 
                 // Read session info
-                let session_info = read_session_info::<PreMineSpendStep1SessionInfo>(args.input_file.clone())?;
+                let session_info = read_session_info::<PreMineSpendStep1SessionInfo>(file_path.clone())?;
                 // Verify  session info
-                let args_recipient_info_flat = args_recipient_info
-                    .iter()
-                    .flat_map(|v1| {
-                        v1.output_indexes
-                            .iter()
-                            .map(|&v2| RecipientInfo {
-                                output_to_be_spend: v2,
-                                recipient_address: v1.recipient_address.clone(),
-                            })
-                            .collect::<Vec<RecipientInfo>>()
-                    })
-                    .collect::<Vec<RecipientInfo>>();
-                if args_recipient_info_flat != session_info.recipient_info {
-                    eprintln!(
-                        "\nError: Mismatched recipient info! leader {:?} vs. self {:?}\n",
-                        session_info
-                            .recipient_info
-                            .iter()
-                            .map(|v| (v.output_to_be_spend, v.recipient_address.clone()))
-                            .collect::<Vec<_>>(),
-                        args_recipient_info_flat
-                            .iter()
-                            .map(|v| (v.output_to_be_spend, v.recipient_address.clone()))
-                            .collect::<Vec<_>>()
-                    );
-                    break;
-                }
+                // session_info.recipient_info
 
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
@@ -1048,96 +1064,89 @@ pub async fn command_runner(
                     };
 
                 println!();
-                let mut outputs_for_leader = Vec::with_capacity(args_recipient_info.len());
-                let mut outputs_for_self = Vec::with_capacity(args_recipient_info.len());
+                let mut outputs_for_leader = Vec::with_capacity(session_info.recipient_info.len());
+                let mut outputs_for_self = Vec::with_capacity(session_info.recipient_info.len());
                 let mut error = false;
-                for (i, recipient_info) in args_recipient_info.iter().enumerate() {
+                for (i, recipient_info) in session_info.recipient_info.iter().enumerate() {
                     println!(
-                        "  Start processing {} of {} recipients, current wallet {}",
+                        "  Start processing {} of {} transactions, current wallet {}",
                         i + 1,
-                        args_recipient_info.len(),
+                        session_info.recipient_info.len(),
                         recipient_info.recipient_address
                     );
-                    let embedded_outputs = match get_embedded_pre_mine_outputs(
-                        recipient_info.output_indexes.clone(),
-                        pre_mine_from_file.clone(),
-                    ) {
-                        Ok(outputs) => outputs,
-                        Err(e) => {
-                            eprintln!("\nError: {}\n", e);
-                            error = true;
-                            break;
-                        },
-                    };
-                    let commitments = embedded_outputs
-                        .iter()
-                        .map(|v| v.commitment.clone())
-                        .collect::<Vec<_>>();
-
-                    for (j, (output_index, commitment)) in
-                        recipient_info.output_indexes.iter().zip(commitments.iter()).enumerate()
-                    {
-                        let script_nonce_key = key_manager_service.get_random_key().await?;
-                        let sender_offset_key = key_manager_service.get_random_key().await?;
-                        let sender_offset_nonce = key_manager_service.get_random_key().await?;
-                        let shared_secret = key_manager_service
-                            .get_diffie_hellman_shared_secret(
-                                &sender_offset_key.key_id,
-                                recipient_info
-                                    .recipient_address
-                                    .public_view_key()
-                                    .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
-                            )
-                            .await?;
-                        let shared_secret_public_key = PublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
-
-                        let pre_mine_script_key_id = KeyId::Managed {
-                            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                            index: *output_index as u64,
-                        };
-                        let pre_mine_public_script_key = match key_manager_service
-                            .get_public_key_at_key_id(&pre_mine_script_key_id)
-                            .await
-                        {
-                            Ok(key) => key,
+                    let output_index = recipient_info.output_to_be_spend;
+                    let embedded_output =
+                        match get_embedded_pre_mine_outputs(vec![output_index], pre_mine_from_file.clone()) {
+                            Ok(outputs) => outputs[0].clone(),
                             Err(e) => {
-                                eprintln!(
-                                    "\nError: Could not retrieve script key for output {}: {}\n",
-                                    output_index, e
-                                );
+                                eprintln!("\nError: {}\n", e);
                                 error = true;
                                 break;
                             },
                         };
-                        let script_input_signature = key_manager_service
-                            .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
-                            .await?;
+                    let commitment = embedded_output.commitment.clone();
 
-                        outputs_for_leader.push(Step2OutputsForLeader {
-                            output_index: *output_index,
-                            recipient_address: recipient_info.recipient_address.clone(),
-                            script_input_signature,
-                            public_script_nonce_key: script_nonce_key.pub_key,
-                            public_sender_offset_key: sender_offset_key.pub_key,
-                            public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
-                            dh_shared_secret_public_key: shared_secret_public_key,
-                            pre_mine_public_script_key,
-                        });
+                    let script_nonce_key = key_manager_service.get_random_key().await?;
+                    let sender_offset_key = key_manager_service.get_random_key().await?;
+                    let sender_offset_nonce = key_manager_service.get_random_key().await?;
+                    let shared_secret = key_manager_service
+                        .get_diffie_hellman_shared_secret(
+                            &sender_offset_key.key_id,
+                            recipient_info
+                                .recipient_address
+                                .public_view_key()
+                                .ok_or(CommandError::InvalidArgument("Missing public view key".to_string()))?,
+                        )
+                        .await?;
+                    let shared_secret_public_key = CompressedPublicKey::from_canonical_bytes(shared_secret.as_bytes())?;
 
-                        outputs_for_self.push(Step2OutputsForSelf {
-                            output_index: *output_index,
-                            recipient_address: recipient_info.recipient_address.clone(),
-                            script_nonce_key_id: script_nonce_key.key_id,
-                            sender_offset_key_id: sender_offset_key.key_id,
-                            sender_offset_nonce_key_id: sender_offset_nonce.key_id,
-                            pre_mine_script_key_id,
-                        });
-                        println!(
-                            "    Processed {} of {} transactions",
-                            j + 1,
-                            recipient_info.output_indexes.len()
-                        );
-                    }
+                    let pre_mine_script_key_id = TariKeyId::Managed {
+                        branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+                        index: output_index as u64,
+                    };
+                    let pre_mine_public_script_key = match key_manager_service
+                        .get_public_key_at_key_id(&pre_mine_script_key_id)
+                        .await
+                    {
+                        Ok(key) => key,
+                        Err(e) => {
+                            eprintln!(
+                                "\nError: Could not retrieve script key for output {}: {}\n",
+                                output_index, e
+                            );
+                            error = true;
+                            break;
+                        },
+                    };
+                    let script_input_signature = key_manager_service
+                        .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
+                        .await?;
+
+                    outputs_for_leader.push(Step2OutputsForLeader {
+                        output_index,
+                        recipient_address: recipient_info.recipient_address.clone(),
+                        script_input_signature,
+                        public_script_nonce_key: script_nonce_key.pub_key,
+                        public_sender_offset_key: sender_offset_key.pub_key,
+                        public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
+                        dh_shared_secret_public_key: shared_secret_public_key,
+                        pre_mine_public_script_key,
+                    });
+
+                    outputs_for_self.push(Step2OutputsForSelf {
+                        output_index,
+                        recipient_address: recipient_info.recipient_address.clone(),
+                        script_nonce_key_id: script_nonce_key.key_id,
+                        sender_offset_key_id: sender_offset_key.key_id,
+                        sender_offset_nonce_key_id: sender_offset_nonce.key_id,
+                        pre_mine_script_key_id,
+                    });
+                    println!(
+                        "    Processed {} of {} transactions",
+                        i + 1,
+                        session_info.recipient_info.len()
+                    );
+
                     if error {
                         break;
                     }
@@ -1164,27 +1173,39 @@ pub async fn command_runner(
                 println!();
                 println!("Concluded step 2 'pre-mine-spend-party-details'");
                 println!("Your session's output directory is '{}'", out_dir.display());
-                move_session_file_to_session_dir(&session_info.session_id, &args.input_file)?;
+                move_session_file_to_session_dir(&session_info.session_id, &file_path)?;
                 println!(
                     "Send '{}' to leader for step 3",
-                    get_file_name(SPEND_STEP_2_LEADER, Some(args.alias))
+                    get_file_name(SPEND_STEP_2_LEADER, Some(alias))
                 );
                 println!();
             },
-            PreMineSpendEncumberAggregateUtxo(args) => {
-                match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
-                        break;
-                    },
-                }
-
-                temp_ban_peers(&wallet, &mut peer_list).await;
-                unban_peer_manager_peers = true;
-
+            PreMineEncumber(args) => {
+                let session_info;
                 // Read session info
-                let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
+                let mut session_id = args.session_id.clone();
+                loop {
+                    if session_id.is_empty() {
+                        eprintln!("\nError: No session id present\n");
+                        session_id = InputPrompt::<String>::new()
+                            .with_prompt("Please enter a session id to use")
+                            .interact()
+                            .unwrap();
+                        continue;
+                    }
+                    match read_verify_session_info::<PreMineSpendStep1SessionInfo>(&session_id) {
+                        Ok(v) => session_info = v,
+                        Err(_) => {
+                            eprintln!("\nError: invalid session id\n");
+                            session_id = InputPrompt::<String>::new()
+                                .with_prompt("Please enter a session id to use")
+                                .interact()
+                                .unwrap();
+                            continue;
+                        },
+                    }
+                    break;
+                }
                 let session_info_indexed = session_info
                     .recipient_info
                     .iter()
@@ -1192,10 +1213,12 @@ pub async fn command_runner(
                     .collect::<Vec<_>>();
 
                 // Read and verify party info
-                let mut party_info = Vec::with_capacity(args.input_file_names.len());
-                for file_name in args.input_file_names {
+                let mut party_info = Vec::with_capacity(args.member.len());
+                for name in args.member {
+                    let file_name = get_file_name(SPEND_STEP_2_LEADER, Some(name.clone()));
+                    println!("reading: {}", file_name);
                     party_info.push(read_and_verify::<PreMineSpendStep2OutputsForLeader>(
-                        &args.session_id,
+                        &session_id,
                         &file_name,
                         &session_info,
                     )?);
@@ -1327,13 +1350,17 @@ pub async fn command_runner(
                         sender_offset_public_key_shares,
                         metadata_ephemeral_public_key_shares,
                         dh_shared_secret_shares,
-                        current_recipient_address,
+                        current_recipient_address.clone(),
                         original_maturity,
                         if pre_mine_from_file.is_some() {
-                            UseOutput::AsProvided(embedded_output)
+                            UseOutput::AsProvided(Box::new(embedded_output))
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
+                        PaymentId::open_from_string(
+                            &args.payment_id,
+                            detect_tx_metadata(&wallet, current_recipient_address).await,
+                        ),
                     )
                     .await
                     {
@@ -1383,7 +1410,7 @@ pub async fn command_runner(
                     break;
                 }
 
-                let out_dir = out_dir(&args.session_id)?;
+                let out_dir = out_dir(&session_id)?;
                 let out_file = out_dir.join(get_file_name(SPEND_STEP_3_SELF, None));
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep3OutputsForSelf {
@@ -1404,26 +1431,41 @@ pub async fn command_runner(
                 );
                 println!();
             },
-            PreMineSpendInputOutputSigs(args) => {
-                match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
-                        break;
-                    },
-                }
-
+            PreMineSigs(args) => {
+                let session_info;
                 // Read session info
-                let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
+                let mut session_id = args.session_id.clone();
+                loop {
+                    if session_id.is_empty() {
+                        eprintln!("\nError: No session id present\n");
+                        session_id = InputPrompt::<String>::new()
+                            .with_prompt("Please enter a session id to use")
+                            .interact()
+                            .unwrap();
+                        continue;
+                    }
+                    match read_verify_session_info::<PreMineSpendStep1SessionInfo>(&session_id) {
+                        Ok(v) => session_info = v,
+                        Err(_) => {
+                            eprintln!("\nError: invalid session id\n");
+                            session_id = InputPrompt::<String>::new()
+                                .with_prompt("Please enter a session id to use")
+                                .interact()
+                                .unwrap();
+                            continue;
+                        },
+                    }
+                    break;
+                }
                 // Read leader input
                 let leader_info_indexed = read_and_verify::<PreMineSpendStep3OutputsForParties>(
-                    &args.session_id,
+                    &session_id,
                     &get_file_name(SPEND_STEP_3_PARTIES, None),
                     &session_info,
                 )?;
                 // Read own party info
                 let party_info_indexed = read_and_verify::<PreMineSpendStep2OutputsForSelf>(
-                    &args.session_id,
+                    &session_id,
                     &get_file_name(SPEND_STEP_2_SELF, None),
                     &session_info,
                 )?;
@@ -1510,7 +1552,7 @@ pub async fn command_runner(
                     };
 
                     // lets verify the script
-                    let shared_secret = match DiffieHellmanSharedSecret::<PublicKey>::from_canonical_bytes(
+                    let shared_secret = match DiffieHellmanSharedSecret::<UncompressedPublicKey>::from_canonical_bytes(
                         leader_info.shared_secret.as_bytes(),
                     ) {
                         Ok(v) => v,
@@ -1624,7 +1666,7 @@ pub async fn command_runner(
                     break;
                 }
 
-                let out_dir = out_dir(&args.session_id)?;
+                let out_dir = out_dir(&session_id)?;
                 let out_file = out_dir.join(get_file_name(
                     SPEND_STEP_4_LEADER,
                     Some(party_info_indexed.alias.clone()),
@@ -1643,24 +1685,41 @@ pub async fn command_runner(
                 );
                 println!();
             },
-            PreMineSpendAggregateTransaction(args) => {
-                match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {},
-                    _ => {
-                        eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
-                        break;
-                    },
-                }
-
+            PreMineSpendTx(args) => {
                 temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_peer_manager_peers = true;
 
                 // Read session info
-                let session_info = read_verify_session_info::<PreMineSpendStep1SessionInfo>(&args.session_id)?;
+
+                let session_info;
+                let mut session_id = args.session_id.clone();
+                loop {
+                    if session_id.is_empty() {
+                        eprintln!("\nError: No session id present\n");
+                        session_id = InputPrompt::<String>::new()
+                            .with_prompt("Please enter a session id to use")
+                            .interact()
+                            .unwrap();
+                        continue;
+                    }
+                    match read_verify_session_info::<PreMineSpendStep1SessionInfo>(&session_id) {
+                        Ok(v) => session_info = v,
+                        Err(_) => {
+                            eprintln!("\nError: invalid session id\n");
+                            session_id = InputPrompt::<String>::new()
+                                .with_prompt("Please enter a session id to use")
+                                .interact()
+                                .unwrap();
+                            continue;
+                        },
+                    }
+                    break;
+                }
 
                 // Read other parties info
-                let mut party_info = Vec::with_capacity(args.input_file_names.len());
-                for file_name in args.input_file_names {
+                let mut party_info = Vec::with_capacity(args.member.len());
+                for name in args.member {
+                    let file_name = get_file_name(SPEND_STEP_4_LEADER, Some(name.clone()));
                     party_info.push(read_and_verify::<PreMineSpendStep4OutputsForLeader>(
                         &args.session_id,
                         &file_name,
@@ -1787,15 +1846,15 @@ pub async fn command_runner(
                                     },
                                 }
 
-                                let mut utxo_sum = Commitment::default();
+                                let mut utxo_sum = UncompressedCommitment::default();
                                 for output in tx.transaction.body.outputs() {
                                     outputs.push(output.clone());
-                                    utxo_sum = &utxo_sum + &output.commitment;
+                                    utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
                                 }
                                 for input in tx.transaction.body.inputs() {
                                     inputs.push(input.clone());
                                     match input.commitment() {
-                                        Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                                        Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
                                         Err(e) => {
                                             eprintln!("\nError: Input commitment ({})!\n", e);
                                             error = true;
@@ -1806,10 +1865,10 @@ pub async fn command_runner(
                                 if error {
                                     break;
                                 }
-                                let mut kernel_sum = Commitment::default();
+                                let mut kernel_sum = UncompressedCommitment::default();
                                 for kernel in tx.transaction.body.kernels() {
                                     kernels.push(kernel.clone());
-                                    kernel_sum = &kernel_sum + &kernel.excess;
+                                    kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
                                 }
                                 kernel_offset = &kernel_offset + &tx.transaction.offset;
                                 // Ensure that the balance equation holds:
@@ -1855,22 +1914,22 @@ pub async fn command_runner(
                 if session_info.use_pre_mine_input_file {
                     // Ensure that the balance equation holds:
                     //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + kernel_offset
-                    let mut utxo_sum = Commitment::default();
+                    let mut utxo_sum = UncompressedCommitment::default();
                     for output in &outputs {
-                        utxo_sum = &utxo_sum + &output.commitment;
+                        utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
                     }
                     for input in &inputs {
                         match input.commitment() {
-                            Ok(commitment) => utxo_sum = &utxo_sum - commitment,
+                            Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
                             Err(e) => {
                                 eprintln!("\nError: Input commitment ({})!\n", e);
                                 break;
                             },
                         }
                     }
-                    let mut kernel_sum = Commitment::default();
+                    let mut kernel_sum = UncompressedCommitment::default();
                     for kernel in &kernels {
-                        kernel_sum = &kernel_sum + &kernel.excess;
+                        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
                     }
                     let offset = CryptoFactories::default().commitment.commit_value(&kernel_offset, 0);
                     if utxo_sum != &kernel_sum + &offset {
@@ -1975,8 +2034,8 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    args.destination,
-                    args.message,
+                    args.destination.clone(),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -1993,9 +2052,8 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     UtxoSelectionCriteria::default(),
-                    args.destination,
-                    args.message,
-                    PaymentId::Empty,
+                    args.destination.clone(),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2019,9 +2077,9 @@ pub async fn command_runner(
                     args.start_amount,
                     args.increase_amount,
                     args.start_time.unwrap_or_else(Utc::now),
-                    args.destination,
+                    args.destination.clone(),
                     transaction_type,
-                    args.message,
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2033,7 +2091,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    args.message,
+                    PaymentId::open_from_string(&args.payment_id, TxType::CoinSplit),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2056,7 +2114,8 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
+                        Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
@@ -2124,7 +2183,8 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, Commitment)> = Vec::with_capacity(utxos.len());
+                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
+                        Vec::with_capacity(utxos.len());
                     for output in utxos {
                         let unblinded =
                             UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)
@@ -2233,7 +2293,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    args.message,
+                    PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
                 .await
                 {
@@ -2256,7 +2316,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        args.message,
+                        PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
                     .await
                     {
@@ -2276,7 +2336,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        args.message,
+                        PaymentId::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                     {
@@ -2317,7 +2377,7 @@ pub async fn command_runner(
                     ),
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    args.message,
+                    PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
@@ -2456,16 +2516,19 @@ pub async fn command_runner(
                 let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
                 let spend_key_hex = spend_key.pub_key.to_hex();
                 let output_file = args.output_file;
+                let birthday = wallet.db.get_wallet_birthday()?;
                 #[derive(Serialize)]
                 struct ViewKeyFile {
                     view_key: String,
                     public_view_key: String,
                     spend_key: String,
+                    birthday: u16,
                 }
                 let view_key_file = ViewKeyFile {
                     view_key: private_view_key_hex.clone(),
                     public_view_key: view_key_hex.clone(),
                     spend_key: spend_key_hex.clone(),
+                    birthday,
                 };
                 let view_key_file_json =
                     serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
@@ -2476,6 +2539,7 @@ pub async fn command_runner(
                 } else {
                     println!("View key: {}", private_view_key_hex);
                     println!("Spend key: {}", spend_key_hex);
+                    println!("Birthday: {}", birthday);
                 }
             },
             ImportPaperWallet(args) => {
@@ -2692,6 +2756,24 @@ pub async fn command_runner(
     Ok(unban_peer_manager_peers)
 }
 
+async fn detect_tx_metadata(wallet: &WalletSqlite, destination: TariAddress) -> TxType {
+    if let Ok(interactive_address) = wallet.get_wallet_interactive_address().await {
+        if let Ok(one_sided_address) = wallet.get_wallet_one_sided_address().await {
+            if destination == interactive_address || destination == one_sided_address {
+                TxType::PaymentToSelf
+            } else {
+                TxType::PaymentToOther
+            }
+        } else if destination == interactive_address {
+            TxType::PaymentToSelf
+        } else {
+            TxType::PaymentToOther
+        }
+    } else {
+        TxType::PaymentToOther
+    }
+}
+
 async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
     for peer in peer_list {
         let _unused = wallet
@@ -2867,9 +2949,10 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
     let lines_count = pre_mine_contents.lines().count();
     for line in pre_mine_contents.lines() {
         if counter < lines_count {
-            let utxo: TransactionOutput =
-                serde_json::from_str(line).map_err(|e| CommandError::PreMine(format!("{}", e)))?;
-            utxos.push(utxo);
+            let utxo: Option<TransactionOutput> = serde_json::from_str(line).ok();
+            if let Some(utxo) = utxo {
+                utxos.push(utxo);
+            }
         } else {
             break;
         }
@@ -2880,7 +2963,7 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
 }
 
 fn write_utxos_to_csv_file(
-    utxos: Vec<(UnblindedOutput, Commitment)>,
+    utxos: Vec<(UnblindedOutput, CompressedCommitment)>,
     file_path: PathBuf,
     with_private_keys: bool,
 ) -> Result<(), CommandError> {

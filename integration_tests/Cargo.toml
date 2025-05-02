@@ -13,8 +13,9 @@ minotari_node = { path = "../applications/minotari_node", features = ["metrics"]
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_chat_client = { path = "../base_layer/contacts/src/chat_client" }
 minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
-tari_crypto = { version = "0.21.0" }
+tari_crypto = { version = "0.22.0" }
 tari_common = { path = "../common" }
+tari_common_sqlite = { path = "../common_sqlite" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
@@ -30,11 +31,10 @@ tari_utilities = { version = "0.8" }
 minotari_wallet = { path = "../base_layer/wallet" }
 minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
-tari_key_manager = { path = "../base_layer/key_manager" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
-chrono = { version = "0.4.22", default-features = false }
+chrono = { version = "0.4.39", default-features = false }
 config = "0.14.0"
 csv = "1.1"
 cucumber = { version = "0.20.0", features = ["default", "libtest", "output-junit"] }
@@ -48,7 +48,7 @@ serde_json = "1.0.64"
 tempfile = "3.3.0"
 thiserror = "^1.0.20"
 time = "0.3.36"
-tokio = { version = "1.36", features = ["macros", "time", "sync", "rt-multi-thread"] }
+tokio = { version = "1.44", features = ["macros", "time", "sync", "rt-multi-thread"] }
 tonic = "0.12.3"
 
 [package.metadata.cargo-machete]

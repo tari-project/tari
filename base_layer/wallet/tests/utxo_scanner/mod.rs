@@ -61,9 +61,9 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, WalletOutput},
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };
@@ -101,6 +101,7 @@ pub struct UtxoScannerTestInterface {
     _temp_dir: TempDir,
 }
 
+#[allow(clippy::too_many_lines)]
 async fn setup(
     key_manager: MemoryDbKeyManager,
     mode: UtxoScannerMode,
@@ -198,7 +199,8 @@ async fn setup(
         view_key.pub_key,
         node_identity.public_key().clone(),
         Network::default(),
-    );
+    )
+    .unwrap();
     let scanner_service = scanner_service_builder
         .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
             wallet_db.clone(),
@@ -213,6 +215,7 @@ async fn setup(
             base_node_service_handle,
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
+            14,
         )
         .await;
 
@@ -477,19 +480,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
     for req in requests {
-        if let TransactionServiceRequest::ImportUtxoWithStatus {
-            amount: _,
-            source_address,
-            message,
-            import_status: _,
-            tx_id: _,
-            current_height: _,
-            mined_timestamp: _,
-            scanned_output: _,
-            payment_id: _,
-        } = req
-        {
-            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
+        if let TransactionServiceRequest::ImportUtxoWithStatus { source_address, .. } = req {
             assert_eq!(source_address, TariAddress::default());
         }
     }
@@ -539,26 +530,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
                     break;
                 }
             }
-        }
-    }
-
-    // Confirm the recovery message changed using the builder method
-    let requests = test_interface2.transaction_service_mock_state.drain_requests();
-    assert!(!requests.is_empty());
-    for req in requests {
-        if let TransactionServiceRequest::ImportUtxoWithStatus {
-            amount: _,
-            source_address: _,
-            message,
-            import_status: _,
-            tx_id: _,
-            current_height: _,
-            mined_timestamp: _,
-            scanned_output: _,
-            payment_id: _,
-        } = req
-        {
-            assert_eq!(message, "recovery".to_string());
         }
     }
 }
@@ -965,22 +936,6 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests {
-        if let TransactionServiceRequest::ImportUtxoWithStatus {
-            amount: _,
-            source_address: _,
-            message,
-            import_status: _,
-            tx_id: _,
-            current_height: _,
-            mined_timestamp: _,
-            scanned_output: _,
-            payment_id: _,
-        } = req
-        {
-            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
-        }
-    }
 
     // Now we add a new block and emit a NewBlockDetected event to trigger another round of scan and
     // see if the updated message appears in the newly found Faux tx
@@ -1063,24 +1018,6 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-
-    for req in requests {
-        if let TransactionServiceRequest::ImportUtxoWithStatus {
-            amount: _,
-            source_address: _,
-            message,
-            import_status: _,
-            tx_id: _,
-            current_height: h,
-            mined_timestamp: _,
-            scanned_output: _,
-            payment_id: _,
-        } = req
-        {
-            println!("{:?}", h);
-            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
-        }
-    }
 }
 
 #[tokio::test]

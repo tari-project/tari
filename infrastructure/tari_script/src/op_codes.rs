@@ -18,7 +18,7 @@
 use std::{fmt, ops::Deref};
 
 use integer_encoding::VarInt;
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
+use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoPublicKey, tari_utilities::ByteArray};
 use tari_utilities::{hex::Hex, ByteArrayError};
 
 use super::ScriptError;
@@ -29,7 +29,7 @@ pub type Message = [u8; MESSAGE_LENGTH];
 
 const PUBLIC_KEY_LENGTH: usize = 32;
 const MESSAGE_LENGTH: usize = 32;
-type MultiSigArgs = (u8, u8, Vec<RistrettoPublicKey>, Box<Message>, usize);
+type MultiSigArgs = (u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>, usize);
 
 /// Convert a slice into a HashValue.
 ///
@@ -64,7 +64,7 @@ pub fn slice_to_boxed_message(slice: &[u8]) -> Box<Message> {
 }
 
 /// Convert a slice into a vector of Public Keys.
-pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPublicKey>, ScriptError> {
+pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<CompressedKey<RistrettoPublicKey>>, ScriptError> {
     if slice.len() < num * PUBLIC_KEY_LENGTH {
         return Err(ScriptError::InvalidData);
     }
@@ -72,8 +72,8 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
     let public_keys = slice
         .chunks_exact(PUBLIC_KEY_LENGTH)
         .take(num)
-        .map(RistrettoPublicKey::from_canonical_bytes)
-        .collect::<Result<Vec<RistrettoPublicKey>, ByteArrayError>>()?;
+        .map(CompressedKey::from_canonical_bytes)
+        .collect::<Result<Vec<CompressedKey<RistrettoPublicKey>>, ByteArrayError>>()?;
 
     Ok(public_keys)
 }
@@ -167,7 +167,7 @@ pub enum Opcode {
     /// Pushes the associated 32-byte value onto the stack. It will be interpreted as a public key or a commitment.
     /// Fails with `IncompatibleTypes` if RistrettoPublicKey is not a valid 32 byte sequence. Fails with
     /// `StackOverflow` if the stack would exceed the max stack height.
-    PushPubKey(Box<RistrettoPublicKey>),
+    PushPubKey(Box<CompressedKey<RistrettoPublicKey>>),
     /// Drops the top stack item. Fails with `StackUnderflow` if the stack is empty.
     Drop,
     /// Duplicates the top stack item. Fails with `StackUnderflow` if the stack is empty. Fails with `StackOverflow` if
@@ -255,13 +255,13 @@ pub enum Opcode {
     /// Fails with `StackUnderflow` if the stack has fewer than m items.
     /// Fails with `IncompatibleTypes` if any of the m signatures from the stack is not a valid signature.
     /// Fails with `InvalidInput` if each of the top m elements is not a Signature.
-    CheckMultiSig(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    CheckMultiSig(u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>),
     /// Identical to CheckMultiSig, except that nothing is pushed to the stack if the multiple signature validation is
     /// either valid or invalid. Fails with `VerifyFailed` if any signature is invalid.
-    CheckMultiSigVerify(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    CheckMultiSigVerify(u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>),
     /// Identical to CheckMultiSig, except that the aggregate of the public keys is pushed to the stack if multiple
     /// signature validation succeeds. Fails with `VerifyFailed` if any signature is invalid.
-    CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
+    CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<CompressedKey<RistrettoPublicKey>>, Box<Message>),
     /// Pops the top element from the stack (either a scalar or a hash), parses it canonically as a Ristretto secret
     /// key if possible, computes the corresponding Ristretto public key, and pushes this value to the stack.
     /// Fails with `StackUnderflow` if the stack is empty.
@@ -375,7 +375,7 @@ impl Opcode {
                 if bytes.len() < 33 {
                     return Err(ScriptError::InvalidData);
                 }
-                let p = RistrettoPublicKey::from_canonical_bytes(&bytes[1..33])?;
+                let p = CompressedKey::from_canonical_bytes(&bytes[1..33])?;
                 Ok((PushPubKey(Box::new(p)), &bytes[33..]))
             },
             OP_DROP => Ok((Drop, &bytes[1..])),
@@ -719,8 +719,10 @@ mod test {
             Opcode::read_next(b"\x7eshort_needs_33_bytes"),
             Err(ScriptError::InvalidData)
         ));
-        let key =
-            RistrettoPublicKey::from_hex("6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401").unwrap();
+        let key = CompressedKey::<RistrettoPublicKey>::from_hex(
+            "6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401",
+        )
+        .unwrap();
         let s = &[
             OP_PUSH_PUBKEY,
             108,
@@ -855,8 +857,8 @@ mod test {
         let p1 = "9c8bc5f90d221191748e8dd7686f09e1114b4bada4c367ed58ae199c51eb100b";
         let p2 = "56e9f018b138ba843521b3243a29d81730c3a4c25108b108b1ca47c2132db569";
         let keys = vec![
-            RistrettoPublicKey::from_hex(p1).unwrap(),
-            RistrettoPublicKey::from_hex(p2).unwrap(),
+            CompressedKey::<RistrettoPublicKey>::from_hex(p1).unwrap(),
+            CompressedKey::<RistrettoPublicKey>::from_hex(p2).unwrap(),
         ];
 
         test_checkmultisig(
@@ -983,8 +985,10 @@ mod test {
 
     #[test]
     fn test_slice_to_vec_pubkeys() {
-        let key =
-            RistrettoPublicKey::from_hex("6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401").unwrap();
+        let key = CompressedKey::<RistrettoPublicKey>::from_hex(
+            "6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401",
+        )
+        .unwrap();
         let bytes = key.as_bytes();
         let vec = [bytes, bytes, bytes].concat();
         let slice = vec.as_bytes();
@@ -996,8 +1000,10 @@ mod test {
 
     #[test]
     fn test_read_multisig_args() {
-        let key =
-            RistrettoPublicKey::from_hex("6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401").unwrap();
+        let key = CompressedKey::<RistrettoPublicKey>::from_hex(
+            "6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401",
+        )
+        .unwrap();
         let bytes = key.as_bytes();
         let message = &[
             108, 156, 180, 211, 229, 115, 81, 70, 33, 34, 49, 15, 162, 44, 144, 177, 230, 223, 181, 40, 214, 70, 21,

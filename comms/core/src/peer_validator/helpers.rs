@@ -61,14 +61,13 @@ pub fn validate_peer_identity_claim(
     claim: &PeerIdentityClaim,
 ) -> Result<(), PeerValidatorError> {
     validate_addresses(config, &claim.addresses)?;
-
-    if !claim.is_valid(public_key) {
-        return Err(PeerValidatorError::InvalidPeerSignature {
+    if let Ok(true) = claim.is_valid(public_key) {
+        Ok(())
+    } else {
+        Err(PeerValidatorError::InvalidPeerSignature {
             peer: NodeId::from_public_key(public_key),
-        });
+        })
     }
-
-    Ok(())
 }
 fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), PeerValidatorError> {
     let mut addr_iter = addr.iter();

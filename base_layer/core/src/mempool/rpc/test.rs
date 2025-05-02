@@ -86,8 +86,9 @@ mod get_state {
 }
 
 mod get_tx_state_by_excess_sig {
+    use tari_common_types::types::UncompressedPublicKey;
     use tari_comms::protocol::rpc::RpcStatusCode;
-    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+    use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
     use tari_utilities::ByteArray;
 
@@ -103,7 +104,7 @@ mod get_tx_state_by_excess_sig {
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_get_tx_by_excess_sig_stats_response(expected.clone()).await;
 
-        let public_nonce = RistrettoPublicKey::default();
+        let public_nonce = UncompressedPublicKey::default();
         let signature = RistrettoSecretKey::default();
 
         let sig = Signature {

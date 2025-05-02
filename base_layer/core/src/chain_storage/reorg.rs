@@ -22,7 +22,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 
@@ -36,7 +36,7 @@ pub struct Reorg {
     pub prev_hash: HashOutput,
     pub num_blocks_added: u64,
     pub num_blocks_removed: u64,
-    pub local_time: NaiveDateTime,
+    pub local_time: DateTime<Utc>,
 }
 
 impl Reorg {
@@ -49,7 +49,7 @@ impl Reorg {
             prev_hash: removed.first().map(|b| *b.hash()).unwrap_or_default(),
             num_blocks_added: added.len() as u64,
             num_blocks_removed: removed.len() as u64,
-            local_time: Utc::now().naive_local(),
+            local_time: Utc::now(),
         }
     }
 }

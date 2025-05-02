@@ -47,7 +47,7 @@ impl<T, const MAX_SIZE: usize> MaxSizeVec<T, MAX_SIZE> {
     /// Creates a new `MaxSizeVec` with a capacity of `MAX_SIZE`.
     pub fn new() -> Self {
         Self {
-            vec: Vec::with_capacity(MAX_SIZE),
+            vec: Vec::new(),
             _marker: PhantomData,
         }
     }
@@ -179,7 +179,7 @@ impl<T, const MAX_SIZE: usize> Iterator for MaxSizeVec<T, MAX_SIZE> {
 impl<T, const MAX_SIZE: usize> FromIterator<T> for MaxSizeVec<T, MAX_SIZE> {
     /// Creates a `MaxSizeVec` from an iterator.
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut vec = Vec::with_capacity(MAX_SIZE);
+        let mut vec = Vec::new();
         for item in iter {
             if vec.len() >= MAX_SIZE {
                 break;

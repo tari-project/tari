@@ -25,7 +25,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use tari_common_types::types::Commitment;
+use tari_common_types::types::CompressedCommitment;
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub enum UtxoSelectionMode {
@@ -39,7 +39,7 @@ pub struct UtxoSelectionCriteria {
     pub mode: UtxoSelectionMode,
     pub filter: UtxoSelectionFilter,
     pub ordering: UtxoSelectionOrdering,
-    pub excluding: Vec<Commitment>,
+    pub excluding: Vec<CompressedCommitment>,
     pub min_dust: u64,
     pub excluding_onesided: bool,
 }
@@ -63,7 +63,7 @@ impl UtxoSelectionCriteria {
         }
     }
 
-    pub fn specific(commitments: Vec<Commitment>) -> Self {
+    pub fn specific(commitments: Vec<CompressedCommitment>) -> Self {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
@@ -110,7 +110,7 @@ pub enum UtxoSelectionFilter {
     #[default]
     Standard,
     /// Selects specific outputs. All outputs must be exist and be spendable.
-    SpecificOutputs { commitments: Vec<Commitment> },
+    SpecificOutputs { commitments: Vec<CompressedCommitment> },
 }
 impl UtxoSelectionFilter {
     pub fn is_standard(&self) -> bool {

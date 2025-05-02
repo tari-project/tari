@@ -55,6 +55,10 @@ pub enum PeerManagerError {
     AddressNotFoundError { address: Multiaddr, node_id: NodeId },
     #[error("Protocol error: {0}")]
     ProtocolError(String),
+    #[error("Invalid version string")]
+    InvalidVersionString,
+    #[error("Peer version {peer_version} to older than the minimum required version {min_version}")]
+    PeerVersionTooOld { min_version: String, peer_version: String },
 }
 
 impl PeerManagerError {

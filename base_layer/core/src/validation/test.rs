@@ -22,24 +22,25 @@
 
 use std::{cmp, sync::Arc};
 
+use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use tari_common::configuration::Network;
-use tari_common_types::types::Commitment;
-use tari_crypto::commitment::HomomorphicCommitment;
+use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction, SmtHasher},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
-        key_manager::{create_memory_db_key_manager, TxoStage},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_random_signature_from_secret_key, create_utxo},
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, TransactionKernel},
+        transaction_key_manager::{create_memory_db_key_manager, TxoStage},
         CryptoFactories,
     },
     tx,
@@ -192,25 +193,48 @@ async fn chain_balance_validation() {
         TxoStage::Output,
     )
     .await;
-    let excess = Commitment::from_public_key(&pk);
+    let excess = CompressedCommitment::from_public_key(pk.to_public_key().unwrap());
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(pre_mine_utxo);
     gen_block.body.add_kernels([kernel]);
-    let mut utxo_sum = HomomorphicCommitment::default();
-    let mut kernel_sum = HomomorphicCommitment::default();
-    let burned_sum = HomomorphicCommitment::default();
+    let mut utxo_sum = UncompressedCommitment::default();
+    let mut kernel_sum = UncompressedCommitment::default();
+    let burned_sum = UncompressedCommitment::default();
+    let mock_store = MockTreeStore::new(true);
+    let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
+    let mut batch = vec![];
     for output in gen_block.body.outputs() {
-        utxo_sum = &output.commitment + &utxo_sum;
+        utxo_sum = &output.commitment.to_commitment().unwrap() + &utxo_sum;
+        let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+        let smt_value = output.smt_hash(0);
+
+        batch.push((smt_key, Some(smt_value.to_vec())));
     }
     for input in gen_block.body.inputs() {
-        utxo_sum = &utxo_sum - input.commitment().unwrap();
+        utxo_sum = &utxo_sum - &input.commitment().unwrap().to_commitment().unwrap();
+        let smt_key = KeyHash(
+            input
+                .commitment()
+                .unwrap()
+                .as_bytes()
+                .try_into()
+                .expect("Commitment is 32 bytes"),
+        );
+        batch.push((smt_key, None));
     }
     for kernel in gen_block.body.kernels() {
-        kernel_sum = &kernel.excess + &kernel_sum;
+        kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     }
-    let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
+    let root = smt.put_value_set(batch, 0).unwrap();
+
+    gen_block.header.output_mr = root.0 .0.try_into().expect("Output MMR root is 32 bytes");
+    let mut accum = genesis.accumulated_data().clone();
+    accum.hash = gen_block.header.hash();
+
+    let genesis = ChainBlock::try_construct(Arc::new(gen_block), accum).unwrap();
+
     let total_pre_mine = pre_mine_value + consensus_manager.consensus_constants(0).pre_mine_value();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
@@ -228,7 +252,13 @@ async fn chain_balance_validation() {
     let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator
-        .validate(&*db.db_read_access().unwrap(), 0, &utxo_sum, &kernel_sum, &burned_sum)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            0,
+            &CompressedCommitment::from_commitment(utxo_sum.clone()),
+            &CompressedCommitment::from_commitment(kernel_sum.clone()),
+            &CompressedCommitment::from_commitment(burned_sum.clone()),
+        )
         .unwrap();
 
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
@@ -253,7 +283,7 @@ async fn chain_balance_validation() {
         TxoStage::Output,
     )
     .await;
-    let excess = Commitment::from_public_key(&pk);
+    let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
         .with_excess(&excess)
@@ -285,10 +315,16 @@ async fn chain_balance_validation() {
     txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, 0);
 
     db.commit(txn).unwrap();
-    utxo_sum = &coinbase.commitment + &utxo_sum;
-    kernel_sum = &kernel.excess + &kernel_sum;
+    utxo_sum = &coinbase.commitment.to_commitment().unwrap() + &utxo_sum;
+    kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     validator
-        .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum, &burned_sum)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            1,
+            &CompressedCommitment::from_commitment(utxo_sum.clone()),
+            &CompressedCommitment::from_commitment(kernel_sum.clone()),
+            &CompressedCommitment::from_commitment(burned_sum.clone()),
+        )
         .unwrap();
 
     //---------------------------------- Try to inflate --------------------------------------------//
@@ -313,7 +349,7 @@ async fn chain_balance_validation() {
         TxoStage::Output,
     )
     .await;
-    let excess = Commitment::from_public_key(&pk);
+    let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
         .with_excess(&excess)
@@ -338,8 +374,8 @@ async fn chain_balance_validation() {
         .unwrap();
     let header2 = ChainHeader::try_construct(header2, accumulated_data).unwrap();
     txn.insert_chain_header(header2.clone());
-    utxo_sum = &coinbase.commitment + &utxo_sum;
-    kernel_sum = &kernel.excess + &kernel_sum;
+    utxo_sum = &coinbase.commitment.to_commitment().unwrap() + &utxo_sum;
+    kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     txn.insert_utxo(coinbase, *header2.hash(), 2, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, *header2.hash(), mmr_position);
@@ -347,7 +383,13 @@ async fn chain_balance_validation() {
     db.commit(txn).unwrap();
 
     validator
-        .validate(&*db.db_read_access().unwrap(), 2, &utxo_sum, &kernel_sum, &burned_sum)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            2,
+            &CompressedCommitment::from_commitment(utxo_sum),
+            &CompressedCommitment::from_commitment(kernel_sum),
+            &CompressedCommitment::from_commitment(burned_sum),
+        )
         .unwrap_err();
 }
 
@@ -377,25 +419,48 @@ async fn chain_balance_validation_burned() {
         TxoStage::Output,
     )
     .await;
-    let excess = Commitment::from_public_key(&pk);
+    let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel =
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(pre_mine_utxo);
     gen_block.body.add_kernels([kernel]);
-    let mut utxo_sum = HomomorphicCommitment::default();
-    let mut kernel_sum = HomomorphicCommitment::default();
-    let mut burned_sum = HomomorphicCommitment::default();
+    let mut utxo_sum = UncompressedCommitment::default();
+    let mut kernel_sum = UncompressedCommitment::default();
+    let mut burned_sum = UncompressedCommitment::default();
+    let mock_store = MockTreeStore::new(true);
+    let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
+    let mut batch = vec![];
     for output in gen_block.body.outputs() {
-        utxo_sum = &output.commitment + &utxo_sum;
+        utxo_sum = &output.commitment.to_commitment().unwrap() + &utxo_sum;
+        if !output.is_burned() {
+            let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            let smt_value = output.smt_hash(0);
+
+            batch.push((smt_key, Some(smt_value.to_vec())));
+        }
     }
     for input in gen_block.body.inputs() {
-        utxo_sum = &utxo_sum - input.commitment().unwrap();
+        utxo_sum = &utxo_sum - &input.commitment().unwrap().to_commitment().unwrap();
+        let smt_key = KeyHash(
+            input
+                .commitment()
+                .unwrap()
+                .as_bytes()
+                .try_into()
+                .expect("Commitment is 32 bytes"),
+        );
+        batch.push((smt_key, None));
     }
     for kernel in gen_block.body.kernels() {
-        kernel_sum = &kernel.excess + &kernel_sum;
+        kernel_sum = &kernel.excess.to_commitment().unwrap() + &kernel_sum;
     }
-    let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
+    let root = smt.put_value_set(batch, 0).unwrap();
+
+    gen_block.header.output_mr = root.0 .0.try_into().expect("Output MMR root is 32 bytes");
+    let mut accum = genesis.accumulated_data().clone();
+    accum.hash = gen_block.header.hash();
+    let genesis = ChainBlock::try_construct(Arc::new(gen_block), accum).unwrap();
     let total_pre_mine = pre_mine_value + consensus_manager.consensus_constants(0).pre_mine_value();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
@@ -414,7 +479,13 @@ async fn chain_balance_validation_burned() {
     let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator
-        .validate(&*db.db_read_access().unwrap(), 0, &utxo_sum, &kernel_sum, &burned_sum)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            0,
+            &CompressedCommitment::from_commitment(utxo_sum.clone()),
+            &CompressedCommitment::from_commitment(kernel_sum.clone()),
+            &CompressedCommitment::from_commitment(burned_sum.clone()),
+        )
         .unwrap();
 
     //---------------------------------- Add block (coinbase + burned) --------------------------------------------//
@@ -438,7 +509,7 @@ async fn chain_balance_validation_burned() {
         TxoStage::Output,
     )
     .await;
-    let excess = Commitment::from_public_key(&pk);
+    let excess = CompressedCommitment::from_compressed_key(pk);
     let kernel = KernelBuilder::new()
         .with_signature(sig)
         .with_excess(&excess)
@@ -465,7 +536,7 @@ async fn chain_balance_validation_burned() {
         TxoStage::Output,
     )
     .await;
-    let excess2 = Commitment::from_public_key(&pk2);
+    let excess2 = CompressedCommitment::from_compressed_key(pk2);
     let kernel2 = KernelBuilder::new()
         .with_signature(sig2)
         .with_excess(&excess2)
@@ -473,7 +544,7 @@ async fn chain_balance_validation_burned() {
         .with_burn_commitment(Some(burned.commitment.clone()))
         .build()
         .unwrap();
-    burned_sum = &burned_sum + kernel2.get_burn_commitment().unwrap();
+    burned_sum = &burned_sum + &kernel2.get_burn_commitment().unwrap().to_commitment().unwrap();
     let mut header1 = BlockHeader::from_previous(genesis.header());
     header1.kernel_mmr_size += 2;
     header1.output_smt_size += 2;
@@ -503,10 +574,16 @@ async fn chain_balance_validation_burned() {
     // txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(),  0);
 
     db.commit(txn).unwrap();
-    utxo_sum = &coinbase.commitment + &utxo_sum;
-    kernel_sum = &(&kernel.excess + &kernel_sum) + &kernel2.excess;
+    utxo_sum = &coinbase.commitment.to_commitment().unwrap() + &utxo_sum;
+    kernel_sum = &(&kernel.excess.to_commitment().unwrap() + &kernel_sum) + &kernel2.excess.to_commitment().unwrap();
     validator
-        .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum, &burned_sum)
+        .validate(
+            &*db.db_read_access().unwrap(),
+            1,
+            &CompressedCommitment::from_commitment(utxo_sum),
+            &CompressedCommitment::from_commitment(kernel_sum),
+            &CompressedCommitment::from_commitment(burned_sum),
+        )
         .unwrap();
 }
 

@@ -21,20 +21,24 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fs,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
+use jmt::{
+    mock::MockTreeStore,
+    storage::{TreeReader, TreeUpdateBatch, TreeWriter},
+    JellyfishMerkleTree,
+    KeyHash,
+};
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
-    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
-use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_utilities::ByteArray;
@@ -59,7 +63,9 @@ use crate::{
         LMDBDatabase,
         MmrTree,
         OutputMinedInfo,
+        OwnedLmdbTreeReader,
         Reorg,
+        SmtHasher,
         TemplateRegistrationEntry,
         Validators,
     },
@@ -67,7 +73,6 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{
             RangeProofType,
             TransactionInput,
@@ -75,6 +80,7 @@ use crate::{
             TransactionOutput,
             WalletOutput,
         },
+        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
     },
     validation::{
@@ -82,7 +88,6 @@ use crate::{
         mocks::MockValidator,
         DifficultyCalculator,
     },
-    OutputSmt,
 };
 
 /// Create a new blockchain database containing the genesis block
@@ -107,32 +112,28 @@ pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<T
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    create_store_with_consensus_and_validators(rules, validators, smt)
+    create_store_with_consensus_and_validators(rules, validators)
 }
 
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
-    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default(), smt)
+    create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
 }
 
 pub fn create_store_with_consensus_and_validators_and_config(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
-    smt: Arc<RwLock<OutputSmt>>,
 ) -> BlockchainDatabase<TempDatabase> {
     let backend = create_test_db();
-    BlockchainDatabase::new(
+    BlockchainDatabase::start_new(
         backend,
         rules.clone(),
         validators,
         config,
         DifficultyCalculator::new(rules, Default::default()),
-        smt,
     )
     .unwrap()
 }
@@ -144,8 +145,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
         MockValidator::new(true),
         BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
-    create_store_with_consensus_and_validators(rules, validators, smt)
+    create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let rules = create_consensus_rules();
@@ -274,6 +274,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernels_in_block(header_hash)
     }
 
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_bad_blocks()
+    }
+
     fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: &Signature,
@@ -302,7 +306,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         self.db
             .as_ref()
@@ -405,11 +409,18 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError> {
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
     }
 
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
         self.db.as_ref().unwrap().get_shard_key(height, public_key)
     }
 
@@ -424,23 +435,61 @@ impl BlockchainBackend for TempDatabase {
             .fetch_template_registrations(start_height, end_height)
     }
 
-    fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
-        self.db.as_ref().unwrap().calculate_tip_smt()
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
+        self.db.as_ref().unwrap().create_smt_reader()
     }
 }
 
-pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
+pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
+    db: &BlockchainDatabase<TDB>,
     blocks: T,
     genesis_block: Arc<ChainBlock>,
-    output_smt: &mut OutputSmt,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let mut block_hashes = HashMap::new();
+    let gb_height = genesis_block.header().height;
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let km = create_memory_db_key_manager().unwrap();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
     let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
+    let mock_store = MockTreeStore::new(true);
+    // let smt_reader = db.create_smt_reader().unwrap();
+    // let restore = JellyfishMerkleRestore::<SmtHasher>::new(
+    //     mock_store,
+    //     genesis_block.header().height,
+    //     genesis_block.header().output_mr,
+    // )
+    // .unwrap();
+    let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
+
+    for h in 0..=gb_height {
+        let mut batch = vec![];
+        let h_block = db.fetch_block(h, false).unwrap();
+
+        for output in h_block.block().body.outputs() {
+            if !output.is_burned() {
+                let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+                let smt_value = output.smt_hash(h_block.block().header.height);
+                batch.push((smt_key, Some(smt_value.to_vec())));
+            }
+        }
+        for input in h_block.block().body.inputs() {
+            let smt_key = KeyHash(
+                input
+                    .commitment()
+                    .unwrap()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Commitment is 32 bytes"),
+            );
+            batch.push((smt_key, None));
+        }
+        let (root, updates) = jmt.put_value_set(batch, h).unwrap();
+        mock_store.write_node_batch(&updates.node_batch).unwrap();
+        assert_eq!(root.0.as_slice(), h_block.block().header.output_mr.as_slice());
+    }
+
     for block_spec in blocks {
         let prev_block = block_hashes
             .get(block_spec.parent)
@@ -448,6 +497,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
         let (mut block, _) = create_block(
+            db,
             &rules,
             prev_block.block(),
             block_spec,
@@ -457,7 +507,10 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             None,
         )
         .await;
-        update_block_and_smt(&mut block, output_smt);
+        let updates = update_block_and_smt(&mut block, &jmt);
+
+        mock_store.write_node_batch(&updates.node_batch).unwrap();
+
         let block = mine_block(block, prev_block.accumulated_data(), difficulty);
         block_names.push(name.to_string());
         block_hashes.insert(name.to_string(), block);
@@ -488,10 +541,7 @@ pub async fn create_main_chain<T: Into<BlockSpecs>>(
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let (names, chain) = {
-        let mut smt = db.smt_read_access().unwrap().clone();
-        create_chained_blocks(blocks, genesis_block, &mut smt).await
-    };
+    let (names, chain) = { create_chained_blocks(db, blocks, genesis_block).await };
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();
@@ -504,9 +554,8 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
     blocks: T,
     root_block: Arc<ChainBlock>,
-    smt: &mut OutputSmt,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-    let (names, chain) = create_chained_blocks(blocks, root_block, smt).await;
+    let (names, chain) = create_chained_blocks(db, blocks, root_block).await;
     let mut txn = DbTransaction::new();
     for name in &names {
         let block = chain.get(name).unwrap().clone();
@@ -517,24 +566,40 @@ pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     (names, chain)
 }
 
-pub fn update_block_and_smt(block: &mut Block, smt: &mut OutputSmt) {
+pub fn update_block_and_smt<T: TreeReader>(
+    block: &mut Block,
+    jmt: &JellyfishMerkleTree<T, SmtHasher>,
+) -> TreeUpdateBatch {
+    // let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(smt_reader);
+    let mut batch = vec![];
     for output in block.body.outputs() {
-        let smt_key = NodeKey::try_from(output.commitment.as_bytes()).unwrap();
-        let smt_node = ValueHash::try_from(output.smt_hash(block.header.height).as_slice()).unwrap();
-        // suppress this error as some unit tests rely on this not being completely correct.
-        let _result = smt.insert(smt_key, smt_node);
+        if !output.is_burned() {
+            let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            let smt_value = output.smt_hash(block.header.height);
+
+            batch.push((smt_key, Some(smt_value.to_vec())));
+        }
     }
     for input in block.body.inputs() {
-        let smt_key = NodeKey::try_from(input.commitment().unwrap().as_bytes()).unwrap();
-        smt.delete(&smt_key).unwrap();
+        let smt_key = KeyHash(
+            input
+                .commitment()
+                .unwrap()
+                .as_bytes()
+                .try_into()
+                .expect("Commitment is 32 bytes"),
+        );
+        batch.push((smt_key, None));
     }
-    let root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
-    block.header.output_mr = root;
+    let (root, updates) = jmt.put_value_set(batch, block.header.height).unwrap();
+    // let root = FixedHash::try_from(smt.hash().as_slice()).unwrap();
+    block.header.output_mr = FixedHash::try_from(root.0.as_slice()).unwrap();
+    updates
 }
 
 pub struct TestBlockchain {
     db: BlockchainDatabase<TempDatabase>,
-    chain: Vec<(&'static str, Arc<ChainBlock>, OutputSmt)>,
+    chain: Vec<(&'static str, Arc<ChainBlock>)>,
     rules: ConsensusManager,
     pub km: MemoryDbKeyManager,
     script_key_id: TariKeyId,
@@ -561,9 +626,8 @@ impl TestBlockchain {
             wallet_payment_address,
             range_proof_type: RangeProofType::BulletProofPlus,
         };
-        let smt = blockchain.db.smt_read_access().unwrap().clone();
 
-        blockchain.chain.push(("GB", genesis, smt));
+        blockchain.chain.push(("GB", genesis));
         blockchain
     }
 
@@ -598,9 +662,9 @@ impl TestBlockchain {
         Ok(())
     }
 
-    pub async fn with_validators(validators: Validators<TempDatabase>, smt: Arc<RwLock<OutputSmt>>) -> Self {
+    pub async fn with_validators(validators: Validators<TempDatabase>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        let db = create_store_with_consensus_and_validators(rules.clone(), validators, smt);
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
         Self::new(db, rules).await
     }
 
@@ -640,29 +704,27 @@ impl TestBlockchain {
         block: Arc<ChainBlock>,
     ) -> Result<BlockAddResult, ChainStorageError> {
         let result = self.db.add_block(block.to_arc_block())?;
-        let smt = self.db.smt().read().unwrap().clone();
-        self.chain.push((name, block, smt));
+        // let smt = self.db.smt().read().unwrap().clone();
+        self.chain.push((name, block));
         Ok(result)
     }
 
-    pub fn get_block_and_smt_by_name(&self, name: &'static str) -> Option<(Arc<ChainBlock>, OutputSmt)> {
-        self.chain
-            .iter()
-            .find(|(n, _, _)| *n == name)
-            .map(|(_, ch, smt)| (ch.clone(), smt.clone()))
+    pub fn get_block_and_smt_by_name(&self, name: &'static str) -> Option<Arc<ChainBlock>> {
+        self.chain.iter().find(|(n, _)| *n == name).map(|(_, ch)| ch.clone())
     }
 
-    pub fn get_tip_block(&self) -> (&'static str, Arc<ChainBlock>, OutputSmt) {
+    pub fn get_tip_block(&self) -> (&'static str, Arc<ChainBlock>) {
         self.chain.last().cloned().unwrap()
     }
 
     pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
-        let (parent, mut parent_smt) = self
+        let parent = self
             .get_block_and_smt_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let difficulty = block_spec.difficulty;
-        let (mut block, coinbase) = create_block(
+        let (block, coinbase) = create_block(
+            self.db(),
             &self.rules,
             parent.block(),
             block_spec,
@@ -672,17 +734,17 @@ impl TestBlockchain {
             Some(self.range_proof_type),
         )
         .await;
-        update_block_and_smt(&mut block, &mut parent_smt);
         let block = mine_block(block, parent.accumulated_data(), difficulty);
         (block, coinbase)
     }
 
     pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, WalletOutput) {
-        let (parent, mut parent_smt) = self
+        let parent = self
             .get_block_and_smt_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let (mut block, outputs) = create_block(
+            self.db(),
             &self.rules,
             parent.block(),
             block_spec,
@@ -692,19 +754,17 @@ impl TestBlockchain {
             Some(self.range_proof_type),
         )
         .await;
-        update_block_and_smt(&mut block, &mut parent_smt);
         block.body.sort();
         (block, outputs)
     }
 
-    pub fn mine_block(&self, parent_name: &'static str, mut block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
-        let (parent, mut parent_smt) = self.get_block_and_smt_by_name(parent_name).unwrap();
-        update_block_and_smt(&mut block, &mut parent_smt);
+    pub fn mine_block(&self, parent_name: &'static str, block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
+        let parent = self.get_block_and_smt_by_name(parent_name).unwrap();
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 
     pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, WalletOutput) {
-        let (name, _, _) = self.get_tip_block();
+        let (name, _) = self.get_tip_block();
         self.create_chained_block(spec.with_parent_block(name)).await
     }
 
@@ -712,7 +772,7 @@ impl TestBlockchain {
         &mut self,
         spec: BlockSpec,
     ) -> Result<(Arc<ChainBlock>, WalletOutput), ChainStorageError> {
-        let (tip, _, _) = self.get_tip_block();
+        let (tip, _) = self.get_tip_block();
         self.append(spec.with_parent_block(tip)).await
     }
 
@@ -724,6 +784,6 @@ impl TestBlockchain {
     }
 
     pub fn get_genesis_block(&self) -> Arc<ChainBlock> {
-        self.chain.first().map(|(_, block, _)| block).unwrap().clone()
+        self.chain.first().map(|(_, block)| block).unwrap().clone()
     }
 }

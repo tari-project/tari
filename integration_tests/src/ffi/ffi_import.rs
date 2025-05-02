@@ -22,6 +22,7 @@
 
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 
+pub type TariUtxo = c_void;
 pub type TariTransportConfig = c_void;
 pub type TariCommsConfig = c_void;
 pub type TariSeedWords = c_void;
@@ -80,6 +81,15 @@ extern "C" {
     pub fn destroy_tari_vector(v: *mut TariVector);
     pub fn destroy_tari_coin_preview(p: *mut TariCoinPreview);
     pub fn string_destroy(ptr: *mut c_char);
+    pub fn tari_utxo_get_commitment(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_value(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_mined_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_mined_timestamp(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_lock_height(utxo: *const TariUtxo, error_out: *mut c_int) -> c_ulonglong;
+    pub fn tari_utxo_get_status(utxo: *const TariUtxo, error_out: *mut c_int) -> u8;
+    pub fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
+    pub fn tari_utxo_get_mined_in_block(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char;
     pub fn transaction_kernel_get_excess_hex(kernel: *mut TariTransactionKernel, error_out: *mut c_int) -> *mut c_char;
     pub fn transaction_kernel_get_excess_public_nonce_hex(
         kernel: *mut TariTransactionKernel,
@@ -151,7 +161,7 @@ extern "C" {
         wallet: *mut TariWallet,
         output: *mut TariUnblindedOutput,
         source_address: *mut TariWalletAddress,
-        message: *const c_char,
+        payment_id: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn wallet_get_unspent_outputs(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariUnblindedOutputs;
@@ -166,6 +176,12 @@ extern "C" {
         encrypted_data_bytes: *const ByteVector,
         error_out: *mut c_int,
     ) -> *mut TariEncryptedOpenings;
+    pub fn transaction_type_from_encrypted_data(
+        encrypted_data: *const TariEncryptedOpenings,
+        commitment_bytes: *const ByteVector,
+        wallet: *mut TariWallet,
+        error_out: *mut c_int,
+    ) -> c_uint;
     pub fn encrypted_data_as_bytes(
         encrypted_data: *const TariEncryptedOpenings,
         error_out: *mut c_int,
@@ -276,10 +292,26 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn completed_transaction_get_message(
+    pub fn completed_transaction_get_mined_timestamp(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
-    ) -> *const c_char;
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_height(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_ulonglong;
+    pub fn completed_transaction_get_mined_in_block(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> *mut c_char;
+    pub fn completed_transaction_get_payment_id(
+        transaction: *mut TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> *mut c_char;
+    pub fn completed_transaction_get_transaction_type(
+        transaction: *const TariCompletedTransaction,
+        error_out: *mut c_int,
+    ) -> c_uint;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
     pub fn completed_transaction_get_confirmations(
         tx: *mut TariCompletedTransaction,
@@ -310,7 +342,7 @@ extern "C" {
         transaction: *mut TariPendingOutboundTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn pending_outbound_transaction_get_message(
+    pub fn pending_outbound_transaction_get_payment_id(
         transaction: *mut TariPendingOutboundTransaction,
         error_out: *mut c_int,
     ) -> *const c_char;
@@ -335,7 +367,7 @@ extern "C" {
         transaction: *mut TariPendingInboundTransaction,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn pending_inbound_transaction_get_message(
+    pub fn pending_inbound_transaction_get_payment_id(
         transaction: *mut TariPendingInboundTransaction,
         error_out: *mut c_int,
     ) -> *const c_char;
@@ -366,7 +398,6 @@ extern "C" {
         database_name: *const c_char,
         datastore_path: *const c_char,
         discovery_timeout_in_secs: c_ulonglong,
-        saf_message_duration_in_secs: c_ulonglong,
         exclude_dial_test_addresses: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;
@@ -499,7 +530,6 @@ extern "C" {
         amount: c_ulonglong,
         commitments: *mut TariVector,
         fee_per_gram: c_ulonglong,
-        message: *const c_char,
         one_sided: bool,
         payment_id_string: *const c_char,
         error_out: *mut c_int,

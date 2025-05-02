@@ -7,8 +7,8 @@
 
 [miner]
 
-# GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
-#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+# GRPC address of base node (default = "http://127.0.0.1:18142")
+#base_node_grpc_address = "http://127.0.0.1:18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 # GRPC TLS communication is turned on by defining the domain name for the service (default = "none")

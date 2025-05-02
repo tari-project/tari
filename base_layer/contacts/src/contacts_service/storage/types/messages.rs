@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
@@ -191,10 +191,10 @@ impl TryFrom<MessagesSql> for Message {
                 u8::try_from(o.direction).map_err(|_| ContactsServiceStorageError::ConversionError)?,
             )
             .ok_or(ContactsServiceStorageError::ConversionError)?,
-            sent_at: o.sent_at.timestamp() as u64,
-            stored_at: o.stored_at.timestamp() as u64,
-            delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
-            read_confirmation_at: Some(o.stored_at.timestamp() as u64),
+            sent_at: o.sent_at.and_utc().timestamp() as u64,
+            stored_at: o.stored_at.and_utc().timestamp() as u64,
+            delivery_confirmation_at: Some(o.stored_at.and_utc().timestamp() as u64),
+            read_confirmation_at: Some(o.stored_at.and_utc().timestamp() as u64),
             message_id: MessageId::try_from(o.message_id)?,
         })
     }
@@ -213,10 +213,12 @@ impl TryFrom<Message> for MessagesSqlInsert {
             message_id: o.message_id.to_vec(),
             body: o.body.to_vec(),
             metadata: metadata.into_bytes().to_vec(),
-            stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0)
-                .ok_or(ContactsServiceStorageError::ConversionError)?,
-            sent_at: NaiveDateTime::from_timestamp_opt(o.sent_at as i64, 0)
-                .ok_or(ContactsServiceStorageError::ConversionError)?,
+            stored_at: DateTime::<Utc>::from_timestamp(o.stored_at as i64, 0)
+                .ok_or(ContactsServiceStorageError::ConversionError)?
+                .naive_utc(),
+            sent_at: DateTime::<Utc>::from_timestamp(o.sent_at as i64, 0)
+                .ok_or(ContactsServiceStorageError::ConversionError)?
+                .naive_utc(),
             direction: i32::from(o.direction.as_byte()),
         })
     }

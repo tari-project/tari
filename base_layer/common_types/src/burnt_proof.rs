@@ -22,12 +22,12 @@
 
 use tari_crypto::ristretto::RistrettoComSig;
 
-use crate::types::{BulletRangeProof, Commitment, PublicKey};
+use crate::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct BurntProof {
-    pub reciprocal_claim_public_key: PublicKey,
-    pub commitment: Commitment,
+    pub reciprocal_claim_public_key: CompressedPublicKey,
+    pub commitment: CompressedCommitment,
     pub ownership_proof: Option<RistrettoComSig>,
     pub range_proof: BulletRangeProof,
 }

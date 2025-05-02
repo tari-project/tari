@@ -102,10 +102,7 @@ impl LinearWeightedMovingAverage {
             if *timestamp > previous_timestamp {
                 this_timestamp = *timestamp;
             } else {
-                this_timestamp = match previous_timestamp.checked_add(EpochTime::from(1)) {
-                    Some(t) => t,
-                    None => return None,
-                };
+                this_timestamp = previous_timestamp.checked_add(EpochTime::from(1))?;
             }
             let solve_time = min(
                 this_timestamp

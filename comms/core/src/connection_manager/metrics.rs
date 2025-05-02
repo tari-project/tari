@@ -23,61 +23,56 @@
 use once_cell::sync::Lazy;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
-use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId, protocol::ProtocolId};
+use crate::{connection_manager::ConnectionDirection, protocol::ProtocolId};
 
-pub fn pending_connections(peer: Option<&NodeId>, direction: ConnectionDirection) -> IntGauge {
+pub fn pending_connections(direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::connections::pending",
             "Number of active connections by direction",
-            &["peer_id", "direction"],
+            &["direction"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[
-        peer.map(ToString::to_string)
-            .unwrap_or_else(|| "unknown".to_string())
-            .as_str(),
-        direction.as_str(),
-    ])
+    METER.with_label_values(&[direction.as_str()])
 }
 
-pub fn successful_connections(peer: &NodeId, direction: ConnectionDirection) -> IntCounter {
+pub fn successful_connections(direction: ConnectionDirection) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::connections::success",
             "Number of active connections by direction",
-            &["peer_id", "direction"],
+            &["direction"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[peer.to_string().as_str(), direction.as_str()])
+    METER.with_label_values(&[direction.as_str()])
 }
 
-pub fn failed_connections(peer: &NodeId, direction: ConnectionDirection) -> IntCounter {
+pub fn failed_connections(direction: ConnectionDirection) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::connections::failed",
             "Number of active connections by direction",
-            &["peer_id", "direction"],
+            &["direction"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[peer.to_string().as_str(), direction.as_str()])
+    METER.with_label_values(&[direction.as_str()])
 }
 
-pub fn inbound_substream_counter(peer: &NodeId, protocol: &ProtocolId) -> IntCounter {
+pub fn inbound_substream_counter(protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::connections::inbound_substream_request_count",
             "Number of substream requests",
-            &["peer_id", "protocol"],
+            &["protocol"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[peer.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
 }

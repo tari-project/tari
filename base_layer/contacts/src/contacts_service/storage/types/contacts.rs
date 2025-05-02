@@ -145,7 +145,7 @@ impl TryFrom<ContactSql> for Contact {
             node_id: NodeId::from_key(address.public_spend_key()),
             address,
             alias: o.alias,
-            last_seen: o.last_seen,
+            last_seen: o.last_seen.map(|t| t.and_utc()),
             latency: o.latency.map(|val| val as u32),
             favourite: match o.favourite {
                 0 => false,
@@ -165,7 +165,7 @@ impl From<Contact> for ContactSql {
             node_id: NodeId::from_key(o.address.public_spend_key()).to_vec(),
             address: o.address.to_vec(),
             alias: o.alias,
-            last_seen: o.last_seen,
+            last_seen: o.last_seen.map(|t| t.naive_utc()),
             latency: o.latency.map(|val| val as i32),
             favourite: i32::from(o.favourite),
         }

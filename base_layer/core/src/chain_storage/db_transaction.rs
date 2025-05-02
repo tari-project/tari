@@ -23,18 +23,17 @@
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use primitive_types::U256;
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
     transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 #[derive(Debug)]
@@ -81,8 +80,8 @@ impl DbTransaction {
     }
 
     /// Delete a block
-    pub fn delete_tip_block(&mut self, block_hash: HashOutput, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteTipBlock(block_hash, smt));
+    pub fn delete_tip_block(&mut self, block_hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteTipBlock(block_hash));
         self
     }
 
@@ -135,7 +134,7 @@ impl DbTransaction {
     pub fn prune_output_from_all_dbs(
         &mut self,
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     ) -> &mut Self {
         self.operations.push(WriteOperation::PruneOutputFromAllDbs {
@@ -171,8 +170,8 @@ impl DbTransaction {
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>, smt: Arc<RwLock<OutputSmt>>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertTipBlockBody { block, smt });
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipBlockBody { block });
         self
     }
 
@@ -252,7 +251,7 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_horizon_data(&mut self, kernel_sum: CompressedCommitment, utxo_sum: CompressedCommitment) -> &mut Self {
         self.operations.push(WriteOperation::SetHorizonData {
             horizon_data: HorizonData::new(kernel_sum, utxo_sum),
         });
@@ -291,7 +290,6 @@ pub enum WriteOperation {
     },
     InsertTipBlockBody {
         block: Arc<ChainBlock>,
-        smt: Arc<RwLock<OutputSmt>>,
     },
     InsertKernel {
         header_hash: HashOutput,
@@ -311,7 +309,7 @@ pub enum WriteOperation {
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
-    DeleteTipBlock(HashOutput, Arc<RwLock<OutputSmt>>),
+    DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput, U256),
     InsertMoneroSeedHeight(Vec<u8>, u64),
@@ -324,7 +322,7 @@ pub enum WriteOperation {
     },
     PruneOutputFromAllDbs {
         output_hash: HashOutput,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         output_type: OutputType,
     },
     DeleteAllKernelsInBlock {
@@ -368,7 +366,7 @@ impl fmt::Display for WriteOperation {
             InsertChainHeader { header } => {
                 write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash())
             },
-            InsertTipBlockBody { block, smt: _ } => write!(
+            InsertTipBlockBody { block } => write!(
                 f,
                 "InsertTipBlockBody({}, {})",
                 block.accumulated_data().hash,
@@ -401,7 +399,7 @@ impl fmt::Display for WriteOperation {
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                 write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)
             },
-            DeleteTipBlock(hash, _) => write!(f, "DeleteTipBlock({})", hash),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },

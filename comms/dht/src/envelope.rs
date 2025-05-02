@@ -27,7 +27,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
 use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
@@ -41,13 +41,6 @@ use crate::version::DhtProtocolVersion;
 pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
     #[allow(clippy::cast_sign_loss)]
     EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
-}
-
-/// Utility function that converts a `EpochTime` to a `chrono::DateTime`
-pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
-    let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
-        .unwrap_or(NaiveDateTime::MAX);
-    DateTime::from_naive_utc_and_offset(dt, Utc)
 }
 
 /// Message errors that should be verified by every node
@@ -120,11 +113,6 @@ impl DhtMessageType {
 
     pub fn is_dht_join(self) -> bool {
         matches!(self, DhtMessageType::Join)
-    }
-
-    pub fn is_saf_message(self) -> bool {
-        use DhtMessageType::{SafRequestMessages, SafStoredMessages};
-        matches!(self, SafRequestMessages | SafStoredMessages)
     }
 }
 
@@ -383,7 +371,6 @@ mod tests {
 
     mod node_destination {
         use rand::rngs::OsRng;
-        use tari_crypto::keys::PublicKey;
         use tari_utilities::hex::{to_hex, Hex};
 
         use super::*;

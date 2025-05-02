@@ -343,7 +343,7 @@ mod test {
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
-        transactions::{key_manager::create_memory_db_key_manager, tari_amount::MicroMinotari},
+        transactions::{tari_amount::MicroMinotari, transaction_key_manager::create_memory_db_key_manager},
         tx,
     };
 

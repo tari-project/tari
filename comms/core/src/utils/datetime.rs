@@ -25,7 +25,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local, NaiveDateTime, Utc};
 
 pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
-    let old_duration = chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::max_value());
+    let old_duration = chrono::Duration::from_std(duration).unwrap_or(chrono::Duration::MAX);
     Utc::now()
         .checked_add_signed(old_duration)
         .unwrap_or(DateTime::<Utc>::MAX_UTC)

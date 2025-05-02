@@ -58,10 +58,22 @@ use crate::{
     Minimized,
     NodeIdentity,
     PeerConnection,
+    PeerConnectionError,
     PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
+// Maximum time allowed for deleting stale peers from database
+
+const STALE_PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(1500);
+// Maximum time allowed for refreshing the connection pool
+const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
+// Maximum time allowed to disconnect a single peer
+const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
+// Warning threshold for request processing time
+const ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME: Duration = Duration::from_millis(500);
+// Warning threshold for event processing time
+const ACCEPTABLE_EVENT_PROCESSING_TIME: Duration = Duration::from_millis(500);
 
 /// # Connectivity Manager
 ///
@@ -157,12 +169,7 @@ struct ConnectivityManagerActor {
 
 impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
-        let mut mdc = vec![];
-        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
-        tokio::spawn(async {
-            log_mdc::extend(mdc);
-            Self::run(self).await
-        })
+        tokio::spawn(async { Self::run(self).await })
     }
 
     pub async fn run(mut self) {
@@ -171,38 +178,80 @@ impl ConnectivityManagerActor {
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
         let interval = self.config.connection_pool_refresh_interval;
-        let mut ticker = time::interval_at(
+        let mut connection_pool_timer = time::interval_at(
             Instant::now()
                 .checked_add(interval)
                 .expect("connection_pool_refresh_interval cause overflow")
                 .into(),
             interval,
         );
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        connection_pool_timer.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
         loop {
             tokio::select! {
                 Some(req) = self.request_rx.recv() => {
+                    let timer = Instant::now();
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Request ({}): {:?}", task_id, req);
                     self.handle_request(req).await;
+                    if timer.elapsed() > ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Request ({}) took too long to process: {:.2?}",
+                            task_id,
+                            format_duration(timer.elapsed())
+                        );
+                    }
+                    trace!(target: LOG_TARGET, "Request ({}) done", task_id);
                 },
 
                 Ok(event) = connection_manager_events.recv() => {
+                    let timer = Instant::now();
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Event ({}): {:?}", task_id, event);
                     if let Err(err) = self.handle_connection_manager_event(&event).await {
-                        error!(target:LOG_TARGET, "Error handling connection manager event: {:?}", err);
+                        error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", task_id, err);
                     }
+                    if timer.elapsed() > ACCEPTABLE_EVENT_PROCESSING_TIME {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Event ({}) took too long to process: {:.2?}",
+                            task_id,
+                            format_duration(timer.elapsed())
+                        );
+                    }
+                    trace!(target: LOG_TARGET, "Event ({}) done", task_id);
                 },
 
-                _ = ticker.tick() => {
+                _ = connection_pool_timer.tick() => {
+                    let task_id = rand::random::<u64>();
+                    trace!(target: LOG_TARGET, "Pool refresh & delete stale peers task ({})", task_id);
+                    self.delete_stale_peers_from_db(task_id).await;
                     self.cleanup_connection_stats();
-                    if let Err(err) = self.refresh_connection_pool().await {
-                        error!(target: LOG_TARGET, "Error when refreshing connection pools: {:?}", err);
+                    match tokio::time::timeout(POOL_REFRESH_TIMEOUT, self.refresh_connection_pool(task_id)).await {
+                        Ok(res) => {
+                            if let Err(err) = res {
+                                error!(target: LOG_TARGET, "Error refreshing connection pools ({}): {:?}", task_id, err);
+                            }
+                        },
+                        Err(_) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Pool refresh task ({}) timeout",
+                                task_id,
+                            );
+                        },
                     }
+                    trace!(target: LOG_TARGET, "Pool refresh & delete stale peers task ({}) done", task_id);
                 },
 
                 _ = self.shutdown_signal.wait() => {
-                    info!(target: LOG_TARGET, "ConnectivityManager is shutting down because it received the shutdown signal");
+                    info!(
+                        target: LOG_TARGET,
+                        "ConnectivityManager is shutting down because it received the shutdown signal"
+                    );
                     self.disconnect_all().await;
                     break;
                 }
@@ -213,7 +262,6 @@ impl ConnectivityManagerActor {
     async fn handle_request(&mut self, req: ConnectivityRequest) {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
-        trace!(target: LOG_TARGET, "Request: {:?}", req);
         match req {
             WaitStarted(reply) => {
                 let _ = reply.send(());
@@ -228,7 +276,7 @@ impl ConnectivityManagerActor {
                 self.handle_dial_peer(node_id.clone(), reply_tx).instrument(span).await;
             },
             SelectConnections(selection, reply) => {
-                let _result = reply.send(self.select_connections(selection).await);
+                let _result = reply.send(self.select_connections(selection));
             },
             GetConnection(node_id, reply) => {
                 let _result = reply.send(
@@ -283,6 +331,13 @@ impl ConnectivityManagerActor {
             GetAllowList(reply) => {
                 let allow_list = self.allow_list.clone();
                 let _result = reply.send(allow_list);
+            },
+            GetSeeds(reply) => {
+                let seeds = self.peer_manager.get_seed_peers().await.unwrap_or_else(|e| {
+                    error!(target: LOG_TARGET, "Error when retrieving seed peers: {:?}", e);
+                    vec![]
+                });
+                let _result = reply.send(seeds);
             },
             GetActiveConnections(reply) => {
                 let _result = reply.send(
@@ -363,7 +418,7 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
-                match conn.disconnect_silent(Minimized::No).await {
+                match disconnect_silent_with_timeout(conn, Minimized::No, None).await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());
                     },
@@ -384,11 +439,12 @@ impl ConnectivityManagerActor {
         }
     }
 
-    async fn refresh_connection_pool(&mut self) -> Result<(), ConnectivityError> {
+    async fn refresh_connection_pool(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
         debug!(
             target: LOG_TARGET,
-            "Performing connection pool cleanup/refresh. (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
+            "Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
+            task_id,
             self.pool.count_entries(),
             self.pool.count_connected_nodes(),
             self.pool.count_failed(),
@@ -398,32 +454,69 @@ impl ConnectivityManagerActor {
 
         self.clean_connection_pool();
         if self.config.is_connection_reaping_enabled {
-            self.reap_inactive_connections().await;
+            self.reap_inactive_connections(task_id).await;
         }
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
-            self.maintain_n_closest_peer_connections_only(threshold).await;
+            self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
         }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
     }
 
-    async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize) {
-        // Select all active peer connections (that are communication nodes)
-        let mut connections = match self
-            .select_connections(ConnectivitySelection::closest_to(
-                self.node_identity.node_id().clone(),
-                self.pool.count_connected_nodes(),
-                vec![],
-            ))
-            .await
+    async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
+        let start = Instant::now();
+        match tokio::time::timeout(
+            STALE_PEER_DELETE_TIMEOUT,
+            self.peer_manager.delete_all_stale_peers(self.node_identity.node_id()),
+        )
+        .await
         {
+            Ok(res) => match res {
+                Ok(deleted) => {
+                    let len = deleted.len();
+                    if len > 0 {
+                        for node_id in deleted {
+                            if let Some(removed) = self.pool.remove(&node_id) {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Stale connection {} encountered - removed",
+                                    removed.peer_node_id()
+                                );
+                            }
+                        }
+                        debug!(
+                            target: LOG_TARGET,
+                            "({}) Deleted {} stale peers from the db in {:.2?}",
+                            task_id, len, start.elapsed()
+                        );
+                    }
+                },
+                Err(err) => {
+                    error!(target: LOG_TARGET, "({}) Error deleting stale peers from the db: {:?}", task_id, err);
+                },
+            },
+            Err(_) => {
+                warn!(target: LOG_TARGET, "({}) Timeout deleting all stale peers from the db", task_id);
+            },
+        }
+    }
+
+    async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {
+        let start = Instant::now();
+        // Select all active peer connections (that are communication nodes)
+        let mut connections = match self.select_connections(ConnectivitySelection::closest_to(
+            self.node_identity.node_id().clone(),
+            self.pool.count_connected_nodes(),
+            vec![],
+        )) {
             Ok(peers) => peers,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Connectivity error trying to maintain {} closest peers ({:?})",
+                    "Connectivity error trying to maintain {} closest peers ({}) ({:?})",
                     threshold,
+                    task_id,
                     e
                 );
                 return;
@@ -435,33 +528,49 @@ impl ConnectivityManagerActor {
         connections.retain(|conn| !self.allow_list.contains(conn.peer_node_id()));
         debug!(
             target: LOG_TARGET,
-            "minimize_connections: Filtered peers: {}, Handles: {}",
+            "minimize_connections: ({}) Filtered peers: {}, Handles: {}",
+            task_id,
             connections.len(),
             num_connections,
         );
 
         // Disconnect all remaining peers above the threshold
+        let len = connections.len();
         for conn in connections.iter_mut().skip(threshold) {
             debug!(
                 target: LOG_TARGET,
-                "minimize_connections: Disconnecting '{}' because the node is not among the {} closest peers",
+                "minimize_connections: ({}) Disconnecting '{}' because the node is not among the {} closest peers",
+                task_id,
                 conn.peer_node_id(),
                 threshold
             );
-            if let Err(err) = conn.disconnect(Minimized::Yes).await {
-                // Already disconnected
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' already disconnected. Error: {:?}",
-                    conn.peer_node_id().short_str(),
-                    err
-                );
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
+                Ok(_) => {
+                    self.pool.remove(conn.peer_node_id());
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer '{}' already disconnected ({:?}). Error: {:?}",
+                        conn.peer_node_id().short_str(),
+                        task_id,
+                        err
+                    );
+                },
             }
-            self.pool.remove(conn.peer_node_id());
+        }
+        if len > 0 {
+            debug!(
+                "minimize_connections: ({}) Minimized {} connections in {:.2?}",
+                task_id,
+                len,
+                start.elapsed()
+            );
         }
     }
 
-    async fn reap_inactive_connections(&mut self) {
+    async fn reap_inactive_connections(&mut self, task_id: u64) {
+        let start = Instant::now();
         let excess_connections = self
             .pool
             .count_connected()
@@ -474,26 +583,45 @@ impl ConnectivityManagerActor {
             .pool
             .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
         connections.truncate(excess_connections);
-        for conn in connections {
+        let mut nodes_to_remove = Vec::new();
+        for conn in &mut connections {
             if !conn.is_connected() {
                 continue;
             }
 
             debug!(
                 target: LOG_TARGET,
-                "Disconnecting '{}' because connection was inactive ({} handles)",
+                "({}) Disconnecting '{}' because connection was inactive ({} handles)",
+                task_id,
                 conn.peer_node_id().short_str(),
                 conn.handle_count()
             );
-            if let Err(err) = conn.disconnect(Minimized::Yes).await {
-                // Already disconnected
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' already disconnected. Error: {:?}",
-                    conn.peer_node_id().short_str(),
-                    err
-                );
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
+                Ok(_) => {
+                    nodes_to_remove.push(conn.peer_node_id().clone());
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer '{}' already disconnected ({:?}). Error: {:?}",
+                        conn.peer_node_id().short_str(),
+                        task_id,
+                        err
+                    );
+                },
             }
+        }
+        let len = nodes_to_remove.len();
+        if len > 0 {
+            for node_id in nodes_to_remove {
+                self.pool.remove(&node_id);
+            }
+            debug!(
+                "({}) Reaped {} inactive connections in {:.2?}",
+                task_id,
+                len,
+                start.elapsed()
+            );
         }
     }
 
@@ -518,10 +646,7 @@ impl ConnectivityManagerActor {
         }
     }
 
-    async fn select_connections(
-        &self,
-        selection: ConnectivitySelection,
-    ) -> Result<Vec<PeerConnection>, ConnectivityError> {
+    fn select_connections(&self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
         trace!(
             target: LOG_TARGET,
@@ -677,7 +802,7 @@ impl ConnectivityManagerActor {
                         msg
                     );
                     let mut conn = conn.clone();
-                    conn.disconnect(Minimized::No).await?;
+                    disconnect_with_timeout(&mut conn, Minimized::No, None).await?;
                 }
                 (node_id, ConnectionStatus::Failed, None)
             },
@@ -777,7 +902,8 @@ impl ConnectivityManagerActor {
                 let Some(existing_conn) = existing_state.connection_mut() else {
                     error!(
                         target: LOG_TARGET,
-                        "INVARIANT ERROR in Tie break: PeerConnection is None but state is CONNECTED: Existing connection (id: {}, peer: {}, direction: {}), new connection. (id: {}, peer: {}, direction: {})",
+                        "INVARIANT ERROR in Tie break: PeerConnection is None but state is CONNECTED: Existing \
+                        connection (id: {}, peer: {}, direction: {}), new connection. (id: {}, peer: {}, direction: {})",
                         existing_state.connection().map(|c| c.id()).unwrap_or_default(),
                         existing_state.node_id(),
                         existing_state.connection().map(|c| c.direction().as_str()).unwrap_or("--"),
@@ -800,7 +926,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result = existing_conn.disconnect_silent(Minimized::Yes).await;
+                    let _result = disconnect_silent_with_timeout(existing_conn, Minimized::Yes, None).await;
                     self.pool.remove(existing_conn.peer_node_id());
                     TieBreak::UseNew
                 } else {
@@ -816,7 +942,7 @@ impl ConnectivityManagerActor {
                         existing_conn.direction(),
                     );
 
-                    let _result = new_conn.clone().disconnect_silent(Minimized::Yes).await;
+                    let _result = disconnect_silent_with_timeout(&mut new_conn.clone(), Minimized::Yes, None).await;
                     TieBreak::KeepExisting
                 }
             },
@@ -990,12 +1116,12 @@ impl ConnectivityManagerActor {
         self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
 
         #[cfg(feature = "metrics")]
-        super::metrics::banned_peers_counter(node_id).inc();
+        super::metrics::banned_peers_counter().inc();
 
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
-            conn.disconnect(Minimized::Yes).await?;
+            disconnect_with_timeout(conn, Minimized::Yes, None).await?;
             let status = self.pool.get_connection_status(node_id);
             debug!(
                 target: LOG_TARGET,
@@ -1026,4 +1152,42 @@ enum TieBreak {
     None,
     UseNew,
     KeepExisting,
+}
+
+async fn disconnect_with_timeout(
+    connection: &mut PeerConnection,
+    minimized: Minimized,
+    task_id: Option<u64>,
+) -> Result<(), PeerConnectionError> {
+    match tokio::time::timeout(PEER_DISCONNECT_TIMEOUT, connection.disconnect(minimized)).await {
+        Ok(res) => res,
+        Err(_) => {
+            warn!(
+                target: LOG_TARGET,
+                "Timeout disconnecting peer ({:?}) '{}'",
+                task_id,
+                connection.peer_node_id().short_str(),
+            );
+            Err(PeerConnectionError::DisconnectTimeout)
+        },
+    }
+}
+
+async fn disconnect_silent_with_timeout(
+    connection: &mut PeerConnection,
+    minimized: Minimized,
+    task_id: Option<u64>,
+) -> Result<(), PeerConnectionError> {
+    match tokio::time::timeout(PEER_DISCONNECT_TIMEOUT, connection.disconnect_silent(minimized)).await {
+        Ok(res) => res,
+        Err(_) => {
+            warn!(
+                target: LOG_TARGET,
+                "Timeout disconnecting peer ({:?}) '{}'",
+                task_id,
+                connection.peer_node_id().short_str(),
+            );
+            Err(PeerConnectionError::DisconnectTimeout)
+        },
+    }
 }

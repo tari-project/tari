@@ -27,7 +27,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{FixedHash, PublicKey, Signature},
+    types::{CompressedPublicKey, FixedHash, Signature},
 };
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
@@ -67,7 +67,7 @@ impl ValidatorNodeRegistration {
         }
     }
 
-    pub fn public_key(&self) -> &PublicKey {
+    pub fn public_key(&self) -> &CompressedPublicKey {
         self.signature.public_key()
     }
 
@@ -76,14 +76,14 @@ impl ValidatorNodeRegistration {
     }
 }
 
-fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: VnEpoch) -> bool {
+fn does_require_new_shard_key(public_key: &CompressedPublicKey, epoch: VnEpoch, interval: VnEpoch) -> bool {
     let pk = U256::from_big_endian(public_key.as_bytes());
     let epoch = U256::from(epoch.as_u64());
     let interval = U256::from(interval.as_u64());
     (pk + epoch) % interval == U256::zero()
 }
 
-fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
+fn generate_shard_key(public_key: &CompressedPublicKey, entropy: &[u8; 32]) -> [u8; 32] {
     DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node_shard_key")
         .chain(public_key)
         .chain(entropy)

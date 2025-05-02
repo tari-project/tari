@@ -212,7 +212,8 @@ mod tests {
         assert!(config.inner_config.allow_methods.contains(&GrpcMethod::GetConstants));
         assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
         assert!(config.inner_config.allow_methods.contains(&GrpcMethod::Identify));
-        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey));
+        // commented out in the config
     }
 
     #[test]

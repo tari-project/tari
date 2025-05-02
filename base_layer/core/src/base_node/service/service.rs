@@ -383,7 +383,7 @@ where B: BlockchainBackend + 'static
             let (request, reply_tx) = request_context.split();
             let res = inbound_nch.handle_request(request).await;
             if let Err(ref e) = res {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "BaseNodeService failed to handle local request {:?}", e
                 );

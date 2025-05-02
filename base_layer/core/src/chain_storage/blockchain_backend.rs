@@ -3,10 +3,10 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 
-use super::TemplateRegistrationEntry;
+use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
@@ -23,7 +23,6 @@ use crate::{
         Reorg,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -80,6 +79,9 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch all the kernels in a block
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
 
+    /// Fetch all bad blocks
+    fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError>;
+
     /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
     /// is in
     fn fetch_kernel_by_excess_sig(
@@ -104,7 +106,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// set, otherwise None is returned.
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
     /// Fetch all outputs in a block
@@ -172,15 +174,23 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetches the validator node set for the given height ordered according to height of registration and canonical
     /// block body ordering.
-    fn fetch_active_validator_nodes(&self, height: u64) -> Result<Vec<(PublicKey, [u8; 32])>, ChainStorageError>;
+    fn fetch_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError>;
     /// Returns the shard key for the validator node if valid at the given height.
-    fn get_shard_key(&self, height: u64, public_key: PublicKey) -> Result<Option<[u8; 32]>, ChainStorageError>;
+    fn get_shard_key(
+        &self,
+        height: u64,
+        public_key: CompressedPublicKey,
+    ) -> Result<Option<[u8; 32]>, ChainStorageError>;
     /// Returns all template registrations within (inclusive) the given height range.
     fn fetch_template_registrations(
         &self,
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
-    /// Calculates the tip utxo smt
-    fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
+
+    /// Creates a reader to construct a JMT
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 }

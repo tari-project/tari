@@ -53,6 +53,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
+#[derive(Clone)]
 pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     operation_id: u64,
     db: OutputManagerDatabase<TBackend>,

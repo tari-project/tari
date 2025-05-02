@@ -36,10 +36,10 @@ use tari_core::{
     mempool::TxStorageResponse,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     transactions::{
-        key_manager::create_memory_db_key_manager,
         tari_amount::{uT, T},
         test_helpers::{schema_to_transaction, spend_utxos},
         transaction_components::OutputFeatures,
+        transaction_key_manager::create_memory_db_key_manager,
         CryptoFactories,
     },
     txn_schema,

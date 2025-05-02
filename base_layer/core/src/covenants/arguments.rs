@@ -27,7 +27,7 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash};
 use tari_max_size::MaxSizeBytes;
 use tari_script::TariScript;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -54,8 +54,8 @@ pub(crate) type BytesArg = MaxSizeBytes<MAX_BYTES_ARG_SIZE>;
 /// Covenant arguments
 pub enum CovenantArg {
     Hash(FixedHash),
-    PublicKey(PublicKey),
-    Commitment(Commitment),
+    PublicKey(CompressedPublicKey),
+    Commitment(CompressedCommitment),
     TariScript(TariScript),
     Covenant(Covenant),
     OutputType(OutputType),
@@ -81,10 +81,10 @@ impl CovenantArg {
                 Ok(CovenantArg::Hash(hash.into()))
             },
             ARG_PUBLIC_KEY => {
-                let pk = PublicKey::deserialize(reader)?;
+                let pk = CompressedPublicKey::deserialize(reader)?;
                 Ok(CovenantArg::PublicKey(pk))
             },
-            ARG_COMMITMENT => Ok(CovenantArg::Commitment(Commitment::deserialize(reader)?)),
+            ARG_COMMITMENT => Ok(CovenantArg::Commitment(CompressedCommitment::deserialize(reader)?)),
             ARG_TARI_SCRIPT => {
                 let script = TariScript::deserialize(reader)?;
                 Ok(CovenantArg::TariScript(script))
@@ -212,9 +212,9 @@ macro_rules! require_x_impl {
 impl CovenantArg {
     require_x_impl!(require_hash, Hash, "hash", FixedHash);
 
-    require_x_impl!(require_publickey, PublicKey, "publickey");
+    require_x_impl!(require_publickey, PublicKey, "publickey", CompressedPublicKey);
 
-    require_x_impl!(require_commitment, Commitment, "commitment");
+    require_x_impl!(require_commitment, Commitment, "commitment", CompressedCommitment);
 
     require_x_impl!(require_tariscript, TariScript, "script");
 
@@ -252,7 +252,7 @@ impl Display for CovenantArg {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::Commitment;
+    use tari_common_types::types::CompressedCommitment;
     use tari_script::script;
     use tari_utilities::hex::from_hex;
 
@@ -307,11 +307,11 @@ mod test {
                 &[ARG_BYTES, 0x03, 0x00, 0x00, 0x00, 0x01, 0x02, 0xaa][..],
             );
             test_case(
-                CovenantArg::Commitment(Commitment::default()),
+                CovenantArg::Commitment(CompressedCommitment::default()),
                 &from_hex("03200000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(
-                CovenantArg::PublicKey(PublicKey::default()),
+                CovenantArg::PublicKey(CompressedPublicKey::default()),
                 &from_hex("02200000000000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
             test_case(

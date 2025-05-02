@@ -3,7 +3,7 @@
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash},
+    types::{CompressedCommitment, FixedHash},
 };
 use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
@@ -46,7 +46,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Perform a batch update of the outputs' unmined and invalid state
     fn set_outputs_to_unmined_and_invalid(&self, hashes: Vec<FixedHash>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' last validation timestamp
-    fn update_last_validation_timestamps(&self, commitments: Vec<Commitment>) -> Result<(), OutputManagerStorageError>;
+    fn update_last_validation_timestamps(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' spent status
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
@@ -74,7 +77,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
-    fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
+    fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
     fn get_last_mined_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
@@ -84,6 +87,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    /// Return the available, time locked, pending incoming and pending outgoing balance only matching the payment id
+    fn get_balance_payment_id(
+        &self,
+        tip: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(

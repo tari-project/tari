@@ -68,7 +68,7 @@ impl Default for UnconfirmedPoolConfig {
         Self {
             storage_capacity: 40_000,
             weight_tx_skip_count: 20,
-            min_fee: 0,
+            min_fee: 50,
         }
     }
 }
@@ -872,9 +872,9 @@ mod test {
         transactions::{
             aggregated_body::AggregateBody,
             fee::Fee,
-            key_manager::create_memory_db_key_manager,
             tari_amount::MicroMinotari,
             test_helpers::{TestParams, UtxoTestParams},
+            transaction_key_manager::create_memory_db_key_manager,
             weight::TransactionWeight,
             SenderTransactionProtocol,
         },

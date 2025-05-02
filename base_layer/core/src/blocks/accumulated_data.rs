@@ -28,7 +28,7 @@ use std::{
 use log::*;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
+use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
 use crate::{
@@ -42,11 +42,11 @@ const LOG_TARGET: &str = "c::bn::acc_data";
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
-    pub(crate) kernel_sum: Commitment,
+    pub(crate) kernel_sum: CompressedCommitment,
 }
 
 impl BlockAccumulatedData {
-    pub fn new(kernels: PrunedHashSet, total_kernel_sum: Commitment) -> Self {
+    pub fn new(kernels: PrunedHashSet, total_kernel_sum: CompressedCommitment) -> Self {
         Self {
             kernels,
             kernel_sum: total_kernel_sum,
@@ -57,7 +57,7 @@ impl BlockAccumulatedData {
         self.kernels
     }
 
-    pub fn kernel_sum(&self) -> &Commitment {
+    pub fn kernel_sum(&self) -> &CompressedCommitment {
         &self.kernel_sum
     }
 }
@@ -71,7 +71,7 @@ impl Display for BlockAccumulatedData {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateBlockAccumulatedData {
     pub kernel_hash_set: Option<PrunedHashSet>,
-    pub kernel_sum: Option<Commitment>,
+    pub kernel_sum: Option<CompressedCommitment>,
 }
 
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {

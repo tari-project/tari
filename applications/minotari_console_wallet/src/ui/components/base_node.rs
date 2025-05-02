@@ -93,7 +93,7 @@ impl<B: Backend> Component<B> for BaseNode {
                         )
                     };
 
-                    let updated = base_node_state.updated.unwrap_or(Utc::now().naive_utc());
+                    let updated = base_node_state.updated.unwrap_or(Utc::now());
 
                     let latency = base_node_state.latency.unwrap_or_default().as_millis();
                     let latency_color = match latency {
@@ -112,7 +112,7 @@ impl<B: Backend> Component<B> for BaseNode {
                         Span::raw("  "),
                     ];
 
-                    let mut latency_span = if Utc::now().naive_utc().timestamp() - updated.timestamp() > 15 * 60 {
+                    let mut latency_span = if Utc::now().timestamp() - updated.timestamp() > 15 * 60 {
                         vec![
                             Span::styled("Last updated", Style::default().fg(Color::Red)),
                             Span::raw(" "),

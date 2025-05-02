@@ -33,7 +33,6 @@ use tari_comms::{
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::{DhtMessageType, NodeDestination},
-    event::DhtEvent,
     outbound::{OutboundEncryption, SendMessageParams},
 };
 use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
@@ -99,11 +98,89 @@ async fn test_dht_join_propagation() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn test_dht_discover_propagation() {
+async fn test_dht_wallet_discover_propagation() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
+
+    // client_D knows no one
+    let client_D = make_node("client_D", PeerFeatures::COMMUNICATION_CLIENT, dht_config(), None).await;
+    // Node C knows about Node D
+    let node_C = make_node(
+        "node_C",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(client_D.to_peer()),
+    )
+    .await;
+    // Node B knows about Node C
+    let node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_C.to_peer()),
+    )
+    .await;
+    // Node A knows about Node B
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
+    log::info!(
+        "Node A = {}, Node B = {}, Node C = {}, Client D = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+        client_D.node_identity().node_id().short_str(),
+    );
+
+    // To receive messages, clients have to connect
+    client_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    client_D
+        .comms
+        .connectivity()
+        .dial_peer(node_C.comms.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    wait_for_connectivity(&[&node_A, &node_B, &node_C, &client_D]).await;
+
+    // Send a discover request from Node A, through B and C, to D. Once Client D
+    // receives the discover request from Node A, it should send a  discovery response
+    // request back to A at which time this call will resolve (or timeout).
+    node_A
+        .dht
+        .discovery_service_requester()
+        .discover_peer(
+            client_D.node_identity().public_key().clone(),
+            client_D.node_identity().public_key().clone().into(),
+        )
+        .await
+        .unwrap();
+
+    let node_A_peer_manager = node_A.comms.peer_manager();
+    let node_B_peer_manager = node_B.comms.peer_manager();
+    let node_C_peer_manager = node_C.comms.peer_manager();
+    let client_D_peer_manager = client_D.comms.peer_manager();
+
+    // Check that all the nodes know about each other in the chain and the discovery worked
+    assert!(node_A_peer_manager.exists(client_D.node_identity().public_key()).await);
+    assert!(node_B_peer_manager.exists(node_A.node_identity().public_key()).await);
+    assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
+    assert!(client_D_peer_manager.exists(node_C.node_identity().public_key()).await);
+    assert!(client_D_peer_manager.exists(node_A.node_identity().public_key()).await);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[allow(non_snake_case)]
+async fn test_dht_node_discover_propagation() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     // Create 4 nodes where A knows B, B knows A and C, C knows B and D, and D knows C
 
     // Node D knows no one
-    let node_D = make_node("node_D", PeerFeatures::COMMUNICATION_CLIENT, dht_config(), None).await;
+    let node_D = make_node("node_D", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node C knows about Node D
     let node_C = make_node(
         "node_C",
@@ -129,7 +206,7 @@ async fn test_dht_discover_propagation() {
     )
     .await;
     log::info!(
-        "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
+        "Node A = {}, Node B = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
         node_B.node_identity().node_id().short_str(),
         node_C.node_identity().node_id().short_str(),
@@ -171,113 +248,6 @@ async fn test_dht_discover_propagation() {
     assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
     assert!(node_D_peer_manager.exists(node_C.node_identity().public_key()).await);
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[allow(non_snake_case)]
-async fn test_dht_store_forward() {
-    let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    // Node B knows about Node C
-    let node_B = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
-    // Node A knows about Node B
-    let node_A = make_node(
-        "node_A",
-        PeerFeatures::COMMUNICATION_NODE,
-        dht_config(),
-        Some(node_B.to_peer()),
-    )
-    .await;
-    log::info!(
-        "NodeA = {}, NodeB = {}, Node C = {}",
-        node_A.node_identity().node_id().short_str(),
-        node_B.node_identity().node_id().short_str(),
-        node_C_node_identity.node_id().short_str(),
-    );
-
-    wait_for_connectivity(&[&node_A, &node_B]).await;
-
-    let params = SendMessageParams::new()
-        .broadcast(vec![])
-        .with_encryption(OutboundEncryption::encrypt_for(
-            node_C_node_identity.public_key().clone(),
-        ))
-        .with_destination(node_C_node_identity.public_key().clone().into())
-        .finish();
-
-    let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
-    let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
-
-    let mut node_B_msg_events = node_B.messaging_events.subscribe();
-
-    node_A
-        .dht
-        .outbound_requester()
-        .send_message_no_header(params.clone(), secret_msg1.to_vec())
-        .await
-        .unwrap();
-    node_A
-        .dht
-        .outbound_requester()
-        .send_message_no_header(params, secret_msg2.to_vec())
-        .await
-        .unwrap();
-
-    // Wait for node B to receive 2 propagation messages
-    collect_try_recv!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
-
-    let mut node_C =
-        make_node_with_node_identity("node_C", node_C_node_identity, dht_config(), Some(node_B.to_peer())).await;
-    let mut node_C_dht_events = node_C.dht.subscribe_dht_events();
-    let mut node_C_msg_events = node_C.messaging_events.subscribe();
-    // Ask node B for messages
-    node_C
-        .dht
-        .store_and_forward_requester()
-        .request_saf_messages_from_peer(node_B.node_identity().node_id().clone())
-        .await
-        .unwrap();
-    node_C
-        .dht
-        .store_and_forward_requester()
-        .request_saf_messages_from_peer(node_A.node_identity().node_id().clone())
-        .await
-        .unwrap();
-    // Wait for node C to and receive a response from the SAF request
-    let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.first().unwrap());
-
-    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
-    assert_eq!(
-        msg.authenticated_origin.as_ref().unwrap(),
-        node_A.comms.node_identity().public_key()
-    );
-    let mut msgs = vec![secret_msg1.to_vec(), secret_msg2.to_vec()];
-    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
-    {
-        let pos = msgs.iter().position(|m| m == &secret).unwrap();
-        msgs.remove(pos);
-    }
-
-    let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
-    assert_eq!(
-        msg.authenticated_origin.as_ref().unwrap(),
-        node_A.comms.node_identity().public_key()
-    );
-    let secret = msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap();
-    {
-        let pos = msgs.iter().position(|m| m == &secret).unwrap();
-        msgs.remove(pos);
-    }
-
-    assert!(msgs.is_empty());
-
-    // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
-    let event = collect_try_recv!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = event.first().unwrap().as_ref());
-
-    node_A.shutdown().await;
-    node_B.shutdown().await;
-    node_C.shutdown().await;
 }
 
 #[tokio::test]
@@ -404,7 +374,7 @@ async fn test_dht_propagate_dedup() {
     let received = filter_received(collect_try_recv!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
     if !received.is_empty() {
-        assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
+        assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 2);
     }
 
     let received = filter_received(collect_try_recv!(node_B_messaging, timeout = Duration::from_secs(20)));

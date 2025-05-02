@@ -24,6 +24,7 @@ use lmdb_zero::error;
 use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
@@ -144,6 +145,10 @@ pub enum ChainStorageError {
     InvalidChainMetaData(#[from] ChainMetaDataError),
     #[error("Block header error: `{0}`")]
     MrHashError(#[from] MrHashError),
+    #[error("Invalid Serialized Public key: {0}")]
+    InvalidSerializedPublicKey(String),
+    #[error("JellyfishMerkleTree error: {0}")]
+    JellyfishMerkleTreeError(anyhow::Error),
 }
 
 impl ChainStorageError {
@@ -163,7 +168,8 @@ impl ChainStorageError {
             err @ ChainStorageError::MerkleMountainRangeError { .. } |
             err @ ChainStorageError::MismatchedMmrRoot(_) |
             err @ ChainStorageError::TransactionError(_) |
-            err @ ChainStorageError::SMTError(_) => Some(BanReason {
+            err @ ChainStorageError::SMTError(_) |
+            err @ ChainStorageError::InvalidSerializedPublicKey(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
@@ -197,8 +203,15 @@ impl ChainStorageError {
             _err @ ChainStorageError::FromKeyBytesFailed(_) |
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
-            _err @ ChainStorageError::MrHashError(_) => None,
+            _err @ ChainStorageError::MrHashError(_) |
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
         }
+    }
+}
+
+impl From<ByteArrayError> for ChainStorageError {
+    fn from(err: ByteArrayError) -> Self {
+        Self::InvalidSerializedPublicKey(err.to_string())
     }
 }
 

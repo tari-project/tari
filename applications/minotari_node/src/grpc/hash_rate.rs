@@ -180,8 +180,10 @@ mod test {
     }
 
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
+        let mut constants = ConsensusConstants::esmeralda()[0].clone();
+        constants.set_pow_target_block_interval(pow_algo, 240);
         let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
-            .add_consensus_constants(ConsensusConstants::esmeralda()[0].clone())
+            .add_consensus_constants(constants)
             .build()
             .unwrap();
         HashRateMovingAverage::new(pow_algo, consensus_manager)

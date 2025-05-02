@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use log::*;
 use tari_common::{
@@ -47,7 +47,6 @@ use tari_core::{
         transaction::TransactionFullValidator,
         DifficultyCalculator,
     },
-    OutputSmt,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
@@ -71,6 +70,10 @@ pub struct BaseNodeContext {
 }
 
 impl BaseNodeContext {
+    pub fn start(&self) -> Result<(), ChainStorageError> {
+        self.blockchain_db.start()
+    }
+
     /// Waits for shutdown of the base node state machine and comms.
     /// This call consumes the NodeContainer instance.
     pub async fn wait_for_shutdown(self) {
@@ -210,7 +213,7 @@ async fn build_node_context(
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
-    debug!(
+    trace!(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
@@ -220,7 +223,6 @@ async fn build_node_context(
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
@@ -237,7 +239,6 @@ async fn build_node_context(
         validators,
         app_config.base_node.storage,
         difficulty_calculator,
-        smt.clone(),
     )
     .map_err(|err| {
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
@@ -263,7 +264,7 @@ async fn build_node_context(
     );
 
     //---------------------------------- Base Node  --------------------------------------------//
-    debug!(target: LOG_TARGET, "Creating base node state machine.");
+    trace!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
         app_config: &app_config,

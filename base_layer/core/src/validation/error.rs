@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::HashOutput;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
@@ -88,7 +89,7 @@ pub enum ValidationError {
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
     IncorrectPreviousHash { expected: String, block_hash: String },
-    #[error("Bad block with hash {hash} found")]
+    #[error("Bad block with hash '{hash}' and reason '{reason}' found")]
     BadBlockFound { hash: String, reason: String },
     #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
     TariScriptExceedsMaxSize {
@@ -134,6 +135,8 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
+    #[error("Invalid Serialized Public key: {0}")]
+    InvalidSerializedPublicKey(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -141,6 +144,12 @@ pub enum ValidationError {
 impl From<ChainStorageError> for ValidationError {
     fn from(err: ChainStorageError) -> Self {
         Self::FatalStorageError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for ValidationError {
+    fn from(err: ByteArrayError) -> Self {
+        Self::InvalidSerializedPublicKey(err.to_string())
     }
 }
 
@@ -184,7 +193,8 @@ impl ValidationError {
             err @ ValidationError::InvalidValidatorNodeSignature |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
-            err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
+            err @ ValidationError::CovenantTooLarge { .. } |
+            err @ ValidationError::InvalidSerializedPublicKey(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

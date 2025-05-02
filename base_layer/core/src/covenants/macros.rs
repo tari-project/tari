@@ -36,7 +36,6 @@
 /// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8)))).unwrap();
 /// covenant.execute(...)?;
 /// ```
-
 #[macro_export]
 macro_rules! covenant {
     ($token:ident($($args:tt)*)) => {{
@@ -177,7 +176,7 @@ macro_rules! __covenant_inner {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use tari_common_types::types::CompressedPublicKey;
     use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
@@ -205,7 +204,8 @@ mod test {
             buf.copy_from_slice(from_hex(hash).unwrap().as_slice());
             buf
         };
-        let dest_pk = PublicKey::from_hex("b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849").unwrap();
+        let dest_pk =
+            CompressedPublicKey::from_hex("b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849").unwrap();
         let sender_pk = dest_pk.clone();
         let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pk)) Else CheckHeightVerify(100) PushPubKey(Box::new(sender_pk)) EndIf).unwrap();
         let covenant = covenant!(field_eq(@field::script, @script(script.clone()))).unwrap();

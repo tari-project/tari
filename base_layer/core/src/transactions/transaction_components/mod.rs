@@ -36,7 +36,7 @@ pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash};
 use tari_script::TariScript;
 use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
 pub use transaction::Transaction;
@@ -105,10 +105,10 @@ use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant};
 pub(super) fn hash_output(
     version: TransactionOutputVersion,
     features: &OutputFeatures,
-    commitment: &Commitment,
+    commitment: &CompressedCommitment,
     rangeproof_hash: &FixedHash,
     script: &TariScript,
-    sender_offset_public_key: &PublicKey,
+    sender_offset_public_key: &CompressedPublicKey,
     metadata_signature: &ComAndPubSignature,
     covenant: &Covenant,
     encrypted_data: &EncryptedData,

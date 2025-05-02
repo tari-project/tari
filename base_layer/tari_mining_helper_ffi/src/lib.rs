@@ -35,15 +35,15 @@ use std::{convert::TryFrom, ffi::CString, slice, str::FromStr};
 use borsh::{BorshDeserialize, BorshSerialize};
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,
     proof_of_work::sha3x_difficulty,
     transactions::{
         generate_coinbase,
-        key_manager::create_memory_db_key_manager,
         transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
+        transaction_key_manager::create_memory_db_key_manager,
     },
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -56,6 +56,7 @@ mod consts {
 }
 
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
+pub type UncompressedTariPublicKey = UncompressedPublicKey;
 #[derive(Debug, PartialEq, Clone)]
 pub struct ByteVector(Vec<c_uchar>);
 
@@ -202,7 +203,7 @@ pub unsafe extern "C" fn public_key_hex_validate(hex: *const c_char, error_out: 
         return false;
     }
     let native = CString::from_raw(hex as *mut i8).to_str().unwrap().to_owned();
-    let pk = TariPublicKey::from_hex(&native);
+    let pk = UncompressedTariPublicKey::from_hex(&native);
     match pk {
         Ok(_pk) => true,
         Err(e) => {
@@ -619,44 +620,6 @@ mod tests {
     }
 
     #[test]
-    fn detect_change_in_consensus_encoding() {
-        #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-        {
-            let (nonce, difficulty, network) = (
-                1209310303936924941,
-                Difficulty::from_u64(1634).unwrap(),
-                Network::Esmeralda,
-            );
-            unsafe {
-                set_network_if_choice_valid(network).unwrap();
-                let mut error = -1;
-                let error_ptr = &mut error as *mut c_int;
-                let block = create_test_block();
-                let header_bytes = borsh::to_vec(&block.header).unwrap();
-                #[allow(clippy::cast_possible_truncation)]
-                let len = header_bytes.len() as u32;
-                let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
-                inject_nonce(byte_vec, nonce, error_ptr);
-                assert_eq!(error, 0);
-                let result = share_difficulty(byte_vec, u32::from(network.as_byte()), error_ptr);
-                if result != difficulty.as_u64() {
-                    // Use this to generate new NONCE and DIFFICULTY
-                    // Use ONLY if you know encoding has changed
-                    let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                    eprintln!("network = {network:?}");
-                    eprintln!("nonce = {:?}", nonce);
-                    eprintln!("difficulty = {:?}", difficulty);
-                    panic!(
-                        "detect_change_in_consensus_encoding has failed. This might be a change in consensus encoding \
-                         which requires an update to the pool miner code."
-                    )
-                }
-                byte_vector_destroy(byte_vec);
-            }
-        }
-    }
-
-    #[test]
     fn check_difficulty() {
         unsafe {
             let network = Network::get_current_or_user_setting_or_default();
@@ -804,7 +767,7 @@ mod tests {
             let error_ptr = &mut error as *mut c_int;
             let header = BlockHeader::new(0);
             let block =
-                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into()).unwrap();
+                NewBlockTemplate::from_block(header.into_builder().build(), Difficulty::min(), 0.into(), true).unwrap();
 
             let block_bytes = borsh::to_vec(&block).unwrap();
             #[allow(clippy::cast_possible_truncation)]

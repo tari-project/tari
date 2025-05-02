@@ -30,10 +30,12 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
-use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
-use tari_core::transactions::transaction_components::TransactionError;
-use tari_key_manager::{error::KeyManagerError, key_manager_service::KeyManagerServiceError};
+use tari_core::transactions::{
+    transaction_components::TransactionError,
+    transaction_key_manager::error::KeyManagerServiceError,
+};
+use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -74,8 +76,6 @@ pub enum WalletError {
     ContactsServiceError(#[from] ContactsServiceError),
     #[error("Liveness service error: `{0}`")]
     LivenessServiceError(#[from] LivenessError),
-    #[error("Store and forward error: `{0}`")]
-    StoreAndForwardError(#[from] StoreAndForwardError),
     #[error("Connectivity error: `{0}`")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("Failed to initialize services: {0}")]

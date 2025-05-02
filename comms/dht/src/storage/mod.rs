@@ -20,16 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! DHT storage maintains persistent DHT state including SAF messages and other DHT metadata.
-
-mod connection;
-pub use connection::{DbConnection, DbConnectionUrl};
-
-mod error;
-pub use error::StorageError;
+//! DHT storage maintains persistent DHT state and other DHT metadata.
 
 mod dht_setting_entry;
 pub use dht_setting_entry::DhtMetadataKey;
 
 mod database;
-pub use database::DhtDatabase;
+pub use database::{DhtDatabase, MIGRATIONS};

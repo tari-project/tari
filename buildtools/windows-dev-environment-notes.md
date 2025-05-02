@@ -358,6 +358,36 @@ Once you've set your environment variables, we can build the tools:
 ```Powershell
 "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 cargo build --release
+
+# Build Tari Tools
+```PowerShell
+$Env:VCPKG_ROOT = 'C:\vcpkg'
+$Env:OPENSSL_DIR = 'C:\vcpkg\packages\openssl_x64-windows-static'
+cargo build --release --bin minotari_miner
+```
+sample output:
+```
+PS C:\Users\leet> cd src\tari
+PS C:\Users\leet\src\tari> cargo build --release --bin minotari_miner
+info: syncing channel updates for 'stable-x86_64-pc-windows-msvc'
+info: latest update on 2024-07-07, rust version 1.81.0-nightly (ed7e35f34 2024-07-06)
+info: downloading component 'cargo'
+info: downloading component 'clippy'
+info: downloading component 'rust-docs'
+info: downloading component 'rust-std'
+info: downloading component 'rustc'
+info: downloading component 'rustfmt'
+info: installing component 'cargo'
+info: installing component 'clippy'
+info: installing component 'rust-docs'
+info: installing component 'rust-std'
+info: installing component 'rustc'
+info: installing component 'rustfmt'
+    Updating git repository `https://github.com/tari-project/lmdb-rs`
+    Updating git submodule `https://github.com/LMDB/lmdb.git`
+    Updating crates.io index
+    Updating git repository `https://github.com/Zondax/ledger-rs`
+ Downloading 516 crates
 ```
 
 This will build the Minotari miner executable in your ```releases``` folder for the repo. Note that the ```minotari_miner``` is just one of several tools that are available. Others include the ```minotari_node``` and ```minotari_console_wallet```. You can review the project for more details on each of these.

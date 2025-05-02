@@ -283,7 +283,6 @@ pub fn create_message_domain_separated_hash_parts(
 mod test {
     use prost::Message;
     use rand::rngs::OsRng;
-    use tari_crypto::keys::PublicKey;
 
     use super::*;
 
@@ -351,8 +350,8 @@ mod test {
         // Generate two distinct keys
         let (sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let (evil_sk, evil_pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let key = generate_key_message(&CommsDHKE::new(&sk, &pk));
-        let evil_key = generate_key_message(&CommsDHKE::new(&evil_sk, &evil_pk));
+        let key = generate_key_message(&CommsDHKE::new(&sk, &pk.to_public_key().unwrap()));
+        let evil_key = generate_key_message(&CommsDHKE::new(&evil_sk, &evil_pk.to_public_key().unwrap()));
 
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";

@@ -55,8 +55,8 @@
 
 # Set to true to enable grpc. (default = false)
 #grpc_enabled = false
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18143")
-#grpc_address = "/ip4/127.0.0.1/tcp/18143"
+# The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18143")
+#grpc_address = "http://127.0.0.1:18143"
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
@@ -99,6 +99,8 @@
 # For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
 # responsiveness of the wallet with slightly delayed balance updates (default = 5):
 #balance_enquiry_cooldown_period = 5
+#The defaul offset for scanning from the birthday, it will start at the birthday - the offset
+#birthday_offset = 2
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
@@ -185,10 +187,10 @@ event_channel_size = 3500
 #peer_database_name = "peers"
 
 # The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-#max_concurrent_inbound_tasks = 4
+#max_concurrent_inbound_tasks = 100
 
 # The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
-#max_concurrent_outbound_tasks = 4
+#max_concurrent_outbound_tasks = 100
 
 # Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
 # addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
@@ -349,9 +351,9 @@ network_discovery.min_desired_peers = 16
 network_discovery.initial_peer_sync_delay = 25
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
-#ban_duration = 21_600 # 6 * 60 * 60
+ban_duration = 120 # 2 mins
 # Length of time to ban a peer for a "short" duration. Default: 60 mins
-#ban_duration_short = 3_600 # 60 * 60
+ban_duration_short = 60 # 1 min
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Default: 100_000 messages
 #flood_ban_max_msg_count = 100_000
@@ -369,3 +371,7 @@ network_discovery.initial_peer_sync_delay = 25
 #                or
 #   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
 excluded_dial_addresses = []
+
+# setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
+# peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
+#peer_validator_config.min_peer_version = ""

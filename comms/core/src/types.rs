@@ -23,11 +23,12 @@
 //! Common Tari comms types
 
 use tari_crypto::{
+    compressed_key::CompressedKey,
     dhke::DiffieHellmanSharedSecret,
     hash_domain,
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
-    signatures::SchnorrSignature,
+    signatures::{CompressedSchnorrSignature, SchnorrSignature},
 };
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
@@ -38,14 +39,16 @@ use tari_storage::LMDBWrapper;
 use crate::peer_manager::{Peer, PeerId};
 
 /// Public key type
-pub type CommsPublicKey = RistrettoPublicKey;
-pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+pub type CommsPublicKey = CompressedKey<RistrettoPublicKey>;
+pub type UncompressedCommsPublicKey = RistrettoPublicKey;
+pub type CommsSecretKey = <RistrettoPublicKey as PublicKey>::K;
 
 // Diffie-Hellman key exchange type
-pub type CommsDHKE = DiffieHellmanSharedSecret<CommsPublicKey>;
+pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
 
 /// Comms signature type
-pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
+pub type Signature = SchnorrSignature<RistrettoPublicKey, CommsSecretKey>;
+pub type CompressedSignature = CompressedSchnorrSignature<RistrettoPublicKey, CommsSecretKey>;
 
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::rngs::OsRng;

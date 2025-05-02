@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll, time::Duration};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -39,8 +39,7 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
-use tari_crypto::{keys::PublicKey, tari_utilities::epoch_time::EpochTime};
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -85,7 +84,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(config.saf.msg_validity)
+            message_validity_window: chrono::Duration::from_std(Duration::from_secs(3 * 60 * 60))
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }
@@ -492,15 +491,22 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             // Encrypt the message, protecting the sender identity
             OutboundEncryption::EncryptFor(recipient_public_key) => {
                 trace!(target: LOG_TARGET, "Encrypting message for {}", recipient_public_key);
+                let ristretto_recipient_public_key = recipient_public_key
+                    .to_public_key()
+                    .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
 
                 // Perform an ephemeral ECDH exchange against the recipient public key
                 let (ephemeral_secret_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-                let shared_ephemeral_secret = CommsDHKE::new(&ephemeral_secret_key, &**recipient_public_key);
+                let shared_ephemeral_secret = CommsDHKE::new(&ephemeral_secret_key, &ristretto_recipient_public_key);
 
                 // Produce a masked sender public key using an offset mask derived from the ECDH exchange
                 let mask = crypt::generate_key_mask(&shared_ephemeral_secret)
                     .map_err(|e| DhtOutboundError::CipherError(e.to_string()))?;
-                let masked_sender_public_key = &mask * self.node_identity.public_key();
+                let masked_sender_public_key = &mask *
+                    self.node_identity
+                        .public_key()
+                        .to_public_key()
+                        .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;
 
                 // Pad and encrypt the message using the masked sender public key
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
@@ -545,8 +551,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     );
                     let signature =
                         MessageSignature::new_signed(self.node_identity.secret_key().clone(), &binding_hash).to_proto();
-                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze())) // this includes the signer
-                                                                                         // public key
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze()))
+                // this includes the signer
+                // public key
                 } else {
                     Ok((None, None, body.freeze()))
                 }

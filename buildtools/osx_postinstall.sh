@@ -5,18 +5,22 @@ TARI_LOG=/tmp/tari.log
 TARI_DIR="$HOME/.tari/"
 
 date >$TARI_LOG
-if [ -d "$TARI_DIR" ]; then
-    echo "removing ~/.tari" >>$TARI_LOG
-    rm -rf "$TARI_DIR"
+#if [ -d "$TARI_DIR" ]; then
+#    echo "removing ~/.tari" >>$TARI_LOG
+#    rm -rf "$TARI_DIR"
+#fi
+
+if [ ! -d "$TARI_DIR" ]; then
+  echo "creating ~/.tari" >>$TARI_LOG
+  mkdir "$HOME"/.tari/ || exit 1
 fi
-echo "creating ~/.tari" >>$TARI_LOG
-mkdir "$HOME"/.tari/ || exit 1
 {
     echo "whoami: $(whoami)"
     echo "home dir: $HOME"
     echo "user: $USER"
     echo "copy /tmp/tari/ to ~/.tari"
 } >>$TARI_LOG
+
 cp -R /tmp/tari/ "$HOME"/.tari/ || exit 1
 echo "chown" >>$TARI_LOG
 chown -R "$USER":staff "$HOME"/.tari/ || exit 1

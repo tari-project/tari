@@ -25,6 +25,7 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_max_size::MaxSizeBytes;
 use tari_utilities::hex::{from_hex, Hex};
 
 use crate::{
@@ -35,52 +36,77 @@ use crate::{
         TariAddressFeatures,
         INTERNAL_DUAL_BASE58_MAX_SIZE,
         INTERNAL_DUAL_BASE58_MIN_SIZE,
+        MAX_ENCRYPTED_DATA_SIZE,
         TARI_ADDRESS_INTERNAL_DUAL_SIZE,
     },
-    types::PublicKey,
+    types::CompressedPublicKey,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DualAddress {
     network: Network,
     features: TariAddressFeatures,
-    public_view_key: PublicKey,
-    public_spend_key: PublicKey,
+    public_view_key: CompressedPublicKey,
+    public_spend_key: CompressedPublicKey,
+    payment_id_user_data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
 impl DualAddress {
     /// Creates a new Tari Address from the provided public keys, network and features
     pub fn new(
-        view_key: PublicKey,
-        spend_key: PublicKey,
+        view_key: CompressedPublicKey,
+        spend_key: CompressedPublicKey,
         network: Network,
         features: TariAddressFeatures,
-    ) -> DualAddress {
-        Self {
+        payment_id_user_data: Option<Vec<u8>>,
+    ) -> Result<DualAddress, TariAddressError> {
+        let mut features = features;
+        let payment_id_user_data = match payment_id_user_data {
+            Some(data) => {
+                if data.len() > MAX_ENCRYPTED_DATA_SIZE {
+                    return Err(TariAddressError::PaymentIdTooLarge);
+                }
+                features.set(TariAddressFeatures::PAYMENT_ID, true);
+                MaxSizeBytes::from_bytes_truncate(data)
+            },
+            None => MaxSizeBytes::empty(),
+        };
+        Ok(Self {
             network,
             features,
             public_view_key: view_key,
             public_spend_key: spend_key,
-        }
+            payment_id_user_data,
+        })
     }
 
     /// Creates a new Tari Address from the provided public keys and network while using the default features
-    pub fn new_with_default_features(view_key: PublicKey, spend_key: PublicKey, network: Network) -> DualAddress {
-        Self {
-            network,
-            features: TariAddressFeatures::default(),
-            public_view_key: view_key,
-            public_spend_key: spend_key,
+    pub fn new_with_default_features(
+        view_key: CompressedPublicKey,
+        spend_key: CompressedPublicKey,
+        network: Network,
+    ) -> Result<DualAddress, TariAddressError> {
+        Self::new(view_key, spend_key, network, TariAddressFeatures::default(), None)
+    }
+
+    pub fn add_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
+        if data.len() > MAX_ENCRYPTED_DATA_SIZE {
+            return Err(TariAddressError::PaymentIdTooLarge);
         }
+        self.features.set(TariAddressFeatures::PAYMENT_ID, true);
+        self.payment_id_user_data = MaxSizeBytes::from_bytes_truncate(data);
+        Ok(())
     }
 
     /// helper function to convert emojis to u8
     pub fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
         // The string must be the correct size, including the checksum
-        if emoji.chars().count() != TARI_ADDRESS_INTERNAL_DUAL_SIZE {
+        let length = emoji.chars().count();
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+            .contains(&length)
+        {
             return Err(TariAddressError::InvalidSize);
         }
-
         // Convert the emoji string to a byte array
         let mut bytes = Vec::<u8>::with_capacity(TARI_ADDRESS_INTERNAL_DUAL_SIZE);
         for c in emoji.chars() {
@@ -100,6 +126,10 @@ impl DualAddress {
         Self::from_bytes(&bytes)
     }
 
+    pub fn get_payment_id_bytes(&self) -> Vec<u8> {
+        self.payment_id_user_data.as_ref().to_vec()
+    }
+
     /// Gets the network from the Tari Address
     pub fn network(&self) -> Network {
         self.network
@@ -113,24 +143,27 @@ impl DualAddress {
     /// Convert Tari Address to an emoji string
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
-        let bytes = self.to_bytes();
+        let bytes = self.to_vec();
         bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
     }
 
     /// Return the public view key of a Tari Address
-    pub fn public_view_key(&self) -> &PublicKey {
+    pub fn public_view_key(&self) -> &CompressedPublicKey {
         &self.public_view_key
     }
 
     /// Return the public spend key of a Tari Address
-    pub fn public_spend_key(&self) -> &PublicKey {
+    pub fn public_spend_key(&self) -> &CompressedPublicKey {
         &self.public_spend_key
     }
 
     /// Construct Tari Address from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
-        if bytes.len() != TARI_ADDRESS_INTERNAL_DUAL_SIZE {
+        let length = bytes.len();
+        if !(TARI_ADDRESS_INTERNAL_DUAL_SIZE..=TARI_ADDRESS_INTERNAL_DUAL_SIZE + MAX_ENCRYPTED_DATA_SIZE)
+            .contains(&length)
+        {
             return Err(TariAddressError::InvalidSize);
         }
         if validate_checksum(bytes).is_err() {
@@ -138,27 +171,31 @@ impl DualAddress {
         }
         let network = Network::try_from(bytes[0]).map_err(|_| TariAddressError::InvalidNetwork)?;
         let features = TariAddressFeatures::from_bits(bytes[1]).ok_or(TariAddressError::InvalidFeatures)?;
-        let public_view_key =
-            PublicKey::from_canonical_bytes(&bytes[2..34]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let public_spend_key =
-            PublicKey::from_canonical_bytes(&bytes[34..66]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let public_view_key = CompressedPublicKey::from_canonical_bytes(&bytes[2..34])
+            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let public_spend_key = CompressedPublicKey::from_canonical_bytes(&bytes[34..66])
+            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let payment_id_user_data = MaxSizeBytes::from_bytes_truncate(&bytes[66..length - 1]);
         Ok(Self {
             network,
             features,
             public_view_key,
             public_spend_key,
+            payment_id_user_data,
         })
     }
 
     /// Convert Tari Address to bytes
-    pub fn to_bytes(&self) -> [u8; TARI_ADDRESS_INTERNAL_DUAL_SIZE] {
-        let mut buf = [0u8; TARI_ADDRESS_INTERNAL_DUAL_SIZE];
+    pub fn to_vec(&self) -> Vec<u8> {
+        let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE + self.payment_id_user_data.len();
+        let mut buf = vec![0; length];
         buf[0] = self.network.as_byte();
         buf[1] = self.features.0;
         buf[2..34].copy_from_slice(self.public_view_key.as_bytes());
         buf[34..66].copy_from_slice(self.public_spend_key.as_bytes());
-        let checksum = compute_checksum(&buf[0..66]);
-        buf[66] = checksum;
+        buf[66..(length - 1)].copy_from_slice(self.payment_id_user_data.as_bytes());
+        let checksum = compute_checksum(&buf[0..(length - 1)]);
+        buf[length - 1] = checksum;
         buf
     }
 
@@ -187,7 +224,7 @@ impl DualAddress {
 
     /// Convert Tari Address to Base58 string
     pub fn to_base58(&self) -> String {
-        let bytes = self.to_bytes();
+        let bytes = self.to_vec();
         let mut base58 = "".to_string();
         base58.push_str(&bs58::encode(&bytes[0..1]).into_string());
         base58.push_str(&bs58::encode(&bytes[1..2].to_vec()).into_string());
@@ -197,7 +234,7 @@ impl DualAddress {
 
     /// Convert Tari dual Address to hex
     pub fn to_hex(&self) -> String {
-        let buf = self.to_bytes();
+        let buf = self.to_vec();
         buf.to_hex()
     }
 
@@ -210,7 +247,7 @@ impl DualAddress {
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::keys::{PublicKey as pk, SecretKey};
+    use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::types::PrivateKey;
@@ -220,12 +257,12 @@ mod test {
     fn valid_emoji_id() {
         // Generate random public key
         let mut rng = rand::thread_rng();
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key =
-            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
+            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda).unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
 
@@ -244,8 +281,8 @@ mod test {
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
 
         // Generate random public key
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key = DualAddress::new(
@@ -253,7 +290,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
 
@@ -273,8 +312,8 @@ mod test {
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
 
         // Generate random public key
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let emoji_id_from_public_key = DualAddress::new(
@@ -282,7 +321,9 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
         assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
         assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
 
@@ -307,13 +348,14 @@ mod test {
     fn encoding() {
         // Generate random public key
         let mut rng = rand::thread_rng();
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
-        let address = DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
+        let address =
+            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda).unwrap();
 
-        let buff = address.to_bytes();
+        let buff = address.to_vec();
         let base58 = address.to_base58();
         let hex = address.to_hex();
         let emoji = address.to_emoji_string();
@@ -342,8 +384,8 @@ mod test {
         assert_eq!(address_emoji.network(), address.network());
         assert_eq!(address_emoji.features(), address.features());
 
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let address = DualAddress::new(
@@ -351,9 +393,11 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_interactive_only(),
-        );
+            None,
+        )
+        .unwrap();
 
-        let buff = address.to_bytes();
+        let buff = address.to_vec();
         let base58 = address.to_base58();
         let hex = address.to_hex();
         let emoji = address.to_emoji_string();
@@ -382,8 +426,8 @@ mod test {
         assert_eq!(address_emoji.network(), address.network());
         assert_eq!(address_emoji.features(), address.features());
 
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an emoji ID from the public key and ensure we recover it
         let address = DualAddress::new(
@@ -391,9 +435,11 @@ mod test {
             spend_key.clone(),
             Network::Esmeralda,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )
+        .unwrap();
 
-        let buff = address.to_bytes();
+        let buff = address.to_vec();
         let base58 = address.to_base58();
         let hex = address.to_hex();
         let emoji = address.to_emoji_string();
@@ -432,7 +478,7 @@ mod test {
             Err(TariAddressError::InvalidSize)
         );
         // This emoji string is too long to be a valid emoji ID
-        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
+        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🐛👅🐔🐉🍍🥑🥑💔🚧💄🎥🎳🐛📌🚧🐊💄🎥🎓🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊🎥🎓🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👃🐛🎼🛵🔮💋👙💦🍷👠🦀👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
         assert_eq!(
             DualAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
@@ -465,11 +511,11 @@ mod test {
     /// Test invalid features
     fn invalid_features() {
         let mut rng = rand::thread_rng();
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
         let mut address =
-            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda);
-        address.features = TariAddressFeatures(5);
+            DualAddress::new_with_default_features(view_key.clone(), spend_key.clone(), Network::Esmeralda).unwrap();
+        address.features = TariAddressFeatures(8);
 
         let emoji_string = address.to_emoji_string();
         assert_eq!(
@@ -482,12 +528,12 @@ mod test {
     /// Test invalid network
     fn invalid_network() {
         let mut rng = rand::thread_rng();
-        let view_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
-        let spend_key = PublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
         // Generate an address using a valid network and ensure it's not valid on another network
-        let address = DualAddress::new_with_default_features(view_key, spend_key, Network::Esmeralda);
-        let mut bytes = address.to_bytes();
+        let address = DualAddress::new_with_default_features(view_key, spend_key, Network::Esmeralda).unwrap();
+        let mut bytes = address.to_vec();
         // this is an invalid network
         bytes[0] = 123;
         let checksum = compute_checksum(&bytes[0..66]);
@@ -496,20 +542,107 @@ mod test {
     }
 
     #[test]
-    /// Test invalid public key
-    fn invalid_public_key() {
-        let mut bytes = [0; 67].to_vec();
-        bytes[0] = Network::Esmeralda.as_byte();
-        bytes[1] = TariAddressFeatures::create_interactive_and_one_sided().0;
-        bytes[2] = 1;
-        let checksum = compute_checksum(&bytes[0..66]);
-        bytes[66] = checksum;
-        let emoji_string = bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>();
+    fn valid_payment_id() {
+        // Generate random public key
+        let mut rng = rand::thread_rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
 
-        // This emoji string contains an invalid checksum
+        // Generate an emoji ID from the public key and ensure we recover it
+        let payment_id = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
+        let emoji_id_from_public_key = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(payment_id.clone()),
+        )
+        .unwrap();
+        assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
+        assert_eq!(emoji_id_from_public_key.public_view_key(), &view_key);
         assert_eq!(
-            DualAddress::from_emoji_string(&emoji_string),
-            Err(TariAddressError::CannotRecoverPublicKey)
+            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
         );
+
+        // Check the size of the corresponding emoji string
+        let emoji_string = emoji_id_from_public_key.to_emoji_string();
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE + 8);
+
+        let features = emoji_id_from_public_key.features();
+        assert_eq!(features, TariAddressFeatures(7));
+        // Generate an emoji ID from the emoji string and ensure we recover it
+        let emoji_id_from_emoji_string = DualAddress::from_emoji_string(&emoji_string).unwrap();
+        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
+
+        // Return to the original public keys for good measure
+        assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
+        assert_eq!(emoji_id_from_emoji_string.public_view_key(), &view_key);
+        assert_eq!(
+            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
+        );
+    }
+
+    #[test]
+    fn valid_max_payment_id() {
+        // Generate random public key
+        let mut rng = rand::thread_rng();
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng));
+        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE + 1];
+
+        // Generate an emoji ID from the public key and ensure we recover it
+        let _emoji_id_from_public_key = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(payment_id.clone()),
+        )
+        .unwrap_err();
+        let payment_id = vec![1u8; MAX_ENCRYPTED_DATA_SIZE];
+
+        // Generate an emoji ID from the public key and ensure we recover it
+        let emoji_id_from_public_key = DualAddress::new(
+            view_key.clone(),
+            spend_key.clone(),
+            Network::Esmeralda,
+            TariAddressFeatures::default(),
+            Some(payment_id.clone()),
+        )
+        .unwrap();
+
+        assert_eq!(emoji_id_from_public_key.public_spend_key(), &spend_key);
+        assert_eq!(
+            emoji_id_from_public_key.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
+        );
+
+        // Check the size of the corresponding emoji string
+        let emoji_string = emoji_id_from_public_key.to_emoji_string();
+        assert_eq!(emoji_string.chars().count(), TARI_ADDRESS_INTERNAL_DUAL_SIZE + 256);
+
+        let features = emoji_id_from_public_key.features();
+        assert_eq!(features, TariAddressFeatures(7));
+        // Generate an emoji ID from the emoji string and ensure we recover it
+        let emoji_id_from_emoji_string = DualAddress::from_emoji_string(&emoji_string).unwrap();
+        assert_eq!(emoji_id_from_emoji_string.to_emoji_string(), emoji_string);
+
+        // Return to the original public keys for good measure
+        assert_eq!(emoji_id_from_emoji_string.public_spend_key(), &spend_key);
+        assert_eq!(
+            emoji_id_from_emoji_string.payment_id_user_data.as_bytes(),
+            payment_id.as_slice()
+        );
+        let bas58 = emoji_id_from_emoji_string.to_base58();
+        if bas58.len() > INTERNAL_DUAL_BASE58_MAX_SIZE {
+            dbg!(bas58.len());
+            panic!("Base58 is too long");
+        }
+        if bas58.len() < INTERNAL_DUAL_BASE58_MIN_SIZE {
+            dbg!(bas58.len());
+            panic!("Base58 is too short");
+        }
     }
 }

@@ -23,7 +23,7 @@
 use std::{collections::HashMap, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
@@ -88,8 +88,8 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
     pub fn delete(
         &self,
         height: u64,
-        public_key: &PublicKey,
-        commitment: &Commitment,
+        public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
     ) -> Result<(), ChainStorageError> {
         let key = ValidatorNodeStoreKey::try_from_parts(&[
             height.to_be_bytes().as_slice(),
@@ -136,7 +136,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
         start_height: u64,
         end_height: u64,
-    ) -> Result<Vec<(PublicKey, ShardKey)>, ChainStorageError> {
+    ) -> Result<Vec<(CompressedPublicKey, ShardKey)>, ChainStorageError> {
         let mut cursor = self.db_read_cursor()?;
 
         let mut nodes = Vec::new();
@@ -182,7 +182,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         &self,
         start_height: u64,
         end_height: u64,
-        public_key: &PublicKey,
+        public_key: &CompressedPublicKey,
     ) -> Result<Option<ShardKey>, ChainStorageError> {
         let mut cursor = self.index_read_cursor()?;
         let key = ShardIdIndexKey::try_from_parts(&[public_key.as_bytes(), &start_height.to_be_bytes()])
@@ -243,7 +243,7 @@ mod tests {
         store: &ValidatorNodeStore<'_, WriteTransaction<'_>>,
         start_height: u64,
         n: usize,
-    ) -> Vec<(PublicKey, ShardKey)> {
+    ) -> Vec<(CompressedPublicKey, ShardKey)> {
         let mut nodes = Vec::new();
         for i in 0..n {
             let public_key = new_public_key();
@@ -252,7 +252,7 @@ mod tests {
                 .insert(start_height + i as u64, &ValidatorNodeEntry {
                     public_key: public_key.clone(),
                     shard_key,
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                     ..Default::default()
                 })
                 .unwrap();
@@ -286,7 +286,7 @@ mod tests {
             let entry = ValidatorNodeEntry {
                 shard_key: make_hash(p1.as_bytes()),
                 public_key: p1,
-                commitment: Commitment::from_public_key(&new_public_key()),
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
                 ..Default::default()
             };
             store.insert(1, &entry).unwrap();
@@ -311,7 +311,7 @@ mod tests {
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
                     shard_key: s0,
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key().clone()),
                     ..Default::default()
                 })
                 .unwrap();
@@ -321,8 +321,8 @@ mod tests {
             // We insert them in reverse order to demonstrate that insert order does not necessarily match the vn set
             // order.
             let mut ordered_commitments = vec![
-                Commitment::from_public_key(&new_public_key()),
-                Commitment::from_public_key(&new_public_key()),
+                CompressedCommitment::from_compressed_key(new_public_key().clone()),
+                CompressedCommitment::from_compressed_key(new_public_key().clone()),
             ];
             ordered_commitments.sort();
             store
@@ -364,7 +364,7 @@ mod tests {
                 .insert(4, &ValidatorNodeEntry {
                     public_key: nodes[0].0.clone(),
                     shard_key: new_shard_key,
-                    commitment: Commitment::from_public_key(&new_public_key()),
+                    commitment: CompressedCommitment::from_compressed_key(new_public_key()),
 
                     ..Default::default()
                 })

@@ -38,7 +38,7 @@ use std::io::{stdout, Stdout};
 
 pub use app::*;
 use crossterm::{
-    event::{KeyCode, KeyModifiers},
+    event::{KeyCode, KeyEventState, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -74,7 +74,9 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
         .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
     crossterm_loop(app)
 }
+
 /// This is the main loop of the application UI using Crossterm based events
+#[allow(clippy::too_many_lines)]
 fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {
@@ -103,30 +105,94 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         ExitCode::InterfaceError
     })?;
 
+    #[cfg(target_os = "windows")]
+    let (mut key_press, mut previous_code, mut previous_kind) = (None, None, None);
     loop {
         terminal.draw(|f| app.draw(f)).map_err(|e| {
             error!(target: LOG_TARGET, "Error drawing interface. {}", e);
             ExitCode::InterfaceError
         })?;
+        let event = events.next();
         #[allow(clippy::blocks_in_conditions)]
-        match events.next().map_err(|e| {
+        match event.map_err(|e| {
             error!(target: LOG_TARGET, "Error reading input event: {}", e);
             ExitCode::InterfaceError
         })? {
-            Event::Input(event) => match (event.code, event.modifiers) {
-                (KeyCode::Char(c), KeyModifiers::CONTROL) => app.on_control_key(c),
-                (KeyCode::Char(c), _) => app.on_key(c),
-                (KeyCode::Left, _) => app.on_left(),
-                (KeyCode::Up, _) => app.on_up(),
-                (KeyCode::Right, _) => app.on_right(),
-                (KeyCode::Down, _) => app.on_down(),
-                (KeyCode::Esc, _) => app.on_esc(),
-                (KeyCode::Backspace, _) => app.on_backspace(),
-                (KeyCode::Enter, _) => app.on_key('\n'),
-                (KeyCode::Tab, _) => app.on_key('\t'),
-                (KeyCode::BackTab, _) => app.on_backtab(),
-                (KeyCode::F(10), _) => app.on_f10(),
-                _ => {},
+            Event::Input(event) => {
+                trace!(target: LOG_TARGET, "event: '{:?}' '{}' '{:?}' '{}'",
+                    event.code,
+                    event.modifiers,
+                    event.kind,
+                    match event.state {
+                        KeyEventState::KEYPAD => "KEYPAD",
+                        KeyEventState::CAPS_LOCK => "CAPS_LOCK",
+                        KeyEventState::NUM_LOCK => "NUM_LOCK",
+                        _ => "NONE",
+                    }
+                );
+                #[cfg(target_os = "windows")]
+                let (action_now, change_case) = {
+                    use crossterm::event::KeyEventKind;
+                    let mut change_case = false;
+                    if let KeyEventKind::Press = event.kind {
+                        key_press = Some(event.code);
+                    }
+                    let action_now = match (event.kind, event.modifiers, event.code) {
+                        (KeyEventKind::Press, KeyModifiers::CONTROL, KeyCode::Char(c)) => c == 'q',
+                        (KeyEventKind::Press, _, KeyCode::F(c)) => c == 10,
+                        (KeyEventKind::Press, _, _) => {
+                            previous_kind == Some(KeyEventKind::Press) && previous_code == Some(event.code)
+                        },
+                        (KeyEventKind::Release, _, _) => match event.code {
+                            // Typing with Caps lock on results in Press and Release keycodes having different
+                            // cases
+                            KeyCode::Char(cr) => {
+                                if let Some(KeyCode::Char(cp)) = key_press {
+                                    if String::from(cp).to_lowercase() == String::from(cr).to_lowercase() && cp != cr {
+                                        change_case = true;
+                                    }
+                                    String::from(cp).to_lowercase() == String::from(cr).to_lowercase()
+                                } else {
+                                    false
+                                }
+                            },
+                            _ => key_press == Some(event.code),
+                        },
+                        (..) => false,
+                    };
+                    previous_kind = Some(event.kind);
+                    previous_code = Some(event.code);
+                    (action_now, change_case)
+                };
+                #[cfg(not(target_os = "windows"))]
+                let (action_now, change_case) = (true, false);
+                match (event.code, event.modifiers, action_now) {
+                    (_, _, false) => {},
+                    (KeyCode::Char(c), KeyModifiers::CONTROL, _) => app.on_control_key(c),
+                    (KeyCode::Char(c), _, _) => {
+                        let mut c_new = c;
+                        if change_case {
+                            if c_new.is_uppercase() {
+                                c_new = c_new.to_lowercase().next().unwrap_or(c_new);
+                            } else {
+                                c_new = c_new.to_uppercase().next().unwrap_or(c_new);
+                            }
+                            trace!(target: LOG_TARGET, "Inconsistent case detected; '{}' changed to '{}'", c, c_new);
+                        }
+                        app.on_key(c_new)
+                    },
+                    (KeyCode::Left, _, _) => app.on_left(),
+                    (KeyCode::Up, _, _) => app.on_up(),
+                    (KeyCode::Right, _, _) => app.on_right(),
+                    (KeyCode::Down, _, _) => app.on_down(),
+                    (KeyCode::Esc, _, _) => app.on_esc(),
+                    (KeyCode::Backspace, _, _) => app.on_backspace(),
+                    (KeyCode::Enter, _, _) => app.on_key('\n'),
+                    (KeyCode::Tab, _, _) => app.on_key('\t'),
+                    (KeyCode::BackTab, _, _) => app.on_backtab(),
+                    (KeyCode::F(10), _, _) => app.on_f10(),
+                    _ => {},
+                }
             },
             Event::Tick => {
                 app.on_tick();

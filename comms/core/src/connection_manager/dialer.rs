@@ -41,7 +41,12 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{span, Instrument, Level};
 
-use super::{direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection};
+use super::{
+    direction::ConnectionDirection,
+    error::ConnectionManagerError,
+    peer_connection::PeerConnection,
+    PeerConnectionInfo,
+};
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
 use crate::{
@@ -225,7 +230,7 @@ where
     ) {
         let node_id = dial_state.peer().node_id.clone();
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
+        metrics::pending_connections(ConnectionDirection::Outbound).inc();
 
         match dial_result {
             Ok((conn, peer_identity)) => {
@@ -280,7 +285,7 @@ where
             });
 
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
+        metrics::pending_connections(ConnectionDirection::Outbound).dec();
 
         self.cancel_dial(&node_id);
     }
@@ -462,7 +467,12 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
+        let peer_connection_info = PeerConnectionInfo::new(
+            Some(authenticated_public_key.clone()),
+            Some(peer_identity.claim.features),
+            Some(peer_identity.metadata.user_agent.clone()),
+        );
+        let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION, peer_connection_info)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         if cancel_signal.is_terminated() {

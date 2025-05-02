@@ -58,6 +58,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
+#[derive(Clone)]
 pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,

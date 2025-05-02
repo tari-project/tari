@@ -201,7 +201,7 @@ pub fn lmdb_delete_keys_starting_with<V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
     key: &[u8],
-) -> Result<Vec<V>, ChainStorageError>
+) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
 where
     V: DeserializeOwned,
 {
@@ -219,7 +219,7 @@ where
     let mut result = vec![];
     while row.0[..key.len()] == *key {
         let val = deserialize::<V>(row.1)?;
-        result.push(val);
+        result.push((row.0.to_vec(), val));
         cursor.del(&mut access, del::NODUPDATA)?;
         row = match cursor.next(&access).to_opt()? {
             Some(r) => r,
@@ -353,14 +353,14 @@ pub fn lmdb_fetch_matching_after<V>(
     txn: &ConstTransaction<'_>,
     db: &Database,
     key_prefix: &[u8],
-) -> Result<Vec<V>, ChainStorageError>
+) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
 where
     V: DeserializeOwned,
 {
     let mut cursor = lmdb_get_prefix_cursor(txn, db, key_prefix)?;
     let mut result = vec![];
-    while let Some((_, val)) = cursor.next()? {
-        result.push(val);
+    while let Some((k, val)) = cursor.next()? {
+        result.push((k, val));
     }
     Ok(result)
 }
@@ -419,6 +419,30 @@ where
         if let Some(r) = f(val) {
             result.push(r);
         }
+    }
+    Ok(result)
+}
+
+#[allow(dead_code)]
+pub fn lmdb_all<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<(Vec<u8>, V)>, ChainStorageError>
+where V: DeserializeOwned {
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    let iter = CursorIter::new(
+        MaybeOwned::Borrowed(&mut cursor),
+        &access,
+        |c, a| c.first(a),
+        Cursor::next::<[u8], [u8]>,
+    )?;
+    let mut result = vec![];
+
+    for row in iter {
+        let (k, v) = row?;
+        result.push((k.to_vec(), deserialize::<V>(v)?));
     }
     Ok(result)
 }
