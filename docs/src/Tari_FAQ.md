@@ -17,13 +17,13 @@ Tari is a decentralized, privacy-first, highly scalable and open-source blockcha
 Tari Universe is a desktop application for mining Tari on Mac or PC. It works by harnessing your computers computational power to solve blocks on the Tari network. In doing so, you're helping to secure the Tari network while earning Tari token (XTM) rewards. Tari Universe simplfies the setup of Tari while providing a beautiful interface for interacting with Tari.
 
 ### How is Tari Universe different from other apps?
-Tari Universe focuses on providing a unique user experience to the mining experience in several areas. Tari Universe focuses on key areas that simplify the mining process and making it accessible to a much wider audience.
+Tari Universe focuses on key areas that simplify the mining process and make it accessible to a much wider audience.  
 - One-click setup and installation
 - A clean interface that clearly communicates information and settings.
 - Automatic updates
 - Built-in wallet
 
-### What is Tari Universe's minimum and recommended requirements?
+### What are Tari Universe's minimum and recommended requirements?
 | Component     | **Minimum Desktop Spec**                             | **Recommended Desktop Spec**                                  |
 |---------------|-------------------------------------------------------|----------------------------------------------------------------|
 | **CPU**       | 4-core (Intel i5, Ryzen 5)                            | 6–8 core (Intel i7, Ryzen 7/9)                                 |
@@ -42,7 +42,7 @@ Tari Universe focuses on providing a unique user experience to the mining experi
 Users have the three options available:
 
 - [The Minotari Console Wallet](https://tari.com/downloads/) - Part of the Tari suite of applications. Provides a console-based wallet for transactions and interactions with the blockchain
-- [Aurora](https://aurora.tari.com) - A mobile application for Android and iOS.
+- [Tari Universe Mobile](https://aurora.tari.com) - A mobile application for Android and iOS.
 - [Tari Universe](https://airdrop.tari.com) - a desktop application that includes the entire Tari suite, including a Minotari wallet built directly into the application.
 
 ### What is the coin name? And what is it abbreviation and symbol?
@@ -78,9 +78,6 @@ Please note that only Testnet explorer is currently live: https://explore-nextne
 ## Tokenomics
 ### Is there any documentation available describing the tokenomics of Tari?
 Users can refer to the following: [https://tari.substack.com/p/tari-tokenomics](https://tari.substack.com/p/tari-tokenomics)
-
-### Is there an initial total supply? And is the supply fixed?
-Excluding premine: 0 at genesis, 21 billion XTM once tail emission starts. 
 
 ### What is the tail emission of Tari?
 Tari has a tail emission of 1% per year after initial supply.
@@ -160,7 +157,7 @@ The primary aim is to increase the cost of 51% attacks, ensuring mining decentra
 No. Swaps must be performed manually at this time.
 
 ### Is Tari account-based?
-No. Tari uses the UTXO model, similar to Bitcoin. As such there is no specific account tied to a user's transactions on Minotari. The closest comparison is the private keys associated with the wallet, which are you used to signing of transactions and validating existing UTXOs for things like calculating balance, etc.
+No. Tari uses the UTXO model, similar to Bitcoin. As such, there is no specific account tied to a user's transactions on Minotari. The closest comparison is the private keys associated with the wallet, which are used to sign transactions and validate existing UTXOs for things like calculating balance.
 
 ### How often is a block mined / what is the interval per block / what is the block production rate?
 Blocks are mined every 120 seconds.
@@ -172,7 +169,7 @@ Minotari can be traded at 0.000001 XTM. Fractional Minotari is referred to as Mi
 Bitcoin, Grin, Beam, Litecoin
 
 ### Does Tari have "super nodes"?
-No. Asssuming that "super nodes" in this context is a high-performance, specialized node that play a critical role in validation, governance, or network infrastructure, then **no**. All base nodes have an equal role in ensuring the security of the network.
+Assuming that "super nodes" in this context are high-performance, specialized nodes that play a critical role in validation, governance, or network infrastructure, then **no**. All base nodes have an equal role in ensuring the security of the network.
 
 ### What is the transaction expiration policy in the transaction pool? Is there a timeout duration after which unconfirmed transactions are removed?
 Completed transactions are never removed. Pending transactions have a timeout of three (3) days; if they have not been completed within that period, the wallet will remove that transaction and mark it as canceled.
