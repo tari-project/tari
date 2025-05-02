@@ -167,7 +167,7 @@ Notes: The Chocolatey CLI MSI is intended for installation only! If upgrading fr
 
 ## Install Protobuf with chocolatey
 
-Using a new PowerShell console, run the following command:
+Using a new PowerShell console (note that PowerShell needs be run as Administrator, otherwise protobuf will not install), run the following command:
 
 ```PowerShell
 choco upgrade protoc -y
