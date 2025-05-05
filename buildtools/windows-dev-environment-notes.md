@@ -332,12 +332,6 @@ openssl is compatible with built-in CMake targets:
   target_link_libraries(main PRIVATE OpenSSL::Crypto)
 ```
 
-Once installed, you'll need to also set the OpenSSL environmental path. Use the following command to set a system-wide environmental path for OpenSSL:
-
-```powershell
-setx /m PATH "C:\vcpkg\installed\x64-windows-static\bin;$Env:Path"
-```
-
 # Install Rust
 Next, we need to install support for the Rust language 
 
@@ -368,13 +362,6 @@ cd tari
 
 ## Basic Test Build Tari Tools
 Finally, you should be able to build the Tari tools. In previous steps, we've set the environmental variables for vcpkg and OpenSSL so while the below steps aren't necessary, setting them locally prior to the run will ensure you are pointing to the correct paths.
-
-Again, either via the IDE terminal or Powershell, run the following commands (making sure you are currently in the ```tari``` repo folder created in the previous step):
-
-```PowerShell
-setx /m VCPKG_ROOT "C:\vcpkg"
-setx /m OPENSSL_DIR "C:\vcpkg\packages\openssl_x64-windows-static"
-```
 
 Once you've set your environment variables, we can build the tools. Let's test this out by building one of the Tari applications. Use the following command to begin building the Minotari Miner:
 
