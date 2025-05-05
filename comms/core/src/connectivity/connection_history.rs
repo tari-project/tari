@@ -41,10 +41,24 @@ impl ConnectionHistory {
         self.last_disconnected.retain(|_, time| time.elapsed() < max_age);
     }
     
-    /// Get nodes that are not in cooldown
-    pub fn get_available_nodes<'a>(&self, nodes: impl Iterator<Item = &'a NodeId>, cooldown: Duration) -> Vec<NodeId> {
-        nodes
-            .filter(|node_id| !self.is_in_cooldown(node_id, cooldown))
+    /// Get nodes that are not in cooldown as an iterator
+    pub fn available_nodes<'a, I>(
+        &'a self,
+        nodes: I,
+        cooldown: Duration,
+    ) -> impl Iterator<Item = &'a NodeId> + 'a 
+    where
+        I: Iterator<Item = &'a NodeId> + 'a,
+    {
+        nodes.filter(move |node_id| !self.is_in_cooldown(node_id, cooldown))
+    }
+    
+    /// Get nodes that are not in cooldown (returns a Vec)
+    pub fn get_available_nodes<'a, I>(&'a self, nodes: I, cooldown: Duration) -> Vec<NodeId> 
+    where
+        I: Iterator<Item = &'a NodeId> + 'a,
+    {
+        self.available_nodes(nodes, cooldown)
             .cloned()
             .collect()
     }

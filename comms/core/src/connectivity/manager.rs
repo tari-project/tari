@@ -155,7 +155,7 @@ impl fmt::Display for ConnectivityStatus {
     }
 }
 
-struct ConnectivityManagerActor {
+pub struct ConnectivityManagerActor {
     config: ConnectivityConfig,
     status: ConnectivityStatus,
     request_rx: mpsc::Receiver<ConnectivityRequest>,
@@ -181,6 +181,10 @@ impl ConnectivityManagerActor {
 
     pub async fn run(mut self) {
         debug!(target: LOG_TARGET, "ConnectivityManager started");
+
+        // Initialize rotation timers to trigger rotation soon after startup
+        self.last_daily_rotation = Instant::now() - (self.config.daily_rotation_interval / 2);
+        self.last_frequent_rotation = Instant::now() - (self.config.frequent_rotation_interval / 2);
 
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
@@ -398,8 +402,20 @@ impl ConnectivityManagerActor {
                         self.config.frequent_rotation_connections
                     );
                     if let Some(reply) = reply_tx {
+                        let max_connections = self.config.long_lived_connections + 
+                            self.config.daily_rotation_connections + 
+                            self.config.frequent_rotation_connections;
+                        let outbound_connections = self.pool
+                            .filter_connection_states(|state| 
+                                state.is_connected() && 
+                                state.connection().map_or(false, |conn| conn.direction().is_outbound())
+                            )
+                            .len();
                         let _ = reply.send(Err(ConnectionManagerError::ConnectivityError(
-                            Box::new(ConnectivityError::ConnectionLimitReached)
+                            Box::new(ConnectivityError::ConnectionLimitReached { 
+                                current: outbound_connections, 
+                                max: max_connections 
+                            })
                         )));
                     }
                     return;
@@ -530,8 +546,8 @@ impl ConnectivityManagerActor {
             self.pool.count_connected_clients()
         );
 
-        // Clean up old connection history
-        self.connection_history.cleanup(self.config.node_reconnection_cooldown * 2);
+        // Clean up connection history - use the exact cooldown period to avoid excessive memory usage
+        self.connection_history.cleanup(self.config.node_reconnection_cooldown);
         
         // Perform scheduled rotation
         self.rotate_connections(task_id).await?;
@@ -547,11 +563,10 @@ impl ConnectivityManagerActor {
         self.update_connectivity_metrics();
         Ok(())
     }
-
     async fn rotate_connections(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
         // Check if it's time for daily rotation
         if self.last_daily_rotation.elapsed() >= self.config.daily_rotation_interval {
-            info!(  // Use info level for testing
+            debug!(
                 target: LOG_TARGET,
                 "({}) Performing daily connection rotation (every {} minutes)",
                 task_id,
@@ -567,7 +582,7 @@ impl ConnectivityManagerActor {
         
         // Check if it's time for frequent rotation
         if self.last_frequent_rotation.elapsed() >= self.config.frequent_rotation_interval {
-            info!(  // Use info level for testing
+            debug!(
                 target: LOG_TARGET,
                 "({}) Performing frequent connection rotation (every {} minutes)",
                 task_id,

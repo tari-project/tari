@@ -44,8 +44,8 @@ pub enum ConnectivityError {
     DialCancelled,
     #[error("Client cancelled: '{0}'")]
     ClientCancelled(String),
-    #[error("Connection limit reached")]
-    ConnectionLimitReached,
+    #[error("Connection limit reached ({current}/{max} connections)")]
+    ConnectionLimitReached { current: usize, max: usize },
 }
 
 impl From<ConnectionManagerError> for ConnectivityError {
