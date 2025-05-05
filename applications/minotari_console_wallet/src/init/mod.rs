@@ -485,6 +485,12 @@ pub async fn init_wallet(
     );
 
     if let Some(file_name) = seed_words_file_name {
+        if wallet.db.get_wallet_type()? != Some(WalletType::DerivedKeys) {
+            return Err(ExitError::new(
+                ExitCode::WalletError,
+                "Cannot export seed words from a Hardware/View_only wallet",
+            ));
+        }
         let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?.join(" ");
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
             ExitError::new(
