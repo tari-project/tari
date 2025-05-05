@@ -361,12 +361,60 @@ impl ConnectivityManagerActor {
             },
         }
     }
+    // Check if we're at the connection limit
+    async fn check_connection_limit(&self) -> Result<bool, ConnectivityError> {
+        // Get all outbound connections
+        let outbound_connections = self.pool
+                    .filter_connection_states(|state| 
+                        state.is_connected() && 
+                        state.connection().map_or(false, |conn| conn.direction().is_outbound())
+                    )
+            .len();
+        
+        // Calculate the maximum allowed connections
+        let max_connections = self.config.long_lived_connections + 
+                            self.config.daily_rotation_connections + 
+                            self.config.frequent_rotation_connections;
+        
+        // Return whether we're under the limit
+        Ok(outbound_connections < max_connections)
+    }
 
     async fn handle_dial_peer(
         &mut self,
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
+        // Check if we're already at the connection limit
+        match self.check_connection_limit().await {
+            Ok(under_limit) => {
+                if !under_limit {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Not connecting to peer {} as we're already at the connection limit of {}", 
+                        node_id,
+                        self.config.long_lived_connections + 
+                        self.config.daily_rotation_connections + 
+                        self.config.frequent_rotation_connections
+                    );
+                    if let Some(reply) = reply_tx {
+                        let _ = reply.send(Err(ConnectionManagerError::ConnectivityError(
+                            Box::new(ConnectivityError::ConnectionLimitReached)
+                        )));
+                    }
+                    return;
+                }
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to check connection limit: {}", err
+                );
+                let _ = reply_tx.map(|tx| tx.send(Err(ConnectionManagerError::ConnectivityError(Box::new(err)))));
+                return;
+            }
+        }
+
         match self.peer_manager.is_peer_banned(&node_id).await {
             Ok(true) => {
                 if let Some(reply) = reply_tx {

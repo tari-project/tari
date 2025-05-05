@@ -25,6 +25,7 @@ use tokio::{sync::mpsc, time::error::Elapsed};
 
 use crate::{
     connection_manager::PeerConnectionRequest,
+    connectivity::ConnectivityError,
     multiplexing::YamuxControlError,
     noise,
     noise::NoiseError,
@@ -94,6 +95,8 @@ pub enum ConnectionManagerError {
     AllPeerAddressesAreExcluded(String),
     #[error("Yamux error: {0}")]
     YamuxControlError(#[from] YamuxControlError),
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] Box<ConnectivityError>),
     #[error("Peer is in cooldown period")]
     PeerInCooldown,
 }
