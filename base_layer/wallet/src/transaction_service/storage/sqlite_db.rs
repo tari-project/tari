@@ -40,7 +40,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -1048,14 +1048,30 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(coinbases)
     }
 
-    fn find_completed_transactions_for_payment_id(
+    fn find_completed_transactions_filter_payment_id_block_hash(
         &self,
-        payment_id: Vec<u8>,
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
-        completed_transactions::table
-            .filter(completed_transactions::user_payment_id.eq(payment_id))
+
+        let mut query = completed_transactions::table.into_boxed();
+        match (payment_id, block_hash) {
+            (Some(id), Some(hash)) => {
+                query = query.filter(completed_transactions::user_payment_id.eq(id));
+                query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
+            },
+            (Some(id), None) => {
+                query = query.filter(completed_transactions::user_payment_id.eq(id));
+            },
+            (None, Some(hash)) => {
+                query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
+            },
+            (None, None) => (),
+        }
+
+        query
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {

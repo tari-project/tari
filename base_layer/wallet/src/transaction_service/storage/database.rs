@@ -31,7 +31,7 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, PrivateKey},
+    types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -156,9 +156,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
-    fn find_completed_transactions_for_payment_id(
+    fn find_completed_transactions_filter_payment_id_block_hash(
         &self,
-        payment_id: Vec<u8>,
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
@@ -482,11 +483,14 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
-    pub fn get_completed_transactions_by_payment_id(
+    pub fn get_completed_transactions_filter_payment_id_block_hash(
         &self,
-        payment_id: Vec<u8>,
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self.db.find_completed_transactions_for_payment_id(payment_id)?;
+        let t = self
+            .db
+            .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash)?;
         Ok(t)
     }
 
@@ -599,12 +603,13 @@ where T: TransactionBackend + 'static
     pub fn get_completed_transactions(
         &self,
         payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(payment_id, false)
+        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash)
     }
 
     pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(None, true)
+        self.get_completed_transactions_by_cancelled(None, true, None)
     }
 
     pub fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
@@ -630,15 +635,15 @@ where T: TransactionBackend + 'static
         &self,
         payment_id: Option<Vec<u8>>,
         cancelled: bool,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
             DbKey::CancelledCompletedTransactions
         } else {
             DbKey::CompletedTransactions
         };
-        match payment_id {
-            Some(payment_id) => self.db.find_completed_transactions_for_payment_id(payment_id),
-            None => {
+        match (payment_id.is_none(), block_hash.is_none()) {
+            (true, true) => {
                 let t = match self.db.fetch(&key) {
                     Ok(None) => log_error(
                         key,
@@ -652,6 +657,9 @@ where T: TransactionBackend + 'static
                 }?;
                 Ok(t)
             },
+            (_, _) => self
+                .db
+                .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash),
         }
     }
 

@@ -930,9 +930,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
         } else {
             None
         };
+        let block_hash = if let Some(hash) = message.block_hash {
+            Some(
+                BlockHash::from_hex(&hash.hash)
+                    .map_err(|_| Status::internal("Output hash is malformed".to_string()))?,
+            )
+        } else {
+            None
+        };
+
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(payment_id)
+            .get_completed_transactions(payment_id, block_hash)
             .await
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(

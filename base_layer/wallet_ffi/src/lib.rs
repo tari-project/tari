@@ -8293,9 +8293,12 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
         return ptr::null_mut();
     }
 
-    let completed_transactions = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
+    let completed_transactions = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_completed_transactions(None, None),
+    );
     match completed_transactions {
         Ok(completed_transactions) => {
             // The frontend specification calls for completed transactions that have not yet been mined to be
@@ -8361,10 +8364,12 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 pending.push(tx.clone());
             }
 
-            if let Ok(completed_txs) = (*wallet)
-                .runtime
-                .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None))
-            {
+            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+                (*wallet)
+                    .wallet
+                    .transaction_service
+                    .get_completed_transactions(None, None),
+            ) {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
@@ -8431,10 +8436,12 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             for tx in &pending_transactions {
                 pending.push(tx.clone());
             }
-            if let Ok(completed_txs) = (*wallet)
-                .runtime
-                .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None))
-            {
+            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+                (*wallet)
+                    .wallet
+                    .transaction_service
+                    .get_completed_transactions(None, None),
+            ) {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
@@ -8586,9 +8593,12 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
         return ptr::null_mut();
     }
 
-    let completed_transactions = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
+    let completed_transactions = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_completed_transactions(None, None),
+    );
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -8647,9 +8657,12 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
 
-    let completed_transactions = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
+    let completed_transactions = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_completed_transactions(None, None),
+    );
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -8720,9 +8733,12 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
 
-    let completed_transactions = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.get_completed_transactions(None));
+    let completed_transactions = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_completed_transactions(None, None),
+    );
 
     match completed_transactions {
         Ok(completed_transactions) => {

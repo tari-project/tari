@@ -79,7 +79,10 @@ use crate::{
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
-    GetCompletedTransactions(Option<Vec<u8>>),
+    GetCompletedTransactions {
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
+    },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
@@ -208,7 +211,7 @@ impl fmt::Display for TransactionServiceRequest {
         match self {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
-            Self::GetCompletedTransactions(_) => write!(f, "GetCompletedTransactions"),
+            Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -963,10 +966,11 @@ impl TransactionServiceHandle {
     pub async fn get_completed_transactions(
         &mut self,
         payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
     ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetCompletedTransactions(payment_id))
+            .call(TransactionServiceRequest::GetCompletedTransactions { payment_id, block_hash })
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),

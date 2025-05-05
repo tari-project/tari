@@ -2304,7 +2304,7 @@ async fn manage_multiple_transactions() {
         )
         .await
         .unwrap();
-    let alice_completed_tx = alice_ts.get_completed_transactions(None).await.unwrap();
+    let alice_completed_tx = alice_ts.get_completed_transactions(None, None).await.unwrap();
     assert_eq!(alice_completed_tx.len(), 0);
     log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
 
@@ -2409,16 +2409,16 @@ async fn manage_multiple_transactions() {
     assert_eq!(finalized, 1);
 
     let alice_pending_outbound = alice_ts.get_pending_outbound_transactions().await.unwrap();
-    let alice_completed_tx = alice_ts.get_completed_transactions(None).await.unwrap();
+    let alice_completed_tx = alice_ts.get_completed_transactions(None, None).await.unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
     assert_eq!(alice_completed_tx.len(), 4, "Not enough transactions for Alice");
     let bob_pending_outbound = bob_ts.get_pending_outbound_transactions().await.unwrap();
-    let bob_completed_tx = bob_ts.get_completed_transactions(None).await.unwrap();
+    let bob_completed_tx = bob_ts.get_completed_transactions(None, None).await.unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3, "Not enough transactions for Bob");
 
     let carol_pending_inbound = carol_ts.get_pending_inbound_transactions().await.unwrap();
-    let carol_completed_tx = carol_ts.get_completed_transactions(None).await.unwrap();
+    let carol_completed_tx = carol_ts.get_completed_transactions(None, None).await.unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);
     assert_eq!(carol_completed_tx.len(), 1);
 
@@ -5588,7 +5588,7 @@ async fn transaction_service_tx_broadcast() {
 
     let alice_completed_txs = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None)
+        .get_completed_transactions(None, None)
         .await
         .unwrap();
     let alice_completed_tx1 = alice_completed_txs
@@ -5696,7 +5696,7 @@ async fn transaction_service_tx_broadcast() {
 
     let alice_completed_txs = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None)
+        .get_completed_transactions(None, None)
         .await
         .unwrap();
     let alice_completed_tx2 = alice_completed_txs
@@ -6332,7 +6332,7 @@ async fn test_completed_transactions_ordering() {
 
     let alice_completed_transactions = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None)
+        .get_completed_transactions(None, None)
         .await
         .unwrap();
 

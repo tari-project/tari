@@ -49,6 +49,7 @@ service Wallet {
   // ```
 
   rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+
   // Returns the current operational state of the wallet.
   //
   // This RPC provides an overview of the wallet's internal status, including:
@@ -84,6 +85,7 @@ service Wallet {
   // }
   // ```
   rpc GetState (GetStateRequest) returns (GetStateResponse);
+
   // This RPC returns a lightweight response indicating whether the wallet is connected to the network, attempting to connect, or currently offline. This is useful for UIs or clients to determine if network interactions like transactions or syncs are possible.
   //
   // Example usage (JavaScript):
@@ -99,8 +101,10 @@ service Wallet {
   // }
   // ```
   rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
+
   // Check for new updates
   rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
+
   // The `Identify` RPC call returns the identity information of the wallet node.
   // This includes:
   // - **Public Key**: The wallet’s cryptographic public key.
@@ -129,6 +133,7 @@ service Wallet {
   // }
   // ```
   rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+
   // This RPC returns two types of wallet addresses: interactive and one-sided addresses.
   // It provides these addresses in byte format as part of the response.
   // - **Interactive Address**: This is a type of address used for interaction and communication with the wallet.
@@ -153,6 +158,7 @@ service Wallet {
   // }
   // ```
   rpc GetAddress (Empty) returns (GetAddressResponse);
+
   // This RPC returns addresses generated for a specific payment ID. It provides both the interactive 
   // and one-sided addresses for the given payment ID, along with their respective representations in 
   // base58 and emoji formats.
@@ -188,6 +194,7 @@ service Wallet {
   //```
   //
   rpc GetPaymentIdAddress (GetPaymentIdAddressRequest) returns (GetCompleteAddressResponse);
+
   // This RPC call that retrieves the current wallet's interactive and one-sided addresses in multiple formats and returns them in a structured response.
   // The response includes:
   // - Raw binary
@@ -216,6 +223,7 @@ service Wallet {
   // }
   // ```
   rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
+
   // This call supports standard interactive transactions (Mimblewimble),
   // one-sided transactions, and one-sided-to-stealth-address transactions.
   // Each recipient must include a valid Tari address, amount, fee, and payment type.
@@ -304,6 +312,7 @@ service Wallet {
   // }
   // ```
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+
   // Streams completed transactions for a given user payment ID.
   //
   // The `GetCompletedTransactions` call retrieves all completed wallet transactions,
@@ -361,6 +370,7 @@ service Wallet {
   // }
   // ```
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
+
   // Returns the wallet balance details.
   //
   // The `GetBalance` call retrieves the current balance status of the wallet,
@@ -406,6 +416,7 @@ service Wallet {
   // }
   // ```
   rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+
   // Returns the total value of unspent outputs in the wallet.
   //
   // The `GetUnspentAmounts` call retrieves the sum of all unspent output amounts
@@ -435,6 +446,7 @@ service Wallet {
   // }
   // ```
   rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
+
   // Creates a transaction that splits funds into multiple smaller outputs.
   //
   // The `CoinSplit` call initiates a transaction that divides wallet funds into several equal-sized outputs.
@@ -492,6 +504,7 @@ service Wallet {
   // }
   // ```
   rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+
   // Imports UTXOs into the wallet as spendable outputs.
   //
   // The `ImportUtxos` call allows you to manually insert one or more previously received UTXOs
@@ -535,6 +548,7 @@ service Wallet {
   // }
   // ```
   rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+
   // Returns the wallet's current network connectivity status.
   //
   // The `GetNetworkStatus` call provides a snapshot of the wallet’s connection to the Tari network,
@@ -583,6 +597,7 @@ service Wallet {
   //   - This status means the wallet is unable to communicate with the network and cannot perform any network-related operations.
   //
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+
   // Returns a list of peers currently connected to the wallet.
   //
   // The `ListConnectedPeers` call retrieves information about peers that the wallet is currently
@@ -647,6 +662,7 @@ service Wallet {
   // }
   // ```
   rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+
   // Cancels a specific transaction by its ID.
   //
   // The `CancelTransaction` call allows a transaction to be cancelled by its unique transaction ID (TxId).
@@ -683,10 +699,13 @@ service Wallet {
   // }
   // ```
   rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+
   // Will trigger a complete revalidation of all wallet outputs.
   rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+
   // Will trigger a validation of all wallet outputs.
   rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
+
   // Sends a XTR SHA Atomic Swap transaction.
   //
   // The `SendShaAtomicSwapTransaction` call is used to initiate an Atomic Swap 
@@ -731,6 +750,7 @@ service Wallet {
   //   "failure_message": ""
   // }
   rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
+
   // Creates a burn transaction for burning a specified amount of Tari currency.
   //
   // The `CreateBurnTransaction` call facilitates burning a certain amount of Tari
@@ -778,6 +798,7 @@ service Wallet {
   //   "reciprocal_claim_public_key": "0xreciprocalpublickey"
   // }
   rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
+
   // Claims a SHA Atomic Swap transaction using a pre-image and output hash.
   //
   // The `ClaimShaAtomicSwapTransaction` call allows the user to unlock and claim funds from
@@ -822,6 +843,7 @@ service Wallet {
   //   }
   // }
   rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
+
   // Claims an HTLC refund transaction after the timelock period has passed.
   //
   // The `ClaimHtlcRefundTransaction` call enables the original sender of a Hash Time-Locked Contract (HTLC)
@@ -862,8 +884,10 @@ service Wallet {
   //   }
   // }
   rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
+
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
+
   // The SetBaseNode call configures the base node peer for the wallet.
   //
   // This RPC sets the public key and network address of the base node peer that the wallet should communicate with.
@@ -898,6 +922,7 @@ service Wallet {
   // {}
   // ```
   rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+
   // Streams real-time wallet transaction events to the client.
   //
   // The `StreamTransactionEvents` RPC provides a continuous stream of transaction events as they occur within the wallet.
@@ -1141,6 +1166,11 @@ enum TransactionStatus {
 
 message GetCompletedTransactionsRequest {
   UserPaymentId payment_id = 1;
+  BlockHashHex block_hash = 2;
+}
+
+message BlockHashHex {
+  string hash = 1;
 }
 
 message GetCompletedTransactionsResponse {
