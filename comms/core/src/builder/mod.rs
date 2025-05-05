@@ -376,11 +376,7 @@ impl CommsBuilder {
             protocol_extensions: ProtocolExtensions::new(),
         })
     }
-}
-impl CommsBuilder {
-    // ... existing methods ...
-    
-    /// Configure connection rotation settings
+
     pub fn with_connection_rotation(
         mut self, 
         long_lived: usize, 
