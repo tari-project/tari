@@ -216,7 +216,7 @@ To install ```vcpkg```, run the following commands:
 git clone https://github.com/microsoft/vcpkg.git \vcpkg
 cd \vcpkg
 .\bootstrap-vcpkg.bat
-vcpkg integrate install
+.\vcpkg integrate install
 ```
 
 Below is a sample of the successful execution of the commands above:
@@ -268,6 +268,12 @@ At line:1 char:1
 Then `vcpkg` has not been added to your path. Run the following command (you will require a PowerShell terminal running as administrator for this):
 
 ```powershell
+$Env:Path += ';C:\vcpkg'
+```
+
+This will set the environment path temporarily. Rerun the `vcpkg list`. If it now displays the succesful message, then you can add this to your path permanently with the below command (you will require PowerShell with Administrative privileges to run the below successfully): 
+
+```powershell
 setx /m PATH "$Env:Path;C:\vcpkg"
 ```
 
@@ -291,15 +297,12 @@ Total install time: <time>
 To install `OpenSSL`, run the following commands:
 
 ```powershell
-$Env:Path += ';C:\vcpkg'
 vcpkg install openssl:x64-windows-static
 ```
 
 Below is a sample output (with many of the intervening steps omitted via the "[...]") of a successful run of the above command:
 
 ```powershell
-PS C:\Users\leet> $Env:Path += ';C:\vcpkg'
->>
 PS C:\Users\leet> vcpkg install openssl:x64-windows-static
 >>
 Computing installation plan...
