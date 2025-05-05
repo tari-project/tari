@@ -316,7 +316,7 @@ service Wallet {
   // Streams completed transactions for a given user payment ID.
   //
   // The `GetCompletedTransactions` call retrieves all completed wallet transactions,
-  // optionally filtered by a specific `payment_id`. The response is streamed back to the client
+  // optionally filtered by a specific `payment_id` and/or block hash. The response is streamed back to the client
   // one transaction at a time, with each transaction including details such as status, direction,
   // amount, fees, and associated metadata.
   //
@@ -332,6 +332,14 @@ service Wallet {
   //   - **Restrictions**:
   //     - Exactly **one format must be set**. Providing more than one or none results in an error.
   //     - If no `payment_id` is provided, all completed transactions will be returned.
+  //
+  // - `block_hash` (optional):
+  //   - **Type**: `string`
+  //   - **Description**: A specific block hash to filter transactions by.
+  //   - **Accepted Formats**
+  //     - Hexadecimal string representing the block hash.
+  //   - **Restrictions**:
+  //     - If provided, the transactions will be filtered to only those included in the specified block.
   //
   // ### Example JavaScript gRPC client usage:
   //
