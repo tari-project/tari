@@ -90,7 +90,6 @@ pub struct InboundNodeCommsHandlers<B> {
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
     randomx_factory: RandomXFactory,
-    cached_block_template: Arc<RwLock<Option<(FixedHash, NewBlockTemplate)>>>,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -115,7 +114,6 @@ where B: BlockchainBackend + 'static
             outbound_nci,
             connectivity,
             randomx_factory,
-            cached_block_template: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -269,23 +267,6 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
                 let mut last_seen_hash = self.mempool.get_last_seen_hash().await?;
-                {
-                    let read_lock = self.cached_block_template.read().await;
-                    if let Some(cache) = read_lock.as_ref() {
-                        if cache.0 == last_seen_hash && &cache.1.header.prev_hash == best_block_header.hash() {
-                            return Ok(NodeCommsResponse::NewBlockTemplate(cache.1.clone()));
-                        }
-                    }
-                }
-                // Only allow one thread
-                let mut write_lock = self.cached_block_template.write().await;
-                // double lock check
-                if let Some(cache) = write_lock.as_ref() {
-                    if cache.0 == last_seen_hash && &cache.1.header.prev_hash == best_block_header.hash() {
-                        return Ok(NodeCommsResponse::NewBlockTemplate(cache.1.clone()));
-                    }
-                }
-
                 let mut is_mempool_synced = false;
                 let start = Instant::now();
                 // this will wait a max of 150ms by default before returning anyway with a potential broken template
@@ -363,7 +344,6 @@ where B: BlockchainBackend + 'static
                     block_template.body.to_counts_string()
                 );
 
-                *write_lock = Some((last_seen_hash, block_template.clone()));
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -1057,7 +1037,6 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
-            cached_block_template: self.cached_block_template.clone(),
         }
     }
 }
