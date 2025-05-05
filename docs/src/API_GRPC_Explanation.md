@@ -51,7 +51,10 @@ message GetBalanceResponse {
 ```
 
 ### Tari Address Structure (with Optional Payment ID)
+
 Tari addresses are an address scheme used by Tari. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**. The [RFC-0155 TariAddress](https://rfc.tari.com/RFC-0155_TariAddress) can be reviewed for more information.
+
+> We strongly recommend the use of Emoji ID as the preferred format. This is discussed in more detail in the [encoding](#encoding) section below.
 
 #### Binary Structure
 
@@ -63,6 +66,10 @@ Tari addresses are an address scheme used by Tari. Each address includes the nec
 | 34–65  | Public Spend Key | Required to authorize spending from the wallet.                           |
 | 66–N   | Payment ID       | *(Optional)* Encrypted tag embedded for tracking the purpose of payment. |
 | N+1    | Checksum         | Calculated using the [Damm algorithm](https://en.wikipedia.org/wiki/Damm_algorithm). |
+
+#### Emoji ID
+
+
 
 #### Payment ID Feature (Optional)
 
@@ -87,6 +94,25 @@ Please note that fees will be applicable for every bit used in the `payment_id`.
 
 #### Encoding
 After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address.
+
+Please note that Tari supports three address formats for representation of the address:
+- Hexidecimal
+- Base58
+- Emoji ID
+
+**EmojiID**
+
+The **Emoji ID** is the preferred format for Tari. Emoji ID has a number of benefits for users:
+- The address is shorter, and provides for more easily-identifiable characters, thus eliminating identification errors (0 vs O, 1 vs l)
+- The alphabet used for Emoji ID is larger than hexidecimal or Base58, resulting in shorter character sequences for encoding
+- The use of a checksum can verify if the address is correct and for the correct network.
+
+The EmojiID is derived deterministically from a public view key as a 33-byte address, with the first 32-characters representing the address and the 33rd character 
+
+
+
+
+
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
