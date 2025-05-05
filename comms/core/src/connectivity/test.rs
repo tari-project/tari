@@ -457,3 +457,31 @@ async fn pool_management() {
     let conns = connectivity.get_active_connections().await.unwrap();
     assert!(conns.is_empty());
 }
+#[tokio::test]
+async fn connection_limit_enforcement() {
+    let config = ConnectivityConfig {
+        long_lived_connections: 2,
+        daily_rotation_connections: 1,
+        frequent_rotation_connections: 1,
+        ..Default::default()
+    };
+    
+    let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
+        setup_connectivity_manager(config);
+    
+    // Add more peers than the connection limit
+    let peers = add_test_peers(&peer_manager, 6).await;
+    
+    // Try to connect to all peers
+    connectivity
+        .dial_many_peers(peers.iter().map(|p| p.node_id.clone()))
+        .collect::<Vec<_>>()
+        .await;
+    
+    // Verify that only the maximum number of connections were established
+    let status = connectivity.get_connectivity_status().await.unwrap();
+    assert_eq!(
+        status.outbound_connections, 
+        config.long_lived_connections + config.daily_rotation_connections + config.frequent_rotation_connections
+    );
+}
