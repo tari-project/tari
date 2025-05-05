@@ -229,7 +229,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 fn get_mainnet_genesis_block_raw() -> Block {
     let mut gen_block_payload = include_bytes!("gen_block/Tari.Manifesto").to_vec();
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("06 Apr 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("05 Apr 2024 09:00:00 +0200").expect("parse may not fail");
 
     let soons_secrets = vec![
         "e777pxxdrk32oj5t2g5hokt5n2slbiwxgcmmdhvgzrvvvdvlqnuyijbd.fvboe",
