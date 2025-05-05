@@ -246,12 +246,11 @@ To confirm `vcpkg` is installed and working, run the following command:
 vcpkg list
 ```
 
-A successful message should show the following:
+A successful message should show either a list of packages already installed or list no packages and provide instructions on how to do so:
 ```powershell
 PS C:\Users\leet> vcpkg list
-vcpkg-cmake-config:x64-windows                    2024-05-23
-vcpkg-cmake-get-vars:x64-windows                  2024-09-22
-vcpkg-cmake:x64-windows                           2024-04-23
+No packages installed.
+Use `vcpkg install <package>` to install packages.
 ```
 
 If you get an error like the one below:
