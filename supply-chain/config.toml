@@ -1072,11 +1072,11 @@ version = "0.1.32"
 criteria = "safe-to-deploy"
 
 [[exemptions.jmt]]
-version = "0.1.32"
+version = "0.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.js-sys]]
-version = "0.11.0"
+version = "0.3.76"
 criteria = "safe-to-deploy"
 
 [[exemptions.json5]]
