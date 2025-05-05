@@ -279,6 +279,10 @@ criteria = "safe-to-deploy"
 version = "0.10.6"
 criteria = "safe-to-deploy"
 
+[[exemptions.blake3]]
+version = "1.8.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.block-padding]]
 version = "0.3.3"
 criteria = "safe-to-deploy"
@@ -979,6 +983,10 @@ criteria = "safe-to-deploy"
 version = "0.1.10"
 criteria = "safe-to-deploy"
 
+[[exemptions.ics23]]
+version = "0.12.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.idea]]
 version = "0.5.1"
 criteria = "safe-to-deploy"
@@ -1001,6 +1009,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.impl-trait-for-tuples]]
 version = "0.2.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.informalsystems-pbjson]]
+version = "0.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.indexmap]]
@@ -1057,6 +1069,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.jobserver]]
 version = "0.1.32"
+criteria = "safe-to-deploy"
+
+[[exemptions.jmt]]
+version = "0.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.js-sys]]
@@ -1265,6 +1281,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.mio]]
 version = "1.0.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.mirai-annotations]]
+version = "1.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.moka]]

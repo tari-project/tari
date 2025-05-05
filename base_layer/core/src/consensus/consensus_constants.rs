@@ -383,8 +383,8 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 2,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 1..=1,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -561,8 +561,8 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 1..=1,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
@@ -655,24 +655,24 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(4_500_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(12_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let consensus_constants = vec![ConsensusConstants {
+        let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 720,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 1..=1,
+            blockchain_version: 0,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
-            max_block_transaction_weight: 127_795,
+            max_block_transaction_weight: 90_000,
             max_block_coinbase_count: 1000,
             median_timestamp_count: 11,
             emission_initial: INITIAL_EMISSION,
@@ -698,7 +698,17 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-        }];
+        };
+        let mut con_2 = con_1.clone();
+        con_2.coinbase_min_maturity = 540; // 18 hours
+        con_2.effective_from_height = 30 * 24 * 7; // 1 week
+        let mut con_3 = con_2.clone();
+        con_3.coinbase_min_maturity = 360;
+        con_3.effective_from_height = 30 * 24 * 7 * 2; // 2 weeks
+        let mut con_4 = con_3.clone();
+        con_4.coinbase_min_maturity = 180; // 6 hours
+        con_4.effective_from_height = 30 * 24 * 7 * 3; // 3 weeks
+        let consensus_constants = vec![con_1, con_2, con_3, con_4];
         consensus_constants
     }
 

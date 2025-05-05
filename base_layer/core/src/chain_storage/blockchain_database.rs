@@ -1458,11 +1458,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         (tip_header.validator_node_mr, 0)
     };
 
-    let block_output_mr = if block.version() > 0 {
-        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?
-    } else {
-        FixedHash::zero()
-    };
+    let block_output_mr = block_output_mr_hash_from_pruned_mmr(&block_output_mmr)?;
+
     let (output_smt_root, changes) = output_smt
         .put_value_set(batch, header.height)
         .map_err(ChainStorageError::JellyfishMerkleTreeError)?;

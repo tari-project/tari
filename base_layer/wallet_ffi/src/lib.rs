@@ -6634,11 +6634,98 @@ pub unsafe extern "C" fn wallet_create(
         Ok(Some(_)) => true,
     };
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
+    let list_manual_seeds = vec![
+        "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/ip4/54.36.119.1/tcp/18189".to_string(),
+        "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/onion3/\
+         azg76bk4p3ztxw2kck5bw6tkywdbgyntytbzjrkswffhgkuy6vkecyid:18141"
+            .to_string(),
+        "ec6b3922ab1f4dbca95ae704e1ce60ca18b22d721467f78c4114d0b08ef90214::/ip4/54.36.114.21/tcp/18189".to_string(),
+        "ec6b3922ab1f4dbca95ae704e1ce60ca18b22d721467f78c4114d0b08ef90214::/onion3/\
+         xuiorerzfylnlyeuoao3ppk4gbcadjlmw4zun66oj2qglz3pp2v6kbqd:18141"
+            .to_string(),
+        "be6585a0946eabc10616a6a820cba7c7cdcef5b877617e8b046ddd29d708aa1e::/ip4/54.36.116.90/tcp/18189".to_string(),
+        "be6585a0946eabc10616a6a820cba7c7cdcef5b877617e8b046ddd29d708aa1e::/onion3/\
+         sx72tjr74hwfsydolv2frt4x5xuvuq75szviqlr6tl5tj3whmgbgpdid:18141"
+            .to_string(),
+        "546ce9364590d20228338a3fcfe7c895dd8f69198cfa52202e95668389283f57::/ip4/54.36.116.173/tcp/18189".to_string(),
+        "546ce9364590d20228338a3fcfe7c895dd8f69198cfa52202e95668389283f57::/onion3/\
+         4ylrhzarvowgqr4qyif3gbb2j7xwzmeyffqjml2zidomleecgfiektyd:18141"
+            .to_string(),
+        "78cb875b3cd2a939dd92ab2b62780395e0bf53afc335ce599c7282d83a4d5a15::/ip4/54.36.114.124/tcp/18189".to_string(),
+        "78cb875b3cd2a939dd92ab2b62780395e0bf53afc335ce599c7282d83a4d5a15::/onion3/\
+         5njg35ipbflj2vec6nhq3d2233whx7w4ue6n4vhdm4vt7qkxt776payd:18141"
+            .to_string(),
+        "b4cd2ab0cdbe6dc56c86022eb1ba0a2a83967b10f3767bccd9e89dde35fa1739::/ip4/54.36.118.20/tcp/18189".to_string(),
+        "b4cd2ab0cdbe6dc56c86022eb1ba0a2a83967b10f3767bccd9e89dde35fa1739::/onion3/\
+         ip2r5e5lb3e22dymruy36jzqck5ta3z5hy7e7kelcp6ush52kqwiabyd:18141"
+            .to_string(),
+        "1e38a02acc0d1270f6f12b9d6820013de6aafa9290c86ffd2f2acbde6e36df3d::/ip4/54.36.113.176/tcp/18189".to_string(),
+        "1e38a02acc0d1270f6f12b9d6820013de6aafa9290c86ffd2f2acbde6e36df3d::/onion3/\
+         bfv4su44a4tgoq5sdflpvquw7pzpmeadqen5u2qc6o75h5tiz5lxchyd:18141"
+            .to_string(),
+        "3a23674a9a359aa911538f3c3cdac42d39fac27781467bc398d436d7152a1739::/ip4/54.36.119.24/tcp/18189".to_string(),
+        "3a23674a9a359aa911538f3c3cdac42d39fac27781467bc398d436d7152a1739::/onion3/\
+         2zdhljqr2g3c5ejrxumaqlxdfpd773hr4jjey5dhx447iw4s5xwkcuyd:18141"
+            .to_string(),
+        "e86256a75abed136dd93377839d1806799f94847714bcb9f5aead68ef4af8c20::/ip4/54.36.116.59/tcp/18189".to_string(),
+        "e86256a75abed136dd93377839d1806799f94847714bcb9f5aead68ef4af8c20::/onion3/\
+         gwvdr6k5tow4e6xqvsfh6he46z7dnkqz6rtjg6dzjzjfdcrqo5i4hfad:18141"
+            .to_string(),
+        "f40330bd2b9e1a24c312c6019187e3625d26b6eb5466437c9d7a78177c6edd56::/ip4/54.36.117.25/tcp/18189".to_string(),
+        "f40330bd2b9e1a24c312c6019187e3625d26b6eb5466437c9d7a78177c6edd56::/onion3/\
+         afjwehcxtltxdxrcmsigt7bwwpeqf66if37yh4kg74gb27jdqe5wi3ad:18141"
+            .to_string(),
+        "9072c33e8bfac3a0568e80083039827659ca18a180421c925d64264cd91b6704::/ip4/91.134.99.17/tcp/18189".to_string(),
+        "9072c33e8bfac3a0568e80083039827659ca18a180421c925d64264cd91b6704::/onion3/\
+         fg4frfj5urn3ykzpvryclccmcnvy77marzzzn5hr2kw5pie6ogs2ciad:18141"
+            .to_string(),
+        "0a38da9d89c8cf1f266711c803e48b6ecd663585a6f581b92cc4a3c67b600718::/ip4/91.134.100.211/tcp/18189".to_string(),
+        "0a38da9d89c8cf1f266711c803e48b6ecd663585a6f581b92cc4a3c67b600718::/onion3/\
+         tkmhfiycus7f3tumzrlfs6hqq7gsrtuenwgmrn2okctdejjnvrny4zad:18141"
+            .to_string(),
+        "ec308230a6dd243e905a4b07c9a4ea17be5a303177039d6f43c4d5c4df2aa511::/ip4/91.134.98.223/tcp/18189".to_string(),
+        "ec308230a6dd243e905a4b07c9a4ea17be5a303177039d6f43c4d5c4df2aa511::/onion3/\
+         436iqc55d3ynctwz64abucfkcgvb55uptfw6vk5w2td5ud7seh4tkuad:18141"
+            .to_string(),
+        "7e56cdd3ffb7d35e040bd97fac91ff8f7354f4eb36a88d27cc59e75f20c66367::/ip4/91.134.99.90/tcp/18189".to_string(),
+        "7e56cdd3ffb7d35e040bd97fac91ff8f7354f4eb36a88d27cc59e75f20c66367::/onion3/\
+         6wh6iay5c4xb43xesepy62bidicw7p5ke5deflrzpvq3u5jynuammwid:18141"
+            .to_string(),
+        "848cb54e0353c378005f8503da361974a9b52da1d4b0ea0298ff16a0696c1373::/ip4/91.134.97.1/tcp/18189".to_string(),
+        "848cb54e0353c378005f8503da361974a9b52da1d4b0ea0298ff16a0696c1373::/onion3/\
+         figkspyidhnysf3bla4tallsu57d6dfhnkwfbwhlgex6spo3gnchbryd:18141"
+            .to_string(),
+        "0c8b2e6f8d21ea82bcd975f60f22c2d3caa48034abd9d87cdf1b5ea86260b917::/ip4/91.134.101.33/tcp/18189".to_string(),
+        "0c8b2e6f8d21ea82bcd975f60f22c2d3caa48034abd9d87cdf1b5ea86260b917::/onion3/\
+         oqpik7hmf7y7vh3vjubdep665woppy472gkb2j5ox72tfbsngkt2wwid:18141"
+            .to_string(),
+        "ecfc505fedca07f7f81211c1398cdae9fbfdd02146d0ca7baa2569f4b519dd36::/ip4/91.134.97.172/tcp/18189".to_string(),
+        "ecfc505fedca07f7f81211c1398cdae9fbfdd02146d0ca7baa2569f4b519dd36::/onion3/\
+         ikkwg7ow52hlzfiezf42rlyd4rtgxivzzysuqzs6ojcjzwyxwzejjxad:18141"
+            .to_string(),
+        "5c4679b2181100580c65da56d9a0821863e2841d1fa63caa5ca2a3c1115f8779::/ip4/91.134.99.136/tcp/18189".to_string(),
+        "5c4679b2181100580c65da56d9a0821863e2841d1fa63caa5ca2a3c1115f8779::/onion3/\
+         5hi4bcknxh7kjt7yi6zoagj7lchpclyqgxhdnk3nh3c2tu5etpf34yyd:18141"
+            .to_string(),
+        "c287b50d2a4117f9a5843b3e4f93ba8784abdb5571672c88faa9de17f8731d76::/ip4/91.134.100.1/tcp/18189".to_string(),
+        "c287b50d2a4117f9a5843b3e4f93ba8784abdb5571672c88faa9de17f8731d76::/onion3/\
+         zqeq5slxldt3esmxel2fmvfiwzkeq7xfnlqgelb5hck74fumijidmdid:18141"
+            .to_string(),
+        "f8d35955082eaea3d7de37516d899b2fc46ed27612f71d4d0e153ba99bc4f216::/ip4/91.134.99.55/tcp/18189".to_string(),
+        "f8d35955082eaea3d7de37516d899b2fc46ed27612f71d4d0e153ba99bc4f216::/onion3/\
+         ksubnwhtf2qhlcaowhmu64zustvbhlw7muptatwgv75nlnwadj54biqd:18141"
+            .to_string(),
+        "1a5e52c6bf781ecf429ab83b91e249c68c265d490f65cdc6f8a34f1875e6a240::/ip4/51.38.54.165/tcp/18189".to_string(),
+        "1a5e52c6bf781ecf429ab83b91e249c68c265d490f65cdc6f8a34f1875e6a240::/onion3/\
+         n5uhezqlrzaoigjca6uvijdbbtcaggoclieces3tlzvvmasxgsm7nkad:18141"
+            .to_string(),
+    ];
 
     let peer_seeds = PeerSeedsConfig {
         dns_seed_name_servers,
         dns_seeds_use_dnssec: use_dns_sec,
         dns_seeds: StringList::from(vec![dns_seeds.to_string()]),
+        peer_seeds: list_manual_seeds.into(),
         ..Default::default()
     };
 
