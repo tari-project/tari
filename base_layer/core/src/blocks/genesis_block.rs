@@ -227,22 +227,32 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 }
 
 fn get_mainnet_genesis_block_raw() -> Block {
+    let mut gen_block_payload = include_bytes!("gen_block/Tari.Manifesto").to_vec();
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
-    let not_before_proof = b"I am the standin mainnet genesis block, \
-        \
-       I am not the real mainnet block \
-        \
-        I am only a standin \
-        \
-       Do not take me for the real one. I am only a placeholder for the real one";
-    if not_before_proof.len() > PowData::default().max_size() {
+    let genesis_timestamp = DateTime::parse_from_rfc2822("06 Apr 2024 08:00:00 +0200").expect("parse may not fail");
+
+    let soons_secrets = vec![
+        "e777pxxdrk32oj5t2g5hokt5n2slbiwxgcmmdhvgzrvvvdvlqnuyijbd.fvboe",
+        "1993f729e1584439e3cfb70d9bd8bab377103b37fbcd2a8d4ec38195601adf7a",
+        "597f70b6d2e02da4eaf98c7ea95404ba2d7830ec576fc81586cf8c49db941661",
+        "8b46b1969b9f879d8f2d31bebd5126be4ff807b297213837ab0d2ef59db46d6f",
+        "459a45beae1854f70918611b50e85bdbc0d21a688852192e96628cac04b92f22",
+    ];
+
+    let not_before_proof = "459a45beae1854f70918611b50e85bdbc0d21a688852192e96628cac04b92f22";
+    for secret in soons_secrets {
+        let mut bytes = secret.as_bytes().to_vec();
+        gen_block_payload.append(&mut bytes);
+    }
+    let mut not_before_proof = not_before_proof.as_bytes().to_vec();
+    gen_block_payload.append(&mut not_before_proof);
+    if gen_block_payload.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            gen_block_payload.len() - PowData::default().max_size()
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(gen_block_payload))
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
