@@ -655,12 +655,12 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(450_000_000_000_0).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(4_500_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(1_200_000_0).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(12_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
