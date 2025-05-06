@@ -1057,18 +1057,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
 
         let mut query = completed_transactions::table.into_boxed();
-        match (payment_id, block_hash) {
-            (Some(id), Some(hash)) => {
-                query = query.filter(completed_transactions::user_payment_id.eq(id));
-                query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
-            },
-            (Some(id), None) => {
-                query = query.filter(completed_transactions::user_payment_id.eq(id));
-            },
-            (None, Some(hash)) => {
-                query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
-            },
-            (None, None) => (),
+if let Some(id) = payment_id{
+            query = query.filter(completed_transactions::user_payment_id.eq(id));
+        }
+        if let Some(hash) = block_hash {
+            query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
         }
 
         query
