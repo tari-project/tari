@@ -67,10 +67,6 @@ Tari addresses are an address scheme used by Tari. Each address includes the nec
 | 66–N   | Payment ID       | *(Optional)* Encrypted tag embedded for tracking the purpose of payment. |
 | N+1    | Checksum         | Calculated using the [Damm algorithm](https://en.wikipedia.org/wiki/Damm_algorithm). |
 
-#### Emoji ID
-
-
-
 #### Payment ID Feature (Optional)
 
 The optional Payment ID feature allows an exchange, merchant or other service to append a payment ID to the address in a manner that preserves privacy while still allowing the service to track payments, withdrawals and other activity against a particular user. This is done by requesting an address from the existing wallet via the gRPC method `GetPaymentIdAddress`, described later in the document.
@@ -102,17 +98,36 @@ Please note that Tari supports three address formats for representation of the a
 
 **EmojiID**
 
-The **Emoji ID** is the preferred format for Tari. Emoji ID has a number of benefits for users:
+The **Emoji ID** is the preferred encoding for Tari addresses. Emoji ID has a number of benefits for users:
 - The address is shorter, and provides for more easily-identifiable characters, thus eliminating identification errors (0 vs O, 1 vs l)
 - The alphabet used for Emoji ID is larger than hexidecimal or Base58, resulting in shorter character sequences for encoding
 - The use of a checksum can verify if the address is correct and for the correct network.
 
-The EmojiID is derived deterministically from a public view key as a 33-byte address, with the first 32-characters representing the address and the 33rd character 
+The EmojiID is derived deterministically from a public view key as a 33-byte address, with the first 32-characters representing the address and the 33rd character a checksum of the address calculated from `DammSumm`. The checksum can be used to confirm the address validity and other variables/feature requirements (such as whether the address is for the correct network.) Conversion between these forms is supported, with automatic checksum validation. The public key is recoverable from the Emoji ID.
 
+You can find more information about the Emoji ID implementation here: https://github.com/tari-project/tari/blob/development/base_layer/common_types/src/emoji.rs
 
+The `GetAddress` gRPC call can retrieve the wallet's Emoji ID address.
 
+The 256 emojis used are shown below:
 
-
+| 🐢 | 📟 | 🌈 | 🌊 | 🎯 | 🐋 | 🌙 | 🤔 | 🌕 | ⭐ | 🎋 | 🌰 | 🌴 | 🌵 | 🌲 | 🌸 |
+|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| 🌹 | 🌻 | 🌽 | 🍀 | 🍁 | 🍄 | 🥑 | 🍆 | 🍇 | 🍈 | 🍉 | 🍊 | 🍋 | 🍌 | 🍍 | 🍎 |
+| 🍐 | 🍑 | 🍒 | 🍓 | 🍔 | 🍕 | 🍗 | 🍚 | 🍞 | 🍟 | 🥝 | 🍣 | 🍦 | 🍩 | 🍪 | 🍫 |
+| 🍬 | 🍭 | 🍯 | 🥐 | 🍳 | 🥄 | 🍵 | 🍶 | 🍷 | 🍸 | 🍾 | 🍺 | 🍼 | 🎀 | 🎁 | 🎂 |
+| 🎃 | 🤖 | 🎈 | 🎉 | 🎒 | 🎓 | 🎠 | 🎡 | 🎢 | 🎣 | 🎤 | 🎥 | 🎧 | 🎨 | 🎩 | 🎪 |
+| 🎬 | 🎭 | 🎮 | 🎰 | 🎱 | 🎲 | 🎳 | 🎵 | 🎷 | 🎸 | 🎹 | 🎺 | 🎻 | 🎼 | 🎽 | 🎾 |
+| 🎿 | 🏀 | 🏁 | 🏆 | 🏈 | ⚽ | 🏠 | 🏥 | 🏦 | 🏭 | 🏰 | 🐀 | 🐉 | 🐊 | 🐌 | 🐍 |
+| 🦁 | 🐐 | 🐑 | 🐔 | 🙈 | 🐗 | 🐘 | 🐙 | 🐚 | 🐛 | 🐜 | 🐝 | 🐞 | 🦋 | 🐣 | 🐨 |
+| 🦀 | 🐪 | 🐬 | 🐭 | 🐮 | 🐯 | 🐰 | 🦆 | 🦂 | 🐴 | 🐵 | 🐶 | 🐷 | 🐸 | 🐺 | 🐻 |
+| 🐼 | 🐽 | 🐾 | 👀 | 👅 | 👑 | 👒 | 🧢 | 💅 | 👕 | 👖 | 👗 | 👘 | 👙 | 💃 | 👛 |
+| 👞 | 👟 | 👠 | 🥊 | 👢 | 👣 | 🤡 | 👻 | 👽 | 👾 | 🤠 | 👃 | 💄 | 💈 | 💉 | 💊 |
+| 💋 | 👂 | 💍 | 💎 | 💐 | 💔 | 🔒 | 🧩 | 💡 | 💣 | 💤 | 💦 | 💨 | 💩 | ➕ | 💯 |
+| 💰 | 💳 | 💵 | 💺 | 💻 | 💼 | 📈 | 📜 | 📌 | 📎 | 📖 | 📿 | 📡 | ⏰ | 📱 | 📷 |
+| 🔋 | 🔌 | 🚰 | 🔑 | 🔔 | 🔥 | 🔦 | 🔧 | 🔨 | 🔩 | 🔪 | 🔫 | 🔬 | 🔭 | 🔮 | 🔱 |
+| 🗽 | 😂 | 😇 | 😈 | 🤑 | 😍 | 😎 | 😱 | 😷 | 🤢 | 👍 | 👶 | 🚀 | 🚁 | 🚂 | 🚚 |
+| 🚑 | 🚒 | 🚓 | 🛵 | 🚗 | 🚜 | 🚢 | 🚦 | 🚧 | 🚨 | 🚪 | 🚫 | 🚲 | 🚽 | 🚿 | 🧲 |
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
@@ -340,6 +355,39 @@ const userPaymentId = {
 }
 ```
 
+### Get Address 
+This RPC returns addresses generated for a specific payment ID. It provides both the interactive and one-sided addresses for the given payment ID, along with their respective representations in base58 and emoji formats.
+
+ Example usage (JavaScript):
+
+ ```javascript
+ // Prepare the payment ID for the request
+ const paymentId = Buffer.from('your_payment_id_here', 'hex');
+ const request = { payment_id: paymentId };
+
+ // Call the GetPaymentIdAddress RPC method
+ client.GetPaymentIdAddress(request, (error, response) => {
+   if (error) {
+     console.error('Error:', error);
+   } else {
+     console.log('Payment ID Address Response:', response);
+   }
+ });
+ ```
+
+ **Sample JSON Response:**
+
+ ```json
+{
+  "interactive_address": "0411aabbccddeeff00112233445566778899aabbccddeeff0011223344556677",
+  "one_sided_address": "02ff8899aabbccddeeff00112233445566778899aabbccddeeff001122334455",
+  "interactive_address_base58": "14HVCEeZC2RGE4SDn3yG.....6xouGvS5SXwEvXKwK3zLz2rgReh",
+  "one_sided_address_base58": "12HVCEeZC2RGE4SDn3yGwqz.....obB1a6xouGvS5SXwEvXKwK3zLz2rgReL",
+  "interactive_address_emoji": "🐢🌊💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭",
+  "one_sided_address_emoji": "🐢📟💤🔌🚑🐛🏦⚽🍓🐭🚁🎢🔪🥐👛🍞📜.....🍐🍟💵🎉🍯🎁🎾🎼💻💄🍳🍐🤔🥝🍫👅🚀🐬🎭"
+}
+```
+
 ### Get Payment ID Address
 The `GetPaymentIdAddress` gRPC method returns an address appended with a payment ID, derived from an existing address. The payment ID is an optional, additional piece of metadata (like an invoice number or customer reference).
 
@@ -349,8 +397,8 @@ The `GetPaymentIdAddress` gRPC method returns an address appended with a payment
 ```javascript
 const crypto = require('crypto');
 
-// Generate a 32-byte random payment_id
-const paymentId = crypto.randomBytes(32); // This will be a Buffer
+ Generate a 32-byte random payment_id
+const paymentId = crypto.randomBytes(32);  This will be a Buffer
 
 client.GetPaymentIdAddress({ payment_id: paymentId }, (error, response) => {
   if (error) {
