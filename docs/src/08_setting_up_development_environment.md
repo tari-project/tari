@@ -77,11 +77,11 @@ Next, we will fork the Tari Universe repo. Forking allows you to create your cop
 
 Make sure you are logged into your GitHub account, then navigate to the Tari Universe repo here. Look to the top-right corner of the screen for the Fork button.
 
-<img src="../assets/lessons/img/adding-languages/forking_process.png" width=600>
+![Alt text](./img/adding-languages/forking_process.png)
 
 Click on the drop-down and note the forks available. It should be blank. Click on the Create a new fork option to bring up the **Create a new fork** form.
 
-<img src="../assets/lessons/img/adding-languages/new_fork_form.png" width=600>
+![Alt text](./img/adding-languages/new_fork_form.png)
 
 When filling out the form, keep the following in mind:
 * The owner should be your GitHub username
@@ -102,7 +102,7 @@ In VS Code, you have several options for cloning the repository, but the easiest
 
 In the Command Pallete, Type “Git: Clone” and select the Git Clone option from the drop-down. You'll you’ll need to select a folder to put the local repository in.
 
-<img src="../assets/lessons/img/settingupenviro_lesson/clonefromgithub.png" width=600>
+![Alt text](./img/settingupenviro_lesson/clonefromgithub.png)
 
 Next, enter the repository URL directly in the Command Pallete. In your forked GitHub repository, look to the top-right of the your project and locate the “Code <>” button, colored green. Clicking on the button will open a dialog box with the option to clone the repository via three methods. Select the SSH tab, and copy the string. It should look like **git clone git@github.com:yourusername/yourrepo.git**
 
@@ -125,13 +125,13 @@ This is commonly referred to as the Upstream repository - this represents the or
 
 In VS Code, select the Source Control tab (this can be accessed via the View menu), and open up the Remotes panel. You should see only one item, called origin, in the list.
 
- <img src="../assets/lessons/img/settingupenviro_lesson/repoorigin.png" width=600>
+ ![Alt text](./img/settingupenviro_lesson/repoorigin.png)
 
 To add the Tari Universe repository as the upstream remote, hover over the Remotes header, and then click on the plus icon. You will be asked to provide a name for the remote repository - call it “Upstream”.
-S
+
 Next, you will require the Tari Universe URL from the main project. Go to https://github.com/tari-project/universe and copy the repository’s URL string in the same manner described in Step 5. Paste this URL into the field to add the repository, then select the “Add Remote and Fetch” option. You will now see the Tari Universe in your list of remote repositories.
 
- <img src="../assets/lessons/img/settingupenviro_lesson/remoterepo.png" width=600>
+ ![Alt text](./img/settingupenviro_lesson/remoterepo.png)
 
 ## You're Done!
 You should now have your environment set up to start working on Tari's various projects. Check out [Tari's main page on GitHub](https://github.com/tari-project) to explore some of your options. We're excited to see what you can bring to the table.

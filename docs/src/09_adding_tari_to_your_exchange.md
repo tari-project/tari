@@ -155,7 +155,7 @@ If you followed the instructions from the previous section, you should already b
 
 1. While in the wallet interface, press the right arrow twice to get to the `Receive` tab. This tab will list all of the addresses associated with the wallet.
 
-<img src="../assets/lessons/img/tariexchangeguide/tariexchangeguide_wallet_addresses.png" width=400>
+![Alt text](./tariexchangeguide_wallet_addresses.png)
 
 2. Copy all of the information provided, with special note of the `Tari Address one-sided` field. This is the address that users will send funds to for the exchange.
 
