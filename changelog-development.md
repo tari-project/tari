@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [2.0.1-pre.0](///compare/v2.0.0-pre.0...v2.0.1-pre.0) (2025-05-06)
+
+* first github repo release
+
+## [2.0.0-pre.0](///compare/v1.16.1-pre.0...v2.0.0-pre.0) (2025-05-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* set tonic msg limits (#7016)
+
+### Features
+
+* adjust consensus ([#7017](undefined/undefined/undefined/issues/7017)) 389d08c
+* block seed words extraction from view only wallets ([#7022](undefined/undefined/undefined/issues/7022)) 510f6be
+* manual dns ([#7020](undefined/undefined/undefined/issues/7020)) 7653316
+* move comms channels to unbounded ([#7010](undefined/undefined/undefined/issues/7010)) 4292a08
+* set tonic msg limits ([#7016](undefined/undefined/undefined/issues/7016)) 4081e63
+* Windows Build Instructions Revision ([#6734](undefined/undefined/undefined/issues/6734)) 624c4b2
+
+
+### Bug Fixes
+
+* add back removed keyword 7f7bad4
+* fix test ([#7012](undefined/undefined/undefined/issues/7012)) 7fcd5f8
+* remove block cache ([#7023](undefined/undefined/undefined/issues/7023)) b1d7a6d
+* **tari-pulse:** dns for mainner checkpoints ([#7019](undefined/undefined/undefined/issues/7019)) ccf0d94
+
 ### [1.16.1-pre.0](https://github.com/tari-project/tari/compare/v1.16.0-pre.0...v1.16.1-pre.0) (2025-04-30)
 
 
