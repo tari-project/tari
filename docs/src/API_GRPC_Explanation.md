@@ -92,7 +92,7 @@ Please note that fees will be applicable for every bit used in the `payment_id`.
 After serialization, the complete byte array is encoded using **Base58**, resulting in a human-readable Tari address.
 
 Please note that Tari supports three address formats for representation of the address:
-- Hexidecimal
+- Hexadecimal
 - Base58
 - Emoji ID
 
@@ -105,7 +105,7 @@ The **Emoji ID** is the preferred encoding for Tari addresses. Emoji ID has a nu
 
 The EmojiID is derived deterministically from a public view key as a 33-byte address, with the first 32-characters representing the address and the 33rd character a checksum of the address calculated from `DammSumm`. The checksum can be used to confirm the address validity and other variables/feature requirements (such as whether the address is for the correct network.) Conversion between these forms is supported, with automatic checksum validation. The public key is recoverable from the Emoji ID.
 
-You can find more information about the Emoji ID implementation here: https://github.com/tari-project/tari/blob/development/base_layer/common_types/src/emoji.rs
+You can find more information about the Emoji ID implementation here: [emoji.rs implementation](https://github.com/tari-project/tari/blob/development/base_layer/common_types/src/emoji.rs)
 
 The `GetAddress` gRPC call can retrieve the wallet's Emoji ID address.
 
