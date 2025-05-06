@@ -1057,7 +1057,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
 
         let mut query = completed_transactions::table.into_boxed();
-if let Some(id) = payment_id{
+        if let Some(id) = payment_id {
             query = query.filter(completed_transactions::user_payment_id.eq(id));
         }
         if let Some(hash) = block_hash {
