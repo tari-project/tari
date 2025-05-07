@@ -160,6 +160,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
@@ -487,10 +488,11 @@ where T: TransactionBackend + 'static
         &self,
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self
-            .db
-            .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash)?;
+        let t =
+            self.db
+                .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)?;
         Ok(t)
     }
 
@@ -604,12 +606,13 @@ where T: TransactionBackend + 'static
         &self,
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash)
+        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height)
     }
 
     pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(None, true, None)
+        self.get_completed_transactions_by_cancelled(None, true, None, None)
     }
 
     pub fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
@@ -636,14 +639,15 @@ where T: TransactionBackend + 'static
         payment_id: Option<Vec<u8>>,
         cancelled: bool,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
             DbKey::CancelledCompletedTransactions
         } else {
             DbKey::CompletedTransactions
         };
-        match (payment_id.is_none(), block_hash.is_none()) {
-            (true, true) => {
+        match (payment_id.is_none(), block_hash.is_none(), block_height.is_none()) {
+            (true, true, true) => {
                 let t = match self.db.fetch(&key) {
                     Ok(None) => log_error(
                         key,
@@ -657,9 +661,10 @@ where T: TransactionBackend + 'static
                 }?;
                 Ok(t)
             },
-            (_, _) => self
-                .db
-                .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash),
+            (_, _, _) => {
+                self.db
+                    .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)
+            },
         }
     }
 

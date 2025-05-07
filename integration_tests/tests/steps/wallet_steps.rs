@@ -162,6 +162,7 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()
@@ -499,6 +500,7 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
     let request = GetCompletedTransactionsRequest {
         payment_id: None,
         block_hash: None,
+        block_height: None,
     };
     let mut completed_txs = client.get_completed_transactions(request).await.unwrap().into_inner();
 
@@ -551,6 +553,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
             .get_completed_transactions(grpc::GetCompletedTransactionsRequest {
                 payment_id: None,
                 block_hash: None,
+                block_height: None,
             })
             .await
             .unwrap()
@@ -971,6 +974,7 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()
@@ -1030,6 +1034,7 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()
@@ -1248,6 +1253,7 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
                 .get_completed_transactions(GetCompletedTransactionsRequest {
                     payment_id: None,
                     block_hash: None,
+                    block_height: None,
                 })
                 .await
                 .unwrap()
@@ -2663,6 +2669,7 @@ async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: Str
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()
@@ -2817,6 +2824,7 @@ async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld,
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()
@@ -2843,6 +2851,7 @@ async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, w
         .get_completed_transactions(GetCompletedTransactionsRequest {
             payment_id: None,
             block_hash: None,
+            block_height: None,
         })
         .await
         .unwrap()

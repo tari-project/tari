@@ -938,10 +938,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         } else {
             None
         };
+        let block_height = message.block_height.map(|height| height.block_height);
 
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(payment_id, block_hash)
+            .get_completed_transactions(payment_id, block_hash, block_height)
             .await
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(

@@ -82,6 +82,7 @@ pub enum TransactionServiceRequest {
     GetCompletedTransactions {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
@@ -967,10 +968,15 @@ impl TransactionServiceHandle {
         &mut self,
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetCompletedTransactions { payment_id, block_hash })
+            .call(TransactionServiceRequest::GetCompletedTransactions {
+                payment_id,
+                block_hash,
+                block_height,
+            })
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),

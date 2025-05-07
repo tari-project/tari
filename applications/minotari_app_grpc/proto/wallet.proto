@@ -341,6 +341,13 @@ service Wallet {
   //   - **Restrictions**:
   //     - If provided, the transactions will be filtered to only those included in the specified block.
   //
+  // - `block_height` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: A specific block height to filter transactions by.
+  //   - **Restrictions**:
+  //     - If provided, the transactions will be filtered to only those included in the specified height.
+
+  //
   // ### Example JavaScript gRPC client usage:
   //
   // ```javascript
@@ -1175,6 +1182,7 @@ enum TransactionStatus {
 message GetCompletedTransactionsRequest {
   UserPaymentId payment_id = 1;
   BlockHashHex block_hash = 2;
+  BlockHeight block_height = 3;
 }
 
 message BlockHashHex {

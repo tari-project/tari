@@ -1052,6 +1052,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
@@ -1062,6 +1063,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
         if let Some(hash) = block_hash {
             query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
+        }
+        if let Some(height) = block_height {
+            query = query.filter(completed_transactions::mined_height.eq(height as i64));
         }
 
         query

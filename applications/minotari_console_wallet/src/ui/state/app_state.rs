@@ -754,7 +754,7 @@ impl AppStateInner {
         completed_transactions.extend(
             self.wallet
                 .transaction_service
-                .get_completed_transactions(None, None)
+                .get_completed_transactions(None, None, None)
                 .await?,
         );
 

@@ -891,11 +891,14 @@ where
                 TransactionServiceResponse::PendingOutboundTransactions(self.db.get_pending_outbound_transactions()?),
             ),
 
-            TransactionServiceRequest::GetCompletedTransactions { payment_id, block_hash } => {
-                Ok(TransactionServiceResponse::CompletedTransactions(
-                    self.db.get_completed_transactions(payment_id, block_hash)?,
-                ))
-            },
+            TransactionServiceRequest::GetCompletedTransactions {
+                payment_id,
+                block_hash,
+                block_height,
+            } => Ok(TransactionServiceResponse::CompletedTransactions(
+                self.db
+                    .get_completed_transactions(payment_id, block_hash, block_height)?,
+            )),
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
                     self.db.get_cancelled_pending_inbound_transactions()?,
