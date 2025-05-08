@@ -449,7 +449,7 @@ pub async fn generate_coinbase_with_wallet_output(
             "Invalid address, address must be one-sided enabled".to_string(),
         ));
     }
-    // Override payment id if the wallet address contains a pyment id
+    // Override payment id if the wallet address contains a payment id
     let payment_id = if wallet_payment_address.get_payment_id_user_data_bytes().is_empty() {
         payment_id
     } else {
