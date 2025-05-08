@@ -466,8 +466,8 @@ where
                     .is_some();
                 info!(
                     target: LOG_TARGET,
-                    "fetch_outputs_with_spend_status_at_tip: smt_key: {}, spent: {}",
-                    smt_key.to_hex(),
+                    "fetch_outputs_with_spend_status_at_tip: smt_key: {:?}, spent: {}",
+                    smt_key,
                     spent
                 );
                 result.push(Some((mined_info.output, spent)));
