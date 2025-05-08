@@ -912,11 +912,11 @@ version = "0.4.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.hickory-proto]]
-version = "0.25.0-alpha.4"
+version = "0.25.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.hickory-resolver]]
-version = "0.25.0-alpha.4"
+version = "0.25.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.hidapi]]

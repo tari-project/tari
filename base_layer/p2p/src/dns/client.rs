@@ -45,7 +45,7 @@ pub struct DnsClient {
 impl DnsClient {
     pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
+            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::Tls),
         };
 
@@ -54,7 +54,7 @@ impl DnsClient {
 
     pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
+            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::default()),
         };
 
@@ -74,14 +74,15 @@ impl DnsClient {
             http_endpoint: None,
             trust_negative_responses: false,
             bind_addr: None,
-            tls_config: None,
         });
 
         let mut opts = ResolverOpts::default();
         opts.edns0 = true;
         opts.try_tcp_on_error = true;
         opts.timeout = std::time::Duration::from_secs(1);
-        TokioResolver::tokio(conf, opts)
+        TokioResolver::builder_with_config(conf, TokioConnectionProvider::default())
+            .with_options(opts)
+            .build()
     }
 
     pub async fn query_txt<T: IntoName>(&mut self, name: T) -> Result<Vec<String>, DnsClientError> {
