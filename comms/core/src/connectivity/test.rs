@@ -465,13 +465,13 @@ async fn connection_limit_enforcement() {
         frequent_rotation_connections: 1,
         ..Default::default()
     };
-    
+
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(config);
-    
+
     // Add more peers than the connection limit
     let peers = add_test_peers(&peer_manager, 6).await;
-    
+
     // Create connections for the test
     let connections = future::join_all(
         peers
@@ -483,39 +483,40 @@ async fn connection_limit_enforcement() {
     .into_iter()
     .map(|(conn, _, _, _)| conn)
     .collect::<Vec<_>>();
-    
+
     // Consume initialization event
     let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
     unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
-    
+
     // Try to connect to all peers
     for (i, conn) in connections.iter().enumerate() {
         // Simulate connection attempt
         connectivity.dial_peer(peers[i].node_id.clone()).await.unwrap();
-        
+
         // If we're under the limit, the connection should succeed
-        if i < config.long_lived_connections + config.daily_rotation_connections + config.frequent_rotation_connections {
+        if i < config.long_lived_connections + config.daily_rotation_connections + config.frequent_rotation_connections
+        {
             cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone().into()));
         } else {
             // Otherwise it should fail with ConnectionLimitReached
             cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
                 conn.peer_node_id().clone(),
                 ConnectionManagerError::ConnectivityError(Box::new(
-                    super::error::ConnectivityError::ConnectionLimitReached
-                ))
+                    super::error::ConnectivityError::ConnectionLimitReached,
+                )),
             ));
         }
     }
-    
+
     // Wait for events to be processed
     tokio::time::sleep(Duration::from_millis(100)).await;
-    
+
     // Get all active connections
     let active_connections = connectivity.get_active_connections().await.unwrap();
-    
+
     // Verify that only the maximum number of connections were established
     assert_eq!(
-        active_connections.len(), 
+        active_connections.len(),
         config.long_lived_connections + config.daily_rotation_connections + config.frequent_rotation_connections
     );
 }

@@ -82,8 +82,8 @@ impl Default for ConnectivityConfig {
             daily_rotation_connections: 12,
             frequent_rotation_connections: 4,
             node_reconnection_cooldown: Duration::from_secs(7 * 24 * 60 * 60), // 7 days
-            daily_rotation_interval: Duration::from_secs(24 * 60 * 60), // 24 hours
-            frequent_rotation_interval: Duration::from_secs(2 * 60 * 60), // 2 hours
+            daily_rotation_interval: Duration::from_secs(24 * 60 * 60),        // 24 hours
+            frequent_rotation_interval: Duration::from_secs(2 * 60 * 60),      // 2 hours
         }
     }
 }
