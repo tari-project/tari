@@ -25,9 +25,12 @@ use std::ops::Deref;
 use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
+use log::warn;
 use tari_storage::lmdb_store::DatabaseRef;
 
 use crate::chain_storage::lmdb_db::lmdb::{lmdb_fetch_matching_after, lmdb_get};
+
+pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
@@ -70,6 +73,7 @@ impl TreeReader for LmdbTreeReader<'_> {
         for (key, x) in existing_values {
             let version = u64::from_be_bytes(key[32..].try_into().unwrap());
             existing_history.push((version, x));
+            warn!(target: LOG_TARGET, "found version {} for key {:?}", version, key);
         }
         // sort by version
         existing_history.sort_by(|a, b| a.0.cmp(&b.0));
