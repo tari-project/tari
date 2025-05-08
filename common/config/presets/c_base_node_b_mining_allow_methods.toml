@@ -5,7 +5,7 @@
 grpc_enabled = true
 
 # The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18142")
-#grpc_address = "http://127.0.0.1:18142"
+#grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
