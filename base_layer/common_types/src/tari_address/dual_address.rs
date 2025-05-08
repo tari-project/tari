@@ -89,7 +89,7 @@ impl DualAddress {
         Self::new(view_key, spend_key, network, TariAddressFeatures::default(), None)
     }
 
-    pub fn add_payment_id(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
+    pub fn add_payment_id_user_data(&mut self, data: Vec<u8>) -> Result<(), TariAddressError> {
         if data.len() > MAX_ENCRYPTED_DATA_SIZE {
             return Err(TariAddressError::PaymentIdTooLarge);
         }
@@ -126,7 +126,7 @@ impl DualAddress {
         Self::from_bytes(&bytes)
     }
 
-    pub fn get_payment_id_bytes(&self) -> Vec<u8> {
+    pub fn get_payment_id_user_data_bytes(&self) -> Vec<u8> {
         self.payment_id_user_data.as_ref().to_vec()
     }
 

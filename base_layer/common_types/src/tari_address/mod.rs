@@ -239,18 +239,18 @@ impl TariAddress {
         }
     }
 
-    pub fn get_payment_id_bytes(&self) -> Vec<u8> {
+    pub fn get_payment_id_user_data_bytes(&self) -> Vec<u8> {
         match self {
-            TariAddress::Dual(v) => v.get_payment_id_bytes(),
+            TariAddress::Dual(v) => v.get_payment_id_user_data_bytes(),
             TariAddress::Single(_) => vec![],
         }
     }
 
-    pub fn create_payment_id_address(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
+    pub fn with_payment_id_user_data(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
         match self {
             TariAddress::Dual(v) => {
                 let mut address = v.clone();
-                address.add_payment_id(data)?;
+                address.add_payment_id_user_data(data)?;
                 Ok(TariAddress::Dual(address))
             },
             TariAddress::Single(_) => Err(TariAddressError::PaymentIdNotSupported),

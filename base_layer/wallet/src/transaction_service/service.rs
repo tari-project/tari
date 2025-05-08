@@ -1206,7 +1206,7 @@ where
         }
         // let override the payment_id if the address says we should
         if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            payment_id = PaymentId::open(destination.get_payment_id_bytes(), TxType::PaymentToOther);
+            payment_id = PaymentId::open(destination.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
         let (cancellation_sender, cancellation_receiver) = oneshot::channel();
@@ -1761,7 +1761,7 @@ where
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            payment_id = PaymentId::open(dest_address.get_payment_id_bytes(), TxType::PaymentToOther);
+            payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         let payment_id = match payment_id.clone() {
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
@@ -3205,7 +3205,8 @@ where
                                             TxType::ValidatorNodeRegistration |
                                             TxType::CodeTemplateRegistration |
                                             TxType::ClaimAtomicSwap |
-                                            TxType::HtlcAtomicSwapRefund => {
+                                            TxType::HtlcAtomicSwapRefund |
+                                            TxType::Coinbase => {
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(own_address.clone());
                                             },
@@ -3705,7 +3706,8 @@ where
                     TxType::CodeTemplateRegistration |
                     TxType::ClaimAtomicSwap |
                     TxType::HtlcAtomicSwapRefund |
-                    TxType::ImportedUtxoNoneRewindable => TransactionDirection::Inbound,
+                    TxType::ImportedUtxoNoneRewindable |
+                    TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
                 match tx_type {
@@ -3717,7 +3719,8 @@ where
                     TxType::ValidatorNodeRegistration |
                     TxType::CodeTemplateRegistration |
                     TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund => self.resources.one_sided_tari_address.clone(),
+                    TxType::HtlcAtomicSwapRefund |
+                    TxType::Coinbase => self.resources.one_sided_tari_address.clone(),
                 },
             )
         } else {

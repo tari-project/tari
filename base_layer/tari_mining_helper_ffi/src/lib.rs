@@ -42,7 +42,11 @@ use tari_core::{
     proof_of_work::sha3x_difficulty,
     transactions::{
         generate_coinbase,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+        },
         transaction_key_manager::create_memory_db_key_manager,
     },
 };
@@ -400,7 +404,10 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
-            PaymentId::Empty,
+            PaymentId::Open {
+                user_data: vec![],
+                tx_type: TxType::Coinbase,
+            },
         )
         .await
     }) {

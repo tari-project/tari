@@ -41,7 +41,12 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+            WalletOutput,
+        },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
 };
@@ -296,7 +301,10 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .unwrap();

@@ -93,6 +93,7 @@ pub enum TxType {
     HtlcAtomicSwapRefund = 0b0111,
     CodeTemplateRegistration = 0b1000,
     ImportedUtxoNoneRewindable = 0b1001,
+    Coinbase = 0b1011,
 }
 
 impl TxType {
@@ -112,6 +113,7 @@ impl TxType {
             0b0111 => TxType::HtlcAtomicSwapRefund,
             0b1000 => TxType::CodeTemplateRegistration,
             0b1001 => TxType::ImportedUtxoNoneRewindable,
+            0b1011 => TxType::Coinbase,
             _ => TxType::default(),
         }
     }
@@ -128,6 +130,7 @@ impl TxType {
             TxType::HtlcAtomicSwapRefund => 0b0111,
             TxType::CodeTemplateRegistration => 0b1000,
             TxType::ImportedUtxoNoneRewindable => 0b1001,
+            TxType::Coinbase => 0b1011,
         }
     }
 
@@ -149,6 +152,7 @@ impl Display for TxType {
             TxType::HtlcAtomicSwapRefund => write!(f, "HtlcAtomicSwapRefund"),
             TxType::CodeTemplateRegistration => write!(f, "CodeTemplateRegistration"),
             TxType::ImportedUtxoNoneRewindable => write!(f, "ImportedUtxoNoneRewindable"),
+            TxType::Coinbase => write!(f, "Coinbase"),
         }
     }
 }
@@ -1098,7 +1102,7 @@ mod test {
             ),
             PaymentId::Open {
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                tx_type: TxType::default(),
+                tx_type: TxType::Coinbase,
             },
             PaymentId::Open {
                 user_data: vec![1; 254],
@@ -1220,6 +1224,7 @@ mod test {
             TxType::HtlcAtomicSwapRefund,
             TxType::CodeTemplateRegistration,
             TxType::ImportedUtxoNoneRewindable,
+            TxType::Coinbase,
         ] {
             let payment_id = PaymentId::Open {
                 tx_type: tx_type.clone(),
@@ -1364,14 +1369,14 @@ mod test {
             sender_one_sided: true,
             amount: MicroMinotari::from(u64::MAX),
             fee: MicroMinotari::from(4_294_967_295 + 100), // 4294.967395 T
-            tx_type: TxType::Burn,
+            tx_type: TxType::Coinbase,
             user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
         };
         // - It can be displayed as is ...
         assert_eq!(
             payment_id_3.to_string(),
             "recipient_address(f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb), \
-            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967395 T), type(Burn), data(Hello World!!! 11-22-33)"
+            sender_one_sided(true), amount(18446744073709.551615 T), fee(4294.967395 T), type(Coinbase), data(Hello World!!! 11-22-33)"
         );
         // ... but it cannot be serialized and deserialized as is - overflowed metadata will be zeroed.
         let payment_id_3_bytes = payment_id_3.to_bytes();
@@ -1379,7 +1384,7 @@ mod test {
         assert_eq!(
             payment_id_3_from_bytes.to_string(),
             "recipient_address(f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb), \
-            sender_one_sided(true), amount(18446744073709.551615 T), fee(0 µT), type(Burn), data(Hello World!!! 11-22-33)"
+            sender_one_sided(true), amount(18446744073709.551615 T), fee(0 µT), type(Coinbase), data(Hello World!!! 11-22-33)"
         );
     }
 
