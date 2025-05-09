@@ -188,7 +188,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             },
 
             (Waiting(s), Continue) => Listening(s.into(), false),
-            (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
+            (_, FatalError(s)) => panic!("{}", s),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
                 warn!(
