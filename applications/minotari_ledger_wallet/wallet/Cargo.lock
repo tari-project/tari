@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "adler2"
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet"
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 dependencies = [
  "bs58",
 ]

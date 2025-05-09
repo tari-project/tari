@@ -1256,39 +1256,39 @@ version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_grpc]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_utilities]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_chat_ffi]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_console_wallet]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_merge_mining_proxy]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_miner]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_mining_helper_ffi]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet_ffi]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.mio]]
@@ -2076,35 +2076,35 @@ version = "0.4.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_sqlite]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_types]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms_dht]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms_rpc_macros]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_contacts]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_core]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_crypto]]
@@ -2112,51 +2112,51 @@ version = "0.22.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_features]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_hashing]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_key_manager]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_libtor]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_metrics]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_mmr]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_p2p]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_script]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_service_framework]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_shutdown]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_storage]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_test_utils]]
-version = "2.0.1-pre.0"
+version = "2.1.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_utilities]]

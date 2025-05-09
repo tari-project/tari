@@ -63,7 +63,7 @@ impl TreeReader for LmdbTreeReader<'_> {
 
     fn get_value_option(
         &self,
-        max_version: jmt::Version,
+        _max_version: jmt::Version,
         key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
         // see if there are any values already.
