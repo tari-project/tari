@@ -6634,6 +6634,7 @@ pub unsafe extern "C" fn wallet_create(
         Ok(Some(_)) => true,
     };
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
+    #[cfg(tari_target_network_mainnet)]
     let list_manual_seeds = vec![
         "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/ip4/54.36.119.1/tcp/18189".to_string(),
         "b2744acc55f0a597b96429705484dde96c0be195b937d838c3bacc14f8cd2d3b::/onion3/\
@@ -6720,6 +6721,9 @@ pub unsafe extern "C" fn wallet_create(
          n5uhezqlrzaoigjca6uvijdbbtcaggoclieces3tlzvvmasxgsm7nkad:18141"
             .to_string(),
     ];
+
+    #[cfg(not(tari_target_network_mainnet))]
+    let list_manual_seeds = vec![];
 
     let peer_seeds = PeerSeedsConfig {
         dns_seed_name_servers,
@@ -7693,6 +7697,84 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
         Result::<_, WalletError>::Ok(public_keys)
     }) {
         Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Gets the private view key of the wallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariPrivateKey` - Private view key of the wallet
+///
+/// # Safety
+/// private key needs to be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_private_view_key(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPrivateKey {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let private_key = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.key_manager_service.get_private_view_key());
+    match private_key {
+        Ok(private_key) => Box::into_raw(Box::new(private_key)),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Gets the public spend key of the wallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariPublicKey` - Private view key of the wallet
+///
+/// # Safety
+/// private key needs to be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_public_spend_key(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let public_key = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.key_manager_service.clone().get_spend_key());
+    match public_key {
+        Ok(private_key) => Box::into_raw(Box::new(private_key.pub_key)),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
