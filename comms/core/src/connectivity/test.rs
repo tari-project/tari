@@ -491,7 +491,8 @@ async fn connection_limit_enforcement() {
     // Try to connect to all peers
     for (i, conn) in connections.iter().enumerate() {
         // Simulate connection attempt
-        connectivity.dial_peer(peers[i].node_id.clone()).await.unwrap();
+
+        let _unused = connectivity.dial_peer(peers[i].node_id.clone()).await;
 
         // If we're under the limit, the connection should succeed
         if i < config.long_lived_connections + config.daily_rotation_connections + config.frequent_rotation_connections
