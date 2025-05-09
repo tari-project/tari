@@ -3477,6 +3477,40 @@ struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet,
                                              int *error_out);
 
 /**
+ * Gets the private view key of the wallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `TariPrivateKey` - Private view key of the wallet
+ *
+ * # Safety
+ * private key needs to be destroyed after use
+ */
+TariPrivateKey *wallet_get_private_view_key(struct TariWallet *wallet,
+                                            int *error_out);
+
+/**
+ * Gets the public spend key of the wallet
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `TariPublicKey` - Public spend key of the wallet
+ *
+ * # Safety
+ * public key needs to be destroyed after use
+ */
+TariPublicKey *wallet_get_public_spend_key(struct TariWallet *wallet,
+                                           int *error_out);
+
+/**
  * Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
  * Alias will be updated.
  *
