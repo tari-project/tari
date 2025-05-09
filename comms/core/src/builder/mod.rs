@@ -376,4 +376,38 @@ impl CommsBuilder {
             protocol_extensions: ProtocolExtensions::new(),
         })
     }
+
+    /// Configure connection rotation settings
+    ///
+    /// This configures how outbound connections are maintained and rotated:
+    /// - `long_lived`: Number of connections that should remain long-lived (default: 16)
+    /// - `daily_rotation`: Number of connections to rotate every 24 hours (default: 12)
+    /// - `frequent_rotation`: Number of connections to rotate more frequently (every 2 hours) (default: 4)
+    /// - `cooldown_days`: Number of days to wait before reconnecting to a recently disconnected peer (default: 7)
+    ///
+    /// # Example
+    ///
+    /// # use tari_comms::CommsBuilder;
+    /// let builder = CommsBuilder::new()
+    ///    .with_connection_rotation(16, 12, 4, 7);
+    pub fn with_connection_rotation(
+        mut self,
+        long_lived: usize,
+        daily_rotation: usize,
+        frequent_rotation: usize,
+        cooldown_days: u64,
+    ) -> Self {
+        // Ensure parameters are within reasonable bounds
+        assert!(
+            long_lived + daily_rotation + frequent_rotation > 0,
+            "At least one connection type must have a non-zero count"
+        );
+        assert!(cooldown_days > 0, "Cooldown period must be positive");
+
+        self.connectivity_config.long_lived_connections = long_lived;
+        self.connectivity_config.daily_rotation_connections = daily_rotation;
+        self.connectivity_config.frequent_rotation_connections = frequent_rotation;
+        self.connectivity_config.node_reconnection_cooldown = Duration::from_secs(cooldown_days * 24 * 60 * 60);
+        self
+    }
 }

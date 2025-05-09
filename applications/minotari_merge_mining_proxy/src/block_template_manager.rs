@@ -33,7 +33,12 @@ use tari_core::{
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
     transactions::{
         generate_coinbase,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            CoinBaseExtra,
+            TransactionKernel,
+            TransactionOutput,
+        },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     AuxChainHashes,
@@ -246,7 +251,10 @@ impl BlockTemplateManager<'_> {
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::Empty,
+            PaymentId::Open {
+                user_data: vec![],
+                tx_type: TxType::Coinbase,
+            },
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

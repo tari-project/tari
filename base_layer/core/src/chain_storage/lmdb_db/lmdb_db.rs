@@ -989,7 +989,7 @@ impl LMDBDatabase {
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
-        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone());
+        let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
 
         let root = jmt
@@ -1252,7 +1252,7 @@ impl LMDBDatabase {
         // smt_writer: &mut LmdbTreeWriter,
     ) -> Result<(), ChainStorageError> {
         // let smt_reader = LmdbTreeReader::new();
-        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone());
+        let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
@@ -1889,7 +1889,8 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
 impl BlockchainBackend for LMDBDatabase {
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
         let read_tx = self.read_transaction()?;
-        let smt_reader = OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone());
+        let smt_reader =
+            OwnedLmdbTreeReader::new(read_tx, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
 
         Ok(smt_reader)
     }

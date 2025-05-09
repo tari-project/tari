@@ -25,20 +25,29 @@ use std::ops::Deref;
 use borsh::BorshSerialize;
 use jmt::storage::TreeReader;
 use lmdb_zero::{ConstTransaction, ReadTransaction};
+use log::warn;
 use tari_storage::lmdb_store::DatabaseRef;
 
-use crate::chain_storage::lmdb_db::lmdb::lmdb_get;
+use crate::chain_storage::lmdb_db::lmdb::{lmdb_fetch_matching_after, lmdb_get};
+
+pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 
 pub struct LmdbTreeReader<'a> {
     txn: &'a ConstTransaction<'a>,
     node_db: DatabaseRef,
+    unique_key_db: DatabaseRef,
 }
 
 impl<'a> LmdbTreeReader<'a> {
-    pub fn new<T: Deref<Target = ConstTransaction<'a>>>(txn: &'a T, node_db: DatabaseRef) -> Self {
+    pub fn new<T: Deref<Target = ConstTransaction<'a>>>(
+        txn: &'a T,
+        node_db: DatabaseRef,
+        unique_key_db: DatabaseRef,
+    ) -> Self {
         Self {
             txn: txn.deref(),
             node_db,
+            unique_key_db,
         }
     }
 }
@@ -54,12 +63,24 @@ impl TreeReader for LmdbTreeReader<'_> {
 
     fn get_value_option(
         &self,
-        _max_version: jmt::Version,
-        _key_hash: jmt::KeyHash,
+        max_version: jmt::Version,
+        key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
-        todo!()
-        // TODO: implement after saving
-        // Ok(None)
+        // see if there are any values already.
+        let existing_values: Vec<(Vec<u8>, Option<Vec<u8>>)> =
+            lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &key_hash.0)?;
+        let mut existing_history = vec![];
+        for (key, x) in existing_values {
+            let version = u64::from_be_bytes(key[32..].try_into().unwrap());
+            existing_history.push((version, x));
+            warn!(target: LOG_TARGET, "found version {} for key {:?}", version, key);
+        }
+        // sort by version
+        existing_history.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let latest_value = existing_history.last().and_then(|x| x.1.clone());
+
+        Ok(latest_value)
     }
 
     fn get_rightmost_leaf(&self) -> anyhow::Result<Option<(jmt::storage::NodeKey, jmt::storage::LeafNode)>> {
@@ -71,26 +92,32 @@ impl TreeReader for LmdbTreeReader<'_> {
 pub struct OwnedLmdbTreeReader<'a> {
     txn: ReadTransaction<'a>,
     node_db: DatabaseRef,
+    unique_key_db: DatabaseRef,
 }
 
 impl<'a> OwnedLmdbTreeReader<'a> {
-    pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef) -> Self {
-        Self { txn, node_db }
+    pub fn new(txn: ReadTransaction<'a>, node_db: DatabaseRef, unique_key_db: DatabaseRef) -> Self {
+        Self {
+            txn,
+            node_db,
+            unique_key_db,
+        }
     }
 }
 
 impl TreeReader for OwnedLmdbTreeReader<'_> {
     fn get_node_option(&self, node_key: &jmt::storage::NodeKey) -> anyhow::Result<Option<jmt::storage::Node>> {
-        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone());
+        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.unique_key_db.clone());
         inner.get_node_option(node_key)
     }
 
     fn get_value_option(
         &self,
-        _max_version: jmt::Version,
-        _key_hash: jmt::KeyHash,
+        max_version: jmt::Version,
+        key_hash: jmt::KeyHash,
     ) -> anyhow::Result<Option<jmt::OwnedValue>> {
-        todo!()
+        let inner = LmdbTreeReader::new(&self.txn, self.node_db.clone(), self.unique_key_db.clone());
+        inner.get_value_option(max_version, key_hash)
     }
 
     fn get_rightmost_leaf(&self) -> anyhow::Result<Option<(jmt::storage::NodeKey, jmt::storage::LeafNode)>> {

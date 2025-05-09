@@ -52,6 +52,18 @@ pub struct ConnectivityConfig {
     /// The closest number of peer connections to maintain; connections above the threshold will be removed
     /// (default: disabled)
     pub maintain_n_closest_connections_only: Option<usize>,
+    /// Number of connections that should be long-lived (not subject to periodic reaping)
+    pub long_lived_connections: usize,
+    /// Number of connections to rotate every 24 hours
+    pub daily_rotation_connections: usize,
+    /// Number of connections to rotate every 2 hours
+    pub frequent_rotation_connections: usize,
+    /// Minimum time before reconnecting to a previously connected node (7 days)
+    pub node_reconnection_cooldown: Duration,
+    /// Interval for rotating daily connections
+    pub daily_rotation_interval: Duration,
+    /// Interval for rotating frequent connections
+    pub frequent_rotation_interval: Duration,
 }
 
 impl Default for ConnectivityConfig {
@@ -66,6 +78,12 @@ impl Default for ConnectivityConfig {
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
             maintain_n_closest_connections_only: None,
+            long_lived_connections: 16,
+            daily_rotation_connections: 12,
+            frequent_rotation_connections: 4,
+            node_reconnection_cooldown: Duration::from_secs(7 * 24 * 60 * 60), // 7 days
+            daily_rotation_interval: Duration::from_secs(24 * 60 * 60),        // 24 hours
+            frequent_rotation_interval: Duration::from_secs(2 * 60 * 60),      // 2 hours
         }
     }
 }

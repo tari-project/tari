@@ -47,7 +47,13 @@ use crate::{
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+            Transaction,
+            WalletOutput,
+        },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
     },
 };
@@ -124,7 +130,10 @@ pub async fn create_block<TDB: BlockchainBackend>(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .unwrap();

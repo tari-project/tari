@@ -39,6 +39,7 @@ use tracing::{span, Instrument, Level};
 
 use super::{
     config::ConnectivityConfig,
+    connection_history::ConnectionHistory,
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
@@ -108,6 +109,9 @@ impl ConnectivityManager {
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
             allow_list: vec![],
+            connection_history: ConnectionHistory::new(),
+            last_daily_rotation: Instant::now(),
+            last_frequent_rotation: Instant::now(),
         }
         .spawn()
     }
@@ -151,7 +155,7 @@ impl fmt::Display for ConnectivityStatus {
     }
 }
 
-struct ConnectivityManagerActor {
+pub struct ConnectivityManagerActor {
     config: ConnectivityConfig,
     status: ConnectivityStatus,
     request_rx: mpsc::Receiver<ConnectivityRequest>,
@@ -165,6 +169,9 @@ struct ConnectivityManagerActor {
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
+    connection_history: ConnectionHistory,
+    last_daily_rotation: Instant,
+    last_frequent_rotation: Instant,
 }
 
 impl ConnectivityManagerActor {
@@ -174,6 +181,10 @@ impl ConnectivityManagerActor {
 
     pub async fn run(mut self) {
         debug!(target: LOG_TARGET, "ConnectivityManager started");
+
+        // Initialize rotation timers to trigger rotation soon after startup
+        self.last_daily_rotation = Instant::now() - (self.config.daily_rotation_interval / 2);
+        self.last_frequent_rotation = Instant::now() - (self.config.frequent_rotation_interval / 2);
 
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
@@ -355,11 +366,74 @@ impl ConnectivityManagerActor {
         }
     }
 
+    // Check if we're at the connection limit
+    async fn check_connection_limit(&self) -> Result<bool, ConnectivityError> {
+        // Get all outbound connections
+        let outbound_connections = self
+            .pool
+            .filter_connection_states(|state| {
+                state.is_connected() && state.connection().is_some_and(|conn| conn.direction().is_outbound())
+            })
+            .len();
+
+        // Calculate the maximum allowed connections
+        let max_connections = self.config.long_lived_connections +
+            self.config.daily_rotation_connections +
+            self.config.frequent_rotation_connections;
+
+        // Return whether we're under the limit
+        Ok(outbound_connections < max_connections)
+    }
+
+    #[allow(clippy::too_many_lines)]
     async fn handle_dial_peer(
         &mut self,
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
+        // Check if we're already at the connection limit
+        match self.check_connection_limit().await {
+            Ok(under_limit) => {
+                if !under_limit {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Not connecting to peer {} as we're already at the connection limit of {}",
+                        node_id,
+                        self.config.long_lived_connections +
+                        self.config.daily_rotation_connections +
+                        self.config.frequent_rotation_connections
+                    );
+                    if let Some(reply) = reply_tx {
+                        let max_connections = self.config.long_lived_connections +
+                            self.config.daily_rotation_connections +
+                            self.config.frequent_rotation_connections;
+                        let outbound_connections = self
+                            .pool
+                            .filter_connection_states(|state| {
+                                state.is_connected() &&
+                                    state.connection().is_some_and(|conn| conn.direction().is_outbound())
+                            })
+                            .len();
+                        let _unused = reply.send(Err(ConnectionManagerError::ConnectivityError(Box::new(
+                            ConnectivityError::ConnectionLimitReached {
+                                current: outbound_connections,
+                                max: max_connections,
+                            },
+                        ))));
+                    }
+                    return;
+                }
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to check connection limit: {}", err
+                );
+                let _unused = reply_tx.map(|tx| tx.send(Err(ConnectionManagerError::ConnectivityError(Box::new(err)))));
+                return;
+            },
+        }
+
         match self.peer_manager.is_peer_banned(&node_id).await {
             Ok(true) => {
                 if let Some(reply) = reply_tx {
@@ -375,6 +449,26 @@ impl ConnectivityManagerActor {
                 return;
             },
         }
+
+        // Check if the node is in cooldown
+        if self
+            .connection_history
+            .is_in_cooldown(&node_id, self.config.node_reconnection_cooldown)
+        {
+            info!(  // Use info level for testing
+                target: LOG_TARGET,
+                "Not dialing peer '{}' because it's in cooldown period ({}m remaining)",
+                node_id.short_str(),
+                (self.config.node_reconnection_cooldown.as_secs() -
+                 self.connection_history.time_since_disconnection(&node_id).unwrap_or_default().as_secs()) / 60
+            );
+
+            if let Some(reply) = reply_tx {
+                let _result = reply.send(Err(ConnectionManagerError::PeerInCooldown));
+            }
+            return;
+        }
+
         match self.pool.get(&node_id) {
             // The connection pool may temporarily contain a connection that is not connected so we need to check this.
             Some(state) if state.is_connected() => {
@@ -418,9 +512,15 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
+
+                let node_id = conn.peer_node_id().clone();
+
+                // Record the disconnection in history
+                self.connection_history.record_disconnection(&node_id);
+
                 match disconnect_silent_with_timeout(conn, Minimized::No, None).await {
                     Ok(_) => {
-                        node_ids.push(conn.peer_node_id().clone());
+                        node_ids.push(node_id);
                     },
                     Err(err) => {
                         debug!(
@@ -452,6 +552,12 @@ impl ConnectivityManagerActor {
             self.pool.count_connected_clients()
         );
 
+        // Clean up connection history - use the exact cooldown period to avoid excessive memory usage
+        self.connection_history.cleanup(self.config.node_reconnection_cooldown);
+
+        // Perform scheduled rotation
+        self.rotate_connections(task_id).await?;
+
         self.clean_connection_pool();
         if self.config.is_connection_reaping_enabled {
             self.reap_inactive_connections(task_id).await;
@@ -461,6 +567,109 @@ impl ConnectivityManagerActor {
         }
         self.update_connectivity_status();
         self.update_connectivity_metrics();
+        Ok(())
+    }
+
+    async fn rotate_connections(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        // Check if it's time for daily rotation
+        if self.last_daily_rotation.elapsed() >= self.config.daily_rotation_interval {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Performing daily connection rotation (every {} minutes)",
+                task_id,
+                self.config.daily_rotation_interval.as_secs() / 60
+            );
+            self.rotate_connection_group(
+                self.config.daily_rotation_connections,
+                self.config.long_lived_connections,
+                task_id,
+            )
+            .await?;
+            self.last_daily_rotation = Instant::now();
+        }
+
+        // Check if it's time for frequent rotation
+        if self.last_frequent_rotation.elapsed() >= self.config.frequent_rotation_interval {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Performing frequent connection rotation (every {} minutes)",
+                task_id,
+                self.config.frequent_rotation_interval.as_secs() / 60
+            );
+            let start_index = self.config.long_lived_connections + self.config.daily_rotation_connections;
+            self.rotate_connection_group(self.config.frequent_rotation_connections, start_index, task_id)
+                .await?;
+            self.last_frequent_rotation = Instant::now();
+        }
+
+        Ok(())
+    }
+
+    // Helper method to rotate a specific group of connections
+    async fn rotate_connection_group(
+        &mut self,
+        count: usize,
+        start_index: usize,
+        task_id: u64,
+    ) -> Result<(), ConnectivityError> {
+        // Snapshot the outbound **NodeIds** first so that `self.pool` is no longer borrowed
+        let mut node_ids = self
+            .pool
+            .get_outbound_connections()
+            .iter()
+            .filter(|conn| conn.is_connected())
+            .map(|conn| conn.peer_node_id().clone())
+            .collect::<Vec<_>>();
+
+        // Sort deterministically
+        node_ids.sort();
+
+        // Select the connections to rotate
+        let end_index = (start_index + count).min(node_ids.len());
+        if start_index >= node_ids.len() {
+            return Ok(());
+        }
+
+        // Collect node IDs to disconnect
+        let mut nodes_to_remove = Vec::new();
+
+        for node_id in &node_ids[start_index..end_index] {
+            let Some(conn) = self.pool.get_connection_mut(node_id) else {
+                continue;
+            };
+
+            debug!(
+                target: LOG_TARGET,
+                "({}) Rotating connection to '{}' as part of scheduled rotation",
+                task_id,
+                node_id.short_str()
+            );
+
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(node_id);
+
+            // Disconnect
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
+                Ok(_) => {
+                    nodes_to_remove.push(node_id.clone());
+                },
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Error disconnecting peer '{}' during rotation: {:?}",
+                        task_id,
+                        node_id.short_str(),
+                        err
+                    );
+                },
+            }
+        }
+
+        // Now remove the nodes from the pool
+        for node_id in nodes_to_remove {
+            self.pool.remove(&node_id);
+        }
+
         Ok(())
     }
 
@@ -537,16 +746,21 @@ impl ConnectivityManagerActor {
         // Disconnect all remaining peers above the threshold
         let len = connections.len();
         for conn in connections.iter_mut().skip(threshold) {
+            let node_id = conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
                 "minimize_connections: ({}) Disconnecting '{}' because the node is not among the {} closest peers",
                 task_id,
-                conn.peer_node_id(),
+                node_id,
                 threshold
             );
+
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(&node_id);
+
             match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    self.pool.remove(conn.peer_node_id());
+                    self.pool.remove(&node_id);
                 },
                 Err(err) => {
                     debug!(
@@ -589,16 +803,21 @@ impl ConnectivityManagerActor {
                 continue;
             }
 
+            let node_id = conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
                 "({}) Disconnecting '{}' because connection was inactive ({} handles)",
                 task_id,
-                conn.peer_node_id().short_str(),
+                node_id.short_str(),
                 conn.handle_count()
             );
+
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(&node_id);
+
             match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
-                    nodes_to_remove.push(conn.peer_node_id().clone());
+                    nodes_to_remove.push(node_id);
                 },
                 Err(err) => {
                     debug!(
@@ -768,6 +987,9 @@ impl ConnectivityManagerActor {
                         return Ok(());
                     }
                 }
+
+                // Remember that we recently spoke to this peer
+                self.connection_history.record_disconnection(node_id);
             },
             PeerViolation { peer_node_id, details } => {
                 self.ban_peer(
@@ -1121,6 +1343,9 @@ impl ConnectivityManagerActor {
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
         if let Some(conn) = self.pool.get_connection_mut(node_id) {
+            // Record the disconnection in history
+            self.connection_history.record_disconnection(node_id);
+
             disconnect_with_timeout(conn, Minimized::Yes, None).await?;
             let status = self.pool.get_connection_status(node_id);
             debug!(

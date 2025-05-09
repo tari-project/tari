@@ -66,7 +66,7 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             RangeProofType,
@@ -1094,7 +1094,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
-                PaymentId::Empty,
+                PaymentId::Open {
+                    user_data: vec![],
+                    tx_type: TxType::Coinbase,
+                },
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1312,7 +1315,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
-                PaymentId::Empty,
+                PaymentId::Open {
+                    user_data: vec![],
+                    tx_type: TxType::Coinbase,
+                },
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;

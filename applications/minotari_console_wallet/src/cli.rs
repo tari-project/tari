@@ -95,9 +95,9 @@ pub struct Cli {
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
     // For read only wallets
-    #[clap(long)]
+    #[clap(long, env = "MINOTARI_WALLET_VIEW_PRIVATE_KEY", hide_env_values = true)]
     pub view_private_key: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "MINOTARI_WALLET_SPEND_KEY", hide_env_values = true)]
     pub spend_key: Option<String>,
     #[clap(long)]
     pub birthday: Option<u16>,
