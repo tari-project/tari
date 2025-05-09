@@ -7751,10 +7751,10 @@ pub unsafe extern "C" fn wallet_get_private_view_key(
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `TariPublicKey` - Private view key of the wallet
+/// `TariPublicKey` - Public spend key of the wallet
 ///
 /// # Safety
-/// private key needs to be destroyed after use
+/// public key needs to be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_public_spend_key(
     wallet: *mut TariWallet,
