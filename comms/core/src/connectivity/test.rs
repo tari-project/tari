@@ -502,7 +502,10 @@ async fn connection_limit_enforcement() {
             cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
                 conn.peer_node_id().clone(),
                 ConnectionManagerError::ConnectivityError(Box::new(
-                    super::error::ConnectivityError::ConnectionLimitReached,
+                    super::error::ConnectivityError::ConnectionLimitReached {
+                        current: i,
+                        max: config.long_lived_connections,
+                    },
                 )),
             ));
         }

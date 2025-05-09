@@ -54,3 +54,9 @@ impl ConnectionHistory {
         self.available_nodes(nodes, cooldown).cloned().collect()
     }
 }
+
+impl Default for ConnectionHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}

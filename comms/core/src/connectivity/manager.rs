@@ -372,7 +372,7 @@ impl ConnectivityManagerActor {
         let outbound_connections = self
             .pool
             .filter_connection_states(|state| {
-                state.is_connected() && state.connection().map_or(false, |conn| conn.direction().is_outbound())
+                state.is_connected() && state.connection().is_some_and(|conn| conn.direction().is_outbound())
             })
             .len();
 
@@ -385,6 +385,7 @@ impl ConnectivityManagerActor {
         Ok(outbound_connections < max_connections)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_dial_peer(
         &mut self,
         node_id: NodeId,
@@ -410,10 +411,10 @@ impl ConnectivityManagerActor {
                             .pool
                             .filter_connection_states(|state| {
                                 state.is_connected() &&
-                                    state.connection().map_or(false, |conn| conn.direction().is_outbound())
+                                    state.connection().is_some_and(|conn| conn.direction().is_outbound())
                             })
                             .len();
-                        let _ = reply.send(Err(ConnectionManagerError::ConnectivityError(Box::new(
+                        let _unused = reply.send(Err(ConnectionManagerError::ConnectivityError(Box::new(
                             ConnectivityError::ConnectionLimitReached {
                                 current: outbound_connections,
                                 max: max_connections,
@@ -428,7 +429,7 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Failed to check connection limit: {}", err
                 );
-                let _ = reply_tx.map(|tx| tx.send(Err(ConnectionManagerError::ConnectivityError(Box::new(err)))));
+                let _unused = reply_tx.map(|tx| tx.send(Err(ConnectionManagerError::ConnectivityError(Box::new(err)))));
                 return;
             },
         }
@@ -633,7 +634,7 @@ impl ConnectivityManagerActor {
         let mut nodes_to_remove = Vec::new();
 
         for node_id in &node_ids[start_index..end_index] {
-            let Some(mut conn) = self.pool.get_connection_mut(node_id) else {
+            let Some(conn) = self.pool.get_connection_mut(node_id) else {
                 continue;
             };
 
@@ -648,7 +649,7 @@ impl ConnectivityManagerActor {
             self.connection_history.record_disconnection(node_id);
 
             // Disconnect
-            match disconnect_with_timeout(&mut conn, Minimized::Yes, Some(task_id)).await {
+            match disconnect_with_timeout(conn, Minimized::Yes, Some(task_id)).await {
                 Ok(_) => {
                     nodes_to_remove.push(node_id.clone());
                 },
