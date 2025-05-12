@@ -30,6 +30,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::PeerManagerError;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -189,8 +190,20 @@ impl Listening {
                             continue;
                         },
                         Ok(false) => {},
-                        Err(e) => {
-                            return FatalError(format!("Error checking if peer is banned: {}", e));
+                        Err(e) => match e {
+                            PeerManagerError::DataInconsistency(_) |
+                            PeerManagerError::DatabaseError(_) |
+                            PeerManagerError::MigrationError(_) => {
+                                return FatalError(format!("Error checking if peer is banned: {}", e));
+                            },
+                            _ => {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Ignoring chain metadata from peer {} due to error: {}",
+                                    peer_metadata.node_id(), e
+                                );
+                                continue;
+                            },
                         },
                     }
 
