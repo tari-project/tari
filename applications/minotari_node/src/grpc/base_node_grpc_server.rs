@@ -1796,6 +1796,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    // Get current blocks for list of block heights - if the request is empty the tip block is returned
     async fn get_blocks(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
@@ -1810,10 +1811,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut heights = request.heights;
         if heights.is_empty() {
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("heights cannot be empty"),
-            ));
+            let mut handler = self.node_service.clone();
+            if let Ok(tip) = handler.get_metadata().await {
+                heights.push(tip.best_block_height());
+            }
         }
 
         heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
@@ -2204,6 +2205,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(resp))
     }
 
+    // Get tokens in circulations for list of block heights - if the request is empty the tip block height is used
     async fn get_tokens_in_circulation(
         &self,
         request: Request<tari_rpc::GetBlocksRequest>,
@@ -2213,6 +2215,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
         let request = request.into_inner();
         let mut heights = request.heights;
+        if heights.is_empty() {
+            let mut handler = self.node_service.clone();
+            if let Ok(tip) = handler.get_metadata().await {
+                heights.push(tip.best_block_height());
+            }
+        }
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
@@ -2231,24 +2239,46 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();
             while !page.is_empty() {
-                let values: Vec<tari_rpc::ValueAtHeightResponse> = page
+                let values = page
                     .clone()
                     .into_iter()
-                    .map(|height| tari_rpc::ValueAtHeightResponse {
-                        height,
-                        value: consensus_manager.emission_schedule().supply_at_block(height).into(),
+                    .map(|height| {
+                        let circulating_supply = consensus_manager.emission_schedule().supply_at_block(height).into();
+                        let spendable_supply = consensus_manager.block_rewards_spendable_at_height(height)?.into();
+
+                        Ok(tari_rpc::ValueAtHeightResponse {
+                            height,
+                            circulating_supply,
+                            spendable_supply,
+                        })
                     })
-                    .collect();
-                let result_size = values.len();
-                for value in values {
-                    if tx.send(Ok(value)).await.is_err() {
+                    .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();
+                let result_size = match values {
+                    Ok(values) => {
+                        let values_len = values.len();
+                        for value in values {
+                            if tx.send(Ok(value)).await.is_err() {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "[get_tokens_in_circulation] Request was cancelled while sending a response"
+                                );
+                                return;
+                            }
+                        }
+                        values_len
+                    },
+                    Err(e) => {
                         warn!(
                             target: LOG_TARGET,
-                            "[get_tokens_in_circulation] Request was cancelled while sending a response"
+                            "Error communicating with local base node: {:?}", e,
                         );
+                        let _ignore = tx.send(Err(obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Error communicating with local base node: {}", e)),
+                        )));
                         return;
-                    }
-                }
+                    },
+                };
                 if result_size < GET_TOKENS_IN_CIRCULATION_PAGE_SIZE {
                     break;
                 }

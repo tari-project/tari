@@ -34,6 +34,7 @@ use crate::{
 };
 use crate::{
     consensus::{
+        consensus_constants::MAINNET_PRE_MINE_VALUE,
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         NetworkConsensus,
@@ -41,6 +42,13 @@ use crate::{
     proof_of_work::DifficultyAdjustmentError,
     transactions::{tari_amount::MicroMinotari, transaction_components::TransactionKernel},
 };
+
+/// A simple struct to hold the maturity and effective height
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct MaturityTranche {
+    pub maturity: u64,
+    pub effective_from_height: u64,
+}
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -110,6 +118,11 @@ impl ConsensusManager {
         constants
     }
 
+    /// Get the vector of consensus constants applicable for all heights
+    pub fn consensus_constants_vec(&self) -> &[ConsensusConstants] {
+        &self.inner.consensus_constants
+    }
+
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
     #[cfg(feature = "base_node")]
@@ -160,6 +173,56 @@ impl ConsensusManager {
     /// This is the currently configured chain network.
     pub fn network(&self) -> NetworkConsensus {
         self.inner.network
+    }
+
+    /// Get the maturity tranches from the consensus manager
+    pub fn get_maturity_tranches(&self) -> Vec<MaturityTranche> {
+        self.consensus_constants_vec()
+            .iter()
+            .map(|c| MaturityTranche {
+                maturity: c.coinbase_min_maturity(),
+                effective_from_height: c.effective_from_height(),
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Get the total spendable block rewards circulation at the specified height (excluding pre-mine)
+    pub fn block_rewards_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        // Example initial maturity schedule up to 3 weeks ( | height | (maturity) |):
+        // | 0 -> 5040 - 1 | (720) |
+        //                 | 5040 -> 10080 - 1 | (540) |
+        //                                     | 10080 -> 15120 - 1 | (360) |
+        //                                                          | 15120 -> | (180) |
+
+        let maturity_tranches = self.get_maturity_tranches();
+
+        let last_effective_tranche = maturity_tranches
+            .iter()
+            .filter(|v| v.effective_from_height <= height)
+            .max_by_key(|v| v.effective_from_height)
+            .ok_or_else(|| format!("Last effective maturity tranche for height {} not found", height))?;
+        let last_effective_index = maturity_tranches
+            .iter()
+            .position(|v| v == last_effective_tranche)
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {} not found", height))?;
+        let previous_effective_tranch = maturity_tranches[last_effective_index.saturating_sub(1)].clone();
+
+        // We have to adjust the matured rewards at height to account for the effective from height of the last
+        // effective tranche
+        let emission_schedule = self.emission_schedule();
+        let matured_rewards_at_height = if last_effective_tranche.maturity < previous_effective_tranch.maturity &&
+            height < last_effective_tranche.effective_from_height + previous_effective_tranch.maturity
+        {
+            emission_schedule
+                .supply_at_block(height.saturating_sub(previous_effective_tranch.maturity))
+                .saturating_sub(MAINNET_PRE_MINE_VALUE)
+        } else {
+            emission_schedule
+                .supply_at_block(height.saturating_sub(last_effective_tranche.maturity))
+                .saturating_sub(MAINNET_PRE_MINE_VALUE)
+        };
+
+        Ok(matured_rewards_at_height)
     }
 }
 
