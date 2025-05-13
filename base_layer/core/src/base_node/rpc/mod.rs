@@ -24,6 +24,7 @@
 mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
+pub mod http;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
@@ -61,7 +62,26 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+/// Trait that a base node wallet query service must implement.
+/// Please note that this service is to fetch data, so read-only queries.
+#[async_trait::async_trait]
+pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
+    type Error;
+
+    async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
+}
+
+/// Trait that a base node wallet query service client must implement.
+/// This is the client side of [`BaseNodeWalletQueryService`].
+#[async_trait::async_trait]
+pub trait BaseNodeWalletQueryServiceClient: Send + Sync + 'static {
+    type Error;
+
+    async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
+}
+
+#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
+)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(

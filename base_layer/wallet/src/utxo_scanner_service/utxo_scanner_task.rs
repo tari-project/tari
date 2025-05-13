@@ -25,6 +25,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    error::WalletError,
+    storage::database::WalletBackend,
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::UtxoScannerEvent,
+        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
+        uxto_scanner_service_builder::UtxoScannerMode,
+        RECOVERY_KEY,
+    },
+};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::*;
@@ -42,6 +55,7 @@ use tari_comms::{
     Minimized,
     PeerConnection,
 };
+use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClient;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -56,23 +70,9 @@ use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    error::WalletError,
-    storage::database::WalletBackend,
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
-    utxo_scanner_service::{
-        error::UtxoScannerError,
-        handle::UtxoScannerEvent,
-        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
-        uxto_scanner_service_builder::UtxoScannerMode,
-        RECOVERY_KEY,
-    },
-};
-
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
+pub struct UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
@@ -82,11 +82,13 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub birthday_offset: u16,
+    pub wallet_query_service_client: WalletQueryServiceClient,
 }
-impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, WalletQueryServiceClient> UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    WalletQueryServiceClient: BaseNodeWalletQueryServiceClient,
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
@@ -113,7 +115,7 @@ where
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
                         return Ok(());
-                    },
+                    }
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
@@ -125,7 +127,7 @@ where
                             error: e.to_string(),
                         });
                         continue;
-                    },
+                    }
                 },
                 None => {
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
@@ -145,7 +147,7 @@ where
                     self.num_retries += 1;
                     // Reset peer index to try connect to the first peer again
                     self.peer_index = 0;
-                },
+                }
             }
         }
     }
@@ -202,7 +204,7 @@ where
                 }
 
                 Err(e.into())
-            },
+            }
         }
     }
 
@@ -271,7 +273,7 @@ where
                     Some(WalletType::ProvidedKeys(wallet)) => {
                         self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
                             .await?
-                    },
+                    }
                     _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
                 };
 
@@ -341,7 +343,7 @@ where
         &self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<BlockHeader, UtxoScannerError> {
-        let tip_info = client.get_tip_info().await?;
+        let tip_info = self.wallet_query_service_client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         let end_header = client.get_header_by_height(chain_height).await?;
         let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
@@ -396,10 +398,10 @@ where
                         } else {
                             last_missing_scanned_block = Some(sb.clone());
                         }
-                    },
+                    }
                     None => {
                         last_missing_scanned_block = Some(sb.clone());
-                    },
+                    }
                 }
             }
             // Sum up the number of outputs recovered starting from the first found block
@@ -661,17 +663,17 @@ where
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
                     total_amount += wo.value;
-                },
+                }
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                    TransactionStorageError::DuplicateOutput,
-                ))) => {
+                                                             TransactionStorageError::DuplicateOutput,
+                                                         ))) => {
                     info!(
                         target: LOG_TARGET,
                         "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         tx_id
                     );
-                },
+                }
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
         }
