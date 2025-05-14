@@ -7188,6 +7188,7 @@ dependencies = [
  "diesel_migrations",
  "log",
  "serde",
+ "serde_json",
  "tari_test_utils",
  "tari_utilities",
  "thiserror 1.0.69",

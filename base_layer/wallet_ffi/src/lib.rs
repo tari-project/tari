@@ -6532,7 +6532,7 @@ pub unsafe extern "C" fn wallet_create(
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -6882,7 +6882,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(version)) => {
@@ -6923,7 +6923,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -11188,7 +11188,7 @@ mod test {
 
             let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
                 .join(db_name)
-                .with_extension("sqlite3");
+                .with_extension("db");
 
             let alice_network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
@@ -11320,7 +11320,7 @@ mod test {
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
             let original_path_str: *const c_char = CString::into_raw(original_path_cstring) as *const c_char;
 
-            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
+            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("db");
             let connection =
                 run_migration_and_create_sqlite_connection(sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend =

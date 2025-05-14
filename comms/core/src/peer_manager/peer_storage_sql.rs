@@ -79,7 +79,10 @@ impl PeerStorageSql {
                 trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
                 // Replace existing entry
                 peer.set_id(peer_key);
-                let mut existing_peer = self.peer_db.get_peer_by_node_id(&node_id)?.expect("peer exists");
+                let mut existing_peer = match self.peer_db.get_peer_by_node_id(&node_id)? {
+                    Some(peer) => peer,
+                    None => return Err(PeerManagerError::DatabaseStateChanged),
+                };
                 existing_peer.merge(&peer);
                 self.peer_db.update_peer(existing_peer)?;
                 Ok(peer_key)
@@ -126,20 +129,20 @@ impl PeerStorageSql {
     }
 
     /// Check if a peer exist using the specified public_key
-    pub fn exists_public_key(&self, public_key: &CommsPublicKey) -> bool {
+    pub fn exists_public_key(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
         if let Ok(val) = self.peer_db.peer_exists_by_public_key(public_key) {
-            val.is_some()
+            Ok(val.is_some())
         } else {
-            false
+            Ok(false)
         }
     }
 
     /// Check if a peer exist using the specified node_id
-    pub fn exists_node_id(&self, node_id: &NodeId) -> bool {
+    pub fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         if let Ok(val) = self.peer_db.peer_exists_by_node_id(node_id) {
-            val.is_some()
+            Ok(val.is_some())
         } else {
-            false
+            Ok(false)
         }
     }
 

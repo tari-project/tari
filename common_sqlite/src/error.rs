@@ -73,6 +73,8 @@ pub enum StorageError {
     PeerNotFoundError,
     #[error("Error: `{0}`")]
     Error(#[from] Error),
+    #[error("Error: `{0}`")]
+    SerdeJsonError(#[from] serde_json::Error),
 }
 
 impl From<MessageFormatError> for StorageError {

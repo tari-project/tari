@@ -59,7 +59,12 @@ impl PeerManager {
     /// Get the number of peers in the PeerManager - any error will translate to a size of zero
     pub async fn count(&self) -> usize {
         let peer_manager = self.clone();
-        (tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.count()).await).unwrap_or_default()
+        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.count())
+            .await
+            .unwrap_or_else(|err| {
+                log::error!("Count task panicked: {}", err);
+                0
+            })
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
@@ -144,14 +149,14 @@ impl PeerManager {
     pub async fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
         let peer_manager = self.clone();
         let public_key = public_key.clone();
-        Ok(tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_public_key(&public_key)).await?)
+        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_public_key(&public_key)).await?
     }
 
     /// Check if a peer exist using the specified node_id
     pub async fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         let peer_manager = self.clone();
         let node_id = node_id.clone();
-        Ok(tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_node_id(&node_id)).await?)
+        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_node_id(&node_id)).await?
     }
 
     /// Returns all peers

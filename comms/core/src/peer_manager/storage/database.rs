@@ -93,19 +93,19 @@ impl PeerDatabaseSql {
                 .iter()
                 .map(|p| {
                     let peer_id = generate_peer_id_as_i64();
-                    let public_key = p.peer.public_key.replace('\'', "''");
-                    let node_id = p.peer.node_id.replace('\'', "''");
+                    let public_key = sql_escape(&p.peer.public_key);
+                    let node_id = sql_escape(&p.peer.node_id);
                     let flags = p.peer.flags;
                     let banned_until = p.peer.banned_until.map_or("NULL".to_string(), |dt| format!("'{}'", dt));
                     let banned_reason = p
                         .peer
                         .banned_reason
                         .clone()
-                        .map_or("NULL".to_string(), |reason| format!("'{}'", reason.replace('\'', "''")));
+                        .map_or("NULL".to_string(), |reason| format!("'{}'", sql_escape(&reason)));
                     let features = p.peer.features;
-                    let supported_protocols = p.peer.supported_protocols.replace('\'', "''");
+                    let supported_protocols = sql_escape(&p.peer.supported_protocols);
                     let added_at = p.peer.added_at;
-                    let user_agent = p.peer.user_agent.replace('\'', "''");
+                    let user_agent = sql_escape(&p.peer.user_agent);
                     let metadata = p
                         .peer
                         .metadata
@@ -151,9 +151,9 @@ impl PeerDatabaseSql {
 
             // Step 3: Insert missing multi-addresses
             let mut address_query = String::from(
-                "INSERT INTO multiaddresses (peer_id, address, last_seen, connection_attempts, avg_initial_dial_time, \
-                 initial_dial_time_sample_count, avg_latency, latency_sample_count, last_attempted, \
-                 last_failed_reason, quality_score, source) VALUES ",
+                "INSERT INTO multi_addresses (peer_id, address, last_seen, connection_attempts, \
+                 avg_initial_dial_time, initial_dial_time_sample_count, avg_latency, latency_sample_count, \
+                 last_attempted, last_failed_reason, quality_score, source) VALUES ",
             );
 
             let mut total_addresses_inserted = 0;
@@ -183,7 +183,7 @@ impl PeerDatabaseSql {
                                 format!(
                                     "({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}')",
                                     peer_id,
-                                    addr.address.replace('\'', "''"),
+                                    sql_escape(&addr.address),
                                     addr.last_seen.map_or("NULL".to_string(), |dt| format!("'{}'", dt)),
                                     addr.connection_attempts.map_or("NULL".to_string(), |v| v.to_string()),
                                     addr.avg_initial_dial_time.map_or("NULL".to_string(), |v| v.to_string()),
@@ -194,12 +194,9 @@ impl PeerDatabaseSql {
                                     addr.last_attempted.map_or("NULL".to_string(), |dt| format!("'{}'", dt)),
                                     addr.last_failed_reason
                                         .clone()
-                                        .map_or("NULL".to_string(), |reason| format!(
-                                            "'{}'",
-                                            reason.replace('\'', "''")
-                                        )),
+                                        .map_or("NULL".to_string(), |reason| format!("'{}'", sql_escape(&reason))),
                                     addr.quality_score.map_or("NULL".to_string(), |v| v.to_string()),
-                                    addr.source.replace('\'', "''"),
+                                    sql_escape(&addr.source),
                                 )
                             })
                             .collect::<Vec<String>>()
@@ -245,19 +242,22 @@ impl PeerDatabaseSql {
                     if let Some(banned_reason) = peer_update.banned_reason {
                         set_clauses.push(format!(
                             "banned_reason = CASE WHEN node_id = '{}' THEN '{}' ELSE banned_reason END",
-                            peer_update.node_id, banned_reason
+                            peer_update.node_id,
+                            sql_escape(&banned_reason)
                         ));
                     }
                     if let Some(supported_protocols) = peer_update.supported_protocols {
                         set_clauses.push(format!(
                             "supported_protocols = CASE WHEN node_id = '{}' THEN '{}' ELSE supported_protocols END",
-                            peer_update.node_id, supported_protocols
+                            peer_update.node_id,
+                            sql_escape(&supported_protocols)
                         ));
                     }
                     if let Some(user_agent) = peer_update.user_agent {
                         set_clauses.push(format!(
                             "user_agent = CASE WHEN node_id = '{}' THEN '{}' ELSE user_agent END",
-                            peer_update.node_id, user_agent
+                            peer_update.node_id,
+                            sql_escape(&user_agent)
                         ));
                     }
                     if let Some(metadata) = peer_update.metadata {
@@ -273,7 +273,7 @@ impl PeerDatabaseSql {
                             peer_update.node_id, deleted_at
                         ));
                     }
-                    node_ids.push(format!("x'{}'", peer_update.node_id));
+                    node_ids.push(format!("'{}'", peer_update.node_id.replace('\'', "''")));
                 }
 
                 peer_query.push_str(&set_clauses.join(", "));
@@ -282,9 +282,9 @@ impl PeerDatabaseSql {
             }
 
             // Batch update multi-addresses
-            let mut address_query = String::from("UPDATE multiaddresses SET ");
+            let mut address_query = String::from("UPDATE multi_addresses SET ");
             let mut set_clauses = vec![];
-            let mut ids = vec![];
+            let mut addresses = vec![];
 
             for update in peers_with_addresses {
                 for address_update in update.addresses {
@@ -334,7 +334,8 @@ impl PeerDatabaseSql {
                     if let Some(last_failed_reason) = address_update.last_failed_reason {
                         set_clauses.push(format!(
                             "last_failed_reason = CASE WHEN address = '{}' THEN '{}' ELSE last_failed_reason END",
-                            address_update.address, last_failed_reason
+                            address_update.address,
+                            sql_escape(&last_failed_reason)
                         ));
                     }
                     if let Some(quality_score) = address_update.quality_score {
@@ -346,16 +347,17 @@ impl PeerDatabaseSql {
                     if let Some(source) = address_update.source {
                         set_clauses.push(format!(
                             "source = CASE WHEN address = '{}' THEN '{}' ELSE source END",
-                            address_update.address, source
+                            address_update.address,
+                            sql_escape(&source)
                         ));
                     }
-                    ids.push(format!("'{}'", address_update.address.replace('\'', "''")));
+                    addresses.push(format!("'{}'", address_update.address.replace('\'', "''")));
                 }
             }
 
             if !set_clauses.is_empty() {
                 address_query.push_str(&set_clauses.join(", "));
-                address_query.push_str(&format!(" WHERE id IN ({})", ids.join(", ")));
+                address_query.push_str(&format!(" WHERE address IN ({})", addresses.join(", ")));
                 conn.batch_execute(&address_query)?;
             }
 
@@ -382,7 +384,7 @@ impl PeerDatabaseSql {
             supported_protocols: serialize_protocols(&peer.supported_protocols),
             added_at: peer.added_at,
             user_agent: peer.user_agent.clone(),
-            metadata: serialize_metadata(&peer.metadata),
+            metadata: serialize_metadata(&peer.metadata)?,
             deleted_at: peer.deleted_at,
         };
 
@@ -491,7 +493,7 @@ impl PeerDatabaseSql {
             banned_reason: Some(peer.banned_reason.clone()),
             supported_protocols: Some(serialize_protocols(&peer.supported_protocols)),
             user_agent: Some(peer.user_agent.clone()),
-            metadata: serialize_metadata(&peer.metadata),
+            metadata: serialize_metadata(&peer.metadata)?,
             deleted_at: peer.deleted_at,
         };
 
@@ -616,18 +618,22 @@ impl PeerDatabaseSql {
     pub fn set_metadata(&self, node_id: &NodeId, key: u8, data: Vec<u8>) -> Result<Option<Vec<u8>>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let metadata = peers::table
-            .filter(peers::node_id.eq(node_id.to_string()))
-            .select(peers::metadata)
-            .first::<Option<Vec<u8>>>(&mut conn)?;
+        let result = conn.transaction::<_, StorageError, _>(|conn| {
+            let metadata = peers::table
+                .filter(peers::node_id.eq(node_id.to_string()))
+                .select(peers::metadata)
+                .first::<Option<Vec<u8>>>(conn)?;
 
-        let mut metadata_hashmap = deserialize_metadata(metadata);
-        let result = metadata_hashmap.insert(key, data);
-        let metadata = serialize_metadata(&metadata_hashmap);
+            let mut metadata_hashmap = deserialize_metadata(metadata)?;
+            let result = metadata_hashmap.insert(key, data);
+            let metadata = serialize_metadata(&metadata_hashmap)?;
 
-        diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
-            .set(peers::metadata.eq(metadata))
-            .execute(&mut conn)?;
+            diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
+                .set(peers::metadata.eq(metadata))
+                .execute(conn)?;
+
+            Ok(result)
+        })?;
 
         Ok(result)
     }
@@ -759,7 +765,7 @@ impl PeerDatabaseSql {
                 )
                 .filter(multi_addresses::address.eq(address.to_string())),
         )
-        .set(multi_addresses::last_failed_reason.eq(last_failed_reason))
+        .set(multi_addresses::last_failed_reason.eq(sql_escape(&last_failed_reason)))
         .execute(&mut conn)?;
 
         if affected > 0 {
@@ -826,6 +832,11 @@ impl PeerDatabaseSql {
     pub fn find_all_peers_match_partial_node_id_bytes(&self, start_bytes: &[u8]) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
+        if start_bytes.len() % 2 != 0 {
+            return Err(StorageError::MessageFormatError(
+                "Invalid length for start_bytes, must be even".to_string(),
+            ));
+        }
         if start_bytes.is_empty() || start_bytes.len() > NodeId::byte_size() {
             return Ok(Vec::new());
         }
@@ -1380,6 +1391,10 @@ impl PeerDatabaseSql {
     }
 }
 
+fn sql_escape(input: &str) -> String {
+    input.replace('\'', "''")
+}
+
 #[derive(Clone, Debug)]
 pub struct NewPeerWithAddressesSql {
     pub peer: NewPeerSql,
@@ -1473,19 +1488,19 @@ pub fn deserialize_protocols(data: &str) -> Vec<ProtocolId> {
     }
 }
 /// Serialize the metadata into a `Vec<u8>`, mapping empty to `None`
-pub fn serialize_metadata(metadata: &HashMap<u8, Vec<u8>>) -> Option<Vec<u8>> {
+pub fn serialize_metadata(metadata: &HashMap<u8, Vec<u8>>) -> Result<Option<Vec<u8>>, StorageError> {
     if metadata.is_empty() {
-        None
+        Ok(None)
     } else {
-        Some(serde_json::to_vec(metadata).expect("Failed to serialize metadata"))
+        Ok(Some(serde_json::to_vec(metadata)?))
     }
 }
 
 /// Deserialize the metadata from a `Vec<u8>`, mapping empty to `None`
-pub fn deserialize_metadata(data: Option<Vec<u8>>) -> HashMap<u8, Vec<u8>> {
+pub fn deserialize_metadata(data: Option<Vec<u8>>) -> Result<HashMap<u8, Vec<u8>>, StorageError> {
     match data {
-        Some(d) if !d.is_empty() => serde_json::from_slice(&d).expect("Failed to deserialize metadata"),
-        _ => HashMap::new(),
+        Some(d) if !d.is_empty() => serde_json::from_slice(&d).map_err(|e| StorageError::JsonError(e.to_string())),
+        _ => Ok(HashMap::new()),
     }
 }
 
@@ -1541,7 +1556,7 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
             deserialize_protocols(&peer_query.supported_protocols),
             peer_query.added_at,
             peer_query.user_agent,
-            deserialize_metadata(peer_query.metadata),
+            deserialize_metadata(peer_query.metadata)?,
             peer_query.deleted_at,
         ))
     }
@@ -1813,9 +1828,9 @@ mod tests {
         // Test 'get_peer_indexes'
         assert_eq!(peers_db.size(), 24);
 
-        // Test 'finsd_all_peers_match_partial_node_id_bytes'
+        // Test 'find_all_peers_match_partial_node_id_bytes'
         let matches = peers_db
-            .find_all_peers_match_partial_node_id_bytes(&node_peers[0].node_id.as_bytes()[0..1])
+            .find_all_peers_match_partial_node_id_bytes(&node_peers[0].node_id.as_bytes()[0..2])
             .unwrap();
         assert!(matches.contains(&node_peers[0]));
 

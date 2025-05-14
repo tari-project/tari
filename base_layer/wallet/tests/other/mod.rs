@@ -161,7 +161,7 @@ async fn create_wallet(
         .datastore_path
         .clone()
         .join(database_name)
-        .with_extension("sqlite3");
+        .with_extension("db");
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
@@ -335,7 +335,7 @@ async fn test_wallet() {
     assert_eq!(contacts, got_contacts);
 
     // Test applying and removing encryption
-    let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("sqlite3");
+    let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("db");
 
     drop(alice_event_stream);
     shutdown_a.trigger();
@@ -400,7 +400,7 @@ async fn test_wallet() {
     let backup_wallet_path = backup_db_tempdir
         .path()
         .join("alice_db_backup")
-        .with_extension("sqlite3");
+        .with_extension("db");
 
     let alice_seed = CipherSeed::new();
 
@@ -788,7 +788,7 @@ async fn test_import_utxo() {
 #[test]
 fn test_db_file_locking() {
     let db_tempdir = tempdir().unwrap();
-    let wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
+    let wallet_path = db_tempdir.path().join("alice_db").with_extension("db");
 
     let connection = run_migration_and_create_sqlite_connection(&wallet_path, 16).expect("Could not open Sqlite db");
 
