@@ -37,7 +37,7 @@ use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, P
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
-use tari_core::transactions::transaction_components::RangeProofType;
+use tari_core::{proof_of_work::PowAlgorithm, transactions::transaction_components::RangeProofType};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -55,8 +55,7 @@ pub struct MinerConfig {
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
     pub mine_on_tip_only: bool,
     /// The proof of work algorithm to use
-    #[serde(skip)]
-    pub proof_of_work_algo: ProofOfWork,
+    pub proof_of_work_algo: PowAlgorithm,
     /// Will check tip with node every N seconds and restart mining if height already taken and option
     /// `mine_on_tip_only` is set to true
     pub validate_tip_timeout_sec: u64,
@@ -84,14 +83,6 @@ pub struct MinerConfig {
     pub sha_p2pool_enabled: bool,
 }
 
-/// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
-/// allowed.
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub enum ProofOfWork {
-    #[default]
-    Sha3x,
-}
-
 impl SubConfigPath for MinerConfig {
     fn main_key_prefix() -> &'static str {
         "miner"
@@ -107,7 +98,7 @@ impl Default for MinerConfig {
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
-            proof_of_work_algo: ProofOfWork::Sha3x,
+            proof_of_work_algo: PowAlgorithm::Sha3x,
             validate_tip_timeout_sec: 30,
             stratum_mining_pool_address: String::new(),
             stratum_mining_wallet_address: String::new(),
@@ -126,8 +117,14 @@ impl Default for MinerConfig {
 impl MinerConfig {
     pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
         let algo = match self.proof_of_work_algo {
-            ProofOfWork::Sha3x => Some(PowAlgo {
+            PowAlgorithm::Sha3x => Some(PowAlgo {
                 pow_algo: PowAlgos::Sha3x.into(),
+            }),
+            PowAlgorithm::RandomXM => Some(PowAlgo {
+                pow_algo: PowAlgos::Randomxm.into(),
+            }),
+            PowAlgorithm::RandomXT => Some(PowAlgo {
+                pow_algo: PowAlgos::Randomxt.into(),
             }),
         };
         NewBlockTemplateRequest { algo, max_weight: 0 }

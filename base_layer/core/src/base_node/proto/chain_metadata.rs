@@ -22,17 +22,17 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use primitive_types::U256;
+use primitive_types::U512;
 use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
 
-const ACCUMULATED_DIFFICULTY_BYTE_SIZE: usize = 32;
+const ACCUMULATED_DIFFICULTY_BYTE_SIZE: usize = 64;
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        if metadata.accumulated_difficulty.len() != ACCUMULATED_DIFFICULTY_BYTE_SIZE {
+        if metadata.accumulated_difficulty.len() > ACCUMULATED_DIFFICULTY_BYTE_SIZE {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
                 ACCUMULATED_DIFFICULTY_BYTE_SIZE,
@@ -40,7 +40,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             ));
         }
 
-        let accumulated_difficulty = U256::from_big_endian(&metadata.accumulated_difficulty);
+        let accumulated_difficulty = U512::from_big_endian(&metadata.accumulated_difficulty);
         let best_block_height = metadata.best_block_height;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
@@ -56,6 +56,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             .best_block_hash
             .try_into()
             .map_err(|e| format!("Malformed best block: {}", e))?;
+
         ChainMetadata::new(
             best_block_height,
             hash,

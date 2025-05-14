@@ -56,7 +56,7 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not
 /// contain valid Monero PoW data.
-pub fn randomx_difficulty(
+pub fn monero_randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
     genesis_block_hash: &FixedHash,
@@ -67,6 +67,18 @@ pub fn randomx_difficulty(
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key(), None, None)?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
+}
+
+pub fn tari_randomx_difficulty(
+    header: &BlockHeader,
+    randomx_factory: &RandomXFactory,
+    vm_key: &FixedHash,
+) -> Result<Difficulty, MergeMineError> {
+    let vm = randomx_factory.create(vm_key.as_slice(), None, None)?;
+    let mut blob = header.nonce.to_le_bytes().to_vec();
+    blob.extend_from_slice(header.mining_hash().as_slice());
+    blob.extend_from_slice(&header.pow.to_bytes());
+    get_random_x_difficulty(&blob, &vm).map(|(diff, _)| diff)
 }
 
 /// Calculate the RandomX mining hash using the virtual machine together with the achieved difficulty
@@ -598,7 +610,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -707,7 +719,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -779,7 +791,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -856,7 +868,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -953,7 +965,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -1091,7 +1103,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -1149,7 +1161,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;
@@ -1226,7 +1238,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::RandomX,
+            pow_algo: PowAlgorithm::RandomXM,
             pow_data: PowData::try_from(serialized).unwrap(),
         };
         block_header.pow = pow;

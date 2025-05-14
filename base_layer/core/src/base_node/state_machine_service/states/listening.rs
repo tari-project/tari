@@ -520,7 +520,8 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
-    use primitive_types::U256;
+
+    use primitive_types::U512;
     use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
@@ -539,7 +540,7 @@ mod test {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
             29, 30, 31,
         ]);
-        let accumulated_difficulty = U256::from(10000);
+        let accumulated_difficulty = U512::from(10000);
 
         let archival_node = PeerChainMetadata::new(
             random_node_id(),
@@ -554,7 +555,7 @@ mod test {
                 block_hash,
                 0,
                 0,
-                accumulated_difficulty - U256::from(1000),
+                accumulated_difficulty - U512::from(1000),
                 0,
             )
             .unwrap(),

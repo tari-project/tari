@@ -387,13 +387,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
             debug!(
                 target: LOG_TARGET,
-                "Block body #{} added in {:.0?}, Tot_acc_diff {}, Monero {}, SHA3 {}, latency: {:.2?}",
+                "Block body #{} added in {:.0?}, Tot_acc_diff {}, MoneroRX {}, TariRx {}, SHA3 {}, latency: {:.2?}",
                 block.height(),
                 timer.elapsed(),
                 block
                     .accumulated_data()
                     .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_randomx_difficulty,
+                block.accumulated_data().accumulated_monero_randomx_difficulty,
+                block.accumulated_data().accumulated_tari_randomx_difficulty,
                 block.accumulated_data().accumulated_sha3x_difficulty,
                 latency
             );

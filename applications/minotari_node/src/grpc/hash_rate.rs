@@ -27,10 +27,7 @@ use tari_core::{
     proof_of_work::{Difficulty, PowAlgorithm},
 };
 
-/// The number of past blocks to be used on moving averages for (smooth) estimated hashrate
-/// We consider a 60 minute time window reasonable, that means 12 SHA3 blocks and 18 Monero blocks
-const SHA3X_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
-const RANDOMX_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 18;
+const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
@@ -43,10 +40,7 @@ pub struct HashRateMovingAverage {
 
 impl HashRateMovingAverage {
     pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
-        let window_size = match pow_algo {
-            PowAlgorithm::RandomX => RANDOMX_HASH_RATE_MOVING_AVERAGE_WINDOW,
-            PowAlgorithm::Sha3x => SHA3X_HASH_RATE_MOVING_AVERAGE_WINDOW,
-        };
+        let window_size = HASH_RATE_MOVING_AVERAGE_WINDOW;
         let hash_rates = VecDeque::with_capacity(window_size);
 
         Self {
@@ -166,7 +160,7 @@ mod test {
     #[test]
     fn should_not_overflow() {
         let mut sha3x_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
-        let mut randomx_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::RandomX);
+        let mut randomx_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::RandomXM);
         try_to_overflow(&mut sha3x_hash_rate_ma);
         try_to_overflow(&mut randomx_hash_rate_ma);
     }

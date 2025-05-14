@@ -173,7 +173,9 @@ async fn propagate_and_forward_many_valid_blocks() {
             &block0,
             vec![tx01],
             &rules,
-            Difficulty::min(),
+            rules
+                .consensus_constants(block0.height())
+                .min_pow_difficulty(PowAlgorithm::Sha3x),
             &key_manager,
         )
         .await
@@ -300,7 +302,7 @@ async fn propagate_and_forward_invalid_block_hash() {
         &block0,
         txs,
         &rules,
-        Difficulty::min(),
+        Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
     .await
@@ -457,7 +459,7 @@ async fn propagate_and_forward_invalid_block() {
         &block0,
         vec![],
         &rules,
-        Difficulty::min(),
+        Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
     .await
