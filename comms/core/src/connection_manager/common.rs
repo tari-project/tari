@@ -198,8 +198,7 @@ pub(super) fn validate_peer_identity_message(
 
     let peer_identity_claim = PeerIdentityClaim {
         addresses,
-        features: PeerFeatures::from_bits_u32_truncate(features)
-            .ok_or(PeerManagerError::InvalidPeerFeatures { bits: features })?,
+        features: PeerFeatures::from_bits(features).ok_or(PeerManagerError::InvalidPeerFeatures { bits: features })?,
         signature: identity_signature
             .ok_or(PeerManagerError::MissingIdentitySignature)?
             .try_into()?,

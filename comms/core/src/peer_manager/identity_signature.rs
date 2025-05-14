@@ -137,6 +137,8 @@ impl IdentitySignature {
         addresses: I,
         updated_at: DateTime<Utc>,
     ) -> DomainSeparatedHasher<Blake2b<U64>, CommsCorePeerManagerDomain> {
+        let addresses = addresses.into_iter().collect::<Vec<_>>();
+
         // e = H(P||R||m)
         let challenge = comms_core_peer_manager_domain::<Blake2b<U64>>(IDENTITY_SIGNATURE)
             .chain(public_key.as_bytes())

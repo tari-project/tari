@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 bitflags! {
     /// Peer feature flags. These advertised the capabilities of peer nodes.
     #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
-    pub struct PeerFeatures: u8 {
+    pub struct PeerFeatures: u32 {
         /// No capabilities
         const NONE = 0b0000_0000;
         /// Node is able to propagate messages
@@ -65,15 +65,9 @@ impl PeerFeatures {
         }
     }
 
-    /// Creates a new Option<Self> instance from a u32 value. It truncates a u32 to its least significant 8 bits and
-    /// then returns 'PeerFeatures::from_bits(u8_val)'.
-    pub fn from_bits_u32_truncate(value: u32) -> Option<Self> {
-        PeerFeatures::from_bits(u8::try_from(value & 0b1111_1111).expect("will not fail"))
-    }
-
     /// Returns the bits of the PeerFeatures as an i32
     pub fn to_i32(&self) -> i32 {
-        i32::from_le_bytes([self.bits(), 0, 0, 0])
+        i32::try_from(self.bits()).unwrap_or_default()
     }
 }
 

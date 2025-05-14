@@ -50,7 +50,7 @@ impl From<Peer> for grpc::Peer {
             .offline_at()
             .map(|f| f.and_utc().timestamp() as u64)
             .unwrap_or_default();
-        let features = peer.features.bits().into();
+        let features = peer.features.bits();
 
         let supported_protocols = peer.supported_protocols.into_iter().map(|p| p.to_vec()).collect();
         let user_agent = peer.user_agent;

@@ -1536,7 +1536,7 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer features are invalid".to_string()))?,
             peer_query.banned_until,
             peer_query.banned_reason.unwrap_or_default(),
-            PeerFeatures::from_bits_u32_truncate(u32::try_from(peer_query.features)?)
+            PeerFeatures::from_bits(u32::try_from(peer_query.features)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer features are invalid".to_string()))?,
             deserialize_protocols(&peer_query.supported_protocols),
             peer_query.added_at,

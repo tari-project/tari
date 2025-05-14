@@ -567,6 +567,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
         let peer_manager = create_peer_manager();

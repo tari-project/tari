@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::Error;
-use std::num::TryFromIntError;
+use std::{io::Error, num::TryFromIntError};
 
 use diesel::r2d2;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};

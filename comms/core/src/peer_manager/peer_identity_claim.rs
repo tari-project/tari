@@ -67,9 +67,10 @@ impl TryFrom<PeerIdentityMsg> for PeerIdentityClaim {
         if addresses.is_empty() {
             return Err(PeerManagerError::PeerIdentityNoValidAddresses);
         }
-        let features = PeerFeatures::from_bits_u32_truncate(value.features).ok_or(PeerManagerError::ProtocolError(
-            format!("Invalid message flag, does not match any flags ({})", value.features),
-        ))?;
+        let features = PeerFeatures::from_bits(value.features).ok_or(PeerManagerError::ProtocolError(format!(
+            "Invalid message flag, does not match any flags ({})",
+            value.features
+        )))?;
 
         if let Some(signature) = value.identity_signature {
             Ok(Self {

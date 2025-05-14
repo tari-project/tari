@@ -145,7 +145,7 @@ impl JoinMessage {
         Self {
             public_key: node_identity.public_key().to_vec(),
             addresses: raw_addresses,
-            peer_features: node_identity.features().bits().into(),
+            peer_features: node_identity.features().bits(),
             nonce: OsRng.next_u64(),
             identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
         }

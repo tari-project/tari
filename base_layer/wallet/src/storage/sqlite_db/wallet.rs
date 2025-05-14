@@ -304,7 +304,7 @@ impl WalletSqliteDatabase {
     fn get_comms_features(&self, conn: &mut SqliteConnection) -> Result<Option<PeerFeatures>, WalletStorageError> {
         if let Some(key_str) = WalletSettingSql::get(&DbKey::CommsFeatures, conn)? {
             let features = u32::from_str(&key_str).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-            let peer_features = PeerFeatures::from_bits_u32_truncate(features);
+            let peer_features = PeerFeatures::from_bits(features);
             Ok(peer_features)
         } else {
             Ok(None)

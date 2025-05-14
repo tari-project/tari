@@ -347,7 +347,7 @@ impl DhtDiscoveryService {
                 .into_iter()
                 .map(|a| a.to_vec())
                 .collect(),
-            peer_features: self.node_identity.features().bits().into(),
+            peer_features: self.node_identity.features().bits(),
             nonce,
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
