@@ -7518,7 +7518,6 @@ dependencies = [
  "futures 0.3.31",
  "hex",
  "hickory-proto",
- "http 0.2.12",
  "integer-encoding",
  "jmt",
  "lmdb-zero",
@@ -7571,6 +7570,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "tracing",
+ "url",
  "zeroize",
 ]
 

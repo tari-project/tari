@@ -63,8 +63,8 @@ pub enum UtxoScannerError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Connectivity has shut down")]
     ConnectivityShutdown,
-    #[error("Base node wallet query service client error: `{0}`")]
-    BaseNodeWalletQueryServiceClient(#[from] base_node::rpc::BaseNodeWalletQueryServiceClient::Error),
+    #[error("Base node wallet query service client error: `{0:?}`")]
+    BaseNodeWalletQueryServiceClient(#[from] <base_node::rpc::http::client::Client as base_node::rpc::BaseNodeWalletQueryServiceClient>::Error),
 }
 
 impl From<HexError> for UtxoScannerError {

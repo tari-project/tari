@@ -37,6 +37,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
+use tari_core::base_node::rpc::create_base_node_wallet_query_http_server;
 use tari_core::{
     base_node::{
         self,
@@ -87,7 +88,8 @@ pub struct BaseNodeBootstrapper<'a, B> {
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
@@ -183,7 +185,7 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config, self.interrupt_signal.clone()).await;
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let tor_id_path = base_node_config.tor_identity_file.clone();
@@ -218,22 +220,24 @@ where B: BlockchainBackend + 'static
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
-            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
+            TransportType::Tcp => {} // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-            },
+            }
         };
 
         handles.register(comms);
+
         Ok(handles)
     }
 
-    fn setup_rpc_services(
+    async fn setup_rpc_services(
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         config: &P2pConfig,
+        shutdown_signal: ShutdownSignal,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -254,12 +258,23 @@ where B: BlockchainBackend + 'static
                 handles.expect_handle::<MempoolHandle>(),
             ))
             .add_service(base_node::rpc::create_base_node_wallet_rpc_service(
-                db,
+                db.clone(),
                 handles.expect_handle::<MempoolHandle>(),
                 handles.expect_handle::<StateMachineHandle>(),
             ));
 
         handles.register(rpc_server.get_handle());
+
+        // wallet query http server
+        let wallet_query_http_server = create_base_node_wallet_query_http_server(
+            9999, // TODO: get from config
+            db.clone(),
+            handles.expect_handle::<StateMachineHandle>(),
+            shutdown_signal.clone(),
+        );
+        if let Ok(_) = wallet_query_http_server.start().await {
+            handles.register(wallet_query_http_server);
+        }
 
         comms.add_protocol_extension(rpc_server)
     }

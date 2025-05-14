@@ -26,11 +26,7 @@ mod service;
 pub mod sync_utxos_by_block_task;
 pub mod http;
 
-#[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
+use crate::base_node::rpc::http::models;
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
 #[cfg(feature = "base_node")]
@@ -61,12 +57,18 @@ use crate::{
         types::{Signature, Transaction},
     },
 };
+#[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+use std::fmt::Debug;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
+use tari_shutdown::ShutdownSignal;
 
 /// Trait that a base node wallet query service must implement.
 /// Please note that this service is to fetch data, so read-only queries.
 #[async_trait::async_trait]
 pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
-    type Error;
+    type Error: Debug;
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
 }
@@ -75,9 +77,9 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 /// This is the client side of [`BaseNodeWalletQueryService`].
 #[async_trait::async_trait]
 pub trait BaseNodeWalletQueryServiceClient: Send + Sync + 'static {
-    type Error;
+    type Error: Debug;
 
-    async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
+    async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Self::Error>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
@@ -149,3 +151,15 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
 ) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>> {
     BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine))
 }
+
+#[cfg(feature = "base_node")]
+pub fn create_base_node_wallet_query_http_server<B: BlockchainBackend + 'static>(
+    port: u16,
+    db: AsyncBlockchainDb<B>,
+    state_machine: StateMachineHandle,
+    shutdown_signal: ShutdownSignal,
+) -> http::server::Server<impl BaseNodeWalletQueryService> {
+    http::server::Server::new(port, http::query_service::Service::new(db, state_machine), shutdown_signal)
+}
+
+
