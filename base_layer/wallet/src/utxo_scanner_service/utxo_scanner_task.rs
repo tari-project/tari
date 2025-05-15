@@ -25,6 +25,36 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::{DateTime, Utc};
+use futures::StreamExt;
+use log::*;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{ImportStatus, TxId},
+    types::HashOutput,
+    wallet_types::WalletType,
+};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::RpcClientLease,
+    types::CommsPublicKey,
+    Minimized,
+    PeerConnection,
+};
+use tari_core::{
+    base_node::rpc::{BaseNodeWalletQueryServiceClient, BaseNodeWalletRpcClient},
+    blocks::BlockHeader,
+    proto::base_node::SyncUtxosByBlockRequest,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
+    },
+};
+use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
+use tokio::sync::broadcast;
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -38,32 +68,6 @@ use crate::{
         RECOVERY_KEY,
     },
 };
-use chrono::{DateTime, Utc};
-use futures::StreamExt;
-use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::{ImportStatus, TxId},
-    types::HashOutput,
-    wallet_types::WalletType,
-};
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    traits::OrOptional,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
-use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClient;
-use tari_core::{base_node::rpc::BaseNodeWalletRpcClient, blocks::BlockHeader, proto, proto::base_node::SyncUtxosByBlockRequest, transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
-}};
-use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
-use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
-use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
@@ -79,7 +83,8 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClie
     pub birthday_offset: u16,
     pub wallet_query_service_client: WalletQueryServiceClient,
 }
-impl<TBackend, TWalletConnectivity, WalletQueryServiceClient> UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+impl<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+    UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -110,7 +115,7 @@ where
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
                         return Ok(());
-                    }
+                    },
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
@@ -122,7 +127,7 @@ where
                             error: e.to_string(),
                         });
                         continue;
-                    }
+                    },
                 },
                 None => {
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
@@ -142,7 +147,7 @@ where
                     self.num_retries += 1;
                     // Reset peer index to try connect to the first peer again
                     self.peer_index = 0;
-                }
+                },
             }
         }
     }
@@ -199,7 +204,7 @@ where
                 }
 
                 Err(e.into())
-            }
+            },
         }
     }
 
@@ -248,7 +253,10 @@ where
                     ));
                 }
 
-                let next_header = self.wallet_query_service_client.get_header_by_height(last_scanned_block.height + 1).await?;
+                let next_header = self
+                    .wallet_query_service_client
+                    .get_header_by_height(last_scanned_block.height + 1)
+                    .await?;
                 let next_header_hash = next_header.hash();
 
                 ScannedBlock {
@@ -266,7 +274,7 @@ where
                     Some(WalletType::ProvidedKeys(wallet)) => {
                         self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
                             .await?
-                    }
+                    },
                     _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
                 };
 
@@ -332,20 +340,18 @@ where
         Ok(RpcClientLease::new(client))
     }
 
-    async fn get_chain_tip_header(
-        &self,
-    ) -> Result<BlockHeader, UtxoScannerError> {
+    async fn get_chain_tip_header(&self) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = self.wallet_query_service_client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.best_block_height).unwrap_or(0);
-        let end_header = self.wallet_query_service_client.get_header_by_height(chain_height).await?;
+        let end_header = self
+            .wallet_query_service_client
+            .get_header_by_height(chain_height)
+            .await?;
 
         Ok(end_header)
     }
 
-    async fn get_last_scanned_block(
-        &self,
-        current_tip_height: u64,
-    ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
+    async fn get_last_scanned_block(&self, current_tip_height: u64) -> Result<Option<ScannedBlock>, UtxoScannerError> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
@@ -374,7 +380,11 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = self.wallet_query_service_client.get_header_by_height(sb.height).await.ok();
+                let header = self
+                    .wallet_query_service_client
+                    .get_header_by_height(sb.height)
+                    .await
+                    .ok();
                 match header {
                     Some(header) => {
                         let header_hash = header.hash();
@@ -383,10 +393,10 @@ where
                         } else {
                             last_missing_scanned_block = Some(sb.clone());
                         }
-                    }
+                    },
                     None => {
                         last_missing_scanned_block = Some(sb.clone());
-                    }
+                    },
                 }
             }
             // Sum up the number of outputs recovered starting from the first found block
@@ -648,17 +658,17 @@ where
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
                     total_amount += wo.value;
-                }
+                },
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                                                             TransactionStorageError::DuplicateOutput,
-                                                         ))) => {
+                    TransactionStorageError::DuplicateOutput,
+                ))) => {
                     info!(
                         target: LOG_TARGET,
                         "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         tx_id
                     );
-                }
+                },
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
         }
@@ -757,7 +767,10 @@ where
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        let header = self.wallet_query_service_client.get_header_by_height(block_height_scanning_start).await?;
+        let header = self
+            .wallet_query_service_client
+            .get_header_by_height(block_height_scanning_start)
+            .await?;
         let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,

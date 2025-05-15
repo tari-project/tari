@@ -1,5 +1,6 @@
-use crate::proto;
 use serde::{Deserialize, Serialize};
+
+use crate::proto;
 
 #[derive(Serialize, Deserialize)]
 pub struct ChainMetadata {

@@ -20,22 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod http;
+pub mod models;
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
-pub mod http;
-pub mod models;
+
+use std::{error::Error, fmt::Debug, net::SocketAddr};
+
+#[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
+use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
-use crate::blocks::BlockHeader;
-#[cfg(feature = "base_node")]
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
-};
-use crate::{
+    blocks::BlockHeader,
     proto,
     proto::{
         base_node::{
@@ -59,14 +63,10 @@ use crate::{
     },
 };
 #[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
-use std::error::Error;
-use std::fmt::Debug;
-use std::net::SocketAddr;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_shutdown::ShutdownSignal;
-use thiserror::Error;
+use crate::{
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::service::MempoolHandle,
+};
 
 /// Trait that a base node wallet query service must implement.
 /// Please note that this service is to fetch data, so read-only queries.
@@ -76,9 +76,7 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
 
-    async fn get_header_by_height(
-        &self, height: u64,
-    ) -> Result<BlockHeader, Self::Error>;
+    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error>;
 }
 
 #[derive(Debug, Error)]
@@ -95,9 +93,7 @@ pub enum BaseNodeWalletQueryServiceClientError {
 pub trait BaseNodeWalletQueryServiceClient: Send + Sync + Clone + 'static {
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, BaseNodeWalletQueryServiceClientError>;
 
-    async fn get_header_by_height(
-        &self, height: u64,
-    ) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError>;
+    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
@@ -177,7 +173,9 @@ pub fn create_base_node_wallet_query_http_server<B: BlockchainBackend + 'static>
     state_machine: StateMachineHandle,
     shutdown_signal: ShutdownSignal,
 ) -> http::server::Server<impl BaseNodeWalletQueryService> {
-    http::server::Server::new(listen_address, http::query_service::Service::new(db, state_machine), shutdown_signal)
+    http::server::Server::new(
+        listen_address,
+        http::query_service::Service::new(db, state_machine),
+        shutdown_signal,
+    )
 }
-
-

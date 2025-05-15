@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::NaiveDateTime;
+use futures::FutureExt;
+use log::*;
+use tari_common_types::{tari_address::TariAddress, types::HashOutput};
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use tari_core::{
+    base_node::rpc::BaseNodeWalletQueryServiceClient,
+    transactions::{tari_amount::MicroMinotari, CryptoFactories},
+};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    sync::{broadcast, watch},
+    task,
+};
+
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
@@ -32,18 +47,6 @@ use crate::{
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
     },
-};
-use chrono::NaiveDateTime;
-use futures::FutureExt;
-use log::*;
-use tari_common_types::{tari_address::TariAddress, types::HashOutput};
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClient;
-use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    sync::{broadcast, watch},
-    task,
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
@@ -64,7 +67,8 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceC
     wallet_query_service_client: WalletQueryServiceClient,
 }
 
-impl<TBackend, TWalletConnectivity, WalletQueryServiceClient> UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+impl<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+    UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -96,7 +100,10 @@ where
         }
     }
 
-    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
+    fn create_task(
+        &self,
+        shutdown_signal: ShutdownSignal,
+    ) -> UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             peer_seeds: self.peer_seeds.clone(),
@@ -143,7 +150,7 @@ where
                     error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
                 }
             })
-                .fuse();
+            .fuse();
 
             loop {
                 tokio::select! {

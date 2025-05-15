@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use reqwest::Url;
-use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
 use std::{
+    net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
 };
+
+use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
         deserialize_dns_name_server_list,
@@ -93,11 +93,11 @@ impl Default for PeerSeedsConfig {
                     Network::get_current_or_user_setting_or_default().as_key_str()
                 ),
             ]
-                .into(),
+            .into(),
             dns_seed_name_servers: DnsNameServerList::from_str(
                 "system, 1.1.1.1:853/cloudflare-dns.com, 8.8.8.8:853/dns.google, 9.9.9.9:853/dns.quad9.net",
             )
-                .expect("string is valid"),
+            .expect("string is valid"),
             dns_seeds_use_dnssec: false,
         }
     }
@@ -206,15 +206,6 @@ impl P2pConfig {
         }
         self.dht.set_base_path(base_path)
     }
-
-    /// Returns the base node wallet query service address as a URL.
-    pub fn base_node_http_wallet_query_service_url(&self) -> Url {
-        Url::parse(
-            format!("http://{}:{}/",
-                    self.base_node_http_wallet_query_service_listen_address.ip(),
-                    self.base_node_http_wallet_query_service_listen_address.port()).as_str()
-        ).expect("Invalid wallet service address")
-    }
 }
 
 #[cfg(test)]
@@ -312,6 +303,6 @@ mod test {
         assert_eq!(config.dns_seed_name_servers.into_vec(), vec![DnsNameServer::from_str(
             "system"
         )
-                                                                     .unwrap(), ]);
+        .unwrap(),]);
     }
 }

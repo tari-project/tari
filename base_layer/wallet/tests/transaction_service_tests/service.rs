@@ -171,6 +171,7 @@ use tokio::{
     task,
     time::sleep,
 };
+use url::Url;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -283,6 +284,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             factories.clone(),
             Network::LocalNet,
             14,
+            Url::parse("http://127.0.0.1:9000").expect("Invalid URL"),
         ))
         .build()
         .await

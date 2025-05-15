@@ -295,7 +295,7 @@ dependencies = [
  "matchit 0.7.3",
  "memchr",
  "mime",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project-lite",
  "rustversion",
  "serde",
@@ -324,7 +324,7 @@ dependencies = [
  "matchit 0.8.4",
  "memchr",
  "mime",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project-lite",
  "rustversion",
  "serde",
@@ -2341,7 +2341,7 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
- "percent-encoding 2.3.1",
+ "percent-encoding",
 ]
 
 [[package]]
@@ -2596,7 +2596,7 @@ dependencies = [
  "libc",
  "libgit2-sys",
  "log",
- "url 2.5.4",
+ "url",
 ]
 
 [[package]]
@@ -2833,7 +2833,7 @@ dependencies = [
  "futures-channel",
  "futures-io",
  "futures-util",
- "idna 1.0.3",
+ "idna",
  "ipnet",
  "once_cell",
  "rand 0.9.1",
@@ -2845,7 +2845,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tracing",
- "url 2.5.4",
+ "url",
 ]
 
 [[package]]
@@ -3316,17 +3316,6 @@ name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
-
-[[package]]
-name = "idna"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38f09e0f0b1fb55fdee1f17470ad800da77af5186a1a76c026b679358b7e844e"
-dependencies = [
- "matches",
- "unicode-bidi",
- "unicode-normalization",
-]
 
 [[package]]
 name = "idna"
@@ -3991,12 +3980,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matches"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
-
-[[package]]
 name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4226,7 +4209,7 @@ dependencies = [
  "tui",
  "unicode-segmentation",
  "unicode-width",
- "url 2.5.4",
+ "url",
  "zeroize",
  "zxcvbn",
 ]
@@ -4300,7 +4283,7 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "tracing",
- "url 2.5.4",
+ "url",
 ]
 
 [[package]]
@@ -4460,8 +4443,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tower 0.4.13",
- "url 2.5.4",
- "url_serde",
+ "url",
  "zeroize",
 ]
 
@@ -4603,11 +4585,11 @@ dependencies = [
  "byteorder",
  "data-encoding",
  "multihash",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "serde",
  "static_assertions",
  "unsigned-varint",
- "url 2.5.4",
+ "url",
 ]
 
 [[package]]
@@ -5198,12 +5180,6 @@ checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
 dependencies = [
  "base64ct",
 ]
-
-[[package]]
-name = "percent-encoding"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 
 [[package]]
 name = "percent-encoding"
@@ -6117,7 +6093,7 @@ dependencies = [
  "mime",
  "native-tls",
  "once_cell",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project-lite",
  "rustls-pemfile 1.0.4",
  "serde",
@@ -6128,7 +6104,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tower-service",
- "url 2.5.4",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -6160,7 +6136,7 @@ dependencies = [
  "mime",
  "native-tls",
  "once_cell",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project-lite",
  "rustls-pemfile 2.2.0",
  "serde",
@@ -6172,7 +6148,7 @@ dependencies = [
  "tokio-native-tls",
  "tower 0.5.2",
  "tower-service",
- "url 2.5.4",
+ "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -7595,7 +7571,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "tracing",
- "url 2.5.4",
+ "url",
  "zeroize",
 ]
 
@@ -8273,7 +8249,7 @@ dependencies = [
  "hyper 1.5.1",
  "hyper-timeout",
  "hyper-util",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project 1.1.7",
  "prost 0.13.4",
  "socket2",
@@ -8302,7 +8278,7 @@ dependencies = [
  "hyper 1.5.1",
  "hyper-timeout",
  "hyper-util",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project 1.1.7",
  "prost 0.13.4",
  "rustls-native-certs",
@@ -8546,12 +8522,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e51b68083f157f853b6379db119d1c1be0e6e4dec98101079dec41f6f5cf6df"
 
 [[package]]
-name = "unicode-bidi"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c1cb5db39152898a79168971543b1cb5020dff7fe43c8dc468b0885f5e29df5"
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8562,15 +8532,6 @@ name = "unicode-linebreak"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
-
-[[package]]
-name = "unicode-normalization"
-version = "0.1.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5033c97c4262335cded6d6fc3e5c18ab755e1a3dc96376350f3d8e9f009ad956"
-dependencies = [
- "tinyvec",
-]
 
 [[package]]
 name = "unicode-segmentation"
@@ -8629,34 +8590,14 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "1.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd4e7c0d531266369519a4aa4f399d748bd37043b00bde1e4ff1f60a120b355a"
-dependencies = [
- "idna 0.1.5",
- "matches",
- "percent-encoding 1.0.1",
-]
-
-[[package]]
-name = "url"
 version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32f8b686cadd1473f4bd0117a5d28d36b1ade384ea9b5069a1c40aefed7fda60"
 dependencies = [
  "form_urlencoded",
- "idna 1.0.3",
- "percent-encoding 2.3.1",
-]
-
-[[package]]
-name = "url_serde"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74e7d099f1ee52f823d4bdd60c93c3602043c728f5db3b97bdb548467f7bddea"
-dependencies = [
+ "idna",
+ "percent-encoding",
  "serde",
- "url 1.7.2",
 ]
 
 [[package]]
@@ -8764,7 +8705,7 @@ dependencies = [
  "log",
  "mime",
  "mime_guess",
- "percent-encoding 2.3.1",
+ "percent-encoding",
  "pin-project 1.1.7",
  "scoped-tls",
  "serde",

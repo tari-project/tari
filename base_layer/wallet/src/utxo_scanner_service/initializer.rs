@@ -22,6 +22,19 @@
 
 use std::marker::PhantomData;
 
+use futures::future;
+use log::*;
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_core::{
+    base_node::rpc::http::client::Client,
+    transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories},
+};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::broadcast;
+use url::Url;
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::WalletConnectivityHandle,
@@ -35,17 +48,6 @@ use crate::{
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
-use futures::future;
-use log::*;
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_core::base_node::rpc::http::client::Client;
-use tari_core::transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories};
-use tari_p2p::P2pConfig;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::broadcast;
-use url::Url;
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
 
@@ -59,17 +61,22 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
 }
 
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
-where
-    T: WalletBackend + 'static,
+where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network, birthday_offset: u16, p2p_config: &P2pConfig) -> Self {
+    pub fn new(
+        backend: WalletDatabase<T>,
+        factories: CryptoFactories,
+        network: Network,
+        birthday_offset: u16,
+        wallet_query_service_client_url: Url,
+    ) -> Self {
         Self {
             backend: Some(backend),
             factories,
             network,
             phantom: PhantomData,
             birthday_offset,
-            wallet_query_service_client_url: p2p_config.base_node_http_wallet_query_service_url(),
+            wallet_query_service_client_url,
         }
     }
 }
@@ -128,7 +135,7 @@ where
                 TariAddressFeatures::create_one_sided_only(),
                 None,
             )
-                .expect("Could not create one-sided Tari address");
+            .expect("Could not create one-sided Tari address");
 
             let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle, Client>::builder()
                 .with_peers(vec![])

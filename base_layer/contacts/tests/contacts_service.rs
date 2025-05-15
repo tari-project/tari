@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    convert::TryInto,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::{MultiaddrList, Network, StringList};
@@ -92,6 +97,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         rpc_max_sessions_per_peer: 0,
         listener_self_liveness_check_interval: None,
         cull_oldest_peer_rpc_connection_on_full: true,
+        base_node_http_wallet_query_service_listen_address: SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 9000),
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();

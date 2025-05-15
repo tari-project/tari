@@ -66,8 +66,7 @@ prost = "0.13.3"
 itertools = "0.10.3"
 chacha20poly1305 = "0.10.1"
 zeroize = "1"
-url = "2.5.4"
-url_serde = "0.2.0"
+url = { version = "2.5.4", features = ["default", "serde"] }
 
 [build-dependencies]
 tari_common = { workspace = true, features = [

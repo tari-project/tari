@@ -1,4 +1,3 @@
-
 ########################################################################################################################
 #                                                                                                                      #
 #                      Wallet Configuration Options (WalletConfig)                                                     #
@@ -101,6 +100,10 @@
 #balance_enquiry_cooldown_period = 5
 #The defaul offset for scanning from the birthday, it will start at the birthday - the offset
 #birthday_offset = 2
+#URL of the base node wallet query service.
+#Default: http://127.0.0.1:9000
+#base_node_http_wallet_query_service_url = "http://127.0.0.1:9000"
+
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)

@@ -469,10 +469,10 @@ pub async fn discover_peer(
         Ok(peer) => {
             println!("⚡️ Discovery succeeded in {}ms.", start.elapsed().as_millis());
             println!("{}", peer);
-        }
+        },
         Err(err) => {
             println!("💀 Discovery failed: '{:?}'", err);
-        }
+        },
     }
 
     Ok(())
@@ -579,7 +579,7 @@ pub async fn make_it_rain(
                     let tx_id = match transaction_type {
                         MakeItRainTransactionType::Interactive => {
                             send_tari(tx_service, fee, amount, address.clone(), payment_id_clone).await
-                        }
+                        },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
                                 tx_service,
@@ -589,8 +589,8 @@ pub async fn make_it_rain(
                                 address.clone(),
                                 payment_id_clone,
                             )
-                                .await
-                        }
+                            .await
+                        },
                         MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
                             .await
                             .map(|(tx_id, _)| tx_id),
@@ -630,7 +630,7 @@ pub async fn make_it_rain(
                         send_stats.delayed_for.as_millis(),
                         send_stats.submit_time.as_millis()
                     );
-                }
+                },
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
@@ -639,7 +639,7 @@ pub async fn make_it_rain(
                         transaction_type,
                         e.to_string(),
                     );
-                }
+                },
             }
         }
         debug!(
@@ -685,7 +685,7 @@ pub async fn monitor_transactions(
                             break;
                         }
                     }
-                }
+                },
                 TransactionEvent::ReceivedTransactionReply(id) if tx_ids.contains(id) => {
                     debug!(target: LOG_TARGET, "tx reply event for tx_id: {}", *id);
                     if wait_stage == TransactionStage::Negotiated {
@@ -694,7 +694,7 @@ pub async fn monitor_transactions(
                             break;
                         }
                     }
-                }
+                },
                 TransactionEvent::TransactionBroadcast(id) if tx_ids.contains(id) => {
                     debug!(target: LOG_TARGET, "tx mempool broadcast event for tx_id: {}", *id);
                     if wait_stage == TransactionStage::Broadcast {
@@ -703,7 +703,7 @@ pub async fn monitor_transactions(
                             break;
                         }
                     }
-                }
+                },
                 TransactionEvent::TransactionMinedUnconfirmed {
                     tx_id,
                     num_confirmations,
@@ -722,7 +722,7 @@ pub async fn monitor_transactions(
                             break;
                         }
                     }
-                }
+                },
                 TransactionEvent::TransactionMined { tx_id, is_valid } if tx_ids.contains(tx_id) => {
                     debug!(
                         target: LOG_TARGET,
@@ -734,8 +734,8 @@ pub async fn monitor_transactions(
                             break;
                         }
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             },
             // All event senders have gone (i.e. we take it that the node is shutting down)
             Err(broadcast::error::RecvError::Closed) => {
@@ -744,10 +744,10 @@ pub async fn monitor_transactions(
                     "All Transaction event senders have gone. Exiting `monitor_transactions` loop."
                 );
                 break;
-            }
+            },
             Err(err) => {
                 warn!(target: LOG_TARGET, "monitor_transactions: {}", err);
-            }
+            },
         }
     }
 
@@ -792,7 +792,7 @@ pub async fn command_runner(
                 Ok(balance) => {
                     debug!(target: LOG_TARGET, "get-balance concluded");
                     println!("{}", balance);
-                }
+                },
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
             DiscoverPeer(args) => {
@@ -800,17 +800,17 @@ pub async fn command_runner(
                     match wait_for_comms(&connectivity_requester).await {
                         Ok(..) => {
                             online = true;
-                        }
+                        },
                         Err(e) => {
                             eprintln!("DiscoverPeer error! {}", e);
                             continue;
-                        }
+                        },
                     }
                 }
                 if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
                     eprintln!("DiscoverPeer error! {}", e);
                 }
-            }
+            },
             BurnMinotari(args) => {
                 match burn_tari(
                     transaction_service.clone(),
@@ -818,7 +818,7 @@ pub async fn command_runner(
                     args.amount,
                     PaymentId::open_from_string(&args.payment_id, TxType::Burn),
                 )
-                    .await
+                .await
                 {
                     Ok((tx_id, proof)) => {
                         debug!(target: LOG_TARGET, "burn minotari concluded with tx_id {}", tx_id);
@@ -830,10 +830,10 @@ pub async fn command_runner(
                         println!("ownership_proof: {:?}", proof.ownership_proof);
                         println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
-                    }
+                    },
                     Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
-            }
+            },
             PreMineSpendGetOutputStatus => {
                 let pre_mine_outputs = get_all_embedded_pre_mine_outputs()?;
                 let output_hashes: Vec<HashOutput> = pre_mine_outputs.iter().map(|v| v.hash()).collect();
@@ -844,7 +844,7 @@ pub async fn command_runner(
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
                         return Ok(false);
-                    }
+                    },
                 };
 
                 let (session_id, out_dir) = match create_pre_mine_output_dir(Some("pre_mine_status")) {
@@ -852,7 +852,7 @@ pub async fn command_runner(
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
                         return Ok(false);
-                    }
+                    },
                 };
                 let csv_file_name = "pre_mine_items_with_status.csv";
                 let csv_out_file = out_dir.join(csv_file_name);
@@ -880,7 +880,7 @@ pub async fn command_runner(
                             item.beneficiary,
                             if unspent { "unspent" } else { "spent" },
                         )
-                            .as_bytes(),
+                        .as_bytes(),
                     ) {
                         eprintln!("\nError: Could not write pre-mine item ({})\n", e);
                         return Ok(false);
@@ -893,7 +893,7 @@ pub async fn command_runner(
                 println!("Your session's output directory is:    '{}'", out_dir.display());
                 println!("Pre-mine output spent status saved to: '{}'", csv_file_name);
                 println!();
-            }
+            },
             PreMineStart(args) => {
                 let args_recipient_info = sort_args_recipient_info(args.recipient_info);
                 if let Err(e) = verify_no_duplicate_indexes(&args_recipient_info) {
@@ -911,7 +911,7 @@ pub async fn command_runner(
                                 eprintln!("\nError: {}\n", e);
                                 error = true;
                                 break;
-                            }
+                            },
                         };
                         let output_hashes = embedded_outputs.iter().map(|v| v.hash()).collect::<Vec<_>>();
 
@@ -947,7 +947,7 @@ pub async fn command_runner(
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
                         return Ok(false);
-                    }
+                    },
                 };
                 let session_info = PreMineSpendStep1SessionInfo {
                     session_id: session_id.clone(),
@@ -968,14 +968,14 @@ pub async fn command_runner(
                     get_file_name(SPEND_SESSION_INFO, None)
                 );
                 println!();
-            }
+            },
             PreMineSpendBackupUtxo(args) => {
                 match *key_manager_service.get_wallet_type().await {
-                    WalletType::Ledger(_) => {}
+                    WalletType::Ledger(_) => {},
                     _ => {
                         eprintln!("\nError: Wallet type must be 'Ledger' to spend pre-mine outputs!\n");
                         break;
-                    }
+                    },
                 }
 
                 let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index], None) {
@@ -983,7 +983,7 @@ pub async fn command_runner(
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
                         break;
-                    }
+                    },
                 };
                 let commitment = embedded_output.commitment.clone();
                 let output_hash = embedded_output.hash();
@@ -999,20 +999,20 @@ pub async fn command_runner(
                         detect_tx_metadata(&wallet, args.recipient_address).await,
                     ),
                 )
-                    .await
+                .await
                 {
                     Ok(tx_id) => {
                         println!();
                         println!("Concluded 'pre-mine-spend-backup-utxo'");
                         println!("Spend utxo: {} with tx_id: {}", commitment.to_hex(), tx_id);
                         println!();
-                    }
+                    },
                     Err(e) => {
                         eprintln!("\nError: Spent pre-mine transaction error! {}\n", e);
                         break;
-                    }
+                    },
                 }
-            }
+            },
             PreMineStartParty(args) => {
                 let mut alias = args.alias.clone();
                 loop {
@@ -1060,7 +1060,7 @@ pub async fn command_runner(
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
                             break;
-                        }
+                        },
                     };
 
                 println!();
@@ -1082,7 +1082,7 @@ pub async fn command_runner(
                                 eprintln!("\nError: {}\n", e);
                                 error = true;
                                 break;
-                            }
+                            },
                         };
                     let commitment = embedded_output.commitment.clone();
 
@@ -1116,7 +1116,7 @@ pub async fn command_runner(
                             );
                             error = true;
                             break;
-                        }
+                        },
                     };
                     let script_input_signature = key_manager_service
                         .sign_script_message(&pre_mine_script_key_id, commitment.as_bytes())
@@ -1179,7 +1179,7 @@ pub async fn command_runner(
                     get_file_name(SPEND_STEP_2_LEADER, Some(alias))
                 );
                 println!();
-            }
+            },
             PreMineEncumber(args) => {
                 let session_info;
                 // Read session info
@@ -1202,7 +1202,7 @@ pub async fn command_runner(
                                 .interact()
                                 .unwrap();
                             continue;
-                        }
+                        },
                     }
                     break;
                 }
@@ -1272,7 +1272,7 @@ pub async fn command_runner(
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
                             break;
-                        }
+                        },
                     };
 
                 // Encumber outputs
@@ -1284,7 +1284,7 @@ pub async fn command_runner(
                         eprintln!("\nError: {}\n", e);
                         lift_temp_ban_peers(&wallet, &mut peer_list).await;
                         return Ok(true);
-                    }
+                    },
                 };
                 println!();
                 for (i, indexed_info) in party_info_per_index.iter().enumerate() {
@@ -1334,7 +1334,7 @@ pub async fn command_runner(
                                 eprintln!("\nError: {}\n", e);
                                 error = true;
                                 break;
-                            }
+                            },
                         };
 
                     match encumber_aggregate_utxo(
@@ -1362,16 +1362,16 @@ pub async fn command_runner(
                             detect_tx_metadata(&wallet, current_recipient_address).await,
                         ),
                     )
-                        .await
+                    .await
                     {
                         Ok((
-                               tx_id,
-                               transaction,
-                               script_pubkey,
-                               total_metadata_ephemeral_public_key,
-                               total_script_nonce,
-                               shared_secret,
-                           )) => {
+                            tx_id,
+                            transaction,
+                            script_pubkey,
+                            total_metadata_ephemeral_public_key,
+                            total_script_nonce,
+                            shared_secret,
+                        )) => {
                             outputs_for_parties.push(Step3OutputsForParties {
                                 output_index: current_index,
                                 input_stack: transaction.body.inputs()[0].clone().input_data,
@@ -1397,12 +1397,12 @@ pub async fn command_runner(
                                 output_index: current_index,
                                 tx_id,
                             });
-                        }
+                        },
                         Err(e) => {
                             eprintln!("\nError: Encumber aggregate transaction error! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     }
                     println!("  Processed {} of {} transactions", i + 1, party_info_per_index.len());
                 }
@@ -1430,7 +1430,7 @@ pub async fn command_runner(
                     get_file_name(SPEND_STEP_3_PARTIES, None)
                 );
                 println!();
-            }
+            },
             PreMineSigs(args) => {
                 let session_info;
                 // Read session info
@@ -1453,7 +1453,7 @@ pub async fn command_runner(
                                 .interact()
                                 .unwrap();
                             continue;
-                        }
+                        },
                     }
                     break;
                 }
@@ -1500,7 +1500,7 @@ pub async fn command_runner(
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
                             break;
-                        }
+                        },
                     };
 
                 println!();
@@ -1521,7 +1521,7 @@ pub async fn command_runner(
                             eprintln!("\nError: {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     };
 
                     // Script signature
@@ -1548,7 +1548,7 @@ pub async fn command_runner(
                             eprintln!("\nError: Script signature SignMessage error! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     };
 
                     // lets verify the script
@@ -1560,7 +1560,7 @@ pub async fn command_runner(
                             eprintln!("\nError: Could not create shared secret from canonical bytes! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     };
 
                     let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
@@ -1574,7 +1574,7 @@ pub async fn command_runner(
                             eprintln!("\nError: Could not decrypt data! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     };
                     let commitment_mask_key_id = &key_manager_service
                         .import_key(commitment_mask_private_key.clone())
@@ -1587,12 +1587,12 @@ pub async fn command_runner(
                         )
                         .await
                     {
-                        Ok(_) => {}
+                        Ok(_) => {},
                         Err(e) => {
                             eprintln!("\nError: Could not verify mask! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     }
                     // now lets calculate the script with stealth key
                     let script_spending_key = key_manager_service
@@ -1635,7 +1635,7 @@ pub async fn command_runner(
                             eprintln!("\nError: Metadata signature SignMessage error! {}\n", e);
                             error = true;
                             break;
-                        }
+                        },
                     };
 
                     if script_signature.get_signature() == Signature::default().get_signature() ||
@@ -1684,7 +1684,7 @@ pub async fn command_runner(
                     get_file_name(SPEND_STEP_4_LEADER, Some(party_info_indexed.alias))
                 );
                 println!();
-            }
+            },
             PreMineSpendTx(args) => {
                 temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_peer_manager_peers = true;
@@ -1711,7 +1711,7 @@ pub async fn command_runner(
                                 .interact()
                                 .unwrap();
                             continue;
-                        }
+                        },
                     }
                     break;
                 }
@@ -1812,7 +1812,7 @@ pub async fn command_runner(
                         script_signatures,
                         offset,
                     )
-                        .await
+                    .await
                     {
                         eprintln!(
                             "\nError: Error completing transaction '{}'! ({})\n",
@@ -1838,12 +1838,12 @@ pub async fn command_runner(
                                             error = true;
                                             break;
                                         }
-                                    }
+                                    },
                                     Err(e) => {
                                         eprintln!("\nError: Transaction {}! ({})\n", tx.tx_id, e);
                                         error = true;
                                         break;
-                                    }
+                                    },
                                 }
 
                                 let mut utxo_sum = UncompressedCommitment::default();
@@ -1859,7 +1859,7 @@ pub async fn command_runner(
                                             eprintln!("\nError: Input commitment ({})!\n", e);
                                             error = true;
                                             break;
-                                        }
+                                        },
                                     }
                                 }
                                 if error {
@@ -1887,18 +1887,18 @@ pub async fn command_runner(
                                     error = true;
                                     break;
                                 }
-                            }
+                            },
                             Ok(_) => {
                                 eprintln!(
                                     "\nError: Transaction '{}' is not in a completed state!\n",
                                     leader_self.tx_id
                                 );
                                 break;
-                            }
+                            },
                             Err(e) => {
                                 eprintln!("\nError: Transaction '{}' not found! ({})\n", leader_self.tx_id, e);
                                 break;
-                            }
+                            },
                         }
                     }
 
@@ -1924,7 +1924,7 @@ pub async fn command_runner(
                             Err(e) => {
                                 eprintln!("\nError: Input commitment ({})!\n", e);
                                 break;
-                            }
+                            },
                         }
                     }
                     let mut kernel_sum = UncompressedCommitment::default();
@@ -1945,7 +1945,7 @@ pub async fn command_runner(
                         Err(e) => {
                             eprintln!("\nError: Could not create the pre-mine file ({})\n", e);
                             break;
-                        }
+                        },
                     };
 
                     let mut error = false;
@@ -1957,7 +1957,7 @@ pub async fn command_runner(
                                 eprintln!("\nError: Could not serialize UTXO ({})\n", e);
                                 error = true;
                                 break;
-                            }
+                            },
                         };
                         if let Err(e) = file_stream.write_all(format!("{}\n", input_s).as_bytes()) {
                             eprintln!("\nError: Could not write UTXO to file ({})\n", e);
@@ -1976,7 +1976,7 @@ pub async fn command_runner(
                                 eprintln!("\nError: Could not serialize UTXO ({})\n", e);
                                 error = true;
                                 break;
-                            }
+                            },
                         };
                         if let Err(e) = file_stream.write_all(format!("{}\n", utxo_s).as_bytes()) {
                             eprintln!("\nError: Could not write UTXO to file ({})\n", e);
@@ -1994,7 +1994,7 @@ pub async fn command_runner(
                             Err(e) => {
                                 eprintln!("\nError: Could not serialize kernel ({})\n", e);
                                 break;
-                            }
+                            },
                         };
                         if let Err(e) = file_stream.write_all(format!("{}\n", kernel_s).as_bytes()) {
                             eprintln!("\nError: Could not write the genesis file ({})\n", e);
@@ -2010,7 +2010,7 @@ pub async fn command_runner(
                         Err(e) => {
                             eprintln!("\nError: Could not serialize kernel offset ({})\n", e);
                             break;
-                        }
+                        },
                     };
                     if let Err(e) = file_stream.write_all(format!("{}\n", kernel_offset_s).as_bytes()) {
                         eprintln!("\nError: Could not write the genesis file ({})\n", e);
@@ -2028,7 +2028,7 @@ pub async fn command_runner(
                 }
                 println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                 println!();
-            }
+            },
             SendMinotari(args) => {
                 match send_tari(
                     transaction_service.clone(),
@@ -2037,15 +2037,15 @@ pub async fn command_runner(
                     args.destination.clone(),
                     PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
-                    .await
+                .await
                 {
                     Ok(tx_id) => {
                         debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {}", tx_id);
                         tx_ids.push(tx_id);
-                    }
+                    },
                     Err(e) => eprintln!("SendMinotari error! {}", e),
                 }
-            }
+            },
             SendOneSidedToStealthAddress(args) => {
                 match send_one_sided_to_stealth_address(
                     transaction_service.clone(),
@@ -2055,7 +2055,7 @@ pub async fn command_runner(
                     args.destination.clone(),
                     PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
-                    .await
+                .await
                 {
                     Ok(tx_id) => {
                         debug!(
@@ -2063,10 +2063,10 @@ pub async fn command_runner(
                             "send-one-sided-to-stealth-address concluded with tx_id {}", tx_id
                         );
                         tx_ids.push(tx_id);
-                    }
+                    },
                     Err(e) => eprintln!("SendOneSidedToStealthAddress error! {}", e),
                 }
-            }
+            },
             MakeItRain(args) => {
                 let transaction_type = args.transaction_type();
                 if let Err(e) = make_it_rain(
@@ -2081,11 +2081,11 @@ pub async fn command_runner(
                     transaction_type,
                     PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
-                    .await
+                .await
                 {
                     eprintln!("MakeItRain error! {}", e);
                 }
-            }
+            },
             CoinSplit(args) => {
                 match coin_split(
                     args.amount_per_split,
@@ -2095,23 +2095,23 @@ pub async fn command_runner(
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
-                    .await
+                .await
                 {
                     Ok(tx_id) => {
                         tx_ids.push(tx_id);
                         debug!(target: LOG_TARGET, "coin-split concluded with tx_id {}", tx_id);
                         println!("Coin split succeeded");
-                    }
+                    },
                     Err(e) => eprintln!("CoinSplit error! {}", e),
                 }
-            }
+            },
             Whois(args) => {
                 let public_key = args.public_key.into();
                 let emoji_id = EmojiId::from(&public_key).to_string();
 
                 println!("Public Key: {}", public_key.to_hex());
                 println!("Emoji ID  : {}", emoji_id);
-            }
+            },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
                     let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
@@ -2150,7 +2150,7 @@ pub async fn command_runner(
                     }
                     println!("Total number of UTXOs: {}", count);
                     println!("Total value of UTXOs: {}", sum);
-                }
+                },
                 Err(e) => eprintln!("ExportUtxos error! {}", e),
             },
             ExportTx(args) => match transaction_service.get_any_transaction(args.tx_id.into()).await {
@@ -2162,10 +2162,10 @@ pub async fn command_runner(
                     } else {
                         println!("Tx: {:?}", tx);
                     }
-                }
+                },
                 Ok(None) => {
                     eprintln!("ExportTx error!, No tx found ")
-                }
+                },
                 Err(e) => eprintln!("ExportTx error! {}", e),
             },
             ImportTx(args) => {
@@ -2177,10 +2177,10 @@ pub async fn command_runner(
                                 Err(e) => eprintln!("Could not import tx {}", e),
                             };
                         }
-                    }
+                    },
                     Err(e) => eprintln!("ImportTx error! {}", e),
                 };
-            }
+            },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
                     let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
@@ -2219,7 +2219,7 @@ pub async fn command_runner(
                     }
                     println!("Total number of UTXOs: {}", count);
                     println!("Total value of UTXOs: {}", sum);
-                }
+                },
                 Err(e) => eprintln!("ExportSpentUtxos error! {}", e),
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
@@ -2241,14 +2241,14 @@ pub async fn command_runner(
                     if let Some(max) = values.iter().max() {
                         println!("Maximum value UTXO   : {}", max);
                     }
-                }
+                },
                 Err(e) => eprintln!("CountUtxos error! {}", e),
             },
             SetBaseNode(args) => {
                 if let Err(e) = set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
                     eprintln!("SetBaseNode error! {}", e);
                 }
-            }
+            },
             SetCustomBaseNode(args) => {
                 match set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
                     Ok((public_key, net_address)) => {
@@ -2265,10 +2265,10 @@ pub async fn command_runner(
                         } else {
                             println!("Custom base node peer saved in wallet database.");
                         }
-                    }
+                    },
                     Err(e) => eprintln!("SetCustomBaseNode error! {}", e),
                 }
-            }
+            },
             ClearCustomBaseNode => {
                 match wallet
                     .db
@@ -2277,15 +2277,15 @@ pub async fn command_runner(
                     Ok(_) => match wallet.db.clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string()) {
                         Ok(true) => {
                             println!("Custom base node peer cleared from wallet database.")
-                        }
+                        },
                         Ok(false) => {
                             println!("Warning - custom base node peer not cleared from wallet database.")
-                        }
+                        },
                         Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
                     },
                     Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
                 }
-            }
+            },
             InitShaAtomicSwap(args) => {
                 match init_sha_atomic_swap(
                     transaction_service.clone(),
@@ -2295,7 +2295,7 @@ pub async fn command_runner(
                     args.destination,
                     PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
-                    .await
+                .await
                 {
                     Ok((tx_id, pre_image, output)) => {
                         debug!(target: LOG_TARGET, "minotari HTLC tx_id {}", tx_id);
@@ -2304,10 +2304,10 @@ pub async fn command_runner(
                         println!("pre_image hash: {}", hash.to_hex());
                         println!("Output hash: {}", output.hash().to_hex());
                         tx_ids.push(tx_id);
-                    }
+                    },
                     Err(e) => eprintln!("InitShaAtomicSwap error! {}", e),
                 }
-            }
+            },
             FinaliseShaAtomicSwap(args) => match args.output_hash[0].clone().try_into() {
                 Ok(hash) => {
                     match finalise_sha_atomic_swap(
@@ -2318,15 +2318,15 @@ pub async fn command_runner(
                         config.fee_per_gram.into(),
                         PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
-                        .await
+                    .await
                     {
                         Ok(tx_id) => {
                             debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
                             tx_ids.push(tx_id);
-                        }
+                        },
                         Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
                     }
-                }
+                },
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
             ClaimShaAtomicSwapRefund(args) => match args.output_hash[0].clone().try_into() {
@@ -2338,15 +2338,15 @@ pub async fn command_runner(
                         config.fee_per_gram.into(),
                         PaymentId::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
-                        .await
+                    .await
                     {
                         Ok(tx_id) => {
                             debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
                             tx_ids.push(tx_id);
-                        }
+                        },
                         Err(e) => eprintln!("ClaimShaAtomicSwapRefund error! {}", e),
                     }
-                }
+                },
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
 
@@ -2365,7 +2365,7 @@ pub async fn command_runner(
                 {
                     eprintln!("RevalidateWalletDb error! {}", e);
                 }
-            }
+            },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
                     args.amount,
@@ -2379,10 +2379,10 @@ pub async fn command_runner(
                     config.fee_per_gram * uT,
                     PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
-                    .await?;
+                .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
                 tx_ids.push(tx_id);
-            }
+            },
             CreateTlsCerts => match generate_self_signed_certs() {
                 Ok((cacert, cert, private_key)) => {
                     print_warning();
@@ -2399,7 +2399,7 @@ pub async fn command_runner(
                          grpc_tls_enabled=true"
                     );
                     println!();
-                }
+                },
                 Err(err) => eprintln!("Error generating certificates: {}", err),
             },
             Sync(args) => {
@@ -2410,11 +2410,11 @@ pub async fn command_runner(
                     match wait_for_comms(&connectivity_requester).await {
                         Ok(..) => {
                             online = true;
-                        }
+                        },
                         Err(e) => {
                             eprintln!("Sync error! {}", e);
                             continue;
-                        }
+                        },
                     }
                 }
 
@@ -2423,13 +2423,13 @@ pub async fn command_runner(
                         Ok(event) => match event {
                             UtxoScannerEvent::ConnectingToBaseNode(_) => {
                                 println!("Connecting to base node...");
-                            }
+                            },
                             UtxoScannerEvent::ConnectedToBaseNode(_, _) => {
                                 println!("Connected to base node");
-                            }
+                            },
                             UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {
                                 println!("Failed to connect to base node");
-                            }
+                            },
                             UtxoScannerEvent::ScanningRoundFailed {
                                 num_retries,
                                 retry_limit,
@@ -2439,7 +2439,7 @@ pub async fn command_runner(
                                     "Scanning round failed. Retries: {}/{}. Error: {}",
                                     num_retries, retry_limit, error
                                 );
-                            }
+                            },
                             UtxoScannerEvent::Progress {
                                 current_height,
                                 tip_height,
@@ -2448,7 +2448,7 @@ pub async fn command_runner(
                                 if current_height >= args.sync_to_height && args.sync_to_height > 0 {
                                     break;
                                 }
-                            }
+                            },
                             UtxoScannerEvent::Completed {
                                 final_height,
                                 num_recovered,
@@ -2464,16 +2464,16 @@ pub async fn command_runner(
                                 );
 
                                 break;
-                            }
+                            },
                             UtxoScannerEvent::ScanningFailed => {
                                 println!("Scanning failed");
                                 break;
-                            }
+                            },
                         },
                         Err(e) => {
                             eprintln!("Sync error! {}", e);
                             break;
-                        }
+                        },
                     }
                 }
                 println!("Starting validation process");
@@ -2486,29 +2486,29 @@ pub async fn command_runner(
                             OutputManagerEvent::TxoValidationSuccess(_) => {
                                 println!("Validation succeeded");
                                 break;
-                            }
+                            },
                             OutputManagerEvent::TxoValidationAlreadyBusy(_) => {
                                 println!("Validation already busy");
-                            }
+                            },
                             _ => {
                                 println!("Validation failed");
                                 break;
-                            }
+                            },
                         },
                         Err(e) => {
                             eprintln!("Sync error! {}", e);
                             break;
-                        }
+                        },
                     }
                 }
                 println!("balance as of scanning height");
                 match output_service.clone().get_balance().await {
                     Ok(balance) => {
                         println!("{}", balance);
-                    }
+                    },
                     Err(e) => eprintln!("GetBalance error! {}", e),
                 }
-            }
+            },
             ExportViewKeyAndSpendKey(args) => {
                 let view_key = wallet.key_manager_service.get_view_key().await?;
                 let spend_key = wallet.key_manager_service.get_spend_key().await?;
@@ -2541,7 +2541,7 @@ pub async fn command_runner(
                     println!("Spend key: {}", spend_key_hex);
                     println!("Birthday: {}", birthday);
                 }
-            }
+            },
             ImportPaperWallet(args) => {
                 let temp_path = config
                     .db_file
@@ -2562,18 +2562,18 @@ pub async fn command_runner(
 
                             get_seed_from_seed_words(&seed_words, passphrase)
                                 .map_err(|e| CommandError::General(e.to_string()))?
-                        }
+                        },
                         (false, true) => {
                             let bytes = Vec::<u8>::from_monero_base58(args.cipher_seed.as_str())
                                 .map_err(|e| CommandError::General(e.to_string()))?;
                             CipherSeed::from_enciphered_bytes(&bytes, passphrase)
                                 .map_err(|e| CommandError::General(e.to_string()))?
-                        }
+                        },
                         (_, _) => {
                             return Err(CommandError::General(
                                 "Either seed words or cipher seed must be provided".to_string(),
                             ))
-                        }
+                        },
                     };
 
                     let wallet_type = WalletType::DerivedKeys;
@@ -2595,8 +2595,8 @@ pub async fn command_runner(
                         true,
                         Some(wallet_type),
                     )
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
+                    .await
+                    .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
                     let query = PeerQuery::new().select_where(|p| p.is_seed());
@@ -2621,7 +2621,12 @@ pub async fn command_runner(
                         None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
-                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, config.p2p.base_node_http_wallet_query_service_url());
+                    let peer_config = PeerConfig::new(
+                        selected_base_node,
+                        base_node_peers,
+                        peer_seeds,
+                        config.base_node_http_wallet_query_service_url.clone(),
+                    );
 
                     let base_nodes = peer_config
                         .get_base_node_peers()
@@ -2651,26 +2656,26 @@ pub async fn command_runner(
                                 OutputManagerEvent::TxoValidationSuccess(_) => {
                                     println!("Validation succeeded");
                                     break;
-                                }
+                                },
                                 OutputManagerEvent::TxoValidationAlreadyBusy(_) => {
                                     println!("Validation already busy");
-                                }
+                                },
                                 _ => {
                                     println!("Validation failed");
                                     break;
-                                }
+                                },
                             },
                             Err(e) => {
                                 eprintln!("Sync error! {}", e);
                                 break;
-                            }
+                            },
                         }
                     }
                     println!("balance as of scanning height");
                     match oms.clone().get_balance().await {
                         Ok(balance) => {
                             println!("{}", balance);
-                        }
+                        },
                         Err(e) => eprintln!("GetBalance error! {}", e),
                     }
                     let mut tms = new_wallet.transaction_service.clone();
@@ -2695,22 +2700,22 @@ pub async fn command_runner(
                                         "monitor_transactions done to stage {:?} with tx_ids: {:?}", wait_stage, txs
                                     );
                                     println!("Done! All transactions monitored to {:?} stage.", wait_stage);
-                                }
+                                },
                                 Err(_e) => {
                                     println!(
                                         "The configured timeout ({:#?}) was reached before all transactions reached \
                                          the {:?} stage. See the logs for more info.",
                                         duration, wait_stage
                                     );
-                                }
+                                },
                             }
-                        }
+                        },
                         Err(e) => eprintln!("SendMinotari error! {}", e),
                     }
                 }
                 println!("removing temp wallet in: {:?}", temp_path);
                 fs::remove_dir_all(temp_path)?;
-            }
+            },
         }
     }
     if unban_peer_manager_peers {
@@ -2734,7 +2739,7 @@ pub async fn command_runner(
             duration,
             monitor_transactions(transaction_service.clone(), tx_ids, wait_stage),
         )
-            .await
+        .await
         {
             Ok(txs) => {
                 debug!(
@@ -2742,14 +2747,14 @@ pub async fn command_runner(
                     "monitor_transactions done to stage {:?} with tx_ids: {:?}", wait_stage, txs
                 );
                 println!("Done! All transactions monitored to {:?} stage.", wait_stage);
-            }
+            },
             Err(_e) => {
                 println!(
                     "The configured timeout ({:#?}) was reached before all transactions reached the {:?} stage. See \
                      the logs for more info.",
                     duration, wait_stage
                 );
-            }
+            },
         }
     }
 
@@ -2927,22 +2932,22 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
     let pre_mine_contents = match Network::get_current_or_user_setting_or_default() {
         Network::MainNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/mainnet_pre_mine.json")
-        }
+        },
         Network::StageNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/stagenet_pre_mine.json")
-        }
+        },
         Network::NextNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/nextnet_pre_mine.json")
-        }
+        },
         Network::LocalNet => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/esmeralda_pre_mine.json")
-        }
+        },
         Network::Igor => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/igor_pre_mine.json")
-        }
+        },
         Network::Esmeralda => {
             include_str!("../../../../base_layer/core/src/blocks/pre_mine/esmeralda_pre_mine.json")
-        }
+        },
     };
     let mut utxos = Vec::new();
     let mut counter = 1;

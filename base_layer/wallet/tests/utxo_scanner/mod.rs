@@ -57,7 +57,11 @@ use tari_comms::{
     },
 };
 use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcServer,
+    base_node::rpc::{
+        BaseNodeWalletQueryServiceClient,
+        BaseNodeWalletQueryServiceClientError,
+        BaseNodeWalletRpcServer,
+    },
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
@@ -87,8 +91,28 @@ use crate::support::{
     utils::make_input,
 };
 
+#[derive(Clone)]
+pub struct MockBaseNodeWalletQueryServiceClient {}
+
+#[async_trait::async_trait]
+impl BaseNodeWalletQueryServiceClient for MockBaseNodeWalletQueryServiceClient {
+    async fn get_tip_info(
+        &self,
+    ) -> Result<tari_core::base_node::rpc::models::TipInfoResponse, BaseNodeWalletQueryServiceClientError> {
+        Ok(tari_core::base_node::rpc::models::TipInfoResponse {
+            metadata: None,
+            is_synced: false,
+        })
+    }
+
+    async fn get_header_by_height(&self, _height: u64) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError> {
+        Ok(BlockHeader::new(0))
+    }
+}
+
 pub struct UtxoScannerTestInterface {
-    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityMock>>,
+    scanner_service:
+        Option<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityMock, MockBaseNodeWalletQueryServiceClient>>,
     scanner_handle: UtxoScannerHandle,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
     base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
@@ -179,7 +203,11 @@ async fn setup(
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
-    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityMock>::builder();
+    let mut scanner_service_builder = UtxoScannerService::<
+        WalletSqliteDatabase,
+        WalletConnectivityMock,
+        MockBaseNodeWalletQueryServiceClient,
+    >::builder();
 
     scanner_service_builder
         .with_peers(vec![server_node_identity.public_key().clone()])
@@ -202,7 +230,7 @@ async fn setup(
     )
     .unwrap();
     let scanner_service = scanner_service_builder
-        .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
+        .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager, MockBaseNodeWalletQueryServiceClient>(
             wallet_db.clone(),
             comms_connectivity,
             wallet_connectivity_mock,
@@ -216,6 +244,7 @@ async fn setup(
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
             14,
+            MockBaseNodeWalletQueryServiceClient {},
         )
         .await;
 

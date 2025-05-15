@@ -24,7 +24,6 @@
 
 use std::ptr;
 
-use crate::wallet_modes::PeerConfig;
 use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
@@ -44,6 +43,8 @@ use tari_shutdown::Shutdown;
 use tari_utilities::{hex::Hex, SafePassword};
 use tokio::{runtime::Runtime, sync::broadcast};
 use zeroize::{Zeroize, Zeroizing};
+
+use crate::wallet_modes::PeerConfig;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -71,7 +72,7 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
                 debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {}", e);
                 println!("Failed to parse seed words! Did you type them correctly?");
                 continue;
-            }
+            },
         }
     }
 }
@@ -88,7 +89,7 @@ pub fn get_seed_from_seed_words(
             let err_msg = format!("MnemonicError parsing seed words: {}", e);
             warn!(target: LOG_TARGET, "{}", err_msg);
             Err(ExitError::new(ExitCode::RecoveryError, err_msg))
-        }
+        },
     }
 }
 
@@ -142,14 +143,14 @@ pub async fn wallet_recovery(
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
                 println!("Connecting to base node {}... ", peer);
-            }
+            },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
                 println!("OK (latency = {:.2?})", latency);
-            }
+            },
             Ok(UtxoScannerEvent::Progress {
-                   current_height,
-                   tip_height,
-               }) => {
+                current_height,
+                tip_height,
+            }) => {
                 // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
                 let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
                 debug!(
@@ -167,38 +168,38 @@ pub async fn wallet_recovery(
                     current_height,
                     tip_height
                 );
-            }
+            },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
-                   num_retries,
-                   retry_limit,
-                   error,
-               }) => {
+                num_retries,
+                retry_limit,
+                error,
+            }) => {
                 let s = format!(
                     "Attempt {}/{}: Failed to complete wallet recovery {}.",
                     num_retries, retry_limit, error
                 );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
-            }
+            },
             Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                   peer,
-                   num_retries,
-                   retry_limit,
-                   error,
-               }) => {
+                peer,
+                num_retries,
+                retry_limit,
+                error,
+            }) => {
                 let s = format!(
                     "Base node connection error to {} (retries {} of {}: {})",
                     peer, num_retries, retry_limit, error
                 );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
-            }
+            },
             Ok(UtxoScannerEvent::Completed {
-                   final_height,
-                   num_recovered,
-                   value_recovered,
-                   time_taken,
-               }) => {
+                final_height,
+                num_recovered,
+                value_recovered,
+                time_taken,
+            }) => {
                 let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
                     "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
@@ -206,17 +207,17 @@ pub async fn wallet_recovery(
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);
-            }
+            },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
                 continue;
-            }
+            },
             Err(broadcast::error::RecvError::Closed) => {
                 break;
-            }
+            },
             Ok(UtxoScannerEvent::ScanningFailed) => {
                 error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
-            }
+            },
         }
     }
 

@@ -1,11 +1,11 @@
-use crate::base_node::rpc::BaseNodeWalletQueryService;
-use crate::base_node::state_machine_service::states::StateInfo;
-use crate::base_node::StateMachineHandle;
-use crate::blocks::BlockHeader;
-use crate::chain_storage::async_db::AsyncBlockchainDb;
-use crate::chain_storage::{BlockchainBackend, ChainStorageError};
-use crate::proto::base_node::TipInfoResponse;
 use thiserror::Error;
+
+use crate::{
+    base_node::{rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo, StateMachineHandle},
+    blocks::BlockHeader,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
+    proto::base_node::TipInfoResponse,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -22,10 +22,7 @@ pub struct Service<B> {
 
 impl<B: BlockchainBackend + 'static> Service<B> {
     pub fn new(db: AsyncBlockchainDb<B>, state_machine: StateMachineHandle) -> Self {
-        Self {
-            db,
-            state_machine,
-        }
+        Self { db, state_machine }
     }
 
     fn state_machine(&self) -> StateMachineHandle {
@@ -45,27 +42,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             _ => false,
         };
 
-        let metadata = self
-            .db
-            .get_chain_metadata()
-            .await?
-            .into();
+        let metadata = self.db.get_chain_metadata().await?.into();
 
-        Ok(
-            TipInfoResponse {
-                metadata: Some(metadata),
-                is_synced,
-            }
-        )
+        Ok(TipInfoResponse {
+            metadata: Some(metadata),
+            is_synced,
+        })
     }
 
     async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error> {
-        Ok(
-            self
-                .db
-                .fetch_header(height)
-                .await?
-                .ok_or(Error::HeaderNotFound { height })?
-        )
+        Ok(self
+            .db
+            .fetch_header(height)
+            .await?
+            .ok_or(Error::HeaderNotFound { height })?)
     }
 }

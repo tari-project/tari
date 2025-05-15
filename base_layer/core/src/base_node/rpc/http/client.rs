@@ -1,7 +1,13 @@
-use crate::base_node::rpc::models::TipInfoResponse;
-use crate::base_node::rpc::{BaseNodeWalletQueryServiceClient, BaseNodeWalletQueryServiceClientError};
-use crate::blocks::BlockHeader;
 use reqwest::Url;
+
+use crate::{
+    base_node::rpc::{
+        models::TipInfoResponse,
+        BaseNodeWalletQueryServiceClient,
+        BaseNodeWalletQueryServiceClientError,
+    },
+    blocks::BlockHeader,
+};
 
 /// HTTP client for the Base Node wallet query service.
 #[derive(Clone)]
@@ -22,26 +28,24 @@ impl Client {
 #[async_trait::async_trait]
 impl BaseNodeWalletQueryServiceClient for Client {
     async fn get_tip_info(&self) -> Result<TipInfoResponse, BaseNodeWalletQueryServiceClientError> {
-        Ok(
-            self.http_client
-                .get(self.api_address.join("/get_tip_info")?)
-                .send()
-                .await?
-                .json::<TipInfoResponse>()
-                .await?
-        )
+        Ok(self
+            .http_client
+            .get(self.api_address.join("/get_tip_info")?)
+            .send()
+            .await?
+            .json::<TipInfoResponse>()
+            .await?)
     }
 
     async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError> {
         let mut target_url = self.api_address.join("/get_header_by_height")?;
         target_url.set_query(Some(format!("height={}", height).as_str()));
-        Ok(
-            self.http_client
-                .get(target_url)
-                .send()
-                .await?
-                .json::<BlockHeader>()
-                .await?
-        )
+        Ok(self
+            .http_client
+            .get(target_url)
+            .send()
+            .await?
+            .json::<BlockHeader>()
+            .await?)
     }
 }
