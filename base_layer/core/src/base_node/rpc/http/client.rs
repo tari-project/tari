@@ -48,4 +48,10 @@ impl BaseNodeWalletQueryServiceClient for Client {
             .json::<BlockHeader>()
             .await?)
     }
+
+    async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, BaseNodeWalletQueryServiceClientError> {
+        let mut target_url = self.api_address.join("/get_height_at_time")?;
+        target_url.set_query(Some(format!("time={}", epoch_time).as_str()));
+        Ok(self.http_client.get(target_url).send().await?.json::<u64>().await?)
+    }
 }

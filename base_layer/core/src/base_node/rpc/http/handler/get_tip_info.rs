@@ -17,5 +17,5 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         error!(target: LOG_TARGET, "Error getting tip info: {:?}", error);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    Ok(Json(tip_info.into()))
+    Ok(Json(tip_info))
 }

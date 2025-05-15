@@ -108,6 +108,10 @@ impl BaseNodeWalletQueryServiceClient for MockBaseNodeWalletQueryServiceClient {
     async fn get_header_by_height(&self, _height: u64) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError> {
         Ok(BlockHeader::new(0))
     }
+
+    async fn get_height_at_time(&self, _epoch_time: u64) -> Result<u64, BaseNodeWalletQueryServiceClientError> {
+        Ok(0)
+    }
 }
 
 pub struct UtxoScannerTestInterface {

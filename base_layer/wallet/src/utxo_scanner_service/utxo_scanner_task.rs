@@ -272,10 +272,9 @@ where
                 self.resources.db.clear_scanned_blocks()?;
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(wallet)) => {
-                        self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
-                            .await?
+                        self.get_scanning_start_header_height_hash(wallet.birthday).await?
                     },
-                    _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
+                    _ => self.get_scanning_start_header_height_hash(None).await?,
                 };
 
                 ScannedBlock {
@@ -342,7 +341,7 @@ where
 
     async fn get_chain_tip_header(&self) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = self.wallet_query_service_client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.best_block_height).unwrap_or(0);
+        let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         let end_header = self
             .wallet_query_service_client
             .get_header_by_height(chain_height)
@@ -742,7 +741,6 @@ where
 
     async fn get_scanning_start_header_height_hash(
         &self,
-        client: &mut BaseNodeWalletRpcClient,
         option_birthday: Option<u16>,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = match option_birthday {
@@ -750,7 +748,8 @@ where
             None => self.resources.db.get_wallet_birthday()?,
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
-        let block_height_birthday = client
+        let block_height_birthday = self
+            .wallet_query_service_client
             .get_height_at_time(epoch_time_birthday)
             .await
             .unwrap_or_else(|e| {
@@ -760,7 +759,8 @@ where
         // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let block_height_scanning_start = client
+        let block_height_scanning_start = self
+            .wallet_query_service_client
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
