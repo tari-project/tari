@@ -122,7 +122,7 @@ where
         p2p_config.transport.tor.identity = tor_identity;
 
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);
-        let mut handles = StackBuilder::new(self.interrupt_signal)
+        let mut handles = StackBuilder::new(self.interrupt_signal.clone())
             .add_initializer(P2pInitializer::new(
                 p2p_config.clone(),
                 user_agent,
@@ -267,12 +267,12 @@ where
 
         // wallet query http server
         let wallet_query_http_server = create_base_node_wallet_query_http_server(
-            9999, // TODO: get from config
+            config.base_node_http_wallet_query_service_listen_address,
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),
             shutdown_signal.clone(),
         );
-        if let Ok(_) = wallet_query_http_server.start().await {
+        if let Ok(_) = wallet_query_http_server.start::<B>().await {
             handles.register(wallet_query_http_server);
         }
 

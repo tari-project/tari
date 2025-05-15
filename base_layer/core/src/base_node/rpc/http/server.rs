@@ -4,6 +4,7 @@ use crate::chain_storage::BlockchainBackend;
 use axum::routing::get;
 use axum::{Extension, Router};
 use log::{error, info};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
@@ -19,27 +20,28 @@ pub enum Error {
 }
 
 pub struct Server<S> {
-    port: u16,
+    listen_address: SocketAddr,
     query_service: Arc<S>,
     shutdown_signal: ShutdownSignal,
 }
 
 impl<S: BaseNodeWalletQueryService> Server<S> {
-    pub fn new(port: u16, query_service: S, shutdown_signal: ShutdownSignal) -> Self {
-        Self { port, query_service: Arc::new(query_service), shutdown_signal }
+    pub fn new(listen_address: SocketAddr, query_service: S, shutdown_signal: ShutdownSignal) -> Self {
+        Self { listen_address, query_service: Arc::new(query_service), shutdown_signal }
     }
 
     pub async fn start<B: BlockchainBackend + 'static>(&self) -> Result<(), Error> {
         let shutdown_signal = self.shutdown_signal.clone();
-        let port = self.port;
+        let listen_address = self.listen_address;
         let router = Router::new()
             .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
+            .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
             .layer(Extension(self.query_service.clone()));
-        let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
+        let listener = TcpListener::bind(self.listen_address).await?;
 
         // spawn server
         tokio::spawn(async move {
-            info!(target: LOG_TARGET, "HTTP server listening on port {}", port);
+            info!(target: LOG_TARGET, "HTTP server listening at {}", listen_address);
             if let Err(error) = axum::serve(listener, router)
                 .with_graceful_shutdown(shutdown_signal).await {
                 error!(target: LOG_TARGET, "HTTP server error: {}", error);

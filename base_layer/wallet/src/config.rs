@@ -20,13 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    base_node_service::config::BaseNodeServiceConfig,
+    output_manager_service::config::OutputManagerServiceConfig,
+    transaction_service::config::TransactionServiceConfig,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
 };
-
-use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tari_common::{
     configuration::{serializers, Network, StringList},
@@ -36,15 +40,12 @@ use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
-
-use crate::{
-    base_node_service::config::BaseNodeServiceConfig,
-    output_manager_service::config::OutputManagerServiceConfig,
-    transaction_service::config::TransactionServiceConfig,
-};
+use url::Url;
 
 fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
-where D: serde::Deserializer<'de> {
+where
+    D: serde::Deserializer<'de>,
+{
     let password: Option<String> = Deserialize::deserialize(deserializer)?;
     Ok(password.map(SafePassword::from))
 }
@@ -123,6 +124,10 @@ pub struct WalletConfig {
     pub balance_enquiry_cooldown_period: Duration,
     // How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
+    /// URL of the base node wallet query service.
+    /// Default: http://127.0.0.1:9000
+    #[serde(with = "url_serde")]
+    pub base_node_http_wallet_query_service_url: Url,
 }
 
 impl Default for WalletConfig {

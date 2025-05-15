@@ -20,15 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{
-    transaction_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerInterface},
-    CryptoFactories,
-};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
-
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
@@ -44,6 +35,16 @@ use crate::{
     },
     WalletSqlite,
 };
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use tari_core::base_node::rpc::http::client::Client;
+use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClient;
+use tari_core::transactions::{
+    transaction_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerInterface},
+    CryptoFactories,
+};
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::{broadcast, watch};
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum UtxoScannerMode {
@@ -104,8 +105,9 @@ impl UtxoScannerServiceBuilder {
     pub async fn build_with_wallet(
         &mut self,
         wallet: &WalletSqlite,
+        wallet_query_service_client: Client,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle, Client>, KeyManagerServiceError> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
@@ -133,6 +135,7 @@ impl UtxoScannerServiceBuilder {
             wallet.base_node_service.clone(),
             wallet.utxo_scanner_service.get_one_sided_payment_message_watcher(),
             wallet.utxo_scanner_service.get_recovery_message_watcher(),
+            wallet_query_service_client,
         ))
     }
 
@@ -140,6 +143,7 @@ impl UtxoScannerServiceBuilder {
         TBackend: WalletBackend + 'static,
         TWalletConnectivity: WalletConnectivityInterface,
         TKeyManagerInterface: TransactionKeyManagerInterface,
+        TWalletQueryServiceClient: BaseNodeWalletQueryServiceClient,
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
@@ -155,7 +159,8 @@ impl UtxoScannerServiceBuilder {
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
-    ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
+        wallet_query_service_client: TWalletQueryServiceClient,
+    ) -> UtxoScannerService<TBackend, TWalletConnectivity, TWalletQueryServiceClient> {
         let resources = UtxoScannerResources {
             db,
             comms_connectivity,
@@ -180,6 +185,7 @@ impl UtxoScannerServiceBuilder {
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
+            wallet_query_service_client,
         )
     }
 }

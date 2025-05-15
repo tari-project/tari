@@ -24,7 +24,7 @@ use crate::{error::WalletStorageError, output_manager_service::error::OutputMana
 use serde_json::Error as SerdeJsonError;
 use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
-use tari_core::base_node;
+use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClientError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -63,8 +63,8 @@ pub enum UtxoScannerError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Connectivity has shut down")]
     ConnectivityShutdown,
-    #[error("Base node wallet query service client error: `{0:?}`")]
-    BaseNodeWalletQueryServiceClient(#[from] <base_node::rpc::http::client::Client as base_node::rpc::BaseNodeWalletQueryServiceClient>::Error),
+    #[error("Base node wallet query service client error: `{0}`")]
+    BaseNodeWalletQueryServiceClient(#[from] BaseNodeWalletQueryServiceClientError),
 }
 
 impl From<HexError> for UtxoScannerError {

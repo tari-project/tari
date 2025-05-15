@@ -162,18 +162,18 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
                 // Choose a different passphrase
                 "y" => {
                     continue;
-                },
+                }
                 // Use this passphrase
                 "n" => {
                     return Ok(passphrase);
-                },
+                }
                 // By default, we cancel to be safe
                 _ => {
                     return Err(ExitError::new(
                         ExitCode::InputError,
                         "Canceling with unchanged passphrase!",
                     ));
-                },
+                }
             }
         } else {
             // The passphrase is fine, so return it
@@ -275,7 +275,7 @@ pub async fn change_password(
         non_interactive_mode,
         None,
     )
-    .await?;
+        .await?;
 
     // Get a new passphrase
     let new = get_new_passphrase("New wallet passphrase: ", "Confirm new passphrase: ")?;
@@ -284,7 +284,7 @@ pub async fn change_password(
     wallet.db.change_passphrase(&existing, &new).map_err(|e| match e {
         WalletStorageError::InvalidPassphrase => {
             ExitError::new(ExitCode::IncorrectOrEmptyPassword, "Your password was not changed.")
-        },
+        }
         _ => ExitError::new(ExitCode::DatabaseError, "Your password was not changed."),
     })
 }
@@ -312,7 +312,7 @@ pub async fn set_peer_and_get_base_node_peer_config(
             } else {
                 None
             }
-        },
+        }
     };
 
     // If the user has not explicitly set a base node in the config, we try detect one
@@ -321,7 +321,7 @@ pub async fn set_peer_and_get_base_node_peer_config(
             match selected_base_node {
                 Some(ref base_node) if base_node.public_key == detected_node.public_key => {
                     // Skip asking because it's already set
-                },
+                }
                 Some(_) | None => {
                     println!(
                         "Local Base Node detected with public key {} and address {}",
@@ -343,7 +343,7 @@ pub async fn set_peer_and_get_base_node_peer_config(
                         set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address)?;
                         selected_base_node = Some(detected_node.into());
                     }
-                },
+                }
             }
         }
     }
@@ -363,7 +363,7 @@ pub async fn set_peer_and_get_base_node_peer_config(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
 
-    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
+    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, config.p2p.base_node_http_wallet_query_service_url());
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 
     Ok(peer_config)
@@ -413,7 +413,7 @@ pub async fn init_wallet(
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
-    .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
     fs::create_dir_all(&config.p2p.datastore_path)
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
@@ -473,11 +473,11 @@ pub async fn init_wallet(
         wallet_type,
         user_agent,
     )
-    .await
-    .map_err(|e| match e {
-        WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
-        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
-    })?;
+        .await
+        .map_err(|e| match e {
+            WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
+            e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
+        })?;
 
     info!(
         target: LOG_TARGET,
@@ -516,7 +516,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
         None => {
             debug!(target: LOG_TARGET, "No local base node detected");
             return None;
-        },
+        }
     };
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
@@ -682,7 +682,7 @@ pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitEr
             },
             Err(e) => {
                 return Err(ExitError::new(ExitCode::IOError, e));
-            },
+            }
         }
     }
 }
@@ -711,7 +711,7 @@ pub(crate) fn confirm_direct_only_send(wallet: &mut WalletSqlite) -> Result<(), 
             },
             Err(e) => {
                 return Err(ExitError::new(ExitCode::IOError, e));
-            },
+            }
         }
     }
 }
@@ -792,11 +792,11 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                         "1" | "c" | "n" | "create" => {
                             // new wallet
                             return Ok(WalletBoot::New);
-                        },
+                        }
                         "2" | "r" | "s" | "recover" => {
                             // recover wallet
                             return Ok(WalletBoot::Recovery);
-                        },
+                        }
                         "3" => {
                             let mut birthday = InputPrompt::<u16>::new()
                                 .with_prompt("Please enter wallet birth, or enter to skip ")
@@ -807,13 +807,13 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                             return Ok(WalletBoot::ViewAndSpendKey {
                                 birthday: birthday_option,
                             });
-                        },
+                        }
                         _ => continue,
                     }
-                },
+                }
                 Err(e) => {
                     return Err(ExitError::new(ExitCode::IOError, e));
-                },
+                }
             }
         }
     }
@@ -837,21 +837,21 @@ pub(crate) fn boot_with_password(
         WalletBoot::New => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for new wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
-        },
+        }
         // Recovery from a seed requires entering and confirming a passphrase
         WalletBoot::Recovery => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for wallet recovery.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
-        },
+        }
         // Opening an existing wallet only requires entering a passphrase
         WalletBoot::Existing => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
-        },
+        }
         WalletBoot::ViewAndSpendKey { .. } => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
-        },
+        }
     };
 
     Ok((boot_mode, password))
@@ -876,7 +876,7 @@ pub fn prompt_wallet_type(
                     Err(_) => {
                         println!("Invalid view key provided");
                         panic!("Invalid view key provided");
-                    },
+                    }
                 }
             } else {
                 prompt_private_key("Enter view key: ").expect("View key provided was invalid")
@@ -887,7 +887,7 @@ pub fn prompt_wallet_type(
                     Err(_) => {
                         println!("Invalid spend key provided");
                         panic!("Invalid spend key provided");
-                    },
+                    }
                 }
             } else {
                 prompt_public_key("Enter spend key: ").expect("Spend key provided was invalid")
@@ -900,7 +900,7 @@ pub fn prompt_wallet_type(
                 private_comms_key: None,
                 birthday,
             }))
-        },
+        }
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
             return Some(WalletType::default());
@@ -910,7 +910,7 @@ pub fn prompt_wallet_type(
                 let connected_hardware_msg = match boot_mode {
                     WalletBoot::Recovery => {
                         "\r\nWas your wallet connected to a hardware device? (Supported types: Ledger) (Y/n)"
-                    },
+                    }
                     _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
                 };
                 if prompt(connected_hardware_msg) {
@@ -926,7 +926,7 @@ pub fn prompt_wallet_type(
                                     Some(view_key),
                                 );
                                 Some(WalletType::Ledger(ledger))
-                            },
+                            }
                             Err(e) => panic!("{}", e),
                         },
                         Err(e) => panic!("{}", e),
@@ -935,7 +935,7 @@ pub fn prompt_wallet_type(
                     Some(WalletType::default())
                 }
             }
-        },
+        }
         _ => None,
     }
 }
@@ -945,7 +945,7 @@ pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
         WalletBoot::Recovery => "\r\nPlease enter the account number you previously used for your device.",
         _ => {
             "\r\nPlease enter an account number for your device. A simple 1-9, easily remembered numbers are suggested."
-        },
+        }
     };
 
     println!("{}", question);
@@ -974,7 +974,7 @@ pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
         Ok(pk) => Some(pk),
         Err(e) => {
             panic!("Bad private key: {}", e)
-        },
+        }
     }
 }
 

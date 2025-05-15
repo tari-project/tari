@@ -35,6 +35,7 @@ pub struct BaseNodeServiceConfig {
     pub base_node_rpc_pool_size: usize,
     /// This is the size of the event channel used to communicate base node events to the wallet
     pub event_channel_size: usize,
+
 }
 
 impl Default for BaseNodeServiceConfig {

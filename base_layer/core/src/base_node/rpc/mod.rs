@@ -25,10 +25,11 @@ mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
 pub mod http;
+pub mod models;
 
-use crate::base_node::rpc::http::models;
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
+use crate::blocks::BlockHeader;
 #[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
@@ -59,27 +60,44 @@ use crate::{
 };
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
+use std::error::Error;
 use std::fmt::Debug;
+use std::net::SocketAddr;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
 
 /// Trait that a base node wallet query service must implement.
 /// Please note that this service is to fetch data, so read-only queries.
 #[async_trait::async_trait]
 pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
-    type Error: Debug;
+    type Error: Error + 'static;
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error>;
+
+    async fn get_header_by_height(
+        &self, height: u64,
+    ) -> Result<BlockHeader, Self::Error>;
+}
+
+#[derive(Debug, Error)]
+pub enum BaseNodeWalletQueryServiceClientError {
+    #[error("Failed to parse http address: {0}")]
+    HttpAddressParse(#[from] url::ParseError),
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[from] reqwest::Error),
 }
 
 /// Trait that a base node wallet query service client must implement.
 /// This is the client side of [`BaseNodeWalletQueryService`].
 #[async_trait::async_trait]
-pub trait BaseNodeWalletQueryServiceClient: Send + Sync + 'static {
-    type Error: Debug;
+pub trait BaseNodeWalletQueryServiceClient: Send + Sync + Clone + 'static {
+    async fn get_tip_info(&self) -> Result<models::TipInfoResponse, BaseNodeWalletQueryServiceClientError>;
 
-    async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Self::Error>;
+    async fn get_header_by_height(
+        &self, height: u64,
+    ) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
@@ -154,12 +172,12 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
 
 #[cfg(feature = "base_node")]
 pub fn create_base_node_wallet_query_http_server<B: BlockchainBackend + 'static>(
-    port: u16,
+    listen_address: SocketAddr,
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     shutdown_signal: ShutdownSignal,
 ) -> http::server::Server<impl BaseNodeWalletQueryService> {
-    http::server::Server::new(port, http::query_service::Service::new(db, state_machine), shutdown_signal)
+    http::server::Server::new(listen_address, http::query_service::Service::new(db, state_machine), shutdown_signal)
 }
 
 

@@ -56,15 +56,10 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClient;
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
-    },
-};
+use tari_core::{base_node::rpc::BaseNodeWalletRpcClient, blocks::BlockHeader, proto, proto::base_node::SyncUtxosByBlockRequest, transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
+}};
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -232,9 +227,9 @@ where
 
         let timer = Instant::now();
         loop {
-            let tip_header = self.get_chain_tip_header(&mut client).await?;
+            let tip_header = self.get_chain_tip_header().await?;
             let tip_header_hash = tip_header.hash();
-            let last_scanned_block = self.get_last_scanned_block(tip_header.height, &mut client).await?;
+            let last_scanned_block = self.get_last_scanned_block(tip_header.height).await?;
 
             let next_block_to_scan = if let Some(last_scanned_block) = last_scanned_block {
                 // If we have scanned to the tip and are told to start beyond the tip we are done
@@ -253,9 +248,7 @@ where
                     ));
                 }
 
-                let next_header =
-                    BlockHeader::try_from(client.get_header_by_height(last_scanned_block.height + 1).await?)
-                        .map_err(UtxoScannerError::ConversionError)?;
+                let next_header = self.wallet_query_service_client.get_header_by_height(last_scanned_block.height + 1).await?;
                 let next_header_hash = next_header.hash();
 
                 ScannedBlock {
@@ -341,12 +334,10 @@ where
 
     async fn get_chain_tip_header(
         &self,
-        client: &mut BaseNodeWalletRpcClient,
     ) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = self.wallet_query_service_client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = client.get_header_by_height(chain_height).await?;
-        let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
+        let chain_height = tip_info.metadata.map(|m| m.best_block_height).unwrap_or(0);
+        let end_header = self.wallet_query_service_client.get_header_by_height(chain_height).await?;
 
         Ok(end_header)
     }
@@ -354,7 +345,6 @@ where
     async fn get_last_scanned_block(
         &self,
         current_tip_height: u64,
-        client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
@@ -384,12 +374,7 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = client.get_header_by_height(sb.height).await.or_optional()?;
-                let header = header
-                    .map(BlockHeader::try_from)
-                    .transpose()
-                    .map_err(UtxoScannerError::ConversionError)?;
-
+                let header = self.wallet_query_service_client.get_header_by_height(sb.height).await.ok();
                 match header {
                     Some(header) => {
                         let header_hash = header.hash();
@@ -772,8 +757,7 @@ where
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        let header = client.get_header_by_height(block_height_scanning_start).await?;
-        let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
+        let header = self.wallet_query_service_client.get_header_by_height(block_height_scanning_start).await?;
         let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,

@@ -24,6 +24,16 @@
 
 use std::{fs, io::Stdout, path::PathBuf};
 
+use crate::{
+    automation::commands::command_runner,
+    cli::{Cli, CliCommands},
+    grpc::WalletGrpcServer,
+    notifier::Notifier,
+    recovery::wallet_recovery,
+    ui,
+    ui::App,
+    utils::db::get_custom_base_node_peer_from_db,
+};
 use clap::Parser;
 use log::*;
 use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
@@ -41,17 +51,7 @@ use tonic::{
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tui::backend::CrosstermBackend;
-
-use crate::{
-    automation::commands::command_runner,
-    cli::{Cli, CliCommands},
-    grpc::WalletGrpcServer,
-    notifier::Notifier,
-    recovery::wallet_recovery,
-    ui,
-    ui::App,
-    utils::db::get_custom_base_node_peer_from_db,
-};
+use url::Url;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 
@@ -81,15 +81,17 @@ pub struct PeerConfig {
     pub base_node_custom: Option<Peer>,
     pub base_node_peers: Vec<Peer>,
     pub peer_seeds: Vec<Peer>,
+    pub base_node_wallet_query_service_address: Url,
 }
 
 impl PeerConfig {
     /// Create a new PeerConfig
-    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>) -> Self {
+    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>, base_node_wallet_query_service_address: Url) -> Self {
         Self {
             base_node_custom,
             base_node_peers,
             peer_seeds,
+            base_node_wallet_query_service_address,
         }
     }
 
@@ -200,11 +202,11 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                     if let Some(sub_command) = result.command2 {
                         commands.push(sub_command);
                     }
-                },
+                }
                 Err(e) => {
                     println!("\nError! parsing '{}' ({})\n", command, e);
                     return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
-                },
+                }
             }
         }
     }
@@ -309,11 +311,11 @@ fn wallet_or_exit(
                 "quit" | "q" | "exit" => {
                     info!(target: LOG_TARGET, "Exiting.");
                     Ok(())
-                },
+                }
                 _ => {
                     info!(target: LOG_TARGET, "Starting TUI.");
                     tui_mode(handle, config, base_node_config, wallet)
-                },
+                }
             }
         }
     }
@@ -434,7 +436,7 @@ pub fn recovery_mode(
             );
 
             return Err(e);
-        },
+        }
     }
 
     // Do not remove this println!
@@ -584,7 +586,7 @@ mod test {
 
             # End of script file
             "
-        .to_string();
+            .to_string();
 
         let commands = parse_command_file(script).unwrap();
 
@@ -614,37 +616,37 @@ mod test {
                 CliCommands::PreMineEncumber(_) => pre_mine_spend_encumber_aggregate_utxo = true,
                 CliCommands::PreMineSigs(_) => pre_mine_spend_input_output_sigs = true,
                 CliCommands::PreMineSpendTx(_) => pre_mine_spend_aggregate_transaction = true,
-                CliCommands::SendOneSidedToStealthAddress(_) => {},
+                CliCommands::SendOneSidedToStealthAddress(_) => {}
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
                 CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
-                CliCommands::ExportUtxos(_) => {},
-                CliCommands::ImportPaperWallet(_) => {},
+                CliCommands::ExportUtxos(_) => {}
+                CliCommands::ImportPaperWallet(_) => {}
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true
                     }
-                },
+                }
                 CliCommands::ImportTx(args) => {
                     if args.input_file == Path::new("pie_this_message.txt") {
                         import_tx = true
                     }
-                },
-                CliCommands::ExportSpentUtxos(_) => {},
-                CliCommands::CountUtxos => {},
-                CliCommands::SetBaseNode(_) => {},
-                CliCommands::SetCustomBaseNode(_) => {},
-                CliCommands::ClearCustomBaseNode => {},
-                CliCommands::InitShaAtomicSwap(_) => {},
-                CliCommands::FinaliseShaAtomicSwap(_) => {},
-                CliCommands::ClaimShaAtomicSwapRefund(_) => {},
-                CliCommands::RevalidateWalletDb => {},
-                CliCommands::RegisterValidatorNode(_) => {},
-                CliCommands::CreateTlsCerts => {},
-                CliCommands::PreMineSpendBackupUtxo(_) => {},
-                CliCommands::Sync(_) => {},
-                CliCommands::ExportViewKeyAndSpendKey(_) => {},
+                }
+                CliCommands::ExportSpentUtxos(_) => {}
+                CliCommands::CountUtxos => {}
+                CliCommands::SetBaseNode(_) => {}
+                CliCommands::SetCustomBaseNode(_) => {}
+                CliCommands::ClearCustomBaseNode => {}
+                CliCommands::InitShaAtomicSwap(_) => {}
+                CliCommands::FinaliseShaAtomicSwap(_) => {}
+                CliCommands::ClaimShaAtomicSwapRefund(_) => {}
+                CliCommands::RevalidateWalletDb => {}
+                CliCommands::RegisterValidatorNode(_) => {}
+                CliCommands::CreateTlsCerts => {}
+                CliCommands::PreMineSpendBackupUtxo(_) => {}
+                CliCommands::Sync(_) => {}
+                CliCommands::ExportViewKeyAndSpendKey(_) => {}
             }
         }
         assert!(

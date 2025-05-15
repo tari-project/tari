@@ -1,3 +1,4 @@
+use crate::proto;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -21,4 +22,25 @@ pub struct ChainMetadata {
 pub struct TipInfoResponse {
     pub metadata: Option<ChainMetadata>,
     pub is_synced: bool,
+}
+
+impl From<proto::base_node::ChainMetadata> for ChainMetadata {
+    fn from(proto_metadata: proto::base_node::ChainMetadata) -> Self {
+        ChainMetadata {
+            best_block_height: proto_metadata.best_block_height,
+            best_block_hash: proto_metadata.best_block_hash,
+            accumulated_difficulty: proto_metadata.accumulated_difficulty,
+            pruned_height: proto_metadata.pruned_height,
+            timestamp: proto_metadata.timestamp,
+        }
+    }
+}
+
+impl From<proto::base_node::TipInfoResponse> for TipInfoResponse {
+    fn from(proto_resp: proto::base_node::TipInfoResponse) -> Self {
+        TipInfoResponse {
+            metadata: proto_resp.metadata.map(|metadata| metadata.into()),
+            is_synced: proto_resp.is_synced,
+        }
+    }
 }

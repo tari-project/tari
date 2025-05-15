@@ -172,6 +172,9 @@ listener_self_liveness_check_interval = 15
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
 #pub cull_oldest_peer_rpc_connection_on_full = true
+# HTTP port of the wallet query service.
+# Default: 9000
+# http_wallet_query_service_port = 9000
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------

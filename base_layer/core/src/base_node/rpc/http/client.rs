@@ -1,16 +1,10 @@
-use crate::base_node::rpc::http::models::TipInfoResponse;
-use crate::base_node::rpc::BaseNodeWalletQueryServiceClient;
+use crate::base_node::rpc::models::TipInfoResponse;
+use crate::base_node::rpc::{BaseNodeWalletQueryServiceClient, BaseNodeWalletQueryServiceClientError};
+use crate::blocks::BlockHeader;
 use reqwest::Url;
-use thiserror::Error;
 
-#[derive(Debug, Error, )]
-pub enum Error {
-    #[error("Failed to parse http address: {0}")]
-    HttpAddressParse(#[from] url::ParseError),
-    #[error("HTTP client error: {0}")]
-    HttpClient(#[from] reqwest::Error),
-}
-
+/// HTTP client for the Base Node wallet query service.
+#[derive(Clone)]
 pub struct Client {
     api_address: Url,
     http_client: reqwest::Client,
@@ -27,11 +21,27 @@ impl Client {
 
 #[async_trait::async_trait]
 impl BaseNodeWalletQueryServiceClient for Client {
-    type Error = Error;
+    async fn get_tip_info(&self) -> Result<TipInfoResponse, BaseNodeWalletQueryServiceClientError> {
+        Ok(
+            self.http_client
+                .get(self.api_address.join("/get_tip_info")?)
+                .send()
+                .await?
+                .json::<TipInfoResponse>()
+                .await?
+        )
+    }
 
-    async fn get_tip_info(&self) -> Result<TipInfoResponse, Self::Error> {
-        self.http_client
-            .get(self.api_address.join("/get_tip_info")?).send().await?
-            .json().await?
+    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, BaseNodeWalletQueryServiceClientError> {
+        let mut target_url = self.api_address.join("/get_header_by_height")?;
+        target_url.set_query(Some(format!("height={}", height).as_str()));
+        Ok(
+            self.http_client
+                .get(target_url)
+                .send()
+                .await?
+                .json::<BlockHeader>()
+                .await?
+        )
     }
 }
