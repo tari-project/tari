@@ -225,8 +225,9 @@ message NetworkDifficultyResponse {
 
 // A generic single value response for a specific height
 message ValueAtHeightResponse {
-    uint64 value= 1;
-    uint64 height = 2;
+    uint64 circulating_supply = 1;
+    uint64 spendable_supply = 2;
+    uint64 height = 3;
 }
 
 // A generic uint value

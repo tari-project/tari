@@ -167,6 +167,16 @@ fn get_expected_payout_grace_period_blocks(network: Network) -> u64 {
     }
 }
 
+/// Get the total spendable pre-mine amount in circulation at the specified height
+pub fn pre_mine_spendable_at_height(height: u64, network: Network) -> Result<MicroMinotari, String> {
+    let pre_mine_items = get_pre_mine_items(network)?;
+    Ok(pre_mine_items
+        .iter()
+        .filter(|v| v.original_maturity <= height)
+        .map(|v| v.value)
+        .sum())
+}
+
 /// Get the tokenomics unlock schedule as per the specification - see `https://tari.substack.com/p/tari-tokenomics`
 pub fn get_tokenomics_pre_mine_unlock_schedule(network: Network) -> UnlockSchedule {
     UnlockSchedule {
@@ -735,7 +745,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
 }
 
 /// Get the pre-mine items according to the pre-mine specification
-pub async fn get_pre_mine_items(network: Network) -> Result<Vec<PreMineItem>, String> {
+pub fn get_pre_mine_items(network: Network) -> Result<Vec<PreMineItem>, String> {
     let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
     create_pre_mine_output_values(schedule)
 }
@@ -793,6 +803,7 @@ pub fn verify_script_keys_for_index(
 }
 
 /// Create pre-mine genesis block info with the given pre-mine items and party public keys
+#[allow(clippy::too_many_lines)]
 pub async fn create_pre_mine_genesis_block_info(
     pre_mine_items: &[PreMineItem],
     threshold_spend_keys: &[Vec<CompressedPublicKey>],
@@ -809,27 +820,37 @@ pub async fn create_pre_mine_genesis_block_info(
         let signature_threshold = get_signature_threshold(public_keys.len())?;
         let mut total_script_key = UncompressedPublicKey::default();
         for key in public_keys {
-            total_script_key = total_script_key + key.to_public_key().unwrap();
+            total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let key_manager = create_memory_db_key_manager().unwrap();
-        let view_key =
-            public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key)).unwrap();
-        let view_key_id = key_manager.import_key(view_key.clone()).await.unwrap();
-        let address_len = u8::try_from(public_keys.len()).unwrap();
+        let key_manager = create_memory_db_key_manager().map_err(|e| e.to_string())?;
+        let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
+            .map_err(|e| e.to_string())?;
+        let view_key_id = key_manager
+            .import_key(view_key.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        let address_len = u8::try_from(public_keys.len()).map_err(|e| e.to_string())?;
 
-        let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
-        total_private_key = total_private_key + &key_manager.get_private_key(&commitment_mask.key_id).await.unwrap();
+        let (commitment_mask, script_key) = key_manager
+            .get_next_commitment_mask_and_script_key()
+            .await
+            .map_err(|e| e.to_string())?;
+        total_private_key = total_private_key +
+            &key_manager
+                .get_private_key(&commitment_mask.key_id)
+                .await
+                .map_err(|e| e.to_string())?;
         let commitment = key_manager
             .get_commitment(&commitment_mask.key_id, &item.value.into())
             .await
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         let mut commitment_bytes = [0u8; 32];
         commitment_bytes.clone_from_slice(commitment.as_bytes());
 
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
-            .unwrap();
+            .map_err(|e| e.to_string())?;
         let mut public_keys = public_keys.clone();
         public_keys.shuffle(&mut thread_rng());
         let script = script!(
@@ -852,7 +873,7 @@ pub async fn create_pre_mine_genesis_block_info(
             .with_script(script)
             .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U256(i.into()))
             .await
-            .unwrap()
+            .map_err(|e| e.to_string())?
             .with_input_data(ExecutionStack::default())
             .with_version(TransactionOutputVersion::get_current_version())
             .with_sender_offset_public_key(sender_offset.pub_key)
@@ -860,11 +881,16 @@ pub async fn create_pre_mine_genesis_block_info(
             .with_minimum_value_promise(item.value)
             .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
             .await
-            .unwrap()
+            .map_err(|e| e.to_string())?
             .try_build(&key_manager)
             .await
-            .unwrap();
-        outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
+            .map_err(|e| e.to_string())?;
+        outputs.push(
+            output
+                .to_transaction_output(&key_manager)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
@@ -876,7 +902,7 @@ pub async fn create_pre_mine_genesis_block_info(
         &total_public_key,
         &tx_meta,
     );
-    let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).unwrap();
+    let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
     let compressed_signature = Signature::new_from_schnorr(signature);
     let excess = CompressedCommitment::from_compressed_key(total_public_key);
     let kernel = TransactionKernel::new_current_version(
@@ -904,9 +930,11 @@ mod test {
             create_pre_mine_genesis_block_info,
             create_pre_mine_output_values,
             get_expected_payout_grace_period_blocks,
+            get_pre_mine_items,
             get_pre_mine_value,
             get_signature_threshold,
             get_tokenomics_pre_mine_unlock_schedule,
+            pre_mine_spendable_at_height,
             verify_script_keys_for_index,
             Apportionment,
             CustomRelease,
@@ -916,7 +944,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::consensus_constants::MAINNET_PRE_MINE_VALUE,
+        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
         transactions::{
             tari_amount::{MicroMinotari, Minotari},
             transaction_components::{TransactionKernel, TransactionOutput},
@@ -1437,5 +1465,160 @@ mod test {
         assert_eq!(get_signature_threshold(18).unwrap(), 10);
         assert_eq!(get_signature_threshold(19).unwrap(), 10);
         assert_eq!(get_signature_threshold(20).unwrap(), 11);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_total_spendable_supply_at_height() {
+        // Initial maturity schedule up to 3 weeks ( | height | (maturity) |):
+        // | 0 -> 5040 - 1 | (720) |
+        //                 | 5040 -> 10080 - 1 | (540) |
+        //                                     | 10080 -> 15120 - 1 | (360) |
+        //                                                          | 15120 -> | (180) |
+
+        let network = Network::MainNet;
+        let consensus_manager = ConsensusManager::builder(network)
+            .build()
+            .map_err(|e| e.to_string())
+            .unwrap();
+        let emission_schedule = consensus_manager.emission_schedule();
+        let pre_mine_items = get_pre_mine_items(network).unwrap();
+        let maturity_tranches = consensus_manager.get_maturity_tranches();
+
+        for (height, value) in [
+            // Within 1st tranche
+            (0, 756000002000000),
+            (maturity_tranches[0].maturity / 2, 756000002000000),
+            // Within 2nd tranche
+            (maturity_tranches[1].effective_from_height, 816162165168137),
+            (
+                maturity_tranches[1].effective_from_height + maturity_tranches[0].maturity / 2,
+                821165374278621,
+            ),
+            (
+                maturity_tranches[1].effective_from_height + maturity_tranches[0].maturity,
+                828667219912912,
+            ),
+            // Within 3rd tranche
+            (maturity_tranches[2].effective_from_height, 888553971940358),
+            (
+                maturity_tranches[2].effective_from_height + maturity_tranches[1].maturity / 2,
+                892289348766953,
+            ),
+            (
+                maturity_tranches[2].effective_from_height + maturity_tranches[1].maturity,
+                898513007030503,
+            ),
+            // Within 4th tranche
+            (maturity_tranches[3].effective_from_height, 960614382886959),
+            (
+                maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity / 2,
+                963093332298424,
+            ),
+            (
+                maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity,
+                968050054592502,
+            ),
+            // Within pre-mine maturity range 1
+            (180 * BLOCKS_PER_DAY, 2573982676047120),
+            (180 * BLOCKS_PER_DAY + 2 * 31 * BLOCKS_PER_DAY, 3341352003000927),
+            (180 * BLOCKS_PER_DAY + 5 * 31 * BLOCKS_PER_DAY, 4453332200422863),
+            // Within pre-mine maturity range 2
+            (365 * BLOCKS_PER_DAY, 4925001471171519),
+            (365 * BLOCKS_PER_DAY + 2 * 31 * BLOCKS_PER_DAY, 5870144522232540),
+            (365 * BLOCKS_PER_DAY + 5 * 31 * BLOCKS_PER_DAY, 7253103292383049),
+        ] {
+            let rewards_at_height = emission_schedule
+                .supply_at_block(height)
+                .saturating_sub(MAINNET_PRE_MINE_VALUE);
+
+            let matured_rewards_at_height = consensus_manager.block_rewards_spendable_at_height(height).unwrap();
+
+            if height > 0 {
+                assert!(rewards_at_height > matured_rewards_at_height);
+            }
+
+            let pre_mine_spendable_supply = pre_mine_spendable_at_height(height, network).unwrap();
+
+            assert_eq!(
+                pre_mine_spendable_supply,
+                pre_mine_items
+                    .iter()
+                    .filter(|v| v.original_maturity <= height)
+                    .map(|v| v.value)
+                    .sum()
+            );
+
+            let total_spendable_supply = matured_rewards_at_height + pre_mine_spendable_supply;
+            assert_eq!(total_spendable_supply, MicroMinotari(value));
+        }
+
+        // Verify that the spendable supply is monotonically increasing at tranche boundaries
+        for tranche in [
+            maturity_tranches[1].clone(),
+            maturity_tranches[2].clone(),
+            maturity_tranches[3].clone(),
+        ] {
+            assert!(
+                consensus_manager
+                    .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 2,)
+                    .unwrap() <
+                    consensus_manager
+                        .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 1,)
+                        .unwrap()
+            );
+
+            assert!(
+                consensus_manager
+                    .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 1,)
+                    .unwrap() <
+                    consensus_manager
+                        .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity,)
+                        .unwrap()
+            );
+
+            assert!(
+                consensus_manager
+                    .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity,)
+                    .unwrap() <
+                    consensus_manager
+                        .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 1,)
+                        .unwrap()
+            );
+
+            assert!(
+                consensus_manager
+                    .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 1,)
+                    .unwrap() <
+                    consensus_manager
+                        .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 2,)
+                        .unwrap()
+            );
+        }
+
+        // Verify that the simple calculation of spendable supply does not match the actual spendable supply at tranche
+        // boundaries
+        let simple_calc = emission_schedule
+            .supply_at_block(maturity_tranches[1].effective_from_height - 1)
+            .saturating_sub(MAINNET_PRE_MINE_VALUE);
+        assert_eq!(
+            simple_calc,
+            consensus_manager
+                .block_rewards_spendable_at_height(
+                    maturity_tranches[1].effective_from_height - 1 + maturity_tranches[0].maturity,
+                )
+                .unwrap()
+        );
+        let simple_calc = emission_schedule
+            .supply_at_block(maturity_tranches[1].effective_from_height)
+            .saturating_sub(MAINNET_PRE_MINE_VALUE);
+        assert!(
+            simple_calc >
+                consensus_manager
+                    .block_rewards_spendable_at_height(
+                        maturity_tranches[1].effective_from_height + maturity_tranches[1].maturity,
+                    )
+                    .unwrap()
+        );
     }
 }

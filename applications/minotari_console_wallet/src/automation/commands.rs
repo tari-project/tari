@@ -839,7 +839,7 @@ pub async fn command_runner(
                 let output_hashes: Vec<HashOutput> = pre_mine_outputs.iter().map(|v| v.hash()).collect();
                 let unspent_outputs = transaction_service.fetch_unspent_outputs(output_hashes).await?;
 
-                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()) {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -1278,7 +1278,7 @@ pub async fn command_runner(
                 // Encumber outputs
                 let mut outputs_for_parties = Vec::with_capacity(party_info_per_index.len());
                 let mut outputs_for_self = Vec::with_capacity(party_info_per_index.len());
-                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()) {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
