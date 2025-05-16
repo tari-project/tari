@@ -20,15 +20,15 @@ pub enum Error {
 }
 
 pub struct Server<S> {
-    listen_address: SocketAddr,
+    port: u16,
     query_service: Arc<S>,
     shutdown_signal: ShutdownSignal,
 }
 
 impl<S: BaseNodeWalletQueryService> Server<S> {
-    pub fn new(listen_address: SocketAddr, query_service: S, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(port: u16, query_service: S, shutdown_signal: ShutdownSignal) -> Self {
         Self {
-            listen_address,
+            port,
             query_service: Arc::new(query_service),
             shutdown_signal,
         }
@@ -36,22 +36,22 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
 
     pub async fn start<B: BlockchainBackend + 'static>(&self) -> Result<(), Error> {
         let shutdown_signal = self.shutdown_signal.clone();
-        let listen_address = self.listen_address;
+        let port = self.port;
         let router = Router::new()
             .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
             .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
             .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
             .layer(Extension(self.query_service.clone()));
-        let listener = TcpListener::bind(self.listen_address).await?;
+        let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
         // spawn server
         tokio::spawn(async move {
-            info!(target: LOG_TARGET, "HTTP server listening at {}", listen_address);
+            info!(target: LOG_TARGET, "Wallet query HTTP server listening at 0.0.0.0:{port}");
             if let Err(error) = axum::serve(listener, router)
                 .with_graceful_shutdown(shutdown_signal)
                 .await
             {
-                error!(target: LOG_TARGET, "HTTP server error: {}", error);
+                error!(target: LOG_TARGET, "Wallet query HTTP server error: {}", error);
             }
         });
 

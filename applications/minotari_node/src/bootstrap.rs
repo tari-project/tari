@@ -70,6 +70,7 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
+use crate::config::WalletQueryServiceConfig;
 use crate::ApplicationConfig;
 
 const LOG_TARGET: &str = "c::bn::initialization";
@@ -88,7 +89,8 @@ pub struct BaseNodeBootstrapper<'a, B> {
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
@@ -191,7 +193,7 @@ where B: BlockchainBackend + 'static
             &p2p_config,
             self.interrupt_signal.clone(),
         )
-        .await;
+            .await;
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let tor_id_path = base_node_config.tor_identity_file.clone();
@@ -226,11 +228,11 @@ where B: BlockchainBackend + 'static
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
-            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
+            TransportType::Tcp => {} // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-            },
+            }
         };
 
         handles.register(comms);
@@ -242,15 +244,16 @@ where B: BlockchainBackend + 'static
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
-        config: &P2pConfig,
+        p2p_config: &P2pConfig,
+        wallet_query_service_config: &WalletQueryServiceConfig,
         shutdown_signal: ShutdownSignal,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let rpc_server = RpcServer::builder()
-            .with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions)
-            .with_maximum_sessions_per_client(config.rpc_max_sessions_per_peer)
-            .with_cull_oldest_peer_rpc_connection_on_full(config.cull_oldest_peer_rpc_connection_on_full)
+            .with_maximum_simultaneous_sessions(p2p_config.rpc_max_simultaneous_sessions)
+            .with_maximum_sessions_per_client(p2p_config.rpc_max_sessions_per_peer)
+            .with_cull_oldest_peer_rpc_connection_on_full(p2p_config.cull_oldest_peer_rpc_connection_on_full)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
@@ -273,7 +276,7 @@ where B: BlockchainBackend + 'static
 
         // wallet query http server
         let wallet_query_http_server = create_base_node_wallet_query_http_server(
-            config.base_node_http_wallet_query_service_listen_address,
+            wallet_query_service_config.port,
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),
             shutdown_signal.clone(),
@@ -281,13 +284,13 @@ where B: BlockchainBackend + 'static
         match wallet_query_http_server.start::<B>().await {
             Ok(_) => {
                 handles.register(wallet_query_http_server);
-            },
+            }
             Err(error) => {
                 error!(
                     target: LOG_TARGET,
                     "Failed to start wallet query http server: {:?}", error
                 );
-            },
+            }
         }
 
         comms.add_protocol_extension(rpc_server)

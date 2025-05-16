@@ -27,7 +27,7 @@ mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
 
-use std::{error::Error, fmt::Debug, net::SocketAddr};
+use std::{error::Error, fmt::Debug};
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
@@ -172,13 +172,13 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
 
 #[cfg(feature = "base_node")]
 pub fn create_base_node_wallet_query_http_server<B: BlockchainBackend + 'static>(
-    listen_address: SocketAddr,
+    port: u16,
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     shutdown_signal: ShutdownSignal,
 ) -> http::server::Server<impl BaseNodeWalletQueryService> {
     http::server::Server::new(
-        listen_address,
+        port,
         http::query_service::Service::new(db, state_machine),
         shutdown_signal,
     )

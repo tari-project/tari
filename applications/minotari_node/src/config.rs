@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::grpc_method::GrpcMethod;
+#[cfg(feature = "metrics")]
+use crate::metrics::MetricsConfig;
+use config::Config;
+use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-
-use config::Config;
-use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{serializers, CommonConfig, ConfigList, Network, StringList},
     ConfigurationError,
@@ -42,10 +44,7 @@ use tari_core::{
 };
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
-
-use crate::grpc_method::GrpcMethod;
-#[cfg(feature = "metrics")]
-use crate::metrics::MetricsConfig;
+use url::Url;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
@@ -148,6 +147,18 @@ pub struct BaseNodeConfig {
     // Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_health_check: Duration,
+    /// Wallet query HTTP service configuration
+    pub http_wallet_query_service: WalletQueryServiceConfig,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct WalletQueryServiceConfig {
+    /// Port that the local wallet query service will listen on.
+    pub port: u16,
+    /// The external address of the wallet query service.
+    /// This must be accessible (if set) from the internet to let other peers connect to that.
+    /// Also this address will be sent to peers when requesting for the query service URL (via RPC call).
+    pub external_address: Option<Url>,
 }
 
 impl Default for BaseNodeConfig {

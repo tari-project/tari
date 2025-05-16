@@ -24,7 +24,20 @@ use std::{
     convert::{TryFrom, TryInto},
     time::{Duration, Instant},
 };
-
+use std::sync::Arc;
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    error::WalletError,
+    storage::database::WalletBackend,
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::UtxoScannerEvent,
+        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
+        uxto_scanner_service_builder::UtxoScannerMode,
+        RECOVERY_KEY,
+    },
+};
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use log::*;
@@ -41,6 +54,8 @@ use tari_comms::{
     Minimized,
     PeerConnection,
 };
+use tari_core::base_node::rpc::http::client::Client;
+use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClientError;
 use tari_core::{
     base_node::rpc::{BaseNodeWalletQueryServiceClient, BaseNodeWalletRpcClient},
     blocks::BlockHeader,
@@ -55,21 +70,38 @@ use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    error::WalletError,
-    storage::database::WalletBackend,
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
-    utxo_scanner_service::{
-        error::UtxoScannerError,
-        handle::UtxoScannerEvent,
-        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
-        uxto_scanner_service_builder::UtxoScannerMode,
-        RECOVERY_KEY,
-    },
-};
-
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
+
+/// Local struct that holds both of the clients and uses HTTP if possible,
+/// but if not, then falling back to RPC.
+struct PeerClient<S> {
+    pub query_service_client: S,
+    pub rpc_client: RpcClientLease<BaseNodeWalletRpcClient>,
+}
+
+impl<S: BaseNodeWalletQueryServiceClient> PeerClient<S> {
+    pub fn new(query_service_client: S, rpc_client: RpcClientLease<BaseNodeWalletRpcClient>) -> Self {
+        Self { query_service_client, rpc_client }
+    }
+
+    pub async fn get_header_by_height(&mut self, height: u64) -> Result<BlockHeader, UtxoScannerError> {
+        let header = match self.query_service_client.get_header_by_height(height).await {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                error!(target: LOG_TARGET, "Failed to get result from HTTP server: {error}");
+                self.rpc_client.get_header_by_height(height).await.map_err(|rpc_error| {
+                    UtxoScannerError::RpcError(rpc_error)
+                })
+            }
+        }?;
+        Ok(header)
+    }
+
+    pub fn rpc_client(&self) -> &RpcClientLease<BaseNodeWalletRpcClient> {
+        &self.rpc_client
+    }
+}
+
 
 pub struct UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
@@ -81,14 +113,13 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClie
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub birthday_offset: u16,
-    pub wallet_query_service_client: WalletQueryServiceClient,
+    pub local_node_wallet_query_service_client: WalletQueryServiceClient,
 }
 impl<TBackend, TWalletConnectivity, WalletQueryServiceClient>
-    UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    WalletQueryServiceClient: BaseNodeWalletQueryServiceClient,
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
@@ -115,7 +146,7 @@ where
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
                         return Ok(());
-                    },
+                    }
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
@@ -127,7 +158,7 @@ where
                             error: e.to_string(),
                         });
                         continue;
-                    },
+                    }
                 },
                 None => {
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
@@ -147,7 +178,7 @@ where
                     self.num_retries += 1;
                     // Reset peer index to try connect to the first peer again
                     self.peer_index = 0;
-                },
+                }
             }
         }
     }
@@ -204,7 +235,7 @@ where
                 }
 
                 Err(e.into())
-            },
+            }
         }
     }
 
@@ -212,8 +243,10 @@ where
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
-
-        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
+        let is_peer_local_node = selected_peer.map(|p| p == peer).unwrap_or(false);
+        
+        // get RPC client
+        let mut client = if is_peer_local_node {
             // Use the wallet connectivity service so that RPC pools are correctly managed
             self.resources
                 .wallet_connectivity
@@ -229,6 +262,15 @@ where
             peer.clone(),
             latency.unwrap_or_default(),
         ));
+
+        // get wallet service query client
+        let mut wallet_query_service_client = if is_peer_local_node {
+            &self.local_node_wallet_query_service_client
+        } else {
+            Client::new(self.local_node_wallet_query_service_client)
+        }
+
+        let peer_client = PeerClient::new(wallet_query_service_client, client);
 
         let timer = Instant::now();
         loop {
@@ -253,8 +295,7 @@ where
                     ));
                 }
 
-                let next_header = self
-                    .wallet_query_service_client
+                let next_header = wallet_query_service_client
                     .get_header_by_height(last_scanned_block.height + 1)
                     .await?;
                 let next_header_hash = next_header.hash();
@@ -273,7 +314,7 @@ where
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(wallet)) => {
                         self.get_scanning_start_header_height_hash(wallet.birthday).await?
-                    },
+                    }
                     _ => self.get_scanning_start_header_height_hash(None).await?,
                 };
 
@@ -339,11 +380,10 @@ where
         Ok(RpcClientLease::new(client))
     }
 
-    async fn get_chain_tip_header(&self) -> Result<BlockHeader, UtxoScannerError> {
-        let tip_info = self.wallet_query_service_client.get_tip_info().await?;
+    async fn get_chain_tip_header(&self, wallet_query_service_client: impl BaseNodeWalletQueryServiceClient) -> Result<BlockHeader, UtxoScannerError> {
+        let tip_info = wallet_query_service_client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = self
-            .wallet_query_service_client
+        let end_header = wallet_query_service_client
             .get_header_by_height(chain_height)
             .await?;
 
@@ -380,7 +420,7 @@ where
 
             if found_scanned_block.is_none() {
                 let header = self
-                    .wallet_query_service_client
+                    .local_node_wallet_query_service_client
                     .get_header_by_height(sb.height)
                     .await
                     .ok();
@@ -392,10 +432,10 @@ where
                         } else {
                             last_missing_scanned_block = Some(sb.clone());
                         }
-                    },
+                    }
                     None => {
                         last_missing_scanned_block = Some(sb.clone());
-                    },
+                    }
                 }
             }
             // Sum up the number of outputs recovered starting from the first found block
@@ -657,17 +697,17 @@ where
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
                     total_amount += wo.value;
-                },
+                }
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                    TransactionStorageError::DuplicateOutput,
-                ))) => {
+                                                             TransactionStorageError::DuplicateOutput,
+                                                         ))) => {
                     info!(
                         target: LOG_TARGET,
                         "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         tx_id
                     );
-                },
+                }
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
         }
@@ -749,7 +789,7 @@ where
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
         let block_height_birthday = self
-            .wallet_query_service_client
+            .local_node_wallet_query_service_client
             .get_height_at_time(epoch_time_birthday)
             .await
             .unwrap_or_else(|e| {
@@ -760,7 +800,7 @@ where
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = self
-            .wallet_query_service_client
+            .local_node_wallet_query_service_client
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
@@ -768,7 +808,7 @@ where
                 0
             });
         let header = self
-            .wallet_query_service_client
+            .local_node_wallet_query_service_client
             .get_header_by_height(block_height_scanning_start)
             .await?;
         let header_hash_scanning_start = header.hash();

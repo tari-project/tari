@@ -68,7 +68,7 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceC
 }
 
 impl<TBackend, TWalletConnectivity, WalletQueryServiceClient>
-    UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -114,7 +114,7 @@ where
             mode: self.mode.clone(),
             shutdown_signal,
             birthday_offset: self.resources.birthday_offset,
-            wallet_query_service_client: self.wallet_query_service_client.clone(),
+            local_node_wallet_query_service_client: self.wallet_query_service_client.clone(),
         }
     }
 
@@ -150,7 +150,7 @@ where
                     error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
                 }
             })
-            .fuse();
+                .fuse();
 
             loop {
                 tokio::select! {

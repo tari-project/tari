@@ -9,7 +9,7 @@ use crate::{
     chain_storage::BlockchainBackend,
 };
 
-const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
+const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_height_at_time";
 
 #[derive(Deserialize)]
 pub struct QueryParams {

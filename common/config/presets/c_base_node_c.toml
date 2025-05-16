@@ -174,7 +174,7 @@ listener_self_liveness_check_interval = 15
 #pub cull_oldest_peer_rpc_connection_on_full = true
 # Listening address of the base node wallet query service.
 # Default: 0.0.0.0:9000
-# base_node_http_wallet_query_service_listen_address = 0.0.0.0:9000
+# base_node_http_wallet_query_service_listen_address = "0.0.0.0:9000"
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
