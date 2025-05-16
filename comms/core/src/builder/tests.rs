@@ -88,7 +88,7 @@ async fn spawn_node(
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
 
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings.

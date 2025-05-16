@@ -34,13 +34,21 @@ use tari_comms::{
     backoff::ConstantBackoff,
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
-    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId, ProtocolNotification, Protocols},
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
+    types::CommsPublicKey,
     CommsBuilder,
     CommsNode,
     NodeIdentity,
@@ -52,6 +60,25 @@ use tokio::sync::{broadcast, mpsc};
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
 
 static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/msg/1.0");
+
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
@@ -72,7 +99,12 @@ pub async fn create(
 > {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-    let peer_database = PeerDatabaseSql::new(db_connection);
+    let this_node = if let Some(node) = node_identity.as_ref() {
+        node.to_peer()
+    } else {
+        create_test_peer()
+    };
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
 
     let mut protocols = Protocols::new();
     let (proto_notif_tx, proto_notif_rx) = mpsc::channel(1);

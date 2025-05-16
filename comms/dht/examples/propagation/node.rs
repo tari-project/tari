@@ -64,7 +64,11 @@ pub async fn create(
 ) -> anyhow::Result<(CommsNode, Dht, mpsc::Receiver<DecryptedDhtMessage>)> {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-    let peer_database = PeerDatabaseSql::new(db_connection);
+    let this_node_identity = node_identity
+        .as_ref()
+        .map(|ni| ni.as_ref().clone())
+        .unwrap_or_else(|| NodeIdentity::random_multiple_addresses(&mut OsRng, vec![], Default::default()));
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node_identity.to_peer())?;
 
     let node_identity = node_identity.unwrap_or_else(|| {
         Arc::new(NodeIdentity::random_multiple_addresses(

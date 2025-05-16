@@ -26,7 +26,7 @@ use log::*;
 
 use crate::{
     peer_manager::{
-        database::PeerDatabaseSql,
+        database::{PeerDatabaseSql, ThisPeerIdentity},
         peer::Peer,
         peer_id::PeerId,
         NodeDistance,
@@ -66,6 +66,12 @@ impl PeerStorageSql {
         Ok(PeerStorageSql { peer_db: database })
     }
 
+    /// Get this peer's identity
+    pub fn this_peer_identity(&self) -> ThisPeerIdentity {
+        self.peer_db.this_peer_identity()
+    }
+
+    /// Get the size of the database
     pub fn count(&self) -> usize {
         self.peer_db.size()
     }
@@ -248,62 +254,37 @@ impl PeerStorageSql {
         Ok(self.peer_db.random_peers_sqlite(n, exclude_peers)?)
     }
 
-    /// Get the closest `n` not failed, banned or deleted peer node ids, ordered by their distance to the given node ID.
-    pub fn get_closest_n_good_standing_peer_node_ids(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
-    ) -> Result<Vec<NodeId>, PeerManagerError> {
-        Ok(self
-            .peer_db
-            .get_closest_n_good_standing_peer_node_ids(region_node_id, n, features)?)
-    }
-
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
     pub fn get_closest_n_good_standing_peers(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self
-            .peer_db
-            .get_closest_n_good_standing_peers(region_node_id, n, features)?)
+        Ok(self.peer_db.get_closest_n_good_standing_peers(n, features)?)
     }
 
     /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
     /// region_node_id. If there are less than N known peers, this will _always_ return true
-    pub fn in_network_region(
-        &self,
-        node_id: &NodeId,
-        region_node_id: &NodeId,
-        n: usize,
-    ) -> Result<bool, PeerManagerError> {
+    pub fn in_network_region(&self, node_id: &NodeId, n: usize) -> Result<bool, PeerManagerError> {
+        let region_node_id = self.this_peer_identity().node_id;
         let region_node_distance = region_node_id.distance(node_id);
-        let node_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_NODE)?;
+        let node_threshold = self.calc_region_threshold(n, PeerFeatures::COMMUNICATION_NODE)?;
         // Is node ID in the base node threshold?
         if region_node_distance <= node_threshold {
             return Ok(true);
         }
-        let client_threshold = self.calc_region_threshold(region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)?; // Is node ID in the base client threshold?
+        let client_threshold = self.calc_region_threshold(n, PeerFeatures::COMMUNICATION_CLIENT)?; // Is node ID in the base client threshold?
         Ok(region_node_distance <= client_threshold)
     }
 
     /// Calculate the threshold for the region specified by region_node_id.
-    pub fn calc_region_threshold(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
-    ) -> Result<NodeDistance, PeerManagerError> {
+    pub fn calc_region_threshold(&self, n: usize, features: PeerFeatures) -> Result<NodeDistance, PeerManagerError> {
+        let region_node_id = self.this_peer_identity().node_id;
         if n == 0 {
             return Ok(NodeDistance::max_distance());
         }
 
-        let closest_peers = self
-            .peer_db
-            .get_closest_n_good_standing_peer_node_ids(region_node_id, n, features)?;
+        let closest_peers = self.peer_db.get_closest_n_good_standing_peer_node_ids(n, features)?;
         let mut dists = Vec::new();
         for node_id in closest_peers {
             dists.push(region_node_id.distance(&node_id));
@@ -412,7 +393,10 @@ mod test {
         );
         let db_connection = DbConnection::connect_memory(db_name)?;
         db_connection.migrate(MIGRATIONS)?;
-        Ok(PeerDatabaseSql::new(db_connection))
+        Ok(PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(PeerFeatures::COMMUNICATION_NODE, false),
+        )?)
     }
 
     fn get_peer_storage_sql_test_db() -> Result<PeerStorageSql, PeerManagerError> {
@@ -701,7 +685,7 @@ mod test {
             peer_storage.add_peer(p.clone()).unwrap();
         }
 
-        let main_peer_node_id = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false).node_id;
+        let main_peer_node_id = peer_storage.this_peer_identity().node_id;
 
         nodes.sort_by(|a, b| {
             a.node_id
@@ -715,20 +699,16 @@ mod test {
         let close_node = &nodes.first().unwrap().node_id;
         let far_node = &nodes.last().unwrap().node_id;
 
-        let is_in_region = peer_storage
-            .in_network_region(&main_peer_node_id, &main_peer_node_id, 1)
-            .unwrap();
+        let is_in_region = peer_storage.in_network_region(&main_peer_node_id, 1).unwrap();
         assert!(is_in_region);
 
-        let is_in_region = peer_storage
-            .in_network_region(close_node, &main_peer_node_id, 1)
-            .unwrap();
+        let is_in_region = peer_storage.in_network_region(close_node, 1).unwrap();
         assert!(is_in_region);
 
-        let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 9).unwrap();
+        let is_in_region = peer_storage.in_network_region(far_node, 9).unwrap();
         assert!(is_in_region);
 
-        let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
+        let is_in_region = peer_storage.in_network_region(far_node, 3).unwrap();
         assert!(!is_in_region);
     }
 

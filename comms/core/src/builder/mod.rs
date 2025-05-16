@@ -73,6 +73,7 @@ use crate::{
 /// use std::env::temp_dir;
 /// use tari_common_sqlite::connection::DbConnection;
 /// use tari_comms::connectivity::ConnectivityConfig;
+/// use tari_comms::peer_manager::create_test_peer;
 /// use tari_comms::peer_manager::database::{PeerDatabaseSql, MIGRATIONS};
 /// use tari_comms::test_utils::peer_manager::random_name;
 ///
@@ -88,7 +89,7 @@ use crate::{
 /// node_identity.sign();
 /// let mut shutdown = Shutdown::new();
 /// let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-/// let peer_database = PeerDatabaseSql::new(db_connection);
+/// let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE)).unwrap();
 ///
 /// let unspawned_node = CommsBuilder::new()
 ///   // .with_listener_address("/ip4/0.0.0.0/tcp/18000".parse().unwrap())
@@ -152,6 +153,11 @@ impl CommsBuilder {
     pub fn with_node_identity(mut self, node_identity: Arc<NodeIdentity>) -> Self {
         self.node_identity = Some(node_identity);
         self
+    }
+
+    /// Return the node identity for this comms instance.
+    pub fn node_identity(&self) -> Option<Arc<NodeIdentity>> {
+        self.node_identity.clone()
     }
 
     /// Set the shutdown signal for this comms instance

@@ -25,8 +25,10 @@ use std::sync::Arc;
 use rand::rngs::OsRng;
 use tari_comms::{
     message::MessageTag,
-    net_address::MultiaddressesWithStats,
-    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
 };
 use tari_comms_dht::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
@@ -87,5 +89,24 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
             Default::default(),
         )),
         message,
+    )
+}
+
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
     )
 }

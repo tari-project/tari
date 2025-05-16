@@ -36,7 +36,16 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
 };
 use tari_comms::{
-    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
+    types::CommsPublicKey,
     PeerManager,
 };
 use tari_crypto::keys::SecretKey;
@@ -200,9 +209,28 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
+fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
 pub fn create_peer_manager() -> Arc<PeerManager> {
     let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }
 

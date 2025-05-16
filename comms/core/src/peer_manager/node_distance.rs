@@ -24,6 +24,7 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt,
     mem,
+    str::FromStr,
 };
 
 use super::{node_id::NodeIdError, NodeId};
@@ -103,6 +104,14 @@ impl TryFrom<&[u8]> for XorDistance {
 impl fmt::Display for NodeDistance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for XorDistance {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        u128::from_str_radix(s, 16).map(XorDistance)
     }
 }
 

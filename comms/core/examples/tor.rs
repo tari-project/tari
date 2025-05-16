@@ -26,11 +26,13 @@ use tari_comms::{
         NodeIdentity,
         Peer,
         PeerFeatures,
+        PeerFlags,
     },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId},
     tor,
+    types::CommsPublicKey,
     CommsBuilder,
     CommsNode,
 };
@@ -40,7 +42,6 @@ use tokio::{
     runtime,
     sync::{broadcast, mpsc},
 };
-
 // Tor example for tari_comms.
 //
 // _Note:_ A running tor proxy with `ControlPort` set is required for this example to work.
@@ -157,6 +158,25 @@ async fn run() -> Result<(), Error> {
     Ok(())
 }
 
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
 async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     control_port_addr: Multiaddr,
     database_path: &Path,
@@ -172,7 +192,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 > {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-    let peer_database = PeerDatabaseSql::new(db_connection);
+    let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer())?;
 
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();

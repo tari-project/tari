@@ -26,16 +26,16 @@ use rand::{distributions::Alphanumeric, Rng};
 use tari_common_sqlite::connection::DbConnection;
 
 #[cfg(test)]
-use crate::peer_manager::PeerManagerError;
+use crate::peer_manager::{Peer, PeerManagerError};
 use crate::{
     peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
     PeerManager,
 };
 
 #[cfg(test)]
-pub fn build_peer_manager() -> Result<Arc<PeerManager>, PeerManagerError> {
+pub fn build_peer_manager(this_peer: &Peer) -> Result<Arc<PeerManager>, PeerManagerError> {
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS)?;
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
     Ok(Arc::new(PeerManager::new(peers_db)?))
 }
 
@@ -49,16 +49,19 @@ mod not_test {
     use tari_common_sqlite::connection::DbConnectionUrl;
 
     use super::*;
-    use crate::peer_manager::PeerManagerError;
+    use crate::peer_manager::{Peer, PeerManagerError};
 
-    pub fn build_peer_manager<P: AsRef<Path>>(data_path: P) -> Result<Arc<PeerManager>, PeerManagerError> {
+    pub fn build_peer_manager<P: AsRef<Path>>(
+        data_path: P,
+        this_peer: &Peer,
+    ) -> Result<Arc<PeerManager>, PeerManagerError> {
         std::fs::create_dir_all(&data_path)?;
         let peer_database_name = PathBuf::from(data_path.as_ref())
             .join(random_name())
             .with_extension("db");
         let database_url = DbConnectionUrl::File(peer_database_name);
         let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
         Ok(Arc::new(PeerManager::new(peers_db)?))
     }
 }

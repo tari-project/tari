@@ -59,8 +59,8 @@ fn setup_connectivity_manager(
     ConnectionManagerMockState,
     Shutdown,
 ) {
-    let peer_manager = build_peer_manager().unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
     let (cm_requester, mock) = create_connection_manager_mock();
     let cm_mock_state = mock.get_shared_state();
     tokio::spawn(mock.run());

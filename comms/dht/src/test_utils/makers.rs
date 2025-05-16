@@ -50,6 +50,7 @@ use crate::{
     message_signature::MessageSignature,
     outbound::{message::DhtOutboundMessage, DhtOutboundError},
     proto::envelope::{DhtEnvelope, DhtMessageType},
+    test_utils::create_test_peer,
     version::DhtProtocolVersion,
 };
 
@@ -240,7 +241,13 @@ pub fn make_dht_envelope<T: prost::Message>(
 
 pub fn build_peer_manager() -> Arc<PeerManager> {
     let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+    Arc::new(PeerManager::new(peers_db).unwrap())
+}
+
+pub fn build_peer_manager_with_node_identity(node_identity: &NodeIdentity) -> Arc<PeerManager> {
+    let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }
 

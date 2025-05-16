@@ -454,13 +454,14 @@ mod test {
 
     use super::*;
     use crate::{
+        create_test_peer,
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
 
     pub fn build_peer_manager() -> Arc<PeerManager> {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
         Arc::new(PeerManager::new(peers_db).unwrap())
     }
 
