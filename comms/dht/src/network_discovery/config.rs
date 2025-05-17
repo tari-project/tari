@@ -53,6 +53,9 @@ pub struct NetworkDiscoveryConfig {
     /// The maximum number of peers we allow per round of sync.
     /// Default: 500
     pub max_peers_to_sync_per_round: u32,
+    /// Maximum number of seed peers to try during bootstrap phase
+    /// Default: 5
+    pub max_seed_peer_sync_count: usize,
     /// Initial refresh sync peers delay period, when a configured connection needs preference.
     /// Default: None
     #[serde(with = "serializers::optional_seconds")]
@@ -69,6 +72,7 @@ impl Default for NetworkDiscoveryConfig {
             on_failure_idle_period: Duration::from_secs(5),
             max_sync_peers: 5,
             max_peers_to_sync_per_round: 500,
+            max_seed_peer_sync_count: 5,
             initial_peer_sync_delay: None,
         }
     }

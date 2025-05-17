@@ -59,12 +59,13 @@ impl DiscoveryReady {
         let num_peers = self.context.peer_manager.count().await;
         debug!(target: LOG_TARGET, "Peer list currently contains {} entries", num_peers);
 
-        // We don't have many peers - let's aggressively probe for them
+        // We don't have many peers - let's probe for them
+        // Note: SeedStrap state would have already attempted to get peers from seed nodes
         if num_peers < self.context.config.network_discovery.min_desired_peers {
             if self.context.num_rounds() >= self.config().network_discovery.idle_after_num_rounds {
                 warn!(
                     target: LOG_TARGET,
-                    "Still unable to obtain at minimum desired peers ({}) after {} rounds. Idling...",
+                    "Still unable to obtain minimum desired peers ({}) after {} rounds. Idling...",
                     self.config().network_discovery.min_desired_peers,
                     self.context.num_rounds(),
                 );
@@ -72,7 +73,7 @@ impl DiscoveryReady {
                 return Ok(StateEvent::Idle);
             }
 
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "DHT - Not enough current peers, choosing random peers to sync with"
             );

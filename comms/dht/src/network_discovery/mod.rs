@@ -43,3 +43,5 @@ mod state_machine;
 pub use state_machine::{DhtNetworkDiscovery, DhtNetworkDiscoveryRoundInfo};
 
 mod waiting;
+
+pub mod seed_strap;
