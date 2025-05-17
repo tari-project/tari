@@ -55,9 +55,11 @@ pub struct NetworkDiscoveryConfig {
     pub max_peers_to_sync_per_round: u32,
     /// Maximum number of seed peers to try during bootstrap phase
     /// Default: 5
+    #[serde(default)]
     pub max_seed_peer_sync_count: usize,
     /// Initial refresh sync peers delay period, when a configured connection needs preference.
     /// Default: None
+    #[serde(default)]
     #[serde(with = "serializers::optional_seconds")]
     pub initial_peer_sync_delay: Option<Duration>,
 }
