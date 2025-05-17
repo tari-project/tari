@@ -46,6 +46,7 @@ use crate::{
         initializing::Initializing,
         on_connect::OnConnect,
         ready::DiscoveryReady,
+        seed_strap::SeedStrap,
         waiting::Waiting,
         NetworkDiscoveryError,
     },
@@ -57,6 +58,7 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 #[derive(Debug)]
 enum State {
     Initializing,
+    SeedStrap(SeedStrap),
     Ready(DiscoveryReady),
     Discovering(Discovering),
     Waiting(Waiting),
@@ -66,9 +68,10 @@ enum State {
 
 impl Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use State::{Discovering, Initializing, OnConnect, Ready, Shutdown, Waiting};
+        use State::{Discovering, Initializing, OnConnect, Ready, SeedStrap, Shutdown, Waiting};
         match self {
             Initializing => write!(f, "Initializing"),
+            SeedStrap(_) => write!(f, "SeedStrap"),
             Ready(_) => write!(f, "Ready"),
             Discovering(_) => write!(f, "Discovering"),
             Waiting(w) => write!(f, "Waiting({:.0?})", w.duration()),
@@ -194,9 +197,10 @@ impl DhtNetworkDiscovery {
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
-        use State::{Discovering, Initializing, OnConnect, Ready, Waiting};
+        use State::{Discovering, Initializing, OnConnect, Ready, SeedStrap, Waiting};
         match state {
             Initializing => self::Initializing::new(&mut self.context).next_event().await,
+            SeedStrap(seed_strap) => seed_strap.next_event().await,
             Ready(ready) => ready.next_event().await,
             Discovering(discovering) => discovering.next_event().await,
             OnConnect(on_connect) => on_connect.next_event().await,
@@ -212,7 +216,8 @@ impl DhtNetworkDiscovery {
             "Transition triggered from current state `{}` by event `{}`", current_state, next_event
         );
         match (current_state, next_event) {
-            (State::Initializing, StateEvent::Initialized) => State::Ready(DiscoveryReady::new(self.context.clone())),
+            (State::Initializing, StateEvent::Initialized) => State::SeedStrap(SeedStrap::new(self.context.clone())),
+            (State::SeedStrap(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (_, StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
