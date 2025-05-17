@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, cmp};
+use std::{collections::HashSet, convert::TryInto, sync::Arc, cmp};
 
 use futures::StreamExt;
 use log::*;
+use rand::seq::SliceRandom;
 use tari_comms::{
     Minimized,
     PeerConnection,
@@ -97,12 +98,24 @@ impl SeedStrap {
             return Ok(0);
         }
 
-        let seed_node_ids: Vec<NodeId> = seed_peers.iter().map(|p| p.node_id.clone()).collect();
+        let seed_node_ids: HashSet<NodeId> = seed_peers.iter().map(|p| p.node_id.clone()).collect();
         let mut total_peers_added = 0;
 
         let num_seeds_to_try = cmp::min(seed_peers.len(), self.context.config.network_discovery.max_seed_peer_sync_count);
 
-        for seed_peer_candidate in seed_peers.into_iter().take(num_seeds_to_try) {
+        // Randomize the order of seed peers to distribute connection load
+        // Using a separate scope to ensure ThreadRng is dropped before any await points
+        let seed_peers_vec = {
+            let mut seed_peers_vec = seed_peers.into_iter().collect::<Vec<_>>();
+            let mut rng = rand::thread_rng();
+            seed_peers_vec.shuffle(&mut rng);
+            seed_peers_vec
+        };
+
+        // Create validator once outside the loop
+        let validator = PeerValidator::new(&self.context.config);
+
+        for seed_peer_candidate in seed_peers_vec.into_iter().take(num_seeds_to_try) {
             if seed_peer_candidate.node_id == *self.context.node_identity.node_id() {
                 trace!(target: LOG_TARGET, "Skipping self as seed peer candidate.");
                 continue;
@@ -157,7 +170,6 @@ impl SeedStrap {
                 );
             }
 
-            let validator = PeerValidator::new(&self.context.config);
             let mut new_peers_this_round = 0;
             for peer_info_proto in peers_from_seed {
                 let new_peer_candidate: UnvalidatedPeerInfo = match peer_info_proto.try_into() {
@@ -190,6 +202,9 @@ impl SeedStrap {
                     .find_by_public_key(&new_peer_candidate.public_key)
                     .await?;
                 
+                // Check if this is a new peer before moving maybe_existing_peer
+                let is_new_peer = maybe_existing_peer.is_none();
+                
                 // Use reference instead of clone since UnvalidatedPeerInfo doesn't implement Clone
                 match validator.validate_peer(new_peer_candidate, maybe_existing_peer) {
                     Ok(valid_peer) => {
@@ -200,7 +215,9 @@ impl SeedStrap {
                             seed_peer_candidate.node_id
                         );
                         self.context.peer_manager.add_peer(valid_peer).await?;
-                        new_peers_this_round += 1;
+                        if is_new_peer {
+                            new_peers_this_round += 1;
+                        }
                     },
                     Err(
                         DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. }) |
@@ -252,9 +269,9 @@ impl SeedStrap {
         let num_peers_to_request = cmp::min(
             self.config().network_discovery.max_peers_to_sync_per_round,
             DHT_RPC_MAX_PEERS_PER_REQUEST,
-        ) / 2; // Let's be conservative and ask for half the usual amount from a single seed
+        ).max(10) / 2; // Let's be conservative and ask for half the usual amount from a single seed
         let req = GetPeersRequest {
-            n: num_peers_to_request.max(10), // Ask for at least 10 peers
+            n: num_peers_to_request,
             include_clients: false,          // For DHT bootstrap, we prefer nodes.
             max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or(u32::MAX),
             max_addresses_per_claim: self

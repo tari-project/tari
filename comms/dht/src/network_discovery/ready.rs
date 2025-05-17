@@ -73,7 +73,7 @@ impl DiscoveryReady {
                 return Ok(StateEvent::Idle);
             }
 
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "DHT - Not enough current peers, choosing random peers to sync with"
             );
