@@ -217,12 +217,23 @@ impl DhtNetworkDiscovery {
         );
         match (current_state, next_event) {
             (State::Initializing, StateEvent::Initialized) => State::SeedStrap(SeedStrap::new(self.context.clone())),
-            (State::SeedStrap(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
-            (_, StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
-            (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
-                State::Discovering(Discovering::new(params, self.context.clone()))
+            // SeedStrap now returns DiscoveryComplete, handled by this case:
+            (State::SeedStrap(_), StateEvent::DiscoveryComplete(stats)) => {
+                if stats.has_new_peers() {
+                    self.context
+                        .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(stats.clone()));
+                }
+                let is_success = stats.is_success();
+                self.context.set_last_round(stats).await;
+                if !is_success {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap round was not successful. Waiting before next attempt."
+                    );
+                    return State::Waiting(config.on_failure_idle_period.into());
+                }
+                State::Ready(DiscoveryReady::new(self.context.clone()))
             },
-            (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
             (State::Discovering(_), StateEvent::DiscoveryComplete(stats)) => {
                 if stats.has_new_peers() {
                     self.context
@@ -231,11 +242,15 @@ impl DhtNetworkDiscovery {
                 let is_success = stats.is_success();
                 self.context.set_last_round(stats).await;
                 if !is_success {
-                    return State::Waiting(self.config().network_discovery.on_failure_idle_period.into());
+                    return State::Waiting(config.on_failure_idle_period.into());
                 }
 
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
+            (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
+                State::Discovering(Discovering::new(params, self.context.clone()))
+            },
+            (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
             (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_, StateEvent::Errored(err)) => {
