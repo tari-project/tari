@@ -21,4 +21,5 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod database;
+pub use database::ThisPeerIdentity;
 pub mod schema;

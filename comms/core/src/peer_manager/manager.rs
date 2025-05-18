@@ -36,6 +36,7 @@ use crate::{
         NodeId,
         PeerFeatures,
         PeerManagerError,
+        ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -54,6 +55,11 @@ impl PeerManager {
         let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
 
         Ok(Self { peer_storage_sql })
+    }
+
+    /// Get this peer's identity
+    pub fn this_peer_identity(&self) -> ThisPeerIdentity {
+        self.peer_storage_sql.this_peer_identity()
     }
 
     /// Get the number of peers in the PeerManager - any error will translate to a size of zero
@@ -311,36 +317,17 @@ impl PeerManager {
         .await?
     }
 
-    /// Get the closest `n` not failed, banned or deleted peer node ids, ordered by their distance to the given node ID.
-    pub async fn closest_n_good_standing_peer_node_ids(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
-    ) -> Result<Vec<NodeId>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let region_node_id = region_node_id.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .get_closest_n_good_standing_peer_node_ids(&region_node_id, n, features)
-        })
-        .await?
-    }
-
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
     pub async fn closest_n_good_standing_peers(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let peer_manager = self.clone();
-        let region_node_id = region_node_id.clone();
         tokio::task::spawn_blocking(move || {
             peer_manager
                 .peer_storage_sql
-                .get_closest_n_good_standing_peers(&region_node_id, n, features)
+                .get_closest_n_good_standing_peers(n, features)
         })
         .await?
     }
@@ -352,39 +339,13 @@ impl PeerManager {
         tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.random_peers(n, &excluded)).await?
     }
 
-    /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
-    /// region_node_id
-    pub async fn in_network_region(
-        &self,
-        node_id: &NodeId,
-        region_node_id: &NodeId,
-        n: usize,
-    ) -> Result<bool, PeerManagerError> {
-        let peer_manager = self.clone();
-        let region_node_id = region_node_id.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .in_network_region(&node_id, &region_node_id, n)
-        })
-        .await?
-    }
-
     pub async fn calc_region_threshold(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
         let peer_manager = self.clone();
-        let region_node_id = region_node_id.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .calc_region_threshold(&region_node_id, n, features)
-        })
-        .await?
+        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.calc_region_threshold(n, features)).await?
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
@@ -567,7 +528,11 @@ mod test {
 
     fn create_peer_manager() -> PeerManager {
         let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
         PeerManager::new(peers_db).unwrap()
     }
 
@@ -703,7 +668,7 @@ mod test {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = create_peer_manager();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
+        let network_region_node_id = peer_manager.peer_storage_sql.this_peer_identity().node_id;
         let mut test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
             .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
@@ -720,7 +685,7 @@ mod test {
         });
 
         let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_NODE)
+            .calc_region_threshold(n, PeerFeatures::COMMUNICATION_NODE)
             .await
             .unwrap();
 
@@ -743,7 +708,7 @@ mod test {
         }
 
         let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)
+            .calc_region_threshold(n, PeerFeatures::COMMUNICATION_CLIENT)
             .await
             .unwrap();
 
@@ -771,7 +736,7 @@ mod test {
         let n = 5;
         // Create peer manager with random peers
         let peer_manager = create_peer_manager();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
+        let network_region_node_id = peer_manager.this_peer_identity().node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
             .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
@@ -782,15 +747,9 @@ mod test {
         }
 
         for features in &[PeerFeatures::COMMUNICATION_NODE, PeerFeatures::COMMUNICATION_CLIENT] {
-            let node_threshold = peer_manager
-                .calc_region_threshold(&network_region_node_id, n, *features)
-                .await
-                .unwrap();
+            let node_threshold = peer_manager.calc_region_threshold(n, *features).await.unwrap();
 
-            let closest = peer_manager
-                .closest_n_good_standing_peers(&network_region_node_id, n, *features)
-                .await
-                .unwrap();
+            let closest = peer_manager.closest_n_good_standing_peers(n, *features).await.unwrap();
 
             assert!(closest
                 .iter()

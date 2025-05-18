@@ -62,7 +62,7 @@ async fn connect_to_nonexistent_peer() {
     let mut requester = ConnectionManagerRequester::new(request_tx, event_tx.clone());
     let mut shutdown = Shutdown::new();
 
-    let peer_manager = build_peer_manager().unwrap();
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
 
     let connection_manager = ConnectionManager::new(
         Default::default(),
@@ -96,7 +96,7 @@ async fn dial_success() {
     let (proto_tx2, mut proto_rx2) = mpsc::channel(1);
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager().unwrap();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx1);
@@ -117,7 +117,7 @@ async fn dial_success() {
 
     conn_man1.wait_until_listening().await.unwrap();
 
-    let peer_manager2 = build_peer_manager().unwrap();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx2);
     let mut conn_man2 = build_connection_manager(
@@ -246,7 +246,7 @@ async fn dial_success_aux_tcp_listener() {
     let (proto_tx2, _) = mpsc::channel(1);
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager().unwrap();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx1);
@@ -278,7 +278,7 @@ async fn dial_success_aux_tcp_listener() {
         .unwrap()
         .clone();
 
-    let peer_manager2 = build_peer_manager().unwrap();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     peer_manager2
         .add_peer(Peer::new(
             node_identity1.public_key().clone(),
@@ -336,7 +336,7 @@ async fn simultaneous_dial_events() {
     let node_identities = ordered_node_identities(2, Default::default());
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager().unwrap();
+    let peer_manager1 = build_peer_manager(&node_identities[0].to_peer()).unwrap();
     let mut conn_man1 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identities[0].clone(),
@@ -352,7 +352,7 @@ async fn simultaneous_dial_events() {
     let listener_info = conn_man1.wait_until_listening().await.unwrap();
     let public_address1 = listener_info.bind_address().clone();
 
-    let peer_manager2 = build_peer_manager().unwrap();
+    let peer_manager2 = build_peer_manager(&node_identities[1].to_peer()).unwrap();
     let mut conn_man2 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identities[1].clone(),
@@ -427,7 +427,7 @@ async fn dial_cancelled() {
     let node_identity2 = build_node_identity(PeerFeatures::empty());
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager().unwrap();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut conn_man1 = build_connection_manager(
         {

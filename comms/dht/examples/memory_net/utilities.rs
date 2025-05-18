@@ -74,7 +74,7 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 
-use crate::memory_net::DrainBurst;
+use crate::memory_net::{create_test_peer, DrainBurst};
 
 pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
@@ -638,7 +638,7 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
 fn create_peer_storage() -> PeerDatabaseSql {
     let database_name = random::string(8);
     let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
-    PeerDatabaseSql::new(db_connection)
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub async fn make_node(

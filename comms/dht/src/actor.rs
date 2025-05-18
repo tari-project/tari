@@ -768,8 +768,7 @@ impl DhtActor {
 
     /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
     /// well as other peers which do not advertise the MESSAGE_PROPAGATION flag (unless excluded by some other means
-    /// e.g. `excluded` list, filter_predicate etc. The filter_predicate is called on each peer excluding them from
-    /// the final results if that returns false.
+    /// e.g. `excluded` list.
     ///
     /// This ensures that peers are selected which are able to propagate the message further while still allowing
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
@@ -935,6 +934,7 @@ mod test {
         storage::MIGRATIONS,
         test_utils::{
             build_peer_manager,
+            build_peer_manager_with_node_identity,
             create_dht_discovery_mock,
             create_good_standing_peer,
             make_client_identity,
@@ -1207,7 +1207,7 @@ mod test {
         let this_peer = create_good_standing_peer(node_identity.as_ref());
         println!();
         println!("this_peer:   {}", this_peer.node_id.to_hex());
-        let peer_manager = build_peer_manager();
+        let peer_manager = build_peer_manager_with_node_identity(&node_identity);
 
         let client_node_identity = make_client_identity();
         let client_peer = create_good_standing_peer(client_node_identity.as_ref());

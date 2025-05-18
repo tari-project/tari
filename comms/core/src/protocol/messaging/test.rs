@@ -39,6 +39,7 @@ use crate::{
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{
+        create_test_peer,
         database::{PeerDatabaseSql, MIGRATIONS},
         NodeId,
         NodeIdentity,
@@ -76,7 +77,11 @@ fn random_name() -> String {
 
 fn create_peer_manager() -> Arc<PeerManager> {
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(
+        db_connection,
+        &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+    )
+    .unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }
 

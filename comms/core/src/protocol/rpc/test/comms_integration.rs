@@ -56,7 +56,7 @@ async fn run_service() {
     let mock_state = rpc_service.shared_state();
     let shutdown = Shutdown::new();
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, &node_identity1.to_peer()).unwrap();
     let comms1 = CommsBuilder::new()
         .with_listener_address(node_identity1.first_public_address().unwrap())
         .with_node_identity(node_identity1)
@@ -71,7 +71,7 @@ async fn run_service() {
 
     let node_identity2 = build_node_identity(Default::default());
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-    let peers_db = PeerDatabaseSql::new(db_connection);
+    let peers_db = PeerDatabaseSql::new(db_connection, &node_identity2.to_peer()).unwrap();
     let comms2 = CommsBuilder::new()
         .with_listener_address(node_identity2.first_public_address().unwrap())
         .with_shutdown_signal(shutdown.to_signal())

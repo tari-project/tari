@@ -26,11 +26,15 @@ use rand::rngs::OsRng;
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
         NodeIdentity,
         Peer,
         PeerFeatures,
+        PeerFlags,
     },
     pipeline,
     pipeline::SinkService,
@@ -39,7 +43,7 @@ use tari_comms::{
         ProtocolId,
     },
     transports::MemoryTransport,
-    types::CommsDatabase,
+    types::{CommsDatabase, CommsPublicKey},
     CommsBuilder,
     CommsNode,
 };
@@ -101,10 +105,29 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     ))
 }
 
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
 fn create_peer_storage() -> PeerDatabaseSql {
     let database_name = random::string(12);
     let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
-    PeerDatabaseSql::new(db_connection)
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub async fn make_node<I: IntoIterator<Item = Peer>>(

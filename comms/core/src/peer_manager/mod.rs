@@ -114,4 +114,4 @@ pub use or_not_found::OrNotFound;
 mod metrics;
 
 mod storage;
-pub use storage::database;
+pub use storage::{database, ThisPeerIdentity};

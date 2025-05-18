@@ -36,6 +36,7 @@ use diesel::{
     SqliteConnection,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use log::warn;
 use multiaddr::Multiaddr;
 use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
@@ -46,7 +47,7 @@ use crate::{
     peer_manager::{
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
-        storage::schema::{multi_addresses, peers},
+        storage::schema::{multi_addresses, node_identity, peers},
         NodeDistance,
         NodeId,
         Peer,
@@ -60,17 +61,84 @@ use crate::{
 };
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
+const LOG_TARGET: &str = "comms::peer_manager::storage::db";
+
+/// This peer's identity information
+#[derive(Clone)]
+pub struct ThisPeerIdentity {
+    pub public_key: CommsPublicKey,
+    pub node_id: NodeId,
+    pub features: PeerFeatures,
+}
 
 /// Peers database containing peers data
 #[derive(Clone)]
 pub struct PeerDatabaseSql {
     connection: DbConnection,
+    this_peer_identity: ThisPeerIdentity,
 }
 
 impl PeerDatabaseSql {
     /// Create a new peers database using the provided connection
-    pub fn new(connection: DbConnection) -> Self {
-        Self { connection }
+    pub fn new(connection: DbConnection, this_peer: &Peer) -> Result<Self, StorageError> {
+        let instance = Self {
+            connection,
+            this_peer_identity: ThisPeerIdentity {
+                public_key: this_peer.public_key.clone(),
+                node_id: this_peer.node_id.clone(),
+                features: this_peer.features,
+            },
+        };
+        PeerDatabaseSql::add_this_peer_node_identity_to_db(&instance)?;
+        Ok(instance)
+    }
+
+    /// Get this peer's identity
+    pub fn this_peer_identity(&self) -> ThisPeerIdentity {
+        self.this_peer_identity.clone()
+    }
+
+    fn add_this_peer_node_identity_to_db(&self) -> Result<(), StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        let node_identity_indexes = node_identity::table.load::<NewThisPeerIdentitySql>(&mut conn)?;
+        if node_identity_indexes.len() > 1 {
+            return Err(StorageError::UnexpectedResult(format!(
+                "There are multiple node identities fort this peer in the database, expected 1, found {}",
+                node_identity_indexes.len()
+            )));
+        }
+        if !node_identity_indexes.is_empty() {
+            if self.this_peer_identity.public_key.to_hex() == node_identity_indexes[0].public_key &&
+                self.this_peer_identity.node_id.to_hex() == node_identity_indexes[0].node_id
+            {
+                return Ok(());
+            } else {
+                return Err(StorageError::UnexpectedResult(format!(
+                    "This peer node identity does not match, expected '{}', found '{}'",
+                    self.this_peer_identity.node_id.to_hex(),
+                    node_identity_indexes[0].node_id
+                )));
+            }
+        }
+
+        let node_identity_sql = NewThisPeerIdentitySql {
+            public_key: self.this_peer_identity.public_key.to_hex(),
+            node_id: self.this_peer_identity.node_id.to_hex(),
+            features: self.this_peer_identity.features.to_i32(),
+        };
+
+        let inserted = diesel::insert_into(node_identity::table)
+            .values(node_identity_sql)
+            .execute(&mut conn)?;
+        if inserted == 0 {
+            return Err(StorageError::UnexpectedResult(format!(
+                "Could not insert own node identity '{}'",
+                self.this_peer_identity.node_id
+            )));
+        }
+
+        Ok(())
     }
 
     /// This function will add peers and their associated multi-addresses in batch mode:
@@ -95,6 +163,11 @@ impl PeerDatabaseSql {
                     let peer_id = generate_peer_id_as_i64();
                     let public_key = sql_escape(&p.peer.public_key);
                     let node_id = sql_escape(&p.peer.node_id);
+                    let distance_to_self = self
+                        .this_peer_identity
+                        .node_id
+                        .distance(&NodeId::from_hex(&p.peer.node_id)?)
+                        .to_string();
                     let flags = p.peer.flags;
                     let banned_until = p.peer.banned_until.map_or("NULL".to_string(), |dt| format!("'{}'", dt));
                     let banned_reason = p
@@ -113,11 +186,12 @@ impl PeerDatabaseSql {
                         .map_or("NULL".to_string(), |meta| format!("x'{}'", hex::to_hex(&meta)));
                     let deleted_at = p.peer.deleted_at.map_or("NULL".to_string(), |dt| format!("'{}'", dt));
 
-                    format!(
-                        "({}, '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', {}, {})",
+                    Ok::<String, StorageError>(format!(
+                        "({}, '{}', '{}', '{}', {}, {}, {}, {}, '{}', '{}', '{}', {}, {})",
                         peer_id,
                         public_key,
                         node_id,
+                        distance_to_self,
                         flags,
                         banned_until,
                         banned_reason,
@@ -127,9 +201,9 @@ impl PeerDatabaseSql {
                         user_agent,
                         metadata,
                         deleted_at
-                    )
+                    ))
                 })
-                .collect::<Vec<String>>();
+                .collect::<Result<Vec<String>, _>>()?;
 
             let mut peer_query = format!(
                 "INSERT INTO peers (peer_id, public_key, node_id, flags, banned_until, banned_reason, features, \
@@ -367,16 +441,17 @@ impl PeerDatabaseSql {
 
     /// Add a new peer with its associated multi-addresses
     pub fn add_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
-        let new_peer_sql = PeerDatabaseSql::add_peer_sql(peer)?;
+        let new_peer_sql = self.add_peer_sql(peer)?;
         self.add_peer_to_db(new_peer_sql)
     }
 
     // Helper function to convert a Peer to a NewPeerWithAddressesSql
-    fn add_peer_sql(peer: Peer) -> Result<NewPeerWithAddressesSql, StorageError> {
+    fn add_peer_sql(&self, peer: Peer) -> Result<NewPeerWithAddressesSql, StorageError> {
         let new_peer_sql = NewPeerSql {
             peer_id: generate_peer_id_as_i64(),
             public_key: peer.public_key.to_hex(),
             node_id: peer.node_id.to_hex(),
+            distance_to_self: self.this_peer_identity.node_id.distance(&peer.node_id).to_string(),
             flags: peer.flags.to_i32(),
             banned_until: peer.banned_until,
             banned_reason: Some(peer.banned_reason.clone()),
@@ -998,7 +1073,6 @@ impl PeerDatabaseSql {
     // Get the closest `n` not failed, banned or deleted node ids, ordered by their distance to the given node ID.
     fn get_closest_n_good_standing_peer_node_ids_inner(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
@@ -1039,7 +1113,8 @@ impl PeerDatabaseSql {
             .filter_map(|v| NodeId::from_hex(&v).ok())
             .collect::<Vec<_>>();
 
-        filtered_node_ids.sort_by_key(|a| a.distance(region_node_id));
+        let region_node_id = self.this_peer_identity().node_id;
+        filtered_node_ids.sort_by_key(|a| a.distance(&region_node_id));
         filtered_node_ids.truncate(n);
 
         Ok(filtered_node_ids)
@@ -1048,7 +1123,6 @@ impl PeerDatabaseSql {
     /// Get the closest `n` not failed, banned or deleted node ids, ordered by their distance to the given node ID.
     pub fn get_closest_n_good_standing_peer_node_ids(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<NodeId>, StorageError> {
@@ -1058,18 +1132,17 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
 
-        self.get_closest_n_good_standing_peer_node_ids_inner(region_node_id, n, features, &mut conn)
+        self.get_closest_n_good_standing_peer_node_ids_inner(n, features, &mut conn)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
     pub fn get_closest_n_good_standing_peers(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let node_ids = self.get_closest_n_good_standing_peer_node_ids_inner(region_node_id, n, features, &mut conn)?;
+        let node_ids = self.get_closest_n_good_standing_peer_node_ids_inner(n, features, &mut conn)?;
 
         let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
         let results = peers::table
@@ -1078,10 +1151,11 @@ impl PeerDatabaseSql {
             .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
         let mut peers = PeerDatabaseSql::peers_from_join_query(results)?;
+        let region_node_id = self.this_peer_identity().node_id;
         peers.sort_by(|a, b| {
             a.node_id
-                .distance(region_node_id)
-                .cmp(&b.node_id.distance(region_node_id))
+                .distance(&region_node_id)
+                .cmp(&b.node_id.distance(&region_node_id))
         });
 
         Ok(peers)
@@ -1426,6 +1500,14 @@ fn sql_escape(input: &str) -> String {
     input.replace('\'', "''")
 }
 
+#[derive(Clone, Debug, Selectable, Queryable, Insertable, AsChangeset, PartialEq, Eq)]
+#[diesel(table_name = node_identity)]
+pub struct NewThisPeerIdentitySql {
+    pub public_key: String,
+    pub node_id: String,
+    pub features: i32,
+}
+
 #[derive(Clone, Debug)]
 pub struct NewPeerWithAddressesSql {
     pub peer: NewPeerSql,
@@ -1438,6 +1520,7 @@ pub struct NewPeerSql {
     pub peer_id: i64,
     pub public_key: String,
     pub node_id: String,
+    pub distance_to_self: String,
     pub flags: i32,
     pub banned_until: Option<chrono::NaiveDateTime>,
     pub banned_reason: Option<String>,
@@ -1542,11 +1625,19 @@ impl From<MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
 }
 
 fn duration_to_i64_infallible(duration: Option<Duration>) -> Option<i64> {
-    duration.map(|d| d.as_millis().try_into().unwrap_or(i64::MAX))
+    duration.map(|d| {
+        d.as_millis().try_into().unwrap_or({
+            warn!(target: LOG_TARGET, "duration_to_i64_infallible conversion error");
+            i64::MAX
+        })
+    })
 }
 
 fn u32_to_i32_infallible(value: u32) -> i32 {
-    i32::try_from(value).unwrap_or(i32::MAX)
+    i32::try_from(value).unwrap_or({
+        warn!(target: LOG_TARGET, "u32_to_i32_infallible conversion error");
+        i32::MAX
+    })
 }
 
 impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
@@ -1678,13 +1769,17 @@ mod tests {
     #[test]
     fn test_add_update_peer_with_addresses() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Create a new peer
         let mut new_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
         // Add the peer to the database
-        let mut new_peer_sql = PeerDatabaseSql::add_peer_sql(new_peer.clone()).unwrap();
+        let mut new_peer_sql = peers_db.add_peer_sql(new_peer.clone()).unwrap();
         peers_db.add_peer_to_db(new_peer_sql.clone()).unwrap();
 
         // Verify the peer was added
@@ -1766,7 +1861,11 @@ mod tests {
     #[test]
     fn test_batch_add_update_peers_with_addresses() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Step 1: Create peers
         let mut new_peers = Vec::new();
@@ -1778,7 +1877,7 @@ mod tests {
         // Step 2: Batch add peers
         let peers_with_addresses = new_peers
             .iter()
-            .map(|p| PeerDatabaseSql::add_peer_sql(p.clone()).unwrap())
+            .map(|p| peers_db.add_peer_sql(p.clone()).unwrap())
             .collect::<Vec<_>>();
         let added_count = peers_db
             .batch_add_peers_with_addresses(peers_with_addresses.clone())
@@ -1925,7 +2024,11 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     fn test_various_queries() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(12);
@@ -2213,7 +2316,11 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     fn test_delete_all_stale_peers() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(12);
@@ -2353,7 +2460,11 @@ mod tests {
     #[test]
     fn test_get_closest_n_good_standing_peer_node_ids() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(20);
@@ -2402,9 +2513,8 @@ mod tests {
         }
 
         // Test the function
-        let region_node_id = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).node_id;
         let closest_peers = peers_db
-            .get_closest_n_good_standing_peer_node_ids(&region_node_id, 10, PeerFeatures::COMMUNICATION_NODE)
+            .get_closest_n_good_standing_peer_node_ids(10, PeerFeatures::COMMUNICATION_NODE)
             .unwrap();
 
         // Verify the results
@@ -2417,6 +2527,7 @@ mod tests {
         }
 
         // Verify sorting by distance
+        let region_node_id = peers_db.this_peer_identity().node_id;
         for i in 0..closest_peers.len() - 1 {
             assert!(closest_peers[i].distance(&region_node_id) <= closest_peers[i + 1].distance(&region_node_id));
         }

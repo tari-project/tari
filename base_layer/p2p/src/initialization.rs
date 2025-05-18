@@ -159,7 +159,7 @@ where
     fs::create_dir_all(&data_path)?;
     let database_url = DbConnectionUrl::File(PathBuf::from(data_path).join("peers.db"));
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-    let peer_database = PeerDatabaseSql::new(db_connection);
+    let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
 
     //---------------------------------- Comms --------------------------------------------//
 
@@ -316,7 +316,12 @@ async fn configure_comms_and_dht(
             .with_extension("db"),
     );
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
-    let peer_database = PeerDatabaseSql::new(db_connection);
+    let this_node = builder
+        .node_identity()
+        .as_deref()
+        .ok_or(CommsBuilderError::NodeIdentityNotSet)?
+        .to_peer();
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
 
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;

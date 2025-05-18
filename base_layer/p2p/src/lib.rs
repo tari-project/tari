@@ -23,6 +23,8 @@
 #[cfg(test)]
 #[macro_use]
 mod test_utils;
+#[cfg(test)]
+pub use test_utils::create_test_peer;
 
 #[cfg(feature = "auto-update")]
 pub mod auto_update;

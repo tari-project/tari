@@ -37,9 +37,11 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 
+use crate::tests::create_test_peer;
+
 pub fn create_peer_storage() -> CommsDatabase {
     let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
-    PeerDatabaseSql::new(db_connection)
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {

@@ -74,11 +74,7 @@ impl Discovering {
         // However during a normal non-bootstrap sync receiving all new neighbours is a bit "fishy" and should be
         // treated as suspicious.
         self.neighbourhood_threshold = self
-            .calc_region_threshold(
-                self.context.node_identity.node_id().clone(),
-                self.config().num_neighbouring_nodes,
-                PeerFeatures::COMMUNICATION_NODE,
-            )
+            .calc_region_threshold(self.config().num_neighbouring_nodes, PeerFeatures::COMMUNICATION_NODE)
             .await?;
 
         Ok(())
@@ -86,14 +82,13 @@ impl Discovering {
 
     async fn calc_region_threshold(
         &self,
-        node_id: NodeId,
         num_neighbouring_nodes: usize,
         peer_features: PeerFeatures,
     ) -> Result<NodeDistance, NetworkDiscoveryError> {
         Ok(self
             .context
             .peer_manager
-            .calc_region_threshold(&node_id, num_neighbouring_nodes, peer_features)
+            .calc_region_threshold(num_neighbouring_nodes, peer_features)
             .await?)
     }
 
