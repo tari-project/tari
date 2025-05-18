@@ -33,6 +33,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::PeerManagerError;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
+use crate::base_node::state_machine_service::states::events_and_states;
 
 use crate::{
     base_node::{
@@ -128,14 +129,15 @@ impl Listening {
         if !self.is_synced {
             self.is_synced = true;
             self.initial_delay_count = 0;
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                true,
-                0,
-                shared.config.initial_sync_peer_count,
-            )));
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo {
+                synced: true,
+                initial_delay_connected_count: 0,
+                initial_sync_peer_wait_count: shared.config.initial_sync_peer_count,
+                bootstrap_phase: None,
+            }));
         }
     }
-
+    
     #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
@@ -151,11 +153,12 @@ impl Listening {
                 network in general is slow to respond to pings"
             );
         } else {
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                self.is_synced,
-                self.initial_delay_count,
-                shared.config.initial_sync_peer_count,
-            )));
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo {
+                synced: self.is_synced,
+                initial_delay_connected_count: self.initial_delay_count,
+                initial_sync_peer_wait_count: shared.config.initial_sync_peer_count,
+                bootstrap_phase: None,
+            }));
         }
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
@@ -172,11 +175,12 @@ impl Listening {
                     // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
                     // updated info
                     if !self.is_synced {
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                            self.is_synced,
-                            self.initial_delay_count,
-                            shared.config.initial_sync_peer_count,
-                        )));
+                        shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo {
+                            synced: self.is_synced,
+                            initial_delay_connected_count: self.initial_delay_count,
+                            initial_sync_peer_wait_count: shared.config.initial_sync_peer_count,
+                            bootstrap_phase: None,
+                        }));
                     }
 
                     // Check if the peer providing metadata is a seed peer. If so, ignore it for syncing.
@@ -233,6 +237,16 @@ impl Listening {
                         }
                     }
 
+                    // Gate sync decisions based on bootstrap status
+                    if !shared.is_primary_bootstrap_complete {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Still bootstrapping via seeds. Sync decision deferred for peer {}.",
+                            peer_metadata.node_id()
+                        );
+                        continue; // Skip to next event
+                    }
+
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
@@ -272,6 +286,16 @@ impl Listening {
                         .peer_manager
                         .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
                         .await;
+
+                    // Gate sync decisions based on bootstrap status
+                    if !shared.is_primary_bootstrap_complete {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Still bootstrapping via seeds. Sync decision deferred for peer {}.",
+                            peer_metadata.node_id()
+                        );
+                        continue; // Skip to next event
+                    }
 
                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                     if !configured_sync_peers.is_empty() {

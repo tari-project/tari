@@ -35,7 +35,7 @@ use tari_comms::{
 use crate::{
     network_discovery::{
         error::NetworkDiscoveryError,
-        state_machine::{NetworkDiscoveryContext, StateEvent, DhtNetworkDiscoveryRoundInfo},
+        state_machine::{NetworkDiscoveryContext, StateEvent, DhtNetworkDiscoveryRoundInfo, DiscoveryPhase},
     },
     peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::rpc::{GetPeersRequest},
@@ -69,6 +69,9 @@ impl SeedStrap {
             num_duplicate_peers: 0,
             num_succeeded: 0,
             sync_peers: Vec::new(),
+            phase: DiscoveryPhase::SeedStrap,
+            round_number: None, // Will be updated in discover_peers_via_seeds
+            total_rounds: None, // Will be updated in discover_peers_via_seeds
         };
 
         match self.discover_peers_via_seeds(&mut round_info).await {
@@ -157,6 +160,9 @@ impl SeedStrap {
             self.context.config.network_discovery.max_seed_peer_sync_count,
         );
 
+        // Update round info with total rounds
+        round_info.total_rounds = Some(num_seeds_to_try);
+
         let selected_seed_peers_for_sync = {
             let mut seed_peers_vec = seed_peers_available.into_iter().collect::<Vec<_>>();
             let mut rng = rand::thread_rng();
@@ -177,6 +183,8 @@ impl SeedStrap {
 
         for (idx, seed_peer_candidate) in selected_seed_peers_for_sync.into_iter().enumerate() {
             attempted_seed_contacts += 1;
+            // Update round info with current round number
+            round_info.round_number = Some(attempted_seed_contacts);
             
             let seed_peer_node_id_str = seed_peer_candidate.node_id.to_string();
 
