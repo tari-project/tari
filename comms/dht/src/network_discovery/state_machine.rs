@@ -217,7 +217,6 @@ impl DhtNetworkDiscovery {
         );
         match (current_state, next_event) {
             (State::Initializing, StateEvent::Initialized) => State::SeedStrap(SeedStrap::new(self.context.clone())),
-            // SeedStrap now returns DiscoveryComplete, handled by this case:
             (State::SeedStrap(_), StateEvent::DiscoveryComplete(stats)) => {
                 if stats.has_new_peers() {
                     self.context
@@ -233,7 +232,6 @@ impl DhtNetworkDiscovery {
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
                 self.context.increment_num_rounds();
-                
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::Discovering(_), StateEvent::DiscoveryComplete(stats)) => {
@@ -246,14 +244,18 @@ impl DhtNetworkDiscovery {
                 if !is_success {
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
-
+                self.context.increment_num_rounds();
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
             },
-            (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
-            (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
+            (State::Ready(_), StateEvent::OnConnectMode) => {
+                State::OnConnect(OnConnect::new(self.context.clone()))
+            },
+            (State::OnConnect(_), StateEvent::Ready) => {
+                State::Ready(DiscoveryReady::new(self.context.clone()))
+            },
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_, StateEvent::Errored(err)) => {
                 error!(
