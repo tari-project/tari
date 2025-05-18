@@ -178,6 +178,61 @@ impl Listening {
                             shared.config.initial_sync_peer_count,
                         )));
                     }
+
+                    // Check if the peer providing metadata is a seed peer. If so, ignore it for syncing.
+                    match shared.peer_manager.find_by_node_id(peer_metadata.node_id()).await {
+                        Ok(Some(peer)) if peer.is_seed() => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Ignoring ChainMetadata from designated SEED peer {} ({}) for sync decision.",
+                                peer_metadata.node_id().short_str(),
+                                peer_metadata.claimed_chain_metadata().best_block_height()
+                            );
+                            // Seed peers should not be chosen for syncing.
+                            // Their metadata might still be useful for overall network awareness,
+                            // but we don't want to sync from them.
+                            continue; // Skip to the next event
+                        },
+                        Ok(Some(_peer_not_seed)) => {
+                            // It's not a seed peer, proceed with sync decision logic below
+                            trace!(
+                                target: LOG_TARGET,
+                                "Received ChainMetadata from non-seed peer {} ({}). Evaluating for sync.",
+                                peer_metadata.node_id().short_str(),
+                                peer_metadata.claimed_chain_metadata().best_block_height()
+                            );
+                        },
+                        Ok(None) => {
+                            // Peer not found in PeerManager, could be a new peer from an unknown source.
+                            // Proceed with sync decision logic. If it's chosen for sync,
+                            // it will be added to PeerManager later.
+                            trace!(
+                                target: LOG_TARGET,
+                                "Received ChainMetadata from peer {} not currently in PeerManager. Will proceed with sync evaluation.",
+                                peer_metadata.node_id().short_str()
+                            );
+                        },
+                        Err(e) => {
+                            // Log the error but proceed cautiously, treating the peer as non-seed for this check.
+                            // A failure here might indicate a deeper issue but shouldn't halt sync evaluation entirely.
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error querying PeerManager for peer {}: {}. Proceeding with sync evaluation as if non-seed.",
+                                peer_metadata.node_id().short_str(),
+                                e
+                            );
+                            match e {
+                                // If it's a DB inconsistency, it could be serious.
+                                PeerManagerError::DataInconsistency(_) | PeerManagerError::DatabaseError(_) => {
+                                     error!(target: LOG_TARGET, "Serious PeerManagerError encountered: {}. This might indicate database corruption.", e);
+                                     // Depending on policy, could return StateEvent::Errored or FatalError here.
+                                     // For now, we proceed but the error is logged.
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
                     // We already ban the peer based on some previous logic, but this message was already in the
                     // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
