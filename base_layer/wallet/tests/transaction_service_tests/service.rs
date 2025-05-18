@@ -420,6 +420,7 @@ async fn setup_transaction_service_no_comms(
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
         scanner_handle,
+        transaction_service_handle.clone(),
     )
     .await
     .unwrap();

@@ -182,6 +182,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
         scanner_handle,
+        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -251,6 +252,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         connectivity,
         key_manager.clone(),
         scanner_handle,
+        ts_handle.clone(),
     )
     .await
     .unwrap();
