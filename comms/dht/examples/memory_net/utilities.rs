@@ -724,7 +724,7 @@ async fn setup_comms_dht(
         .build()
         .unwrap();
     for peer in seed_peers {
-        comms.peer_manager().add_peer(peer).await.unwrap();
+        comms.peer_manager().add_or_update_peer(peer).await.unwrap();
     }
 
     let db_name = iter::repeat(())

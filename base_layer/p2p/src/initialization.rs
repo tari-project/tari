@@ -410,7 +410,7 @@ pub async fn add_seed_peers(
 
         debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
         peer_manager
-            .add_peer(peer)
+            .add_or_update_peer(peer)
             .await
             .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
     }

@@ -36,7 +36,7 @@ use diesel::{
     SqliteConnection,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use log::warn;
+use log::{trace, warn};
 use multiaddr::Multiaddr;
 use rand::{prelude::SliceRandom, rngs::OsRng};
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
@@ -439,10 +439,35 @@ impl PeerDatabaseSql {
         })
     }
 
-    /// Add a new peer with its associated multi-addresses
-    pub fn add_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
-        let new_peer_sql = self.add_peer_sql(peer)?;
-        self.add_peer_to_db(new_peer_sql)
+    /// Add a new peer or update an existing peer with its associated multi-addresses
+    pub fn add_or_update_peer(&self, mut peer: Peer) -> Result<PeerId, StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_id = peer.node_id.clone();
+            match self.peer_exists_by_node_id_inner(&node_id, conn) {
+                Ok(Some(peer_id)) => {
+                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
+                    // Replace existing entry
+                    peer.set_id(peer_id);
+                    let mut existing_peer = match self.get_peer_by_node_id_inner(&node_id, conn)? {
+                        Some(peer) => peer,
+                        None => return Err(StorageError::DatabaseStateChanged),
+                    };
+                    existing_peer.merge(&peer);
+                    self.update_peer_inner(existing_peer, conn)?;
+                    Ok(peer_id)
+                },
+                Ok(None) => {
+                    // Add new entry
+                    trace!(target: LOG_TARGET, "Adding peer with node id '{}'", peer.node_id);
+                    let new_peer_sql = self.add_peer_sql(peer.clone())?;
+                    let peer_id = self.add_peer_to_db_inner(new_peer_sql, conn)?;
+                    peer.set_id(peer_id);
+                    Ok(peer_id)
+                },
+                Err(err) => Err(err),
+            }
+        })
     }
 
     // Helper function to convert a Peer to a NewPeerWithAddressesSql
@@ -504,8 +529,11 @@ impl PeerDatabaseSql {
     }
 
     // Add a new peer with its associated multi-addresses
-    fn add_peer_to_db(&self, new_peer_sql: NewPeerWithAddressesSql) -> Result<PeerId, StorageError> {
-        let mut conn = self.connection.get_pooled_connection()?;
+    fn add_peer_to_db_inner(
+        &self,
+        new_peer_sql: NewPeerWithAddressesSql,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<PeerId, StorageError> {
         conn.transaction::<_, StorageError, _>(|conn| {
             // Insert the peer and get the last inserted ID
             let node_id = new_peer_sql.peer.node_id.clone();
@@ -558,6 +586,16 @@ impl PeerDatabaseSql {
     pub fn update_peer(&self, peer: Peer) -> Result<(), StorageError> {
         let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer)?;
         self.update_peer_in_db(update_peer_sql)
+    }
+
+    // Add a new peer with its associated multi-addresses
+    fn update_peer_inner(
+        &self,
+        peer: Peer,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), StorageError> {
+        let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer)?;
+        self.update_peer_in_db_inner(update_peer_sql, conn)
     }
 
     // Helper function to convert a Peer to an UpdatePeerWithAddressesSql
@@ -615,6 +653,15 @@ impl PeerDatabaseSql {
     // Update an existing peer with its associated multi-addresses
     fn update_peer_in_db(&self, update_peer_sql: UpdatePeerWithAddressesSql) -> Result<(), StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
+        self.update_peer_in_db_inner(update_peer_sql, &mut conn)
+    }
+
+    // Update an existing peer with its associated multi-addresses
+    fn update_peer_in_db_inner(
+        &self,
+        update_peer_sql: UpdatePeerWithAddressesSql,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<(), StorageError> {
         conn.transaction::<_, StorageError, _>(|conn| {
             // Update the peer
             diesel::update(peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone())))
@@ -648,11 +695,19 @@ impl PeerDatabaseSql {
     /// Check if a peer exists by querying its node ID - if it exits the peer_id will be returned
     pub fn peer_exists_by_node_id(&self, node_id: &NodeId) -> Result<Option<PeerId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
+        self.peer_exists_by_node_id_inner(node_id, &mut conn)
+    }
 
+    // Check if a peer exists by querying its node ID - if it exits the peer_id will be returned
+    fn peer_exists_by_node_id_inner(
+        &self,
+        node_id: &NodeId,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Option<PeerId>, StorageError> {
         if let Ok(peer_id) = peers::table
             .filter(peers::node_id.eq(node_id.to_hex()))
             .select(peers::peer_id)
-            .first::<i64>(&mut conn)
+            .first::<i64>(conn)
         {
             Ok(Some(peer_id_from_i64(peer_id)))
         } else {
@@ -986,13 +1041,21 @@ impl PeerDatabaseSql {
     /// Get a peer by its node ID
     pub fn get_peer_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
+        self.get_peer_by_node_id_inner(node_id, &mut conn)
+    }
 
+    // Get a peer by its node ID
+    fn get_peer_by_node_id_inner(
+        &self,
+        node_id: &NodeId,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Option<Peer>, StorageError> {
         // Perform a join query to fetch peers and their addresses
         let node_id = node_id.to_hex();
         let results = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
             .filter(peers::node_id.eq(node_id))
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
 
         Ok(PeerDatabaseSql::peers_from_join_query(results)?.first().cloned())
     }
@@ -1780,7 +1843,7 @@ mod tests {
 
         // Add the peer to the database
         let mut new_peer_sql = peers_db.add_peer_sql(new_peer.clone()).unwrap();
-        peers_db.add_peer_to_db(new_peer_sql.clone()).unwrap();
+        peers_db.add_or_update_peer(new_peer.clone()).unwrap();
 
         // Verify the peer was added
         let mut conn = peers_db.connection.get_pooled_connection().unwrap();
@@ -1946,7 +2009,11 @@ mod tests {
     #[allow(clippy::too_many_lines)]
     fn test_peer_features() {
         let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
-        let peers_db = PeerDatabaseSql::new(db_connection);
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(12);
@@ -1956,14 +2023,14 @@ mod tests {
                 peer.flags = PeerFlags::SEED;
             }
             node_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
         // Create new wallet peers
         let mut wallet_peers = Vec::with_capacity(12);
         for _i in 0..12 {
             let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
             wallet_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
 
         let closest_nodes = peers_db
@@ -2038,14 +2105,14 @@ mod tests {
                 peer.flags = PeerFlags::SEED;
             }
             node_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
         // Create new wallet peers
         let mut wallet_peers = Vec::with_capacity(12);
         for _i in 0..12 {
             let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
             wallet_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
 
         // Test 'get_peer_indexes'
@@ -2330,14 +2397,14 @@ mod tests {
                 peer.flags = PeerFlags::SEED;
             }
             node_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
         // Create new wallet peers
         let mut wallet_peers = Vec::with_capacity(12);
         for _i in 0..12 {
             let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
             wallet_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
 
         // Set some metadata
@@ -2477,7 +2544,7 @@ mod tests {
                 peer.deleted_at = Some(chrono::Utc::now().naive_utc());
             }
             node_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
         // Create new wallet peers
         let mut wallet_peers = Vec::with_capacity(20);
@@ -2490,7 +2557,7 @@ mod tests {
                 peer.deleted_at = Some(chrono::Utc::now().naive_utc());
             }
             wallet_peers.push(peer.clone());
-            peers_db.add_peer(peer).unwrap();
+            peers_db.add_or_update_peer(peer).unwrap();
         }
         // Mark some peers as failed
         for address in node_peers[6].addresses.addresses() {

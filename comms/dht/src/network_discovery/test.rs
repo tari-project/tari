@@ -67,7 +67,7 @@ mod state_machine {
 
         let peer_manager = build_peer_manager();
         for peer in initial_peers {
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
 
         let shutdown = Shutdown::new();
@@ -128,7 +128,10 @@ mod state_machine {
         let mut mock_server = MockRpcServer::new(service, node_identity.clone());
         let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         // Add the peer that we'll sync from
-        peer_manager.add_peer(peer_node_identity.to_peer()).await.unwrap();
+        peer_manager
+            .add_or_update_peer(peer_node_identity.to_peer())
+            .await
+            .unwrap();
         mock_server.serve();
 
         // Create a connection to the RPC mock and then make it available to the connectivity manager mock
@@ -214,7 +217,7 @@ mod discovery_ready {
             for addr in &addresses {
                 peer.addresses.mark_last_seen_now(addr);
             }
-            pm.add_peer(peer).await.unwrap();
+            pm.add_or_update_peer(peer).await.unwrap();
         }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);

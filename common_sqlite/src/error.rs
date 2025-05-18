@@ -77,6 +77,8 @@ pub enum StorageError {
     SerdeJsonError(#[from] serde_json::Error),
     #[error("Database is locked: {0}")]
     DatabaseLockError(String),
+    #[error("The state of the database changed between queries")]
+    DatabaseStateChanged,
 }
 
 impl From<MessageFormatError> for StorageError {

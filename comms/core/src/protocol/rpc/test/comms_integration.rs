@@ -82,7 +82,7 @@ async fn run_service() {
 
     comms2
         .peer_manager()
-        .add_peer(comms1.node_identity().to_peer())
+        .add_or_update_peer(comms1.node_identity().to_peer())
         .await
         .unwrap();
 

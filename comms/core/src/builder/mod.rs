@@ -100,7 +100,7 @@ use crate::{
 ///   .unwrap();
 /// // This is your chance to add customizations that may require comms components for e.g. PeerManager.
 /// // let my_peer = Peer::new(...);
-/// // unspawned_node.peer_manager().add_peer(my_peer.clone());
+/// // unspawned_node.peer_manager().add_or_update_peer(my_peer.clone());
 /// // Add custom extensions implementing `ProtocolExtension`
 /// // unspawned_node = unspawned_node.add_protocol_extension(MyCustomProtocol::new(unspawned_node.peer_manager()));
 ///

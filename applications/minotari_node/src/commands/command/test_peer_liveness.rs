@@ -98,7 +98,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
             vec![],
             String::new(),
         );
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
 
         let (tx, mut rx) = watch::channel(PingResult::Initial);
 

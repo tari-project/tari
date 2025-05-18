@@ -84,6 +84,7 @@ async fn connect_to_nonexistent_peer() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[allow(clippy::similar_names)]
 async fn dial_success() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
@@ -139,7 +140,7 @@ async fn dial_success() {
     let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
@@ -280,7 +281,7 @@ async fn dial_success_aux_tcp_listener() {
 
     let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     peer_manager2
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![tcp_listener_addr], &PeerAddressSource::Config),
@@ -368,7 +369,7 @@ async fn simultaneous_dial_events() {
     let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identities[1].public_key().clone(),
             node_identities[1].node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
@@ -381,7 +382,7 @@ async fn simultaneous_dial_events() {
         .unwrap();
 
     peer_manager2
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identities[0].public_key().clone(),
             node_identities[0].node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address1], &PeerAddressSource::Config),
@@ -451,7 +452,10 @@ async fn dial_cancelled() {
 
     let mut subscription1 = conn_man1.get_event_subscription();
 
-    peer_manager1.add_peer(node_identity2.to_peer()).await.unwrap();
+    peer_manager1
+        .add_or_update_peer(node_identity2.to_peer())
+        .await
+        .unwrap();
 
     let (ready_tx, ready_rx) = oneshot::channel();
     let dial_result = tokio::spawn({

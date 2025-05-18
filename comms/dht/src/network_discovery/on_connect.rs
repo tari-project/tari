@@ -189,7 +189,7 @@ impl OnConnect {
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
         let valid_peer = peer_validator.validate_peer(peer, maybe_existing_peer)?;
-        self.context.peer_manager.add_peer(valid_peer).await?;
+        self.context.peer_manager.add_or_update_peer(valid_peer).await?;
         Ok(is_new_peer)
     }
 

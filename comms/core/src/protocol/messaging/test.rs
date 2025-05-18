@@ -148,7 +148,7 @@ async fn new_inbound_substream_handling() {
         Default::default(),
         Default::default(),
     );
-    peer_manager.add_peer(peer1.clone()).await.unwrap();
+    peer_manager.add_or_update_peer(peer1.clone()).await.unwrap();
 
     let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let peer2 = Peer::new(
@@ -407,7 +407,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
         Default::default(),
         Default::default(),
     );
-    peer_manager.add_peer(peer2.clone()).await.unwrap();
+    peer_manager.add_or_update_peer(peer2.clone()).await.unwrap();
 
     let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(peer1.clone(), peer2.clone()).await;
 

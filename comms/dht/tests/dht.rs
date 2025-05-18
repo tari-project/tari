@@ -37,8 +37,7 @@ use tari_comms_dht::{
 };
 use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
@@ -103,8 +102,7 @@ async fn test_dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_wallet_discover_propagation() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -145,7 +143,12 @@ async fn test_dht_wallet_discover_propagation() {
     );
 
     // To receive messages, clients have to connect
-    client_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    client_D
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     client_D
         .comms
         .connectivity()
@@ -196,8 +199,7 @@ async fn test_dht_wallet_discover_propagation() {
         .unwrap());
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_node_discover_propagation() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -238,7 +240,12 @@ async fn test_dht_node_discover_propagation() {
     );
 
     // To receive messages, clients have to connect
-    node_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_D
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     node_D
         .comms
         .connectivity()
@@ -323,7 +330,12 @@ async fn test_dht_propagate_dedup() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
@@ -606,6 +618,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[allow(non_snake_case)]
 async fn test_dht_repropagate() {
     let mut config = dht_config();
@@ -620,10 +633,30 @@ async fn test_dht_repropagate() {
         node_C.to_peer(),
     ])
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
-    node_B.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
-    node_C.comms.peer_manager().add_peer(node_A.to_peer()).await.unwrap();
-    node_C.comms.peer_manager().add_peer(node_B.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
+    node_B
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
+    node_C
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_A.to_peer())
+        .await
+        .unwrap();
+    node_C
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_B.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}",
         node_A.node_identity().node_id().short_str(),
@@ -709,8 +742,7 @@ async fn test_dht_repropagate() {
     node_C.shutdown().await;
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_propagate_message_contents_not_malleable_ban() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -730,7 +762,12 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",
         node_A.node_identity().node_id().short_str(),
@@ -815,8 +852,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_header_not_malleable() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -836,7 +872,12 @@ async fn test_dht_header_not_malleable() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",
         node_A.node_identity().node_id().short_str(),

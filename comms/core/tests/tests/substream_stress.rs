@@ -66,7 +66,7 @@ async fn run_stress_test(num_substreams: usize, num_iterations: usize, payload_s
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 

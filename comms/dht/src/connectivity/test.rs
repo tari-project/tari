@@ -65,7 +65,7 @@ async fn setup(
 ) {
     let peer_manager = build_peer_manager();
     for peer in initial_peers {
-        peer_manager.add_peer(peer).await.unwrap();
+        peer_manager.add_or_update_peer(peer).await.unwrap();
     }
 
     let shutdown = Shutdown::new();
@@ -149,7 +149,7 @@ async fn added_neighbours() {
     // Closest to this node
     let closer_peer = node_identities.remove(0);
     let mut peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
-    for peer in peers.iter_mut() {
+    for peer in &mut peers {
         let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
         for addr in &addresses {
             peer.addresses.mark_last_seen_now(addr);
@@ -167,12 +167,10 @@ async fn added_neighbours() {
     let added_peers = peer_manager.get_peers_by_node_ids(&peer_node_ids).await.unwrap();
     assert!(added_peers
         .iter()
-        .find(|p| peer_node_ids.iter().any(|node_id| node_id == &p.node_id))
-        .is_some());
+        .any(|p| peer_node_ids.iter().any(|node_id| node_id == &p.node_id)));
     assert!(peer_node_ids
         .iter()
-        .find(|&node_id| added_peers.iter().any(|x| &x.node_id == node_id))
-        .is_some());
+        .any(|p| peer_node_ids.iter().any(|node_id| node_id == p)));
 
     dht_connectivity.spawn();
 

@@ -233,7 +233,7 @@ async fn banned() {
     // The listener has banned the dialer peer
     let mut peer = node_identity2.to_peer();
     peer.ban_for(Duration::from_secs(60 * 60), "".to_string());
-    peer_manager1.add_peer(peer).await.unwrap();
+    peer_manager1.add_or_update_peer(peer).await.unwrap();
 
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);

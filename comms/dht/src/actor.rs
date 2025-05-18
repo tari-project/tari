@@ -1047,7 +1047,7 @@ mod test {
             let (mut dht, node_identity, connectivity_mock, discovery_mock, peer_manager) =
                 setup(shutdown.to_signal()).await;
             let peer = make_peer();
-            peer_manager.add_peer(peer.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
             let (conn1, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
             connectivity_mock.add_active_connection(conn1).await;
 
@@ -1205,14 +1205,11 @@ mod test {
     async fn test_select_peers() {
         let node_identity = make_node_identity();
         let this_peer = create_good_standing_peer(node_identity.as_ref());
-        println!();
-        println!("this_peer:   {}", this_peer.node_id.to_hex());
         let peer_manager = build_peer_manager_with_node_identity(&node_identity);
 
         let client_node_identity = make_client_identity();
         let client_peer = create_good_standing_peer(client_node_identity.as_ref());
-        println!("client_peer: {}", client_peer.node_id.to_hex());
-        peer_manager.add_peer(client_peer.clone()).await.unwrap();
+        peer_manager.add_or_update_peer(client_peer.clone()).await.unwrap();
 
         let (connectivity_manager, mock) = create_connectivity_mock();
         let connectivity_manager_mock_state = mock.get_shared_state();
@@ -1223,9 +1220,7 @@ mod test {
         connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
         let other_peer = create_good_standing_peer(make_node_identity().as_ref());
-        println!("other_peer:  {}", other_peer.node_id.to_hex());
-        println!("other_peer:  {:?}", other_peer);
-        peer_manager.add_peer(other_peer).await.unwrap();
+        peer_manager.add_or_update_peer(other_peer).await.unwrap();
 
         let (out_tx, _) = mpsc::unbounded_channel();
         let (actor_tx, actor_rx) = mpsc::unbounded_channel();
@@ -1242,12 +1237,6 @@ mod test {
             actor_rx,
             discovery,
             shutdown.to_signal(),
-        );
-
-        let added_peers = peer_manager.as_ref().all(None).await.unwrap();
-        println!(
-            "added_peers: {:?}",
-            added_peers.iter().map(|p| p.node_id.to_hex()).collect::<Vec<_>>()
         );
 
         actor.spawn();
@@ -1293,11 +1282,6 @@ mod test {
             .select_peers(BroadcastStrategy::ClosestNodes(send_request))
             .await
             .unwrap();
-        println!();
-        println!(
-            "selected_peers: {:?}",
-            peers.iter().map(|p| p.to_hex()).collect::<Vec<_>>()
-        );
         assert_eq!(peers.len(), 2);
 
         let send_request = Box::new(BroadcastClosestRequest {

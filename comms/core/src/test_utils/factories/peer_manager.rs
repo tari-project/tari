@@ -61,7 +61,7 @@ impl TestFactory for PeerManagerFactory {
             .or(self.peers_factory.build().ok())
             .ok_or_else(|| TestFactoryError::BuildFailed("Failed to build peers".into()))?;
         for peer in peers {
-            pm.add_peer(peer)
+            pm.add_or_update_peer(peer)
                 .map_err(|err| TestFactoryError::BuildFailed(format!("Failed to build peer manager: {:?}", err)))?;
         }
 

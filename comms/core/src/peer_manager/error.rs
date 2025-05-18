@@ -36,8 +36,6 @@ use crate::peer_manager::NodeId;
 pub enum PeerManagerError {
     #[error("The requested peer does not exist")]
     PeerNotFoundError,
-    #[error("The state of the database changed between queries")]
-    DatabaseStateChanged,
     #[error("DB Data inconsistency: {0}")]
     DataInconsistency(String),
     #[error("The peer has been banned")]

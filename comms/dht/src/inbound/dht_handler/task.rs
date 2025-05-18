@@ -230,7 +230,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let valid_peer_node_id = valid_peer.node_id.clone();
         let valid_peer_public_key = valid_peer.public_key.clone();
         // Update peer details. If the peer is banned we preserve the ban but still allow them to update their claims.
-        self.peer_manager.add_peer(valid_peer).await?;
+        self.peer_manager.add_or_update_peer(valid_peer).await?;
 
         // DO NOT propagate this peer if this node has banned them
         if is_banned {
@@ -399,7 +399,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
         let peer = peer_validator.validate_peer(new_peer, maybe_existing_peer)?;
-        self.peer_manager.add_peer(peer).await?;
+        self.peer_manager.add_or_update_peer(peer).await?;
         let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
 
         // Don't send a join request to the origin peer if they are banned

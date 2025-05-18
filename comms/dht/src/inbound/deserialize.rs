@@ -151,7 +151,7 @@ mod test {
         let spy = service_spy();
         let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
 
         let mut deserialize = DeserializeLayer::new(peer_manager).layer(spy.to_service::<PipelineError>());
         assert_send_static_service(&deserialize);

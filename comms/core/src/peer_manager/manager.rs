@@ -75,9 +75,10 @@ impl PeerManager {
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+    pub async fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
         let peer_manager = self.clone();
-        let peer_id = tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.add_peer(peer)).await??;
+        let peer_id =
+            tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.add_or_update_peer(peer)).await??;
         #[cfg(feature = "metrics")]
         {
             let count = self.count().await;
@@ -207,11 +208,11 @@ impl PeerManager {
             Ok(Some(mut peer)) => {
                 peer.addresses.update_addresses(&addresses, source);
                 peer.features = peer_features;
-                self.add_peer(peer.clone()).await?;
+                self.add_or_update_peer(peer.clone()).await?;
                 Ok(peer)
             },
             Ok(None) => {
-                self.add_peer(Peer::new(
+                self.add_or_update_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
                     MultiaddressesWithStats::from_addresses_with_source(addresses, source),
@@ -242,7 +243,7 @@ impl PeerManager {
                     peer.addresses.update_latency(address, val);
                 }
                 peer.addresses.mark_last_seen_now(address);
-                self.add_peer(peer.clone()).await?;
+                self.add_or_update_peer(peer.clone()).await?;
                 Ok(())
             },
             Ok(None) => Err(PeerManagerError::PeerNotFoundError),
@@ -414,7 +415,7 @@ impl PeerManager {
 
         let updated_count = peers_to_update.len();
         for peer in peers_to_update {
-            self.add_peer(peer).await?;
+            self.add_or_update_peer(peer).await?;
         }
 
         Ok(updated_count)
@@ -544,19 +545,19 @@ mod test {
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
         // Create 20 peers were the 1st and last one is bad
         assert!(peer_manager
-            .add_peer(test_peers[test_peers.len() - 1].clone())
+            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
             .await
             .is_ok());
         for _i in 0..18 {
             test_peers.push(create_test_peer(false, PeerFeatures::COMMUNICATION_NODE));
             assert!(peer_manager
-                .add_peer(test_peers[test_peers.len() - 1].clone())
+                .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
                 .await
                 .is_ok());
         }
         test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
         assert!(peer_manager
-            .add_peer(test_peers[test_peers.len() - 1].clone())
+            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
             .await
             .is_ok());
 
@@ -675,7 +676,7 @@ mod test {
             .collect::<Vec<_>>();
 
         for p in &test_peers {
-            peer_manager.add_peer(p.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(p.clone()).await.unwrap();
         }
 
         test_peers.sort_by(|a, b| {
@@ -743,7 +744,7 @@ mod test {
             .collect::<Vec<_>>();
 
         for p in &test_peers {
-            peer_manager.add_peer(p.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(p.clone()).await.unwrap();
         }
 
         for features in &[PeerFeatures::COMMUNICATION_NODE, PeerFeatures::COMMUNICATION_CLIENT] {
@@ -762,7 +763,7 @@ mod test {
         let peer_manager = create_peer_manager();
         let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
-        peer_manager.add_peer(peer.clone()).await.unwrap();
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
 
         let peer = peer_manager
             .add_or_update_online_peer(

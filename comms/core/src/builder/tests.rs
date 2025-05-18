@@ -162,7 +162,7 @@ async fn peer_to_peer_custom_protocols() {
     let node_identity2 = comms_node2.node_identity();
     comms_node1
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -255,7 +255,7 @@ async fn peer_to_peer_messaging() {
         peer.addresses.mark_last_seen_now(addr);
     }
 
-    comms_node1.peer_manager().add_peer(peer).await.unwrap();
+    comms_node1.peer_manager().add_or_update_peer(peer).await.unwrap();
 
     // Send NUM_MSGS messages from node 1 to node 2
     let mut replies = FuturesUnordered::new();
@@ -332,7 +332,7 @@ async fn peer_to_peer_messaging_simultaneous() {
     let node_identity2 = comms_node2.node_identity().clone();
     comms_node1
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -348,7 +348,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
     comms_node2
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(

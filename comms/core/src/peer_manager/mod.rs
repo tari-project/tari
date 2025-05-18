@@ -65,7 +65,7 @@
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = PeerManager::new(peer_database).unwrap();
 //!
-//! peer_manager.add_peer(peer.clone());
+//! peer_manager.add_or_update_peer(peer.clone());
 //!
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```

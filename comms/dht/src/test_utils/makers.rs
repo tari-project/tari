@@ -71,7 +71,7 @@ pub fn create_good_standing_peer(node_identity: &NodeIdentity) -> Peer {
     for addr in &addresses {
         peer.addresses.mark_last_seen_now(addr);
     }
-    peer.features = peer.features | PeerFeatures::DHT_STORE_FORWARD;
+    peer.features |= PeerFeatures::DHT_STORE_FORWARD;
     peer
 }
 

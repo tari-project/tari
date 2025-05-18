@@ -100,7 +100,7 @@ async fn rpc_server_can_request_drop_sessions() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -169,7 +169,7 @@ async fn rpc_server_can_prioritize_new_connections() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -222,7 +222,7 @@ async fn rpc_server_can_prioritize_old_connections() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -282,7 +282,7 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -351,7 +351,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -428,7 +428,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
 
         node1
             .peer_manager()
-            .add_peer(node2.node_identity().to_peer())
+            .add_or_update_peer(node2.node_identity().to_peer())
             .await
             .unwrap();
 
@@ -491,7 +491,7 @@ async fn client_prematurely_ends_session() {
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 

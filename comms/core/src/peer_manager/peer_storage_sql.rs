@@ -78,30 +78,8 @@ impl PeerStorageSql {
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exists, the stored version will be replaced with the newly provided peer.
-    pub fn add_peer(&self, mut peer: Peer) -> Result<PeerId, PeerManagerError> {
-        let node_id = peer.node_id.clone();
-        match self.peer_db.peer_exists_by_node_id(&node_id) {
-            Ok(Some(peer_key)) => {
-                trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
-                // Replace existing entry
-                peer.set_id(peer_key);
-                let mut existing_peer = match self.peer_db.get_peer_by_node_id(&node_id)? {
-                    Some(peer) => peer,
-                    None => return Err(PeerManagerError::DatabaseStateChanged),
-                };
-                existing_peer.merge(&peer);
-                self.peer_db.update_peer(existing_peer)?;
-                Ok(peer_key)
-            },
-            Ok(None) => {
-                // Add new entry
-                trace!(target: LOG_TARGET, "Adding peer with node id '{}'", peer.node_id);
-                let peer_key = self.peer_db.add_peer(peer.clone())?;
-                peer.set_id(peer_key);
-                Ok(peer_key)
-            },
-            Err(err) => Err(err.into()),
-        }
+    pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        Ok(self.peer_db.add_or_update_peer(peer)?)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -464,9 +442,9 @@ mod test {
             let peer_storage = db.take().unwrap();
 
             // Test adding and searching for peers
-            assert!(peer_storage.add_peer(peer1.clone()).is_ok());
-            assert!(peer_storage.add_peer(peer2.clone()).is_ok());
-            assert!(peer_storage.add_peer(peer3.clone()).is_ok());
+            assert!(peer_storage.add_or_update_peer(peer1.clone()).is_ok());
+            assert!(peer_storage.add_or_update_peer(peer2.clone()).is_ok());
+            assert!(peer_storage.add_or_update_peer(peer3.clone()).is_ok());
 
             assert_eq!(peer_storage.size(), 3);
             assert!(peer_storage.get_peer_by_public_key(&peer1.public_key).is_ok());
@@ -541,9 +519,9 @@ mod test {
             Default::default(),
         );
         // Test adding and searching for peers
-        peer_storage.add_peer(peer1.clone()).unwrap(); // assert!(peer_storage.add_peer(peer1.clone()).is_ok());
-        assert!(peer_storage.add_peer(peer2.clone()).is_ok());
-        assert!(peer_storage.add_peer(peer3.clone()).is_ok());
+        peer_storage.add_or_update_peer(peer1.clone()).unwrap(); // assert!(peer_storage.add_or_update_peer(peer1.clone()).is_ok());
+        assert!(peer_storage.add_or_update_peer(peer2.clone()).is_ok());
+        assert!(peer_storage.add_or_update_peer(peer3.clone()).is_ok());
 
         assert_eq!(peer_storage.peer_db.size(), 3);
 
@@ -682,7 +660,7 @@ mod test {
             .collect::<Vec<_>>();
 
         for p in &nodes {
-            peer_storage.add_peer(p.clone()).unwrap();
+            peer_storage.add_or_update_peer(p.clone()).unwrap();
         }
 
         let main_peer_node_id = peer_storage.this_peer_identity().node_id;
@@ -725,7 +703,7 @@ mod test {
         .collect::<Vec<_>>();
 
         for p in &seeds {
-            peer_storage.add_peer(p.clone()).unwrap();
+            peer_storage.add_or_update_peer(p.clone()).unwrap();
         }
 
         let nodes = repeat_with(|| create_test_peer(PeerFeatures::COMMUNICATION_NODE, false))
@@ -733,7 +711,7 @@ mod test {
             .collect::<Vec<_>>();
 
         for p in &nodes {
-            peer_storage.add_peer(p.clone()).unwrap();
+            peer_storage.add_or_update_peer(p.clone()).unwrap();
         }
         let retrieved_seeds = peer_storage.get_seed_peers().unwrap();
         assert_eq!(retrieved_seeds.len(), seeds.len());
@@ -766,10 +744,10 @@ mod test {
         let good_address = good_addresses.addresses()[0].address().clone();
         good_addresses.mark_last_seen_now(&good_address);
 
-        assert!(peer_storage.add_peer(never_seen_peer).is_ok());
-        assert!(peer_storage.add_peer(not_active_peer).is_ok());
-        assert!(peer_storage.add_peer(banned_peer).is_ok());
-        assert!(peer_storage.add_peer(good_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(never_seen_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(not_active_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(banned_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(good_peer).is_ok());
 
         assert_eq!(peer_storage.all(None).unwrap().len(), 4);
         assert_eq!(

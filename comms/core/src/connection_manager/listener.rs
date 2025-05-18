@@ -436,7 +436,7 @@ where
             valid_peer_identity.metadata.supported_protocols,
         );
 
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
 
         Ok(conn)
     }

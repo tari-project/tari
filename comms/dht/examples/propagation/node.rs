@@ -128,7 +128,7 @@ pub async fn create(
     for peer in seed_peers {
         let parsed_peer = parse_from_short_str(peer, PeerFeatures::COMMUNICATION_NODE)
             .ok_or_else(|| anyhow::anyhow!("Invalid seed peer '{}'", peer))?;
-        peer_manager.add_peer(parsed_peer).await?;
+        peer_manager.add_or_update_peer(parsed_peer).await?;
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();

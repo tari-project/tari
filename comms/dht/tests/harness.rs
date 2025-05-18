@@ -205,7 +205,7 @@ pub async fn setup_comms_dht(
         .unwrap();
 
     for peer in peers {
-        comms.peer_manager().add_peer(peer).await.unwrap();
+        comms.peer_manager().add_or_update_peer(peer).await.unwrap();
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();

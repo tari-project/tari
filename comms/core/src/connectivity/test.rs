@@ -97,7 +97,7 @@ async fn add_test_peers(peer_manager: &PeerManager, n: usize) -> Vec<Peer> {
     let mut peers = Vec::with_capacity(n);
     for peer in peer_iter {
         peers.push(peer.clone());
-        peer_manager.add_peer(peer).await.unwrap();
+        peer_manager.add_or_update_peer(peer).await.unwrap();
     }
     peers
 }
@@ -148,7 +148,7 @@ async fn online_then_offline_then_online() {
     let peers = add_test_peers(&peer_manager, 8).await;
     let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
     for peer in &clients {
-        peer_manager.add_peer(peer.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
     }
 
     let client_connections = future::join_all(clients.iter().map(|peer| {

@@ -97,7 +97,7 @@ impl Discovering {
     }
 
     async fn add_peer(&self, peer: Peer) -> Result<PeerId, NetworkDiscoveryError> {
-        Ok(self.context.peer_manager.add_peer(peer).await?)
+        Ok(self.context.peer_manager.add_or_update_peer(peer).await?)
     }
 
     pub async fn next_event(&mut self) -> StateEvent {

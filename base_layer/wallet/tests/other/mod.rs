@@ -255,7 +255,7 @@ async fn test_wallet() {
     alice_wallet
         .comms
         .peer_manager()
-        .add_peer(create_peer(
+        .add_or_update_peer(create_peer(
             bob_identity.public_key().clone(),
             bob_identity.first_public_address().unwrap(),
         ))
@@ -265,7 +265,7 @@ async fn test_wallet() {
     bob_wallet
         .comms
         .peer_manager()
-        .add_peer(create_peer(
+        .add_or_update_peer(create_peer(
             alice_identity.public_key().clone(),
             alice_identity.first_public_address().unwrap(),
         ))
@@ -577,7 +577,7 @@ async fn test_store_and_forward_send_tx() {
     alice_wallet
         .comms
         .peer_manager()
-        .add_peer(base_node.node_identity_ref().to_peer())
+        .add_or_update_peer(base_node.node_identity_ref().to_peer())
         .await
         .unwrap();
 
@@ -619,7 +619,7 @@ async fn test_store_and_forward_send_tx() {
     carol_wallet
         .comms
         .peer_manager()
-        .add_peer(base_node.node_identity_ref().to_peer())
+        .add_or_update_peer(base_node.node_identity_ref().to_peer())
         .await
         .unwrap();
     carol_wallet
@@ -879,7 +879,7 @@ async fn test_contacts_service_liveness() {
     alice_wallet
         .comms
         .peer_manager()
-        .add_peer(bob_identity.to_peer())
+        .add_or_update_peer(bob_identity.to_peer())
         .await
         .unwrap();
     let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None, false);
@@ -888,7 +888,7 @@ async fn test_contacts_service_liveness() {
     bob_wallet
         .comms
         .peer_manager()
-        .add_peer(alice_identity.to_peer())
+        .add_or_update_peer(alice_identity.to_peer())
         .await
         .unwrap();
     let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None, false);

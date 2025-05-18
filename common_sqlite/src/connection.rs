@@ -23,7 +23,7 @@
 use std::{
     convert::TryFrom,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockWriteGuard},
     time::Duration,
 };
 
@@ -141,17 +141,19 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
+    fn acquire_migration_write_lock() -> Result<RwLockWriteGuard<'static, ()>, StorageError> {
+        match DB_WRITE_LOCK.write() {
+            Ok(value) => Ok(value),
+            Err(err) => Err(StorageError::DatabaseLockError(format!(
+                "Failed to acquire write lock for database migration: {}",
+                err
+            ))),
+        }
+    }
+
     /// Connect and migrate the database in memory, once complete, a handle to the migrated database is returned.
     pub fn connect_memory_and_migrate(name: String, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        let _lock = match DB_WRITE_LOCK.write() {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(StorageError::DatabaseLockError(format!(
-                    "Failed to acquire write lock for database migration: {}",
-                    err
-                )))
-            },
-        };
+        let _lock = Self::acquire_migration_write_lock()?;
         let conn = Self::connect_memory(name)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
@@ -160,15 +162,7 @@ impl DbConnection {
 
     /// Connect and migrate the database, once complete, a handle to the migrated database is returned.
     pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        let _lock = match DB_WRITE_LOCK.write() {
-            Ok(value) => value,
-            Err(err) => {
-                return Err(StorageError::DatabaseLockError(format!(
-                    "Failed to acquire write lock for database migration: {}",
-                    err
-                )))
-            },
-        };
+        let _lock = Self::acquire_migration_write_lock()?;
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
