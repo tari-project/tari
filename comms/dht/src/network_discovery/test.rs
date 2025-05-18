@@ -207,9 +207,14 @@ mod discovery_ready {
     #[tokio::test]
     async fn it_begins_aggressive_discovery() {
         let (_, pm, _, mut ready, _) = setup(Default::default());
-        let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
-        for peer in peers {
-            pm.add_peer(peer.to_peer()).await.unwrap();
+        let node_identities = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
+        for identity in node_identities {
+            let mut peer = identity.to_peer();
+            let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+            for addr in &addresses {
+                peer.addresses.mark_last_seen_now(addr);
+            }
+            pm.add_peer(peer).await.unwrap();
         }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);

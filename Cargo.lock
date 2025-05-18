@@ -7186,6 +7186,7 @@ version = "2.1.1-pre.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
+ "lazy_static",
  "log",
  "serde",
  "serde_json",

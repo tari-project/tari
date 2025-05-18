@@ -224,7 +224,6 @@ async fn peer_to_peer_custom_protocols() {
     comms_node1.wait_until_shutdown().await;
     comms_node2.wait_until_shutdown().await;
 }
-
 #[tokio::test]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
@@ -238,22 +237,25 @@ async fn peer_to_peer_messaging() {
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
-    comms_node1
-        .peer_manager()
-        .add_peer(Peer::new(
-            node_identity2.public_key().clone(),
-            node_identity2.node_id().clone(),
-            MultiaddressesWithStats::from_addresses_with_source(
-                node_identity2.public_addresses(),
-                &PeerAddressSource::Config,
-            ),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        ))
-        .await
-        .unwrap();
+
+    let mut peer = Peer::new(
+        node_identity2.public_key().clone(),
+        node_identity2.node_id().clone(),
+        MultiaddressesWithStats::from_addresses_with_source(
+            node_identity2.public_addresses(),
+            &PeerAddressSource::Config,
+        ),
+        Default::default(),
+        PeerFeatures::COMMUNICATION_NODE,
+        Default::default(),
+        Default::default(),
+    );
+    let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+    for addr in &addresses {
+        peer.addresses.mark_last_seen_now(addr);
+    }
+
+    comms_node1.peer_manager().add_peer(peer).await.unwrap();
 
     // Send NUM_MSGS messages from node 1 to node 2
     let mut replies = FuturesUnordered::new();

@@ -23,6 +23,7 @@
 use std::{
     convert::TryFrom,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -101,6 +102,10 @@ impl TryFrom<String> for DbConnectionUrl {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref DB_WRITE_LOCK: Arc<RwLock<()>> = Arc::new(RwLock::new(()));
+}
+
 /// A SQLite database connection
 #[derive(Clone)]
 pub struct DbConnection {
@@ -138,6 +143,15 @@ impl DbConnection {
 
     /// Connect and migrate the database in memory, once complete, a handle to the migrated database is returned.
     pub fn connect_memory_and_migrate(name: String, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
+        let _lock = match DB_WRITE_LOCK.write() {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(StorageError::DatabaseLockError(format!(
+                    "Failed to acquire write lock for database migration: {}",
+                    err
+                )))
+            },
+        };
         let conn = Self::connect_memory(name)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
@@ -146,6 +160,15 @@ impl DbConnection {
 
     /// Connect and migrate the database, once complete, a handle to the migrated database is returned.
     pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
+        let _lock = match DB_WRITE_LOCK.write() {
+            Ok(value) => value,
+            Err(err) => {
+                return Err(StorageError::DatabaseLockError(format!(
+                    "Failed to acquire write lock for database migration: {}",
+                    err
+                )))
+            },
+        };
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());

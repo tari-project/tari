@@ -68,7 +68,12 @@ impl TestNode {
     }
 
     pub fn to_peer(&self) -> Peer {
-        self.comms.node_identity().to_peer()
+        let mut peer = self.comms.node_identity().to_peer();
+        let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+        for addr in &addresses {
+            peer.addresses.mark_last_seen_now(addr);
+        }
+        peer
     }
 
     #[allow(dead_code)]
@@ -97,7 +102,7 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
 }
 
 fn create_peer_storage() -> PeerDatabaseSql {
-    let database_name = random::string(8);
+    let database_name = random::string(12);
     let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
     PeerDatabaseSql::new(db_connection)
 }

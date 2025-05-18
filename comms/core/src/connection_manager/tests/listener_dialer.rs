@@ -147,22 +147,43 @@ async fn smoke() {
     }
 
     // Read PeerConnected events - we don't know which connection is which
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.recv().await.unwrap());
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn2) = event_rx.recv().await.unwrap());
+    let mut conn1 = None;
+    let mut conn2 = None;
+    let mut new_inbound_substream = None;
 
-    // Next event should be a NewInboundSubstream has been received
-    let listen_event = event_rx.recv().await.unwrap();
-    {
-        unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) = listen_event);
-        assert_eq!(&node_id, node_identity2.node_id());
-        assert_eq!(proto, expected_proto);
-
-        let mut buf = [0u8; 5];
-        in_stream.read_exact(&mut buf).await.unwrap();
-        assert_eq!(buf, *b"HELLO");
+    while conn1.is_none() || conn2.is_none() || new_inbound_substream.is_none() {
+        let event = event_rx.recv().await.unwrap();
+        match event {
+            ConnectionManagerEvent::PeerConnected(conn) => {
+                if conn1.is_none() {
+                    conn1 = Some(conn);
+                } else {
+                    conn2 = Some(conn);
+                }
+            },
+            ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) => {
+                new_inbound_substream = Some((node_id, proto, in_stream));
+            },
+            _ => panic!("Unexpected event: {:?}", event),
+        }
     }
 
+    // Ensure all expected events were received
+    let mut conn1 = conn1.expect("Expected conn1 to be set");
+    let _conn2 = conn2.expect("Expected conn2 to be set");
+    let (node_id, proto, mut in_stream) = new_inbound_substream.expect("Expected NewInboundSubstream event");
+
+    // Validate the NewInboundSubstream event
+    assert_eq!(&node_id, node_identity2.node_id());
+    assert_eq!(proto, expected_proto);
+
+    let mut buf = [0u8; 5];
+    in_stream.read_exact(&mut buf).await.unwrap();
+    assert_eq!(buf, *b"HELLO");
+
+    // Disconnect conn1
     conn1.disconnect(Minimized::No).await.unwrap();
+    // conn2.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();
 

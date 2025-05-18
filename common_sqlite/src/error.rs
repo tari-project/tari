@@ -75,6 +75,8 @@ pub enum StorageError {
     Error(#[from] Error),
     #[error("Error: `{0}`")]
     SerdeJsonError(#[from] serde_json::Error),
+    #[error("Database is locked: {0}")]
+    DatabaseLockError(String),
 }
 
 impl From<MessageFormatError> for StorageError {

@@ -463,42 +463,34 @@ impl ConnectivityManagerActor {
     }
 
     async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
-        let peer_manager = self.peer_manager.clone();
         let node_id = self.node_identity.node_id().clone();
         let mut pool = self.pool.clone();
 
         // Use tokio spawn blocking here to avoid blocking the async runtime
-        if let Err(e) = tokio::task::spawn_blocking(async move || {
-            let start = Instant::now();
-            match peer_manager.delete_all_stale_peers(&node_id).await {
-                Ok(deleted) => {
-                    let len = deleted.len();
-                    if len > 0 {
-                        for node_id in deleted {
-                            if let Some(removed) = pool.remove(&node_id) {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Stale connection {} encountered - removed",
-                                    removed.peer_node_id()
-                                );
-                            }
+        let start = Instant::now();
+        match self.peer_manager.delete_all_stale_peers(&node_id).await {
+            Ok(deleted) => {
+                let len = deleted.len();
+                if len > 0 {
+                    for node_id in deleted {
+                        if let Some(removed) = pool.remove(&node_id) {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Stale connection {} encountered - removed",
+                                removed.peer_node_id()
+                            );
                         }
-                        debug!(
-                            target: LOG_TARGET,
-                            "({}) Deleted {} stale peers from the db in {:.2?}",
-                            task_id, len, start.elapsed()
-                        );
                     }
-                },
-                Err(err) => {
-                    error!(target: LOG_TARGET, "({}) Error deleting stale peers from the db: {:?}", task_id, err);
-                },
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("JoinError: {e}"))
-        {
-            error!(target: LOG_TARGET, "({}) Error spawning blocking task: {:?}", task_id, e);
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Deleted {} stale peers from the db in {:.2?}",
+                        task_id, len, start.elapsed()
+                    );
+                }
+            },
+            Err(err) => {
+                error!(target: LOG_TARGET, "({}) Error deleting stale peers from the db: {:?}", task_id, err);
+            },
         }
     }
 

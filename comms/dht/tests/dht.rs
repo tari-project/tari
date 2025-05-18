@@ -37,7 +37,8 @@ use tari_comms_dht::{
 };
 use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn test_dht_join_propagation() {
     // Create 3 nodes where only Node B knows A and C, but A and C want to talk to each other
@@ -102,7 +103,8 @@ async fn test_dht_join_propagation() {
     node_C.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn test_dht_wallet_discover_propagation() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -194,7 +196,8 @@ async fn test_dht_wallet_discover_propagation() {
         .unwrap());
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn test_dht_node_discover_propagation() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
@@ -706,7 +709,8 @@ async fn test_dht_repropagate() {
     node_C.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn test_dht_propagate_message_contents_not_malleable_ban() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
@@ -811,7 +815,8 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+// #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn test_dht_header_not_malleable() {
     let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;

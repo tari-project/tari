@@ -64,6 +64,16 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
     make_identity(PeerFeatures::COMMUNICATION_NODE)
 }
 
+pub fn create_good_standing_peer(node_identity: &NodeIdentity) -> Peer {
+    let mut peer = node_identity.to_peer();
+    let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+    for addr in &addresses {
+        peer.addresses.mark_last_seen_now(addr);
+    }
+    peer.features = peer.features | PeerFeatures::DHT_STORE_FORWARD;
+    peer
+}
+
 pub fn make_client_identity() -> Arc<NodeIdentity> {
     make_identity(PeerFeatures::COMMUNICATION_CLIENT)
 }

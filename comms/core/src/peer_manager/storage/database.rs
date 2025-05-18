@@ -860,7 +860,14 @@ impl PeerDatabaseSql {
             .into_boxed(); // Enables dynamic query building
 
         if let Some(features) = features {
-            query = query.filter(peers::features.eq(features.to_i32()));
+            if features == PeerFeatures::COMMUNICATION_CLIENT {
+                query = query.filter(peers::features.eq(features.to_i32()));
+            } else {
+                query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                    "features & {} != 0",
+                    features.to_i32()
+                )));
+            }
         }
 
         let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
@@ -997,7 +1004,7 @@ impl PeerDatabaseSql {
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<NodeId>, StorageError> {
         // Step 1: Retrieve relevant (node_ids)
-        let query = peers::table
+        let mut query = peers::table
             .inner_join(
                 multi_addresses::table.on(multi_addresses::peer_id
                     .eq(peers::peer_id)
@@ -1005,19 +1012,26 @@ impl PeerDatabaseSql {
             )
             .filter(peers::banned_until.is_null())
             .filter(peers::deleted_at.is_null())
-            .filter(peers::features.eq(features.to_i32()))
-            .select(peers::node_id)
-            .distinct();
+            .distinct()
+            .into_boxed();
+
+        if features == PeerFeatures::COMMUNICATION_CLIENT {
+            query = query.filter(peers::features.eq(features.to_i32()));
+        } else {
+            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                "features & {} != 0",
+                features.to_i32()
+            )));
+        }
 
         // Note: To debug the SQL query, uncomment the following lines:
         // --------------------------------
-        // use diesel::debug_query;
-        // use diesel::sqlite::Sqlite;
+        // use diesel::{debug_query, sqlite::Sqlite};
         // println!();
         // println!("SQL Query: {}", debug_query::<Sqlite, _>(&query));
         // --------------------------------
 
-        let nodes = query.load::<String>(conn)?;
+        let nodes = query.select(peers::node_id).load::<String>(conn)?;
 
         // Step 2: Sort not failed node_ids in Rust
         let mut filtered_node_ids = nodes
@@ -1108,8 +1122,22 @@ impl PeerDatabaseSql {
         }
 
         if let Some(features) = features {
-            query = query.filter(peers::features.eq(features.to_i32()));
+            if features == PeerFeatures::COMMUNICATION_CLIENT {
+                query = query.filter(peers::features.eq(features.to_i32()));
+            } else {
+                query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                    "features & {} != 0",
+                    features.to_i32()
+                )));
+            }
         }
+
+        // Note: To debug the SQL query, uncomment the following lines:
+        // --------------------------------
+        // use diesel::{debug_query, sqlite::Sqlite};
+        // println!();
+        // println!("SQL Query: {}", debug_query::<Sqlite, _>(&query));
+        // --------------------------------
 
         let node_ids_hex = query.select(peers::node_id).load::<String>(&mut conn)?;
 
@@ -1342,7 +1370,10 @@ impl PeerDatabaseSql {
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::deleted_at.is_null())
                 .filter(peers::banned_until.is_null().or(peers::banned_until.lt(now.nullable())))
-                .filter(peers::features.eq(PeerFeatures::COMMUNICATION_NODE.to_i32()))
+                .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                    "features & {} != 0",
+                    PeerFeatures::COMMUNICATION_NODE.to_i32()
+                )))
                 .filter(multi_addresses::last_seen.is_not_null())
                 .filter(peers::node_id.ne_all(exclude_node_ids))
                 .select(peers::node_id)
@@ -1531,7 +1562,7 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             last_attempted: address.last_attempted(),
             last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
             quality_score: address.quality_score(),
-            source: Some(serde_json::to_string(&address.source()).unwrap()),
+            source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
         }
     }
 }
@@ -1543,12 +1574,16 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
         (peer_query, addresses_query): (NewPeerSql, Vec<NewMultiaddrWithStatsSql>),
     ) -> Result<Self, Self::Error> {
         Ok(Peer::new_with_stats(
-            Some(u64::try_from(peer_query.peer_id).expect("infallible")).filter(|&id| id != 0),
+            Some(
+                u64::try_from(peer_query.peer_id)
+                    .expect("infallible - auto generated from 'generate_peer_id_as_i64()'"),
+            )
+            .filter(|&id| id != 0),
             CommsPublicKey::from_hex(&peer_query.public_key)?,
             NodeId::from_hex(&peer_query.node_id)?,
             MultiaddressesWithStats::try_from(addresses_query)?,
             PeerFlags::from_bits(u8::try_from(peer_query.flags)?)
-                .ok_or_else(|| StorageError::UnexpectedResult("Peer features are invalid".to_string()))?,
+                .ok_or_else(|| StorageError::UnexpectedResult("Peer flags are invalid".to_string()))?,
             peer_query.banned_until,
             peer_query.banned_reason.unwrap_or_default(),
             PeerFeatures::from_bits(u32::try_from(peer_query.features)?)
@@ -1562,6 +1597,15 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
     }
 }
 
+fn i64_to_duration(val: Option<i64>) -> Result<Option<Duration>, StorageError> {
+    val.map(|t| {
+        u64::try_from(t)
+            .map(Duration::from_millis)
+            .map_err(|_| StorageError::UnexpectedResult("Invalid duration".to_string()))
+    })
+    .transpose()
+}
+
 impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
     type Error = StorageError;
 
@@ -1571,13 +1615,11 @@ impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
             let address = MultiaddrWithStats::new_with_stats(
                 Multiaddr::from_str(&addr.address).map_err(|e| StorageError::UnexpectedResult(e.to_string()))?,
                 addr.last_seen,
-                u32::try_from(addr.connection_attempts.unwrap_or_default()).expect("infallible"),
-                addr.avg_initial_dial_time
-                    .map(|t| Duration::from_millis(u64::try_from(t).expect("infallible"))),
-                u32::try_from(addr.initial_dial_time_sample_count.unwrap_or_default()).expect("infallible"),
-                addr.avg_latency
-                    .map(|t| Duration::from_millis(u64::try_from(t).expect("infallible"))),
-                u32::try_from(addr.latency_sample_count.unwrap_or_default()).expect("infallible"),
+                u32::try_from(addr.connection_attempts.unwrap_or_default())?,
+                i64_to_duration(addr.avg_initial_dial_time)?,
+                u32::try_from(addr.initial_dial_time_sample_count.unwrap_or_default())?,
+                i64_to_duration(addr.avg_latency)?,
+                u32::try_from(addr.latency_sample_count.unwrap_or_default())?,
                 addr.last_attempted,
                 addr.last_failed_reason,
                 addr.quality_score,
@@ -1799,6 +1841,84 @@ mod tests {
                 .iter()
                 .any(|addr| addr.address().to_string().contains("/udt/sctp/")));
         }
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_peer_features() {
+        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection);
+
+        // Create new node peers
+        let mut node_peers = Vec::with_capacity(12);
+        for i in 0..12 {
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            if i % 4 == 0 {
+                peer.flags = PeerFlags::SEED;
+            }
+            node_peers.push(peer.clone());
+            peers_db.add_peer(peer).unwrap();
+        }
+        // Create new wallet peers
+        let mut wallet_peers = Vec::with_capacity(12);
+        for _i in 0..12 {
+            let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
+            wallet_peers.push(peer.clone());
+            peers_db.add_peer(peer).unwrap();
+        }
+
+        let closest_nodes = peers_db
+            .get_closest_n_active_peers(
+                &node_peers[5].node_id,
+                5,
+                &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
+                Some(PeerFeatures::MESSAGE_PROPAGATION),
+                Some(Duration::from_secs(60)),
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(closest_nodes.len(), 5);
+
+        let closest_nodes = peers_db
+            .get_closest_n_active_peers(
+                &node_peers[5].node_id,
+                5,
+                &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
+                Some(PeerFeatures::DHT_STORE_FORWARD),
+                Some(Duration::from_secs(60)),
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(closest_nodes.len(), 5);
+
+        let closest_nodes = peers_db
+            .get_closest_n_active_peers(
+                &node_peers[5].node_id,
+                5,
+                &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
+                Some(PeerFeatures::COMMUNICATION_NODE),
+                Some(Duration::from_secs(60)),
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(closest_nodes.len(), 5);
+
+        // Test 'get_closest_n_active_peers' - wallets
+        let closest_peers = peers_db
+            .get_closest_n_active_peers(
+                &wallet_peers[5].node_id,
+                5,
+                &[wallet_peers[6].node_id.clone(), wallet_peers[7].node_id.clone()],
+                Some(PeerFeatures::COMMUNICATION_CLIENT),
+                Some(Duration::from_secs(60)),
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(closest_peers.len(), 5);
     }
 
     #[test]

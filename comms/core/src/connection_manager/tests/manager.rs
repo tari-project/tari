@@ -29,6 +29,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     runtime::Handle,
     sync::{broadcast, mpsc, oneshot},
+    time::sleep,
 };
 
 use crate::{
@@ -149,20 +150,58 @@ async fn dial_success() {
         ))
         .await
         .unwrap();
-
-    let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
-    assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1
-        .find_by_node_id(conn_out.peer_node_id())
+        .find_by_node_id(node_identity2.node_id())
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
-    assert_eq!(peer2.user_agent, "node2");
+    assert_ne!(peer2.supported_protocols, [&TEST_PROTO]);
+    assert_ne!(peer2.user_agent, "node2");
+
+    let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
+    assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
+
+    let mut retries = 10;
+    while retries > 0 {
+        let peer2 = peer_manager1
+            .find_by_node_id(conn_out.peer_node_id())
+            .await
+            .unwrap()
+            .unwrap();
+        if peer2.supported_protocols == [&TEST_PROTO] && peer2.user_agent == "node2" {
+            assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
+            assert_eq!(peer2.user_agent, "node2");
+            break;
+        }
+        retries -= 1;
+        sleep(Duration::from_millis(100)).await;
+    }
+    if retries == 0 {
+        panic!("Failed to verify peer2's supported_protocols and user_agent after 10 retries");
+    }
 
     let event = subscription2.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
+
+    retries = 10;
+    while retries > 0 {
+        let peer1 = peer_manager2
+            .find_by_node_id(node_identity1.node_id())
+            .await
+            .unwrap()
+            .unwrap();
+        if peer1.supported_protocols() == [&TEST_PROTO] && peer1.user_agent == "node1" {
+            assert_eq!(peer1.supported_protocols(), [&TEST_PROTO]);
+            assert_eq!(peer1.user_agent, "node1");
+            break;
+        }
+        retries -= 1;
+        sleep(Duration::from_millis(100)).await;
+    }
+    if retries == 0 {
+        panic!("Failed to verify peer2's supported_protocols and user_agent after 10 retries");
+    }
 
     let peer1 = peer_manager2
         .find_by_node_id(node_identity1.node_id())

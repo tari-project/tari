@@ -67,6 +67,6 @@ pub fn random_name() -> String {
     let mut rng = rand::thread_rng();
     iter::repeat(())
         .map(|_| rng.sample(Alphanumeric) as char)
-        .take(8)
+        .take(12)
         .collect::<String>()
 }

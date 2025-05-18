@@ -151,21 +151,19 @@ async fn online_then_offline_then_online() {
         peer_manager.add_peer(peer.to_peer()).await.unwrap();
     }
 
-    let client_connections = future::join_all(
-        clients
-            .iter()
-            .map(async |peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer.to_peer()).await),
-    )
+    let client_connections = future::join_all(clients.iter().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(value.to_peer(), peer.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(conn, _, _, _)| conn)
     .collect::<Vec<_>>();
 
-    let connections = future::join_all(
-        (0..5)
-            .map(|i| peers[i].clone())
-            .map(async |peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer).await),
-    )
+    let connections = future::join_all((0..5).map(|i| peers[i].clone()).map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(value.to_peer(), peer).await }
+    }))
     .await
     .into_iter()
     .map(|(conn, _, _, _)| conn)
@@ -325,12 +323,10 @@ async fn peer_selection() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(
-        peers
-            .iter()
-            .cloned()
-            .map(async |peer| create_peer_connection_mock_pair(peer, node_identity.to_peer()).await),
-    )
+    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(_, _, conn, _)| conn)
@@ -389,12 +385,10 @@ async fn pool_management() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(
-        peers
-            .iter()
-            .cloned()
-            .map(async |peer| create_peer_connection_mock_pair(peer, node_identity.to_peer()).await),
-    )
+    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(_, _, conn, _)| conn)

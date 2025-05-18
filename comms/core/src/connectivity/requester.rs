@@ -169,7 +169,7 @@ impl ConnectivityRequester {
     ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
         peers
             .into_iter()
-            .map(async |peer| self.dial_peer(peer).await)
+            .map(|peer| async move { self.dial_peer(peer).await })
             .collect::<FuturesUnordered<_>>()
     }
 
