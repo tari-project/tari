@@ -33,7 +33,7 @@ use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, UncompressedCommsPublicKey},
 };
 use tari_utilities::hex::Hex;
@@ -166,7 +166,7 @@ impl From<SeedPeer> for Peer {
             seed.public_key,
             node_id,
             MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
-            Default::default(),
+            PeerFlags::SEED,
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
             Default::default(),
