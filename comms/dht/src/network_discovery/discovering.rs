@@ -32,7 +32,7 @@ use tari_comms::{
 };
 
 use super::{
-    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
+    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent, DiscoveryPhase},
     NetworkDiscoveryError,
 };
 use crate::{
@@ -82,6 +82,11 @@ impl Discovering {
                 PeerFeatures::COMMUNICATION_NODE,
             )
             .await?;
+
+        // Set discovery phase and rounds information
+        self.stats.phase = DiscoveryPhase::General;
+        self.stats.round_number = Some(self.context.num_rounds());
+        self.stats.total_rounds = None; // No fixed total for general discovery
 
         Ok(())
     }

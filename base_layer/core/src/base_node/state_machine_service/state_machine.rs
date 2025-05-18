@@ -99,6 +99,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
     is_bootstrapped: bool,
+    pub(super) is_primary_bootstrap_complete: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
 }
@@ -132,6 +133,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             sync_validators,
             randomx_factory,
             is_bootstrapped: false,
+            is_primary_bootstrap_complete: false,
             consensus_rules,
             interrupt_signal,
         }
@@ -280,6 +282,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             Listening(s, network_silence) => s.next_event(shared_state, *network_silence).await,
             Waiting(s) => s.next_event().await,
             Shutdown(_) => unreachable!("called get_next_state_event while in Shutdown state"),
+        }
+    }
+
+    pub fn set_primary_bootstrap_complete(&mut self, complete: bool) {
+        self.is_primary_bootstrap_complete = complete;
+        // Optionally update state info to reflect changes in the UI
+        if let StateInfo::Listening(mut info) = self.info.clone() {
+            if complete {
+                info.bootstrap_phase = None;
+            }
+            self.set_state_info(StateInfo::Listening(info));
         }
     }
 
