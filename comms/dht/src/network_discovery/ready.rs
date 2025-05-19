@@ -203,7 +203,6 @@ impl DiscoveryReady {
                 self.context.reset_num_rounds(); // Reset rounds as this bootstrap + initial check implies discovery cycle could pause or shift mode.
                 return Ok(StateEvent::OnConnectMode);
             }
-
             // Existing logic:
             // If the last round was a success, but we didn't get any new peers, let's go to on connect or idle
             // depending on the_ number of peers we have

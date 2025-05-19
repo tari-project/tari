@@ -38,4 +38,7 @@ pub enum DhtEvent {
 
     /// Emitted by the NetworkDiscovery actor once a round of peer syncing has completed.
     NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo),
+
+    /// Emitted by NetworkDiscovery when primary bootstrap (e.g. via seeds) is complete.
+    PrimaryBootstrapComplete,
 }

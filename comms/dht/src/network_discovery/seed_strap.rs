@@ -161,7 +161,7 @@ impl SeedStrap {
         );
 
         // Update round info with total rounds
-        round_info.total_rounds = Some(num_seeds_to_try);
+        round_info.total_rounds = Some(num_seeds_to_try.max(1)); // Ensure at least 1, even if num_seeds_to_try is 0 to avoid div by zero display
 
         let selected_seed_peers_for_sync = {
             let mut seed_peers_vec = seed_peers_available.into_iter().collect::<Vec<_>>();
@@ -184,8 +184,7 @@ impl SeedStrap {
         for (idx, seed_peer_candidate) in selected_seed_peers_for_sync.into_iter().enumerate() {
             attempted_seed_contacts += 1;
             // Update round info with current round number
-            round_info.round_number = Some(attempted_seed_contacts);
-            
+            round_info.round_number = Some(idx + 1); // 1-based round numbers            
             let seed_peer_node_id_str = seed_peer_candidate.node_id.to_string();
 
             if self.context.node_identity.node_id() == &seed_peer_candidate.node_id {
@@ -457,7 +456,7 @@ impl SeedStrap {
             total_peers_added_this_round += new_peers_this_seed;
             total_duplicates_this_round += duplicates_this_seed;
             
-            // New early exit condition: if min_desired_peers AND max_peers_to_sync_per_round are met
+            // EARLY EXIT CONDITION: if min_desired_peers AND max_peers_to_sync_per_round are met
             // after at least one successful contact.
             if successful_seed_contacts > 0 && // Ensure we've actually talked to at least one seed successfully
                total_peers_added_this_round >= self.context.config.network_discovery.min_desired_peers &&
@@ -465,16 +464,19 @@ impl SeedStrap {
             {
                 info!(
                     target: LOG_TARGET,
-                    "SeedStrap: Early exit: Found sufficient peers. Total new peers ({}) >= min_desired_peers ({}) AND >= max_peers_to_sync_per_round ({}). Exiting seed node loop after {} successful sync(s).",
+                    "SeedStrap: Early exit: Found sufficient peers. Total new peers ({}) >= min_desired_peers ({}) AND >= max_peers_to_sync_per_round ({}). Exiting seed node loop after {} successful sync(s). Signaling round as complete.",
                     total_peers_added_this_round,
                     self.context.config.network_discovery.min_desired_peers,
                     self.context.config.network_discovery.max_peers_to_sync_per_round,
                     successful_seed_contacts
                 );
+                // If we early exit because we found enough peers, make the round_number reflect completion
+                // of the seed strap phase.
+                round_info.round_number = round_info.total_rounds;
                 break; // Exit the loop over seed peers
             }
-            
-            // Existing early exit conditions:
+
+            // Additional early exit conditions:
             // 1. The soft limit for total peers needed must be enabled (> 0).
             // 2. The total number of peers added in this round must meet or exceed this soft limit.
             // 3. The number of successfully contacted seed peers must meet or exceed the configured minimum.
@@ -491,6 +493,9 @@ impl SeedStrap {
                     successful_seed_contacts,
                     self.context.config.network_discovery.min_successful_seed_contacts_for_early_exit
                 );
+                // If we early exit because we found enough peers, make the round_number reflect completion
+                // of the seed strap phase.
+                round_info.round_number = round_info.total_rounds;
                 break;
             }
         }
