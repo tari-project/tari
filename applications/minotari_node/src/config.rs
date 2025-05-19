@@ -161,6 +161,15 @@ pub struct WalletQueryServiceConfig {
     pub external_address: Option<Url>,
 }
 
+impl Default for WalletQueryServiceConfig {
+    fn default() -> Self {
+        Self {
+            port: 9000,
+            external_address: None,
+        }
+    }
+}
+
 impl Default for BaseNodeConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
@@ -199,6 +208,7 @@ impl Default for BaseNodeConfig {
             report_grpc_error: false,
             tari_pulse_interval: Duration::from_secs(120),
             tari_pulse_health_check: Duration::from_secs(60 * 10),
+            http_wallet_query_service: Default::default(),
         }
     }
 }

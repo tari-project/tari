@@ -270,6 +270,7 @@ where
                 db.clone(),
                 handles.expect_handle::<MempoolHandle>(),
                 handles.expect_handle::<StateMachineHandle>(),
+                wallet_query_service_config.external_address.clone(),
             ));
 
         handles.register(rpc_server.get_handle());
