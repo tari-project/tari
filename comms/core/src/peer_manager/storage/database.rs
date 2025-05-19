@@ -1899,6 +1899,8 @@ mod tests {
             address.peer_id = peer_id;
             assert_eq!(address_query, &address);
         }
+        // Release the connection - we only have one connection in the pool
+        drop(conn);
 
         // Verify the test peer can be reconstructed from the queries
         let peer_from_query = Peer::try_from((peer_query, addresses_query)).unwrap();

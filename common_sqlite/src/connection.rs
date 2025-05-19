@@ -28,7 +28,7 @@ use std::{
 };
 
 use diesel::{
-    r2d2::{ConnectionManager, PooledConnection},
+    r2d2::{ConnectionManager, Pool, PooledConnection},
     SqliteConnection,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
@@ -36,6 +36,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    connection_options::ConnectionOptions,
     error::{SqliteStorageError, StorageError},
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };
@@ -113,9 +114,22 @@ pub struct DbConnection {
 }
 
 impl DbConnection {
-    /// Connect to an ephemeral database in memory
+    /// Connect to an ephemeral database in memory. Note that only a single connection is created since pooled in-memory
+    /// connections are not supported by SQLite
     pub fn connect_memory(name: String) -> Result<Self, StorageError> {
-        Self::connect_url(&DbConnectionUrl::MemoryShared(name))
+        debug!(target: LOG_TARGET, "Connecting to database using :memory: '{}'", name);
+
+        // See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
+        let mut pool = SqliteConnectionPool::new("sqlite://".to_string(), 1, false, true, Duration::from_secs(60));
+        pool.create_custom_pool(
+            Pool::builder()
+                .max_size(1)
+                .connection_customizer(Box::new(ConnectionOptions::new(false, true, Duration::from_secs(60))))
+                .idle_timeout(None)
+                .max_lifetime(None),
+        )?;
+
+        Ok(Self::new(pool))
     }
 
     /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl).

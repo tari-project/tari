@@ -125,8 +125,13 @@ pub fn create_test_peer() -> Peer {
 }
 
 fn create_peer_storage() -> PeerDatabaseSql {
-    let database_name = random::string(12);
-    let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
+    // TODO: we do not cleanup the temp file on drop
+    let temp = tempfile::Builder::new().keep(true).tempfile().unwrap();
+    let db_connection = DbConnection::connect_and_migrate(
+        &DbConnectionUrl::File(format!("sqlite://{}", temp.path().display()).into()),
+        MIGRATIONS,
+    )
+    .unwrap();
     PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
