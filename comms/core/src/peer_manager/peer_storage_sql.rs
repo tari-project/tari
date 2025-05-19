@@ -295,6 +295,11 @@ impl PeerStorageSql {
         Ok(number_unbanned)
     }
 
+    pub fn reset_offline_non_wallet_peers(&self) -> Result<usize, PeerManagerError> {
+        let number_offline = self.peer_db.reset_offline_non_wallet_peers()?;
+        Ok(number_offline)
+    }
+
     /// Ban the peer for the given duration
     pub fn ban_peer(
         &self,

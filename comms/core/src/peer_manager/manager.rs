@@ -362,6 +362,11 @@ impl PeerManager {
         tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.unban_all_peers()).await?
     }
 
+    pub async fn reset_offline_non_wallet_peers(&self) -> Result<usize, PeerManagerError> {
+        let peer_manager = self.clone();
+        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.reset_offline_non_wallet_peers()).await?
+    }
+
     /// Ban the peer for a length of time specified by the duration
     pub async fn ban_peer(
         &self,
@@ -398,27 +403,6 @@ impl PeerManager {
         let peer_manager = self.clone();
         let node_id = node_id.clone();
         tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.is_peer_banned(&node_id)).await?
-    }
-
-    // TODO: This function is still hugely inefficient as it retrieve all peers and then perform an update operation -
-    // TODO: it should be split into smaller targeted queries - investigate caller function use case for this.
-    pub async fn update_each<F>(&self, f: &mut F, features: Option<PeerFeatures>) -> Result<usize, PeerManagerError>
-    where F: FnMut(Peer) -> Option<Peer> {
-        let mut peers_to_update = Vec::new();
-
-        let all_peers = self.all(features).await?;
-        for peer in all_peers {
-            if let Some(updated_peer) = (f)(peer) {
-                peers_to_update.push(updated_peer);
-            }
-        }
-
-        let updated_count = peers_to_update.len();
-        for peer in peers_to_update {
-            self.add_or_update_peer(peer).await?;
-        }
-
-        Ok(updated_count)
     }
 
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {

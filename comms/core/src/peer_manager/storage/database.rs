@@ -823,6 +823,30 @@ impl PeerDatabaseSql {
         Ok(affected)
     }
 
+    /// Reset all offline non-wallet peers (zero their connection attempts)
+    pub fn reset_offline_non_wallet_peers(&self) -> Result<usize, StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        let affected =
+            diesel::update(multi_addresses::table)
+                .filter(
+                    multi_addresses::peer_id.eq_any(peers::table.select(peers::peer_id).filter(diesel::dsl::sql::<
+                        diesel::sql_types::Bool,
+                    >(
+                        &format!("features & {} != 0", PeerFeatures::COMMUNICATION_NODE.to_i32()),
+                    ))),
+                )
+                .filter(multi_addresses::connection_attempts.ne(0))
+                .set((
+                    multi_addresses::connection_attempts.eq(0),
+                    multi_addresses::last_attempted.eq(None::<NaiveDateTime>),
+                    multi_addresses::last_failed_reason.eq(None::<String>),
+                ))
+                .execute(&mut conn)?;
+
+        Ok(affected)
+    }
+
     /// Set the last seen metadata for a peer's address, returning 'Some(node_id)' if successful, 'None' otherwise
     pub fn set_last_seen(
         &self,
@@ -2347,6 +2371,45 @@ mod tests {
         let peer = peers_db.get_peer_by_node_id(&node_peers[4].node_id).unwrap().unwrap();
         assert!(!peer.is_banned());
         assert!(peer.last_seen().is_none());
+        for peer in node_peers.iter().chain(wallet_peers.iter()) {
+            peers_db
+                .set_banned(
+                    &peer.node_id,
+                    Duration::from_secs(12345),
+                    "Misbehaviour is punished".to_string(),
+                )
+                .unwrap();
+        }
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        for peer in &all_peers {
+            assert!(peer.is_banned());
+        }
+        peers_db.reset_all_banned().unwrap();
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        for peer in &all_peers {
+            assert!(!peer.is_banned());
+        }
+
+        // - reset_all_offline_peers
+        for peer in node_peers.iter() {
+            let mut peer = peer.clone();
+            let addresses = peer.addresses.addresses().to_vec();
+            for address in &addresses {
+                peer.addresses
+                    .mark_failed_connection_attempt(address.address(), "Misbehave".to_string());
+            }
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+        }
+        let all_peers = peers_db.get_all_peers(Some(PeerFeatures::COMMUNICATION_NODE)).unwrap();
+        for peer in &all_peers {
+            assert!(peer.last_connect_attempt().is_some());
+        }
+        peers_db.reset_offline_non_wallet_peers().unwrap();
+        let all_peers = peers_db.get_all_peers(Some(PeerFeatures::COMMUNICATION_NODE)).unwrap();
+        for peer in &all_peers {
+            assert!(peer.last_connect_attempt().is_none(), "peer: {}", peer);
+        }
+
         // - last_failed_reason
         for address in node_peers[11].addresses.addresses() {
             peers_db
