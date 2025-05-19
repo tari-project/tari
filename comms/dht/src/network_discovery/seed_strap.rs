@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, convert::TryInto, sync::Arc, cmp, time::Duration};
+use std::{collections::HashSet, convert::TryInto, cmp, time::Duration};
 
 use futures::StreamExt;
 use log::*;
-use rand::seq::SliceRandom;
+use rand::seq::IteratorRandom;
 use tari_comms::{
     Minimized,
     PeerConnection,
@@ -164,14 +164,14 @@ impl SeedStrap {
         round_info.total_rounds = Some(num_seeds_to_try.max(1)); // Ensure at least 1, even if num_seeds_to_try is 0 to avoid div by zero display
 
         let selected_seed_peers_for_sync = {
-            let mut seed_peers_vec = seed_peers_available.into_iter().collect::<Vec<_>>();
+            // Create the RNG and use it immediately within this scope
             let mut rng = rand::thread_rng();
-            seed_peers_vec.shuffle(&mut rng);
-            seed_peers_vec.into_iter().take(num_seeds_to_try).collect::<Vec<_>>()
+            seed_peers_available
+                .into_iter()
+                .choose_multiple(&mut rng, num_seeds_to_try)
         };
         
         round_info.sync_peers = selected_seed_peers_for_sync.iter().map(|p| p.node_id.clone()).collect();
-
         debug!(
             target: LOG_TARGET,
             "SeedStrap: Preparing to sync from up to {} seed peers. Selected peer IDs for this round: {:?}",
@@ -430,17 +430,29 @@ impl SeedStrap {
                     "SeedStrap: Banning seed peer '{}' for providing invalid peer data.",
                     seed_peer_node_id_str
                 );
-                 match self.context.connectivity.ban_peer_until(
-                        seed_peer_candidate.node_id.clone(), // Use original candidate for banning
-                        self.config().ban_duration_short,
-                        "Sent invalid peer data during seed bootstrap".to_string(),
-                    ).await {
+                
+                // First disconnect to free the connection slot
+                if let Err(e) = conn.disconnect(Minimized::Yes).await {
+                    warn!(
+                        target: LOG_TARGET, 
+                        "SeedStrap: Failed to disconnect from seed peer '{}' before banning: {}", 
+                        seed_peer_node_id_str, 
+                        e
+                    );
+                }
+                
+                // Then ban the peer
+                match self.context.connectivity.ban_peer_until(
+                    seed_peer_candidate.node_id.clone(),
+                    self.config().ban_duration_short,
+                    "Sent invalid peer data during seed bootstrap".to_string(),
+                ).await {
                     Ok(_) => debug!(target: LOG_TARGET, "SeedStrap: Successfully banned seed peer '{}'", seed_peer_node_id_str),
                     Err(e) => warn!(target: LOG_TARGET, "SeedStrap: Failed to ban seed peer '{}': {}", seed_peer_node_id_str, e),
                 }
-                // If we banned the seed, we also don't count it as a successful sync for round_info
-                if round_info.num_succeeded > 0 { round_info.num_succeeded -=1; }
-                // Also decrement successful_seed_contacts
+                
+                // If we banned the seed, we don't count it as a successful sync
+                if round_info.num_succeeded > 0 { round_info.num_succeeded -= 1; }
                 if successful_seed_contacts > 0 { successful_seed_contacts -= 1; }
             }
 
@@ -568,11 +580,12 @@ impl SeedStrap {
             }
         };
 
-        let num_peers_to_request = cmp::min(
+        let base = cmp::min(
             self.config().network_discovery.max_peers_to_sync_per_round,
             DHT_RPC_MAX_PEERS_PER_REQUEST,
-        )
-        .max(10) / 2; 
+        );
+        // Ask for at most half the configured value but never zero
+        let num_peers_to_request = (base / 2).max(1);
         
         let req = GetPeersRequest {
             n: num_peers_to_request,
@@ -736,7 +749,7 @@ impl SeedStrap {
     }
 
     #[inline]
-    fn config(&self) -> Arc<DhtConfig> {
-        self.context.config.clone()
+    fn config(&self) -> &DhtConfig {
+        &self.context.config
     }
 }
