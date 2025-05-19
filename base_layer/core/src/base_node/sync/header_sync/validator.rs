@@ -118,7 +118,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let target_difficulty = state
             .target_difficulties
             .get(header.pow_algo())
-            .map_err(|e| BlockHeaderSyncError::TargetDifficultiesError(e))?
+            .map_err(BlockHeaderSyncError::TargetDifficultiesError)?
             .calculate(
                 constants.min_pow_difficulty(header.pow_algo()),
                 constants.max_pow_difficulty(header.pow_algo()),

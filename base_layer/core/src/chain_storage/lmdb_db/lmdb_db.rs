@@ -3027,6 +3027,7 @@ pub struct OldBlockHeaderAccumulatedData {
     pub target_difficulty: Difficulty,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize, Serialize)]
 enum OldMetadataValue {
     ChainHeight(u64),

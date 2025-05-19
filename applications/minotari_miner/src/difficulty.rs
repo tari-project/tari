@@ -127,10 +127,10 @@ pub mod test {
         let (mut header, mut core_header) = get_header();
         header.nonce = 1;
         core_header.nonce = 1;
-        let mut hasher = BlockHeaderSha3::new(header).unwrap();
+        let mut hasher = BlockHeaderSha3::new(header, FixedHash::zero(), None).unwrap();
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty().unwrap(),
+                hasher.difficulty_sha3().unwrap(),
                 core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with nonces = {}:{}",
                 hasher.header.nonce,
@@ -146,11 +146,11 @@ pub mod test {
         let (mut header, mut core_header) = get_header();
         header.nonce = 1;
         core_header.nonce = 1;
-        let mut hasher = BlockHeaderSha3::new(header).unwrap();
+        let mut hasher = BlockHeaderSha3::new(header, FixedHash::zero(), None).unwrap();
         let mut timestamp = core_header.timestamp;
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty().unwrap(),
+                hasher.difficulty_sha3().unwrap(),
                 core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with timestamp = {}",
                 timestamp

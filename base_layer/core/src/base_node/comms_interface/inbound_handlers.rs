@@ -572,12 +572,11 @@ where B: BlockchainBackend + 'static
             )?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
             PowAlgorithm::RandomXT => {
-                let vm_key = self
+                let vm_key = *self
                     .blockchain_db
                     .fetch_chain_header(header.height() / 2000)
                     .await?
-                    .hash()
-                    .clone();
+                    .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
             },
         };

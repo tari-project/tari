@@ -116,7 +116,7 @@ impl Miner {
                 let waker = ctx.waker().clone();
                 let difficulty = self.target_difficulty;
                 let share_mode = self.share_mode;
-                let vm_key = self.vm_key.clone();
+                let vm_key = self.vm_key;
                 let rx_factory = self.rx_factory.clone();
                 let handle = thread
                     .spawn(move || mining_task(header, difficulty, tx, waker, i, share_mode, vm_key, rx_factory))

@@ -47,15 +47,15 @@ impl TargetDifficulties {
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) -> Result<(), String> {
-        Ok(self
-            .get_mut(header.pow_algo())?
-            .add_back(header.timestamp(), target_difficulty))
+        self.get_mut(header.pow_algo())?
+            .add_back(header.timestamp(), target_difficulty);
+        Ok(())
     }
 
     pub fn add_front(&mut self, header: &BlockHeader, target_difficulty: Difficulty) -> Result<(), String> {
-        Ok(self
-            .get_mut(header.pow_algo())?
-            .add_front(header.timestamp(), target_difficulty))
+        self.get_mut(header.pow_algo())?
+            .add_front(header.timestamp(), target_difficulty);
+        Ok(())
     }
 
     pub fn is_algo_full(&self, algo: PowAlgorithm) -> Result<bool, String> {

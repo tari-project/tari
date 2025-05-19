@@ -367,7 +367,7 @@ impl ConsensusConstants {
     }
 
     pub fn current_permitted_pow_algos(&self) -> Vec<PowAlgorithm> {
-        self.proof_of_work.keys().cloned().collect()
+        self.proof_of_work.keys().copied().collect()
     }
 
     pub fn localnet() -> Vec<Self> {

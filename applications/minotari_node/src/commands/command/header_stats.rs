@@ -118,7 +118,7 @@ impl CommandContext {
 
             let calculated_target_difficulty = target_diff
                 .get(pow_algo)
-                .map_err(|e| ChainStorageError::UnexpectedResult(e))?
+                .map_err(ChainStorageError::UnexpectedResult)?
                 .calculate(min, max);
             let existing_target_difficulty = header.accumulated_data().target_difficulty;
             let achieved = header.accumulated_data().achieved_difficulty;
@@ -151,7 +151,7 @@ impl CommandContext {
                     .unwrap_or_default(),
                 target_diff
                     .get(pow_algo)
-                    .map_err(|e| ChainStorageError::UnexpectedResult(e))?
+                    .map_err(ChainStorageError::UnexpectedResult)?
                     .len(),
                 acc_monero,
                 acc_tari_rx,

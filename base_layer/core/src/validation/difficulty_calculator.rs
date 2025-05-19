@@ -52,10 +52,7 @@ impl DifficultyCalculator {
             constants.max_pow_difficulty(block_header.pow.pow_algo),
         );
         let gen_hash = *self.rules.get_genesis_block().hash();
-        let vm_key = db
-            .fetch_chain_header_by_height(block_header.height / 2000)?
-            .hash()
-            .clone();
+        let vm_key = *db.fetch_chain_header_by_height(block_header.height / 2000)?.hash();
         let achieved_target = check_target_difficulty(
             block_header,
             target,

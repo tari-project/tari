@@ -386,6 +386,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_network_state(
         &self,
         _request: Request<tari_rpc::GetNetworkStateRequest>,
@@ -898,6 +899,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_new_block(
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
@@ -992,7 +994,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
-        let vm_key = handler
+        let vm_key = *handler
             .get_header(new_template.header.height / 2000)
             .await
             .map_err(|_| {
@@ -1007,8 +1009,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::not_found("Tari block not found ".to_string()),
                 )
             })?
-            .hash()
-            .clone();
+            .hash();
         let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
@@ -1285,7 +1286,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
-        let vm_key = handler
+        let vm_key = *handler
             .get_header(new_block.header.height / 2000)
             .await
             .map_err(|_| {
@@ -1300,8 +1301,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::not_found("Tari block not found ".to_string()),
                 )
             })?
-            .hash()
-            .clone();
+            .hash();
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
@@ -1555,7 +1555,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
-        let vm_key = handler
+        let vm_key = *handler
             .get_header(new_template.header.height / 2000)
             .await
             .map_err(|_| {
@@ -1570,8 +1570,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::not_found("Tari block not found ".to_string()),
                 )
             })?
-            .hash()
-            .clone();
+            .hash();
         let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
