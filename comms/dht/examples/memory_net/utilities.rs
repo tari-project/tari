@@ -65,7 +65,7 @@ use tari_comms_dht::{
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{random, streams::convert_unbounded_mpsc_to_stream};
+use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},
@@ -636,8 +636,7 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
 }
 
 fn create_peer_storage() -> PeerDatabaseSql {
-    let database_name = random::string(8);
-    let db_connection = DbConnection::connect_memory_and_migrate(database_name, MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 

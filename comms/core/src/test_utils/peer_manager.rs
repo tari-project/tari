@@ -34,7 +34,7 @@ use crate::{
 
 #[cfg(test)]
 pub fn build_peer_manager(this_peer: &Peer) -> Result<Arc<PeerManager>, PeerManagerError> {
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS)?;
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS)?;
     let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
     Ok(Arc::new(PeerManager::new(peers_db)?))
 }

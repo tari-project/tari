@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::time::Duration;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, path::PathBuf};
 
 use diesel::{
-    r2d2,
     r2d2::{ConnectionManager, Pool, PooledConnection},
     SqliteConnection,
 };
@@ -58,15 +57,15 @@ impl SqliteConnectionPool {
         }
     }
 
-    pub fn create_custom_pool(
-        &mut self,
-        builder: r2d2::Builder<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), SqliteStorageError> {
+    /// Create an sqlite connection pool managed by the pool connection manager
+    pub fn create_pool(&mut self) -> Result<(), SqliteStorageError> {
         if self.pool.is_none() {
-            let pool = builder
+            let pool = Pool::builder()
+                .max_size(u32::try_from(self.pool_size)?)
+                .connection_customizer(Box::new(self.connection_options.clone()))
                 .build(ConnectionManager::<SqliteConnection>::new(self.db_path.as_str()))
-                .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()))?;
-            self.pool = Some(pool);
+                .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()));
+            self.pool = Some(pool?);
         } else {
             warn!(
                 target: LOG_TARGET,
@@ -74,15 +73,6 @@ impl SqliteConnectionPool {
             );
         }
         Ok(())
-    }
-
-    /// Create an sqlite connection pool managed by the pool connection manager
-    pub fn create_pool(&mut self) -> Result<(), SqliteStorageError> {
-        self.create_custom_pool(
-            Pool::builder()
-                .max_size(u32::try_from(self.pool_size)?)
-                .connection_customizer(Box::new(self.connection_options.clone())),
-        )
     }
 
     /// Return a pooled sqlite connection managed by the pool connection manager, waits for at most the configured
@@ -144,6 +134,21 @@ impl SqliteConnectionPool {
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
         }
+    }
+
+    /// Return the database path
+    pub fn db_path(&self) -> PathBuf {
+        PathBuf::from(&self.db_path)
+    }
+
+    /// Perform cleanup on the connection pool. This will drop the pool and return the state of the pool.
+    pub fn cleanup(&mut self) -> Option<String> {
+        if let Some(pool) = self.pool.take() {
+            let state = format!("{:?}", pool.state());
+            drop(pool);
+            return Some(state);
+        }
+        None
     }
 }
 

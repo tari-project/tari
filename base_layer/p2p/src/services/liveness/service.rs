@@ -446,7 +446,6 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tari_test_utils::random;
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
@@ -460,7 +459,7 @@ mod test {
     };
 
     pub fn build_peer_manager() -> Arc<PeerManager> {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
         Arc::new(PeerManager::new(peers_db).unwrap())
     }

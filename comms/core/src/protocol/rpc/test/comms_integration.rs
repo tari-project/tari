@@ -20,9 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::iter;
-
-use rand::{distributions::Alphanumeric, Rng};
 use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
@@ -41,21 +38,13 @@ use crate::{
     CommsBuilder,
 };
 
-fn random_name() -> String {
-    let mut rng = rand::thread_rng();
-    iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric) as char)
-        .take(8)
-        .collect::<String>()
-}
-
 #[tokio::test]
 async fn run_service() {
     let node_identity1 = build_node_identity(Default::default());
     let rpc_service = MockRpcService::new();
     let mock_state = rpc_service.shared_state();
     let shutdown = Shutdown::new();
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &node_identity1.to_peer()).unwrap();
     let comms1 = CommsBuilder::new()
         .with_listener_address(node_identity1.first_public_address().unwrap())
@@ -70,7 +59,7 @@ async fn run_service() {
         .unwrap();
 
     let node_identity2 = build_node_identity(Default::default());
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &node_identity2.to_peer()).unwrap();
     let comms2 = CommsBuilder::new()
         .with_listener_address(node_identity2.first_public_address().unwrap())

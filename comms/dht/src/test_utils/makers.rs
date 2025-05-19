@@ -39,7 +39,6 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     Bytes,
 };
-use tari_test_utils::random;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -250,13 +249,13 @@ pub fn make_dht_envelope<T: prost::Message>(
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }
 
 pub fn build_peer_manager_with_node_identity(node_identity: &NodeIdentity) -> Arc<PeerManager> {
-    let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }

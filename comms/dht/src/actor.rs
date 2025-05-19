@@ -926,7 +926,6 @@ mod test {
         ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
-    use tari_test_utils::random;
 
     use super::*;
     use crate::{
@@ -943,10 +942,8 @@ mod test {
         },
     };
 
-    async fn db_connection() -> DbConnection {
-        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        conn.migrate(MIGRATIONS).unwrap();
-        conn
+    fn db_connection() -> DbConnection {
+        DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap()
     }
 
     #[tokio::test]
@@ -963,7 +960,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1007,7 +1004,7 @@ mod test {
             mock.spawn();
             DhtActor::new(
                 Arc::new(DhtConfig::default_local_test()),
-                db_connection().await,
+                db_connection(),
                 node_identity.clone(),
                 peer_manager.clone(),
                 connectivity_manager,
@@ -1082,7 +1079,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1132,7 +1129,7 @@ mod test {
                 excluded_dial_addresses: vec![].into(),
                 ..Default::default()
             }),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1229,7 +1226,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             Arc::clone(&node_identity),
             peer_manager.clone(),
             connectivity_manager,
@@ -1330,7 +1327,7 @@ mod test {
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,

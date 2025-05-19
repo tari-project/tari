@@ -88,7 +88,7 @@ use crate::{
 /// ));
 /// node_identity.sign();
 /// let mut shutdown = Shutdown::new();
-/// let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+/// let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
 /// let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE)).unwrap();
 ///
 /// let unspawned_node = CommsBuilder::new()

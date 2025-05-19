@@ -367,15 +367,7 @@ mod test {
     };
 
     fn get_peer_db_sql_test_db() -> Result<PeerDatabaseSql, PeerManagerError> {
-        let db_name = format!(
-            "temporary_for_testing_{}_{}_{}_{}",
-            rand::thread_rng().gen_range(1..256),
-            rand::thread_rng().gen_range(1..256),
-            rand::thread_rng().gen_range(1..256),
-            rand::thread_rng().gen_range(1..256),
-        );
-        let db_connection = DbConnection::connect_memory(db_name)?;
-        db_connection.migrate(MIGRATIONS)?;
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         Ok(PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(PeerFeatures::COMMUNICATION_NODE, false),

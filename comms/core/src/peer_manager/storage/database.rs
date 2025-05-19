@@ -206,8 +206,8 @@ impl PeerDatabaseSql {
                 .collect::<Result<Vec<String>, _>>()?;
 
             let mut peer_query = format!(
-                "INSERT INTO peers (peer_id, public_key, node_id, flags, banned_until, banned_reason, features, \
-                 supported_protocols, added_at, user_agent, metadata, deleted_at) VALUES {}",
+                "INSERT INTO peers (peer_id, public_key, node_id, distance_to_self, flags, banned_until, \
+                 banned_reason, features, supported_protocols, added_at, user_agent, metadata, deleted_at) VALUES {}",
                 values.join(", ")
             );
 
@@ -1837,7 +1837,6 @@ mod tests {
     use diesel::{self, ExpressionMethods, QueryDsl, RunQueryDsl};
     use rand::Rng;
     use tari_common_sqlite::connection::DbConnection;
-    use tari_test_utils::random;
     use tari_utilities::{hex::Hex, ByteArray};
 
     use crate::{
@@ -1855,7 +1854,7 @@ mod tests {
 
     #[test]
     fn test_add_update_peer_with_addresses() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
@@ -1899,8 +1898,6 @@ mod tests {
             address.peer_id = peer_id;
             assert_eq!(address_query, &address);
         }
-        // Release the connection - we only have one connection in the pool
-        drop(conn);
 
         // Verify the test peer can be reconstructed from the queries
         let peer_from_query = Peer::try_from((peer_query, addresses_query)).unwrap();
@@ -1949,7 +1946,7 @@ mod tests {
     #[ignore]
     #[test]
     fn test_batch_add_update_peers_with_addresses() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
@@ -2034,7 +2031,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_peer_features() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
@@ -2116,7 +2113,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_various_queries() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
@@ -2393,7 +2390,7 @@ mod tests {
         }
 
         // - reset_all_offline_peers
-        for peer in node_peers.iter() {
+        for peer in &node_peers {
             let mut peer = peer.clone();
             let addresses = peer.addresses.addresses().to_vec();
             for address in &addresses {
@@ -2447,7 +2444,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_delete_all_stale_peers() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
@@ -2591,7 +2588,7 @@ mod tests {
 
     #[test]
     fn test_get_closest_n_good_standing_peer_node_ids() {
-        let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),

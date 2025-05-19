@@ -22,13 +22,15 @@
 
 use std::{
     convert::TryFrom,
+    env::temp_dir,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockWriteGuard},
     time::Duration,
 };
 
 use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
+    r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
@@ -36,7 +38,6 @@ use log::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    connection_options::ConnectionOptions,
     error::{SqliteStorageError, StorageError},
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };
@@ -114,22 +115,11 @@ pub struct DbConnection {
 }
 
 impl DbConnection {
-    /// Connect to an ephemeral database in memory. Note that only a single connection is created since pooled in-memory
-    /// connections are not supported by SQLite
-    pub fn connect_memory(name: String) -> Result<Self, StorageError> {
-        debug!(target: LOG_TARGET, "Connecting to database using :memory: '{}'", name);
-
-        // See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
-        let mut pool = SqliteConnectionPool::new("sqlite://".to_string(), 1, false, true, Duration::from_secs(60));
-        pool.create_custom_pool(
-            Pool::builder()
-                .max_size(1)
-                .connection_customizer(Box::new(ConnectionOptions::new(false, true, Duration::from_secs(60))))
-                .idle_timeout(None)
-                .max_lifetime(None),
-        )?;
-
-        Ok(Self::new(pool))
+    /// Memory conenections are not supported since pooled in-memory connections are not supported by SQLite - this
+    /// would mainly have been used by the test framework.
+    /// See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
+    pub fn connect_memory(_name: String) -> Result<Self, StorageError> {
+        unimplemented!("Pooled in-memory connections are not supported by SQLite");
     }
 
     /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl).
@@ -165,22 +155,40 @@ impl DbConnection {
         }
     }
 
-    /// Connect and migrate the database in memory, once complete, a handle to the migrated database is returned.
-    pub fn connect_memory_and_migrate(name: String, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        let _lock = Self::acquire_migration_write_lock()?;
-        let conn = Self::connect_memory(name)?;
-        let output = conn.migrate(migrations)?;
-        debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
-        Ok(conn)
-    }
-
-    /// Connect and migrate the database, once complete, a handle to the migrated database is returned.
+    /// Connect and migrate the database, once complete, then return a handle to the migrated database.
     pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
         let _lock = Self::acquire_migration_write_lock()?;
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
+    }
+
+    fn temp_db_dir() -> PathBuf {
+        temp_dir().join("tari-temp")
+    }
+
+    /// Connect and migrate the database in a temporary location, then return a handle to the migrated database.
+    pub fn connect_temp_file_and_migrate(migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
+        use std::iter;
+
+        use rand::{distributions::Alphanumeric, thread_rng, Rng};
+
+        use crate::connection::DbConnectionUrl;
+
+        fn prefixed_string(prefix: &str, len: usize) -> String {
+            let mut rng = thread_rng();
+            let rand_str = iter::repeat(())
+                .map(|_| rng.sample(Alphanumeric) as char)
+                .take(len)
+                .collect::<String>();
+            format!("{}{}", prefix, rand_str)
+        }
+
+        let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
+        fs::create_dir_all(&path)?;
+        let db_url = DbConnectionUrl::File(path.join("peers.db"));
+        DbConnection::connect_and_migrate(&db_url, migrations)
     }
 
     fn new(pool: SqliteConnectionPool) -> Self {
@@ -203,6 +211,34 @@ impl DbConnection {
 
         Ok(result.join("\r\n"))
     }
+
+    #[cfg(test)]
+    pub(crate) fn db_path(&self) -> PathBuf {
+        self.pool.db_path()
+    }
+}
+
+impl Drop for DbConnection {
+    fn drop(&mut self) {
+        let path = self.pool.db_path();
+        debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
+        // Explicitly cleanup and drop the connection pool to ensure all connections are released
+        let pool_state = self.pool.cleanup();
+        debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {:?}", pool_state);
+
+        if path.exists() {
+            if let Some(parent) = path.parent() {
+                if parent.starts_with(DbConnection::temp_db_dir()) {
+                    debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
+                    if let Err(e) = fs::remove_dir_all(parent) {
+                        error!(target: LOG_TARGET, "Failed to clean up temp dir: {}", e);
+                    } else {
+                        debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl PooledDbConnection for DbConnection {
@@ -218,7 +254,6 @@ impl PooledDbConnection for DbConnection {
 mod test {
     use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
     use diesel_migrations::embed_migrations;
-    use tari_test_utils::random;
 
     use super::*;
 
@@ -226,23 +261,18 @@ mod test {
     async fn connect_and_migrate() {
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
 
-        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        let output = conn.migrate(MIGRATIONS).unwrap();
-        assert!(output.starts_with("Running migration"));
-    }
-
-    #[tokio::test]
-    async fn memory_connections() {
-        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
-
-        let id = random::string(8);
-        let conn = DbConnection::connect_memory(id.clone()).unwrap();
-        conn.migrate(MIGRATIONS).unwrap();
-        let conn = DbConnection::connect_memory(id).unwrap();
-        let mut conn = conn.get_pooled_connection().unwrap();
+        let db_conn = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let path = db_conn.db_path();
+        let mut pool_conn = db_conn.get_pooled_connection().unwrap();
         let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
-            .get_result(&mut conn)
+            .get_result(&mut pool_conn)
             .unwrap();
         assert_eq!(count, 0);
+
+        // Test temporary file cleanup
+        assert!(path.exists());
+        drop(pool_conn);
+        drop(db_conn);
+        assert!(!path.exists());
     }
 }

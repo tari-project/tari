@@ -492,9 +492,6 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
 
 #[cfg(test)]
 mod test {
-    use std::iter;
-
-    use rand::{distributions::Alphanumeric, Rng};
     use tari_common_sqlite::connection::DbConnection;
 
     use super::*;
@@ -503,16 +500,8 @@ mod test {
         STALE_PEER_THRESHOLD_DURATION,
     };
 
-    fn random_name() -> String {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    }
-
     fn create_peer_manager() -> PeerManager {
-        let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),

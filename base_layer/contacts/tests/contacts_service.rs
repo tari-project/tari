@@ -76,7 +76,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
             ..Default::default()
         },
         auxiliary_tcp_listener_address: None,
-        datastore_path: tempdir().unwrap().into_path(),
+        datastore_path: tempdir().unwrap().keep(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,

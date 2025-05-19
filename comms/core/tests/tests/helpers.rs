@@ -29,7 +29,6 @@ use tari_comms::{
         database::{PeerDatabaseSql, MIGRATIONS},
         PeerFeatures,
     },
-    test_utils::peer_manager::random_name,
     types::CommsDatabase,
     CommsBuilder,
     NodeIdentity,
@@ -40,7 +39,7 @@ use tari_shutdown::ShutdownSignal;
 use crate::tests::create_test_peer;
 
 pub fn create_peer_storage() -> CommsDatabase {
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 

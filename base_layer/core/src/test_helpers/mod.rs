@@ -49,7 +49,6 @@ use tari_comms::{
     PeerManager,
 };
 use tari_crypto::keys::SecretKey;
-use tari_test_utils::random;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -229,7 +228,7 @@ fn create_test_peer() -> Peer {
 }
 
 pub fn create_peer_manager() -> Arc<PeerManager> {
-    let db_connection = DbConnection::connect_memory_and_migrate(random::string(8), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
     Arc::new(PeerManager::new(peers_db).unwrap())
 }

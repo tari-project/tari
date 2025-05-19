@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, convert::identity, hash::Hash, iter, time::Duration};
+use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 
 use bytes::Bytes;
 use futures::stream::FuturesUnordered;
-use rand::{distributions::Alphanumeric, Rng};
 use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
@@ -61,14 +60,6 @@ use crate::{
     CommsNode,
 };
 
-fn random_name() -> String {
-    let mut rng = rand::thread_rng();
-    iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric) as char)
-        .take(8)
-        .collect::<String>()
-}
-
 async fn spawn_node(
     protocols: Protocols<Substream>,
     shutdown_sig: ShutdownSignal,
@@ -87,7 +78,7 @@ async fn spawn_node(
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
 
     let comms_node = CommsBuilder::new()

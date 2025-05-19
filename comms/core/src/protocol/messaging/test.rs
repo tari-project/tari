@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::rngs::OsRng;
 use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
@@ -67,16 +67,8 @@ static TEST_MSG2: Bytes = Bytes::from_static(b"TEST_MSG2");
 
 static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"test/msg");
 
-fn random_name() -> String {
-    let mut rng = rand::thread_rng();
-    iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric) as char)
-        .take(8)
-        .collect::<String>()
-}
-
 fn create_peer_manager() -> Arc<PeerManager> {
-    let db_connection = DbConnection::connect_memory_and_migrate(random_name(), MIGRATIONS).unwrap();
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
     let peers_db = PeerDatabaseSql::new(
         db_connection,
         &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
