@@ -2923,7 +2923,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 "Replaced tip accumulated data ",
             );
             for height in 0..=chain_height {
-                let block_accum_data: OldBlockHeaderAccumulatedData =
+                let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
                         ChainStorageError::ValueNotFound {
                             entity: "BlockAccumulatedData",
@@ -2956,7 +2956,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 target: LOG_TARGET,
                 "Replaced accumulated data for blocks",
             );
-            let orphan_headers_accum_data: Vec<(Vec<u8>, OldBlockHeaderAccumulatedData)> =
+            let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
                 lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
             for (hash, orphan_header_accum_data) in orphan_headers_accum_data {
                 let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
@@ -3012,7 +3012,7 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
-pub struct OldBlockHeaderAccumulatedData {
+pub struct V0BLockHeaderAccumulatedData {
     /// The block hash.
     pub hash: HashOutput,
     /// The total accumulated offset for all kernels in the block.
