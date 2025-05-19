@@ -1766,7 +1766,7 @@ where
         let payment_id = match payment_id.clone() {
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
-                self.resources.interactive_tari_address.clone(),
+                self.resources.one_sided_tari_address.clone(),
                 true,
                 amount,
                 fee_per_gram,
