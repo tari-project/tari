@@ -636,13 +636,22 @@ async fn mining_cycle(
 }
 
 pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
-    let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
+    let mut hashrate = report.hashes as f64 / report.elapsed.as_secs() as f64;
+    let display_string = if hashrate > 1_000_000.0 {
+        hashrate /= 1_000_000.0;
+        "MH/s"
+    } else {
+        hashrate /= 1_000.0;
+        "KH/s"
+    };
     info!(
         target: LOG_TARGET,
-        "⛏ Miner {:0>2} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
+        "⛏ Miner {:0>2} reported {:.2}{} with total {:.2}{} over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
+        display_string,
         hashrate * num_mining_threads as f64,
+        display_string,
         num_mining_threads,
         report.height,
         report.target_difficulty,

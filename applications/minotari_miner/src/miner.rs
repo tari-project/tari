@@ -42,7 +42,8 @@ pub const LOG_TARGET: &str = "minotari::miner::standalone";
 
 // Identify how often mining thread is reporting / checking context
 // ~400_000 hashes per second
-const REPORTING_FREQUENCY: u64 = 300;
+const REPORTING_FREQUENCY_RX: u64 = 300;
+const REPORTING_FREQUENCY_SHA3: u64 = 3_000_000;
 
 // Thread's stack size, ideally we would fit all thread's data in the CPU L1 cache
 const STACK_SIZE: usize = 320_000;
@@ -249,7 +250,12 @@ pub fn mining_task(
                 return;
             }
         }
-        if hasher.header.nonce % REPORTING_FREQUENCY == 0 {
+        let reporting_frequency = if hasher.rx_factory.is_some() {
+            REPORTING_FREQUENCY_RX
+        } else {
+            REPORTING_FREQUENCY_SHA3
+        };
+        if hasher.header.nonce % reporting_frequency == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
                 difficulty,
