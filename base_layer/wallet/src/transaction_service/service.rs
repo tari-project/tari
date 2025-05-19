@@ -1137,11 +1137,19 @@ where
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
         if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
-            let _result = reply_channel
-                .send(Err(TransactionServiceError::InvalidNetwork))
-                .inspect_err(|_| {
-                    warn!(target: LOG_TARGET, "Failed to send service reply");
-                });
+            let err = match e {
+                TransactionServiceError::InvalidNetwork => TransactionServiceError::InvalidNetwork,
+                TransactionServiceError::InvalidAddress(ref reason) => {
+                    TransactionServiceError::InvalidAddress(reason.clone())
+                },
+                TransactionServiceError::NotSupported(ref reason) => {
+                    TransactionServiceError::NotSupported(reason.clone())
+                },
+                _ => TransactionServiceError::NotSupported(e.to_string()),
+            };
+            let _result = reply_channel.send(Err(err)).inspect_err(|_| {
+                warn!(target: LOG_TARGET, "Failed to send service reply");
+            });
             return Err(e);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately

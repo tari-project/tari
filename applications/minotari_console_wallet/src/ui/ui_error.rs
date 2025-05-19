@@ -25,6 +25,7 @@ use minotari_wallet::{
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
+use tari_common_types::tari_address::TariAddressError;
 use tari_comms::connectivity::ConnectivityError;
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_utilities::hex::HexError;
@@ -46,8 +47,8 @@ pub enum UiError {
     WalletError(#[from] WalletError),
     #[error(transparent)]
     WalletStorageError(#[from] WalletStorageError),
-    #[error("Could not convert string into Public Key")]
-    PublicKeyParseError,
+    #[error("Could not parse Tari Address: `{0}`")]
+    TariAddressParseError(#[from] TariAddressError),
     #[error("Could not convert string into Net Address")]
     AddressParseError,
     #[error("Peer did not include an address")]
@@ -60,6 +61,8 @@ pub enum UiError {
     TransactionError(String),
     #[error("Couldn't read wallet type")]
     WalletTypeError,
+    #[error("Could not convert string into Public Key")]
+    PublicKeyParseError,
 }
 
 impl From<HexError> for UiError {
