@@ -2916,7 +2916,8 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 &MetadataValue::AccumulatedWork(accum_data),
                 None,
             )?;
-
+            txn.commit()?;
+            let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
                 "Replaced tip accumulated data ",
@@ -2949,6 +2950,8 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                     None,
                 )?;
             }
+            txn.commit()?;
+            let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
                 "Replaced accumulated data for blocks",
@@ -2974,6 +2977,8 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                     None,
                 )?;
             }
+            txn.commit()?;
+            let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
                 "Replaced accumulated data for orphan blocks",

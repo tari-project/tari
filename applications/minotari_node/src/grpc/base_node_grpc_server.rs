@@ -995,7 +995,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
         let vm_key = *handler
-            .get_header(new_template.header.height / 2000)
+            .get_header(
+                new_template
+                    .header
+                    .height
+                    .saturating_sub(new_template.header.height % 2000),
+            )
             .await
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1287,7 +1292,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
         let vm_key = *handler
-            .get_header(new_block.header.height / 2000)
+            .get_header(new_block.header.height.saturating_sub(new_block.header.height % 2000))
             .await
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1556,7 +1561,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
         let vm_key = *handler
-            .get_header(new_template.header.height / 2000)
+            .get_header(
+                new_template
+                    .header
+                    .height
+                    .saturating_sub(new_template.header.height % 2000),
+            )
             .await
             .map_err(|_| {
                 obscure_error_if_true(

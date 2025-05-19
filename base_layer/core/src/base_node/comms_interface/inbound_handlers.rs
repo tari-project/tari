@@ -574,7 +574,7 @@ where B: BlockchainBackend + 'static
             PowAlgorithm::RandomXT => {
                 let vm_key = *self
                     .blockchain_db
-                    .fetch_chain_header(header.height() / 2000)
+                    .fetch_chain_header(header.height().saturating_sub(header.height() % 2000))
                     .await?
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
