@@ -26,7 +26,8 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms::{connectivity::ConnectivityRequester};
+use tari_comms_dht::event::{DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -44,7 +45,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
-
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
@@ -90,8 +90,8 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
-    pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+    pub(super) dht_event_stream: DhtEventReceiver,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators<B>,
@@ -105,13 +105,14 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
-    /// Instantiate a new Base Node.
+    // Instantiate a new Base Node.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
         connectivity: ConnectivityRequester,
-        peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+        dht_event_stream: DhtEventReceiver, // New parameter
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators<B>,
         status_event_sender: watch::Sender<StatusInfo>,
@@ -124,8 +125,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             db,
             local_node_interface,
             connectivity,
-            peer_manager,
             metadata_event_stream,
+            dht_event_stream, // Initialize new field
             config,
             info: StateInfo::StartUp,
             event_publisher,
