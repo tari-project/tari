@@ -2894,34 +2894,44 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
         // Add migrations here
         if migrate_from_version == 0 {
             let txn = db.read_transaction()?;
-            let chain_height = fetch_chain_height(&txn, &db.metadata_db)?;
+
+            let chain_height = match fetch_chain_height(&txn, &db.metadata_db) {
+                Ok(v) => v,
+                Err(_) => {
+                    // if the chain height does not exist, then we know we dont have a db
+                    continue;
+                },
+            };
+
             let k = MetadataKey::AccumulatedWork;
 
             let val: Option<OldMetadataValue> = lmdb_get(&txn, &db.metadata_db, &k.as_u32())?;
-            let accum_data = match val {
-                Some(OldMetadataValue::AccumulatedWork(accumulated_difficulty)) => {
-                    Ok(U512::from(accumulated_difficulty))
-                },
-                _ => Err(ChainStorageError::ValueNotFound {
-                    entity: "ChainMetadata",
-                    field: "AccumulatedWork",
-                    value: "".to_string(),
-                }),
-            }?;
+            if val.is_some() {
+                let accum_data = match val {
+                    Some(OldMetadataValue::AccumulatedWork(accumulated_difficulty)) => {
+                        Ok(U512::from(accumulated_difficulty))
+                    },
+                    _ => Err(ChainStorageError::ValueNotFound {
+                        entity: "ChainMetadata",
+                        field: "AccumulatedWork",
+                        value: "".to_string(),
+                    }),
+                }?;
+                let txn = db.write_transaction()?;
+                lmdb_replace(
+                    &txn,
+                    &db.metadata_db,
+                    &k.as_u32(),
+                    &MetadataValue::AccumulatedWork(accum_data),
+                    None,
+                )?;
+                txn.commit()?;
+                info!(
+                    target: LOG_TARGET,
+                    "Replaced tip accumulated data ",
+                );
+            }
             let txn = db.write_transaction()?;
-            lmdb_replace(
-                &txn,
-                &db.metadata_db,
-                &k.as_u32(),
-                &MetadataValue::AccumulatedWork(accum_data),
-                None,
-            )?;
-            txn.commit()?;
-            let txn = db.write_transaction()?;
-            info!(
-                target: LOG_TARGET,
-                "Replaced tip accumulated data ",
-            );
             for height in 0..=chain_height {
                 let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
