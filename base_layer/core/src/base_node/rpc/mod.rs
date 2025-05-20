@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 pub mod http;
+
+#[cfg(feature = "base_node")]
 pub mod models;
 #[cfg(feature = "base_node")]
 mod service;
@@ -83,6 +86,7 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;
 }
 
+#[cfg(feature = "base_node")]
 #[derive(Debug, Error)]
 pub enum BaseNodeWalletQueryServiceClientError {
     #[error("Failed to parse http address: {0}")]
