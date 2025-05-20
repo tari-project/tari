@@ -79,6 +79,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header)?;
+        check_nonce(header)?;
         let vm_key = *db
             .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2000))?
             .hash();
@@ -126,6 +127,27 @@ fn sanity_check_timestamp_count(
     Ok(())
 }
 
+fn check_nonce(header: &BlockHeader) -> Result<(), ValidationError> {
+    match header.pow.pow_algo {
+        PowAlgorithm::RandomXM => {
+            if header.nonce != 0 {
+                return Err(ValidationError::BlockHeaderError(
+                    BlockHeaderValidationError::InvalidNonce,
+                ));
+            }
+        },
+        PowAlgorithm::RandomXT => {
+            // xmrig only allows 32 bit nonces
+            if header.nonce > u32::MAX.into() {
+                return Err(ValidationError::BlockHeaderError(
+                    BlockHeaderValidationError::NonceTooHigh,
+                ));
+            }
+        },
+        PowAlgorithm::Sha3x => {},
+    }
+    Ok(())
+}
 fn check_height(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
     if header.height != prev_header.height + 1 {
         return Err(ValidationError::BlockHeaderError(
@@ -201,7 +223,13 @@ fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
             }
             Ok(())
         },
-        Sha3x | RandomXT => {
+        RandomXT => {
+            if block_header.pow.pow_data.len() > 32 {
+                return Err(PowError::RandomxTPowDataTooLong.into());
+            }
+            Ok(())
+        },
+        Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }

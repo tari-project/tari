@@ -75,9 +75,28 @@ pub fn tari_randomx_difficulty(
     vm_key: &FixedHash,
 ) -> Result<Difficulty, MergeMineError> {
     let vm = randomx_factory.create(vm_key.as_slice(), None, None)?;
-    let mut blob = header.nonce.to_le_bytes().to_vec();
+    // This is done to make a blob that xmrig can process.
+    // xmrig assumes the nonce is at offset 39.
+
+    // The format is:
+    // | 1 byte | 1 byte | 5 bytes | 32 bytes | 4 bytes | 1 byte | 32 bytes|
+    // | major version | minor version | timestamp | mining_hash | nonce | pow_algo | pow_data, excluding algo, padded to 32 bytes |
+    //
+    // Major version: 0
+    // Minor version: 0
+    // Timestamp: 0
+
+    let mut blob = vec![0u8; 7];
     blob.extend_from_slice(header.mining_hash().as_slice());
-    blob.extend_from_slice(&header.pow.to_bytes());
+    // Note, only the first 4 bytes of the nonce are used (u32)
+    let nonce = header.nonce.to_le_bytes();
+    blob.extend_from_slice(&nonce[0..4]);
+    // The pow_algo is the first byte of the pow field when serialized to bytes
+    let mut pow_bytes = header.pow.to_bytes();
+    if pow_bytes.len() < 33 {
+        pow_bytes.resize(33, 0)
+    }
+    blob.extend_from_slice(&pow_bytes[0..33]);
     get_random_x_difficulty(&blob, &vm).map(|(diff, _)| diff)
 }
 
