@@ -1301,6 +1301,9 @@ mod test {
         if std::env::var("TARI_NETWORK").is_err() {
             std::env::set_var("TARI_NETWORK", network.as_key_str());
         }
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
         let current_network = Network::get_current_or_user_setting_or_default();
         if current_network != network {
             panic!("could not set network");
