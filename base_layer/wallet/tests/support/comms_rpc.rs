@@ -151,7 +151,8 @@ impl BaseNodeWalletRpcMockState {
                 metadata: Some(ChainMetadataProto {
                     best_block_height: i64::MAX as u64,
                     best_block_hash: FixedHash::zero().to_vec(),
-                    accumulated_difficulty: Vec::new(),
+                    accumulated_difficulty_low: Vec::new(),
+                    accumulated_difficulty_high: Vec::new(),
                     pruned_height: 0,
                     timestamp: EpochTime::now().as_u64(),
                 }),
@@ -932,7 +933,8 @@ mod test {
         let chain_metadata = ChainMetadata {
             best_block_height: 444,
             best_block_hash: vec![],
-            accumulated_difficulty: vec![],
+            accumulated_difficulty_low: Vec::new(),
+            accumulated_difficulty_high: Vec::new(),
             pruned_height: 0,
             timestamp: EpochTime::now().as_u64(),
         };

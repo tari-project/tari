@@ -327,7 +327,8 @@ async fn test_utxo_scanner_recovery() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS - 1,
         best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -426,7 +427,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS - 1,
         best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -563,7 +565,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS - 1,
         best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -643,7 +646,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let chain_metadata = ChainMetadata {
         best_block_height: 9,
         best_block_hash: block_headers.get(&9).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -773,7 +777,8 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
             .clone()
             .hash()
             .to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -871,7 +876,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS - 1,
         best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -976,7 +982,8 @@ async fn test_utxo_scanner_one_sided_payments() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS,
         best_block_hash: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };
@@ -1047,7 +1054,8 @@ async fn test_birthday_timestamp_over_chain() {
     let chain_metadata = ChainMetadata {
         best_block_height: NUM_BLOCKS - 1,
         best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
+        accumulated_difficulty_low: Vec::new(),
+        accumulated_difficulty_high: Vec::new(),
         pruned_height: 0,
         timestamp: 0,
     };

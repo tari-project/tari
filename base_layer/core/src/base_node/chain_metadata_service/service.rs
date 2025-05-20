@@ -218,7 +218,7 @@ mod test {
     use std::convert::TryInto;
 
     use futures::StreamExt;
-    use primitive_types::U256;
+    use primitive_types::U512;
     use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
@@ -246,8 +246,8 @@ mod test {
     }
 
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
-        let diff: U256 = 1.into();
-        let mut bytes = [0u8; 32];
+        let diff: U512 = 1.into();
+        let mut bytes = [0u8; 64];
         diff.to_big_endian(&mut bytes);
         proto::ChainMetadata {
             best_block_height: 1,
@@ -256,7 +256,8 @@ mod test {
                 28, 29, 30, 31,
             ],
             pruned_height: 0,
-            accumulated_difficulty: bytes.to_vec(),
+            accumulated_difficulty_low: bytes[32..=63].to_vec(),
+            accumulated_difficulty_high: bytes[0..=31].to_vec(),
             timestamp: EpochTime::now().as_u64(),
         }
     }
