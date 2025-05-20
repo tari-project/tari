@@ -205,8 +205,8 @@ fn check_aux_chains(
             .chain_update((109_u8).to_le_bytes())
             .finalize(),
     )
-    .low_u32()
-        % u32::from(merkle_tree_params.number_of_chains());
+    .low_u32() %
+        u32::from(merkle_tree_params.number_of_chains());
     let (merkle_root, pos) = monero_data
         .aux_chain_merkle_proof
         .calculate_root_with_pos(&t_hash, merkle_tree_params.number_of_chains());
@@ -249,9 +249,7 @@ pub fn extract_aux_merkle_root_from_block(monero: &monero::Block) -> Result<Opti
 
 /// Deserializes the given hex-encoded string into a Monero block
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, MergeMineError>
-where
-    T: AsRef<[u8]>,
-{
+where T: AsRef<[u8]> {
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
         .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
@@ -417,12 +415,17 @@ pub fn create_block_hashing_blob(
 mod test {
     use std::convert::{TryFrom, TryInto};
 
-    use borsh::BorshSerialize;
+    use borsh::{BorshDeserialize, BorshSerialize};
     use monero::{
         blockdata::transaction::TxOutTarget,
         consensus::deserialize,
         util::ringct::{RctSig, RctSigBase, RctType},
-        Hash, PublicKey, Transaction, TransactionPrefix, TxIn, TxOut,
+        Hash,
+        PublicKey,
+        Transaction,
+        TransactionPrefix,
+        TxIn,
+        TxOut,
     };
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
@@ -433,7 +436,10 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{difficulty, PowAlgorithm, PowData, ProofOfWork};
+    use crate::{
+        proof_of_work::{difficulty, PowAlgorithm, PowData, ProofOfWork},
+        validation::block_body,
+    };
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -1301,10 +1307,11 @@ mod test {
 
         blob.extend_from_slice(&[0u8; 1]);
         // timestamp
-        blob.extend_from_slice(&[0u8; 5]);
+        blob.extend_from_slice(&[0u8; 1]);
         let mut mining_hash: Vec<u8> =
-            Hex::from_hex("7d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d0157").unwrap();
+            Hex::from_hex("0ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c9").unwrap();
         blob.extend_from_slice(&mining_hash.as_slice());
+        blob.extend_from_slice(&[0u8; 4]);
         let mut prep_mining_blob = blob.clone();
         prep_mining_blob.extend_from_slice(&[0u8; 4]);
         // Add pow
@@ -1316,17 +1323,54 @@ mod test {
 
         assert_eq!(
             hex::encode(&prep_mining_blob),
-            "000000000000007d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d015700000000020000000000000000000000000000000000000000000000000000000000000000"
+            "0000000ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c90000000000000000020000000000000000000000000000000000000000000000000000000000000000"
         );
 
-        blob.extend_from_slice(hex::decode("00000b00").unwrap().as_slice());
+        let nonce = 8390400u64;
+        // let nonce = 1u64;
+
+        blob.extend_from_slice(hex::decode("00800700").unwrap().as_slice());
         blob.extend_from_slice(&pow.to_bytes().as_slice());
         let difficulty = get_random_x_difficulty(&blob, &vm).unwrap();
         assert_eq!(
             hex::encode(&difficulty.1),
-            "79cebc2e374e8d545017149bd05f25b04530984927bd6703f8cc2d216b0bca04"
+            "3b5af219f2491561cfd3b11d1ee9cc9fba81112f58042ce2f9c8541b2d44a410"
         );
-        assert_eq!(difficulty.0.as_u64(), 53);
+        assert_eq!(difficulty.0.as_u64(), 15);
+
+        // Now construct a block header and see if it matches
+        let mut block_header = BlockHeader {
+            version: 1,
+            height: 123,
+            prev_hash: FixedHash::try_from_slice(
+                hex::decode("7d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d0157")
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap(),
+            timestamp: 11222333.into(),
+            output_mr: FixedHash::zero(),
+            block_output_mr: FixedHash::zero(),
+            output_smt_size: 0,
+            kernel_mr: FixedHash::zero(),
+            kernel_mmr_size: 0,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            nonce,
+            pow,
+            validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
+        };
+
+        let mining_hash = block_header.mining_hash();
+        assert_eq!(
+            mining_hash.to_hex(),
+            "0ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c9"
+        );
+
+        let diff = tari_randomx_difficulty(&block_header, &randomx_factory, &vm_key.try_into().unwrap()).unwrap();
+        assert_eq!(diff.as_u64(), 15);
     }
 
     #[test]

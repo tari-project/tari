@@ -33,7 +33,9 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
-        DifficultyCalculator, HeaderChainLinkedValidator, ValidationError,
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        ValidationError,
     },
 };
 pub const LOG_TARGET: &str = "c::val::header_full_validator";

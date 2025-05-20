@@ -55,6 +55,7 @@ impl PowError {
             err @ PowError::InvalidProofOfWork |
             err @ PowError::AchievedDifficultyBelowMin |
             err @ PowError::Sha3HeaderNonEmptyPowBytes |
+            err @ PowError::RandomxTPowDataTooLong |
             err @ PowError::AchievedDifficultyTooLow { .. } |
             err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
                 reason: err.to_string(),
