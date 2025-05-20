@@ -89,8 +89,8 @@ pub fn tari_randomx_difficulty(
     let mut blob = vec![0u8; 7];
     blob.extend_from_slice(header.mining_hash().as_slice());
     // Note, only the first 4 bytes of the nonce are used (u32)
-    let nonce = header.nonce.to_le_bytes();
-    blob.extend_from_slice(&nonce[0..4]);
+    let nonce = header.nonce.to_be_bytes();
+    blob.extend_from_slice(&nonce[4..8]);
     // The pow_algo is the first byte of the pow field when serialized to bytes
     let mut pow_bytes = header.pow.to_bytes();
     if pow_bytes.len() < 33 {
