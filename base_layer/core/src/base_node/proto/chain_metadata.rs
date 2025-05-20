@@ -88,8 +88,8 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             best_block_height: metadata.best_block_height(),
             best_block_hash: metadata.best_block_hash().to_vec(),
             pruned_height: metadata.pruned_height(),
-            accumulated_difficulty_low: accumulated_difficulty[33..64].to_vec(),
-            accumulated_difficulty_high: accumulated_difficulty[0..32].to_vec(),
+            accumulated_difficulty_low: accumulated_difficulty[32..=64].to_vec(),
+            accumulated_difficulty_high: accumulated_difficulty[0..=31].to_vec(),
             timestamp: metadata.timestamp(),
         }
     }
