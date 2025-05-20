@@ -84,6 +84,10 @@ pub enum TransactionServiceRequest {
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
     },
+    GetCompletedTransactionsByAddresses {
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
@@ -213,6 +217,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
+            Self::GetCompletedTransactionsByAddresses { .. } => write!(f, "GetCompletedTransactionsByAddresses"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -976,6 +981,24 @@ impl TransactionServiceHandle {
                 payment_id,
                 block_hash,
                 block_height,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_completed_transactions_by_addresses(
+        &mut self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCompletedTransactionsByAddresses {
+                source_address,
+                destination_address,
             })
             .await??
         {

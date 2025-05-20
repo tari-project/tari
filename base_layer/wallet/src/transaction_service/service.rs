@@ -899,6 +899,13 @@ where
                 self.db
                     .get_completed_transactions(payment_id, block_hash, block_height)?,
             )),
+            TransactionServiceRequest::GetCompletedTransactionsByAddresses {
+                source_address,
+                destination_address,
+            } => Ok(TransactionServiceResponse::CompletedTransactions(
+                self.db
+                    .get_completed_transactions_by_addresses(source_address, destination_address)?,
+            )),
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
                     self.db.get_cancelled_pending_inbound_transactions()?,

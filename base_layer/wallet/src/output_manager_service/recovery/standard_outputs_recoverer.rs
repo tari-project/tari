@@ -163,6 +163,13 @@ where
                         .get_completed_transactions(None, db_output.mined_in_block, db_output.mined_height)
                         .await
                         .unwrap_or_default();
+                    // Instead I want to:
+                    //
+                    // let txs = self
+                    //     .transaction_service_handle
+                    //     .get_completed_transactions_by_addresses(Some(db_output.source_address),
+                    // Some(db_output.destination_address))     .await
+                    //     .unwrap_or_default();
                     let tx_id = last_block_txs.iter().find_map(|tx| {
                         tx.transaction
                             .body
