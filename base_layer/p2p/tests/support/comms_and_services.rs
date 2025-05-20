@@ -36,20 +36,13 @@ pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector,
-    data_path: &str,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
-    let (comms, dht, messaging_events) = initialize_local_test_comms(
-        node_identity,
-        publisher,
-        data_path,
-        Duration::from_secs(1),
-        peers,
-        shutdown_signal,
-    )
-    .await
-    .unwrap();
+    let (comms, dht, messaging_events) =
+        initialize_local_test_comms(node_identity, publisher, Duration::from_secs(1), peers, shutdown_signal)
+            .await
+            .unwrap();
 
     let mut comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
     let address = comms

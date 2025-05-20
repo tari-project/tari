@@ -24,6 +24,7 @@ use std::{
     convert::TryFrom,
     env::temp_dir,
     fs,
+    iter,
     path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockWriteGuard},
     time::Duration,
@@ -35,6 +36,7 @@ use diesel::{
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -115,14 +117,8 @@ pub struct DbConnection {
 }
 
 impl DbConnection {
-    /// Memory conenections are not supported since pooled in-memory connections are not supported by SQLite - this
-    /// would mainly have been used by the test framework.
-    /// See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
-    pub fn connect_memory(_name: String) -> Result<Self, StorageError> {
-        unimplemented!("Pooled in-memory connections are not supported by SQLite");
-    }
-
     /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl).
+    /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
     pub fn connect_url(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
 
@@ -170,12 +166,6 @@ impl DbConnection {
 
     /// Connect and migrate the database in a temporary location, then return a handle to the migrated database.
     pub fn connect_temp_file_and_migrate(migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        use std::iter;
-
-        use rand::{distributions::Alphanumeric, thread_rng, Rng};
-
-        use crate::connection::DbConnectionUrl;
-
         fn prefixed_string(prefix: &str, len: usize) -> String {
             let mut rng = thread_rng();
             let rand_str = iter::repeat(())
@@ -187,7 +177,7 @@ impl DbConnection {
 
         let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
         fs::create_dir_all(&path)?;
-        let db_url = DbConnectionUrl::File(path.join("peers.db"));
+        let db_url = DbConnectionUrl::File(path.join("my_temp.db"));
         DbConnection::connect_and_migrate(&db_url, migrations)
     }
 

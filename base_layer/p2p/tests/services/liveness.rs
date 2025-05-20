@@ -36,20 +36,17 @@ use tari_p2p::{
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_try_recv;
-use tempfile::tempdir;
 
 use crate::support::comms_and_services::setup_comms_services;
 
 pub async fn setup_liveness_service(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
-    data_path: &str,
 ) -> (LivenessHandle, CommsNode, Dht, Shutdown) {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
-    let (comms, dht, _) =
-        setup_comms_services(node_identity.clone(), peers, publisher, data_path, shutdown.to_signal()).await;
+    let (comms, dht, _) = setup_comms_services(node_identity.clone(), peers, publisher, shutdown.to_signal()).await;
 
     let handles = StackBuilder::new(comms.shutdown_signal())
         .add_initializer(RegisterHandle::new(dht.clone()))
@@ -83,20 +80,10 @@ async fn end_to_end() {
     let node_1_identity = make_node_identity();
     let node_2_identity = make_node_identity();
 
-    let alice_temp_dir = tempdir().unwrap();
-    let (mut liveness1, _, _dht_1, _shutdown) = setup_liveness_service(
-        node_1_identity.clone(),
-        vec![node_2_identity.clone()],
-        alice_temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-    let bob_temp_dir = tempdir().unwrap();
-    let (mut liveness2, _, _dht_2, _shutdown) = setup_liveness_service(
-        node_2_identity.clone(),
-        vec![node_1_identity.clone()],
-        bob_temp_dir.path().to_str().unwrap(),
-    )
-    .await;
+    let (mut liveness1, _, _dht_1, _shutdown) =
+        setup_liveness_service(node_1_identity.clone(), vec![node_2_identity.clone()]).await;
+    let (mut liveness2, _, _dht_2, _shutdown) =
+        setup_liveness_service(node_2_identity.clone(), vec![node_1_identity.clone()]).await;
 
     let mut liveness1_event_stream = liveness1.get_event_stream();
     let mut liveness2_event_stream = liveness2.get_event_stream();

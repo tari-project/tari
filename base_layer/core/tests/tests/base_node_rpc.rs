@@ -59,7 +59,6 @@ use tari_core::{
 use tari_service_framework::reply_channel;
 use tari_test_utils::streams::convert_mpsc_to_stream;
 use tari_utilities::epoch_time::EpochTime;
-use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -78,7 +77,6 @@ async fn setup() -> (
     ConsensusManager,
     ChainBlock,
     WalletOutput,
-    TempDir,
     MemoryDbKeyManager,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
@@ -86,7 +84,6 @@ async fn setup() -> (
         .with_coinbase_lockheight(1)
         .build();
     let key_manager = create_memory_db_key_manager().unwrap();
-    let temp_dir = tempdir().unwrap();
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
@@ -95,7 +92,7 @@ async fn setup() -> (
         .unwrap();
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
-        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
+        .start(BlockchainDatabaseConfig::default())
         .await;
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
@@ -123,7 +120,6 @@ async fn setup() -> (
         consensus_manager,
         block0,
         utxo0,
-        temp_dir,
         key_manager,
     )
 }
@@ -132,8 +128,7 @@ async fn setup() -> (
 #[allow(clippy::too_many_lines)]
 async fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
-    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir, key_manager) =
-        setup().await;
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, key_manager) = setup().await;
 
     let (txs1, utxos1) = schema_to_transaction(
         &[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])],
@@ -298,8 +293,7 @@ async fn test_base_node_wallet_rpc() {
 
 #[tokio::test]
 async fn test_get_height_at_time() {
-    let (service, _, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir, key_manager) =
-        setup().await;
+    let (service, _, base_node, request_mock, consensus_manager, block0, _utxo0, key_manager) = setup().await;
 
     let mut prev_block = block0.clone();
     let mut times: Vec<EpochTime> = vec![prev_block.header().timestamp];
@@ -356,8 +350,7 @@ async fn test_get_height_at_time() {
 }
 #[tokio::test]
 async fn test_sync_utxos_by_block() {
-    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir, key_manager) =
-        setup().await;
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, key_manager) = setup().await;
 
     let (txs1, utxos1) = schema_to_transaction(
         &[txn_schema!(

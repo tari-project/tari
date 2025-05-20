@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
@@ -145,20 +144,14 @@ impl CommsInitializationError {
 }
 
 /// Initialize Tari Comms configured for tests
-pub async fn initialize_local_test_comms<P: AsRef<Path>>(
+pub async fn initialize_local_test_comms(
     node_identity: Arc<NodeIdentity>,
     connector: InboundDomainConnector,
-    data_path: P,
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError>
-where
-    PathBuf: From<P>,
-{
-    fs::create_dir_all(&data_path)?;
-    let database_url = DbConnectionUrl::File(PathBuf::from(data_path).join("peers.db"));
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS)?;
     let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
 
     //---------------------------------- Comms --------------------------------------------//

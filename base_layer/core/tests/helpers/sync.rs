@@ -58,7 +58,6 @@ use tari_core::{
 };
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
-use tempfile::tempdir;
 use tokio::sync::{broadcast, watch};
 
 use crate::helpers::{
@@ -149,7 +148,6 @@ pub async fn create_network_with_multiple_nodes(
         panic!("Must have at least 2 nodes");
     }
     let network = Network::LocalNet;
-    let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
@@ -170,7 +168,6 @@ pub async fn create_network_with_multiple_nodes(
         blockchain_db_configs,
         vec![P2pConfig::default(); num_nodes],
         consensus_manager,
-        temp_dir.path().to_str().unwrap(),
         network,
     )
     .await;
