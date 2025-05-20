@@ -82,6 +82,7 @@ where
 
     /// Attempt to rewind all of the given transaction outputs into key_manager outputs. If they can be rewound then add
     /// them to the database and increment the key manager index
+    #[allow(clippy::too_many_lines)]
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<(TransactionOutput, Option<TxId>)>,
