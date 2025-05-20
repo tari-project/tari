@@ -30,8 +30,15 @@ pub mod sync_utxos_by_block_task;
 use std::{error::Error, fmt::Debug};
 
 #[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
+use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
+use url::Url;
+
+#[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
-use crate::proto::base_node::GetWalletQueryHttpServiceAddressResponse;
 use crate::{
     blocks::BlockHeader,
     proto,
@@ -41,6 +48,7 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures,
@@ -61,13 +69,6 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
 };
-#[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_shutdown::ShutdownSignal;
-use thiserror::Error;
-use url::Url;
 
 /// Trait that a base node wallet query service must implement.
 /// Please note that this service is to fetch data, so read-only queries.
@@ -175,7 +176,12 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     state_machine: StateMachineHandle,
     wallet_query_service_address: Option<Url>,
 ) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>> {
-    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine, wallet_query_service_address))
+    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(
+        db,
+        mempool,
+        state_machine,
+        wallet_query_service_address,
+    ))
 }
 
 #[cfg(feature = "base_node")]

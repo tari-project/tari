@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{extract::Query, http::StatusCode, Extension, Json};
-use log::error;
+use log::{debug, error};
 use serde::Deserialize;
 
 use crate::{
@@ -21,6 +21,8 @@ pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<http::query_service::Service<B>>>,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<BlockHeader>, StatusCode> {
+    debug!(target: LOG_TARGET, "Received get_header_by_height request: {}", params.height);
+
     let response = query_service
         .get_header_by_height(params.height)
         .await

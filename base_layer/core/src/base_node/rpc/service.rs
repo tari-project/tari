@@ -23,7 +23,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use crate::proto::base_node::{GetWalletQueryHttpServiceAddressRequest, GetWalletQueryHttpServiceAddressResponse};
+use log::*;
+use tari_common_types::types::{FixedHash, Signature};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_utilities::hex::Hex;
+use tokio::sync::mpsc;
+use url::Url;
+
 use crate::{
     base_node::{
         rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
@@ -39,6 +45,7 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedData,
             QueryDeletedRequest,
             QueryDeletedResponse,
@@ -60,12 +67,6 @@ use crate::{
     },
     transactions::transaction_components::Transaction,
 };
-use log::*;
-use tari_common_types::types::{FixedHash, Signature};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
-use tari_utilities::hex::Hex;
-use tokio::sync::mpsc;
-use url::Url;
 
 const LOG_TARGET: &str = "c::base_node::rpc";
 const MAX_QUERY_DELETED_HASHES: usize = 1000;
@@ -142,9 +143,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                             mined_timestamp: header.timestamp.as_u64(),
                         };
                         return Ok(response);
-                    }
+                    },
                 }
-            }
+            },
         };
 
         // If not in a block then check the mempool
@@ -262,9 +263,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                                 is_synced,
                             },
                         }
-                    }
+                    },
                 }
-            }
+            },
         };
         Ok(Response::new(response))
     }
@@ -443,7 +444,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                             Ok(output) => Some(output),
                             Err(err) => {
                                 return Err(err);
-                            }
+                            },
                         },
                         mined_timestamp: utxo.mined_timestamp,
                     })
@@ -714,13 +715,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(stats.into()))
     }
 
-    async fn get_wallet_query_http_service_address(&self, _request: Request<()>) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus> {
-        Ok(
-            Response::new(
-                GetWalletQueryHttpServiceAddressResponse {
-                    http_address: self.wallet_query_service_address.clone().map(|url| { url.to_string() }).unwrap_or(String::new())
-                }
-            )
-        )
+    async fn get_wallet_query_http_service_address(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus> {
+        Ok(Response::new(GetWalletQueryHttpServiceAddressResponse {
+            http_address: self
+                .wallet_query_service_address
+                .clone()
+                .map(|url| url.to_string())
+                .unwrap_or_default(),
+        }))
     }
 }

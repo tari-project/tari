@@ -36,7 +36,6 @@ use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
-use url::Url;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -124,9 +123,6 @@ pub struct WalletConfig {
     pub balance_enquiry_cooldown_period: Duration,
     // How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
-    /// URL of the base node wallet query service.
-    /// Default: http://127.0.0.1:9000
-    pub base_node_http_wallet_query_service_url: Url,
 }
 
 impl Default for WalletConfig {
@@ -167,7 +163,6 @@ impl Default for WalletConfig {
             identity_file: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
-            base_node_http_wallet_query_service_url: Url::parse("http://127.0.0.1:9000").expect("Invalid URL"),
         }
     }
 }

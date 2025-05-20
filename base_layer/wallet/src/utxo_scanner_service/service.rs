@@ -25,10 +25,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::{
-    base_node::rpc::BaseNodeWalletQueryServiceClient,
-    transactions::{tari_amount::MicroMinotari, CryptoFactories},
-};
+use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -54,7 +51,7 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
-pub struct UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
+pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) retry_limit: usize,
     pub(crate) peer_seeds: Vec<CommsPublicKey>,
@@ -64,15 +61,12 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceC
     pub(crate) base_node_service: BaseNodeServiceHandle,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
-    wallet_query_service_client: WalletQueryServiceClient,
 }
 
-impl<TBackend, TWalletConnectivity, WalletQueryServiceClient>
-UtxoScannerService<TBackend, TWalletConnectivity, WalletQueryServiceClient>
+impl<TBackend, TWalletConnectivity> UtxoScannerService<TBackend, TWalletConnectivity>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    WalletQueryServiceClient: BaseNodeWalletQueryServiceClient,
 {
     pub fn new(
         peer_seeds: Vec<CommsPublicKey>,
@@ -84,7 +78,6 @@ where
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
-        wallet_query_service_client: WalletQueryServiceClient,
     ) -> Self {
         Self {
             resources,
@@ -96,14 +89,10 @@ where
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
-            wallet_query_service_client,
         }
     }
 
-    fn create_task(
-        &self,
-        shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerTask<TBackend, TWalletConnectivity, WalletQueryServiceClient> {
+    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             peer_seeds: self.peer_seeds.clone(),
@@ -114,7 +103,6 @@ where
             mode: self.mode.clone(),
             shutdown_signal,
             birthday_offset: self.resources.birthday_offset,
-            local_node_wallet_query_service_client: self.wallet_query_service_client.clone(),
         }
     }
 
@@ -150,7 +138,7 @@ where
                     error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
                 }
             })
-                .fuse();
+            .fuse();
 
             loop {
                 tokio::select! {

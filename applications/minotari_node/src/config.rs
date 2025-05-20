@@ -20,15 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::grpc_method::GrpcMethod;
-#[cfg(feature = "metrics")]
-use crate::metrics::MetricsConfig;
-use config::Config;
-use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+
+use config::Config;
+use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{serializers, CommonConfig, ConfigList, Network, StringList},
     ConfigurationError,
@@ -45,6 +43,10 @@ use tari_core::{
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 use url::Url;
+
+use crate::grpc_method::GrpcMethod;
+#[cfg(feature = "metrics")]
+use crate::metrics::MetricsConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
@@ -165,7 +167,7 @@ impl Default for WalletQueryServiceConfig {
     fn default() -> Self {
         Self {
             port: 9000,
-            external_address: None,
+            external_address: Some(Url::parse("http://127.0.0.1:9000").unwrap()),
         }
     }
 }

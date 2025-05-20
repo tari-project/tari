@@ -20,6 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::{TryFrom, TryInto},
+    time::{Duration, Instant},
+};
+
+use chrono::{DateTime, Utc};
+use futures::StreamExt;
+use log::*;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{ImportStatus, TxId},
+    types::HashOutput,
+    wallet_types::WalletType,
+};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::RpcClientLease,
+    types::CommsPublicKey,
+    Minimized,
+    PeerConnection,
+};
+use tari_core::{
+    base_node::rpc::{
+        http::client::Client,
+        models::TipInfoResponse,
+        BaseNodeWalletQueryServiceClient,
+        BaseNodeWalletRpcClient,
+    },
+    blocks::BlockHeader,
+    proto::base_node::SyncUtxosByBlockRequest,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
+    },
+};
+use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
+use tokio::sync::broadcast;
+use url::Url;
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
@@ -33,46 +74,6 @@ use crate::{
         RECOVERY_KEY,
     },
 };
-use chrono::{DateTime, Utc};
-use futures::StreamExt;
-use log::*;
-use std::sync::Arc;
-use std::{
-    convert::{TryFrom, TryInto},
-    time::{Duration, Instant},
-};
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::{ImportStatus, TxId},
-    types::HashOutput,
-    wallet_types::WalletType,
-};
-use tari_comms::protocol::rpc::RpcError;
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
-use tari_core::base_node::rpc::http::client::Client;
-use tari_core::base_node::rpc::models::TipInfoResponse;
-use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClientError;
-use tari_core::proto::base_node::GetWalletQueryHttpServiceAddressResponse;
-use tari_core::{
-    base_node::rpc::{BaseNodeWalletQueryServiceClient, BaseNodeWalletRpcClient},
-    blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
-    },
-};
-use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
-use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
-use tokio::sync::broadcast;
-use url::{ParseError, Url};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
@@ -88,8 +89,8 @@ macro_rules! peer_client_call {
         pub async fn $call(&mut self, $($v: $t),*) -> Result<$return_type, UtxoScannerError> {
          if let Some(query_service_client) = &self.query_service_client {
             match query_service_client.$call($($v,)*).await {
-                Ok(header) => {
-                    return Ok(header);
+                Ok(result) => {
+                    return Ok(result);
                 }
                 Err(error) => {
                     warn!(target: LOG_TARGET, "[Wallet Query HTTP] Failed to call {} method: {}, falling back to RPC call...", stringify!($call), error);
@@ -98,27 +99,48 @@ macro_rules! peer_client_call {
         }
          self.rpc_client.$call($($v,)*).await.map_err(|rpc_error| {
              UtxoScannerError::RpcError(rpc_error)
-         }).try_into().map_err(|error| UtxoScannerError::ConversionError(error))
+         })?.try_into().map_err(|error| UtxoScannerError::ConversionError(error))
+        }
+    };
+    ($call: tt ($($v:ident: $t:ty),*), $return_type: ty, no_conversion) => {
+        pub async fn $call(&mut self, $($v: $t),*) -> Result<$return_type, UtxoScannerError> {
+         if let Some(query_service_client) = &self.query_service_client {
+            match query_service_client.$call($($v,)*).await {
+                Ok(result) => {
+                    return Ok(result);
+                }
+                Err(error) => {
+                    warn!(target: LOG_TARGET, "[Wallet Query HTTP] Failed to call {} method: {}, falling back to RPC call...", stringify!($call), error);
+                }
+            }
+        }
+         self.rpc_client.$call($($v,)*).await.map_err(|rpc_error| {
+             UtxoScannerError::RpcError(rpc_error)
+         })
         }
     };
 }
 
 impl<S: BaseNodeWalletQueryServiceClient> PeerClient<S> {
-    pub fn new(query_service_client: Option<S>, rpc_client: RpcClientLease<BaseNodeWalletRpcClient>) -> Self {
-        Self { query_service_client, rpc_client }
-    }
-
     peer_client_call!(get_header_by_height(height: u64), BlockHeader);
+
     peer_client_call!(get_tip_info(), TipInfoResponse);
+
+    peer_client_call!(get_height_at_time(epoch_time: u64), u64, no_conversion);
+
+    pub fn new(query_service_client: Option<S>, rpc_client: RpcClientLease<BaseNodeWalletRpcClient>) -> Self {
+        Self {
+            query_service_client,
+            rpc_client,
+        }
+    }
 
     pub fn rpc_client(&mut self) -> &mut RpcClientLease<BaseNodeWalletRpcClient> {
         &mut self.rpc_client
     }
 }
 
-
-pub struct UtxoScannerTask<TBackend, TWalletConnectivity>
-{
+pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
@@ -128,10 +150,8 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity>
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub birthday_offset: u16,
-    pub local_node_wallet_query_service_client: Client,
 }
-impl<TBackend, TWalletConnectivity>
-UtxoScannerTask<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -161,7 +181,7 @@ where
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
                         return Ok(());
-                    }
+                    },
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
@@ -173,7 +193,7 @@ where
                             error: e.to_string(),
                         });
                         continue;
-                    }
+                    },
                 },
                 None => {
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
@@ -193,7 +213,7 @@ where
                     self.num_retries += 1;
                     // Reset peer index to try connect to the first peer again
                     self.peer_index = 0;
-                }
+                },
             }
         }
     }
@@ -250,7 +270,7 @@ where
                 }
 
                 Err(e.into())
-            }
+            },
         }
     }
 
@@ -263,25 +283,23 @@ where
     ) -> Option<Client> {
         match rpc_client.get_wallet_query_http_service_address().await {
             Ok(address) => {
-                if !address.http_address.is_empty() {
+                if address.http_address.is_empty() {
+                    None
+                } else {
                     let wallet_query_svc_url = Url::parse(address.http_address.as_str());
                     match wallet_query_svc_url {
-                        Ok(url) => {
-                            Some(Client::new(url))
-                        }
+                        Ok(url) => Some(Client::new(url)),
                         Err(error) => {
                             warn!(target:LOG_TARGET, "Failed to parse service URL: {}", error);
                             None
-                        }
+                        },
                     }
-                } else {
-                    None
                 }
-            }
+            },
             Err(error) => {
                 warn!(target:LOG_TARGET, "Failed to get wallet query http service address: {}", error);
                 None
-            }
+            },
         }
     }
 
@@ -289,10 +307,9 @@ where
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
-        let is_peer_local_node = selected_peer.map(|p| p == peer).unwrap_or(false);
 
         // get RPC client
-        let mut client = if is_peer_local_node {
+        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
             // Use the wallet connectivity service so that RPC pools are correctly managed
             self.resources
                 .wallet_connectivity
@@ -310,19 +327,14 @@ where
         ));
 
         // get wallet service query client
-        let mut wallet_query_service_client = if is_peer_local_node {
-            Some(self.local_node_wallet_query_service_client.clone())
-        } else {
-            self.wallet_query_service_client(&mut client).await
-        };
-
+        let wallet_query_service_client = self.wallet_query_service_client(&mut client).await;
         let mut peer_client = PeerClient::new(wallet_query_service_client, client);
 
         let timer = Instant::now();
         loop {
             let tip_header = self.get_chain_tip_header(&mut peer_client).await?;
             let tip_header_hash = tip_header.hash();
-            let last_scanned_block = self.get_last_scanned_block(tip_header.height).await?;
+            let last_scanned_block = self.get_last_scanned_block(&mut peer_client, tip_header.height).await?;
 
             let next_block_to_scan = if let Some(last_scanned_block) = last_scanned_block {
                 // If we have scanned to the tip and are told to start beyond the tip we are done
@@ -341,9 +353,7 @@ where
                     ));
                 }
 
-                let next_header = peer_client
-                    .get_header_by_height(last_scanned_block.height + 1)
-                    .await?;
+                let next_header = peer_client.get_header_by_height(last_scanned_block.height + 1).await?;
                 let next_header_hash = next_header.hash();
 
                 ScannedBlock {
@@ -359,9 +369,13 @@ where
                 self.resources.db.clear_scanned_blocks()?;
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(wallet)) => {
-                        self.get_scanning_start_header_height_hash(wallet.birthday).await?
-                    }
-                    _ => self.get_scanning_start_header_height_hash(None).await?,
+                        self.get_scanning_start_header_height_hash(&mut peer_client, wallet.birthday)
+                            .await?
+                    },
+                    _ => {
+                        self.get_scanning_start_header_height_hash(&mut peer_client, None)
+                            .await?
+                    },
                 };
 
                 ScannedBlock {
@@ -426,17 +440,22 @@ where
         Ok(RpcClientLease::new(client))
     }
 
-    async fn get_chain_tip_header(&self, peer_client: &mut PeerClient<Client>) -> Result<BlockHeader, UtxoScannerError> {
+    async fn get_chain_tip_header(
+        &self,
+        peer_client: &mut PeerClient<Client>,
+    ) -> Result<BlockHeader, UtxoScannerError> {
         let tip_info = peer_client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = peer_client
-            .get_header_by_height(chain_height)
-            .await?;
+        let end_header = peer_client.get_header_by_height(chain_height).await?;
 
         Ok(end_header)
     }
 
-    async fn get_last_scanned_block(&self, current_tip_height: u64) -> Result<Option<ScannedBlock>, UtxoScannerError> {
+    async fn get_last_scanned_block(
+        &self,
+        peer_client: &mut PeerClient<Client>,
+        current_tip_height: u64,
+    ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
@@ -465,11 +484,7 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = self
-                    .local_node_wallet_query_service_client
-                    .get_header_by_height(sb.height)
-                    .await
-                    .ok();
+                let header = peer_client.get_header_by_height(sb.height).await.ok();
                 match header {
                     Some(header) => {
                         let header_hash = header.hash();
@@ -478,10 +493,10 @@ where
                         } else {
                             last_missing_scanned_block = Some(sb.clone());
                         }
-                    }
+                    },
                     None => {
                         last_missing_scanned_block = Some(sb.clone());
-                    }
+                    },
                 }
             }
             // Sum up the number of outputs recovered starting from the first found block
@@ -743,17 +758,17 @@ where
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
                     total_amount += wo.value;
-                }
+                },
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
-                                                             TransactionStorageError::DuplicateOutput,
-                                                         ))) => {
+                    TransactionStorageError::DuplicateOutput,
+                ))) => {
                     info!(
                         target: LOG_TARGET,
                         "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
                         tx_id
                     );
-                }
+                },
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
         }
@@ -827,6 +842,7 @@ where
 
     async fn get_scanning_start_header_height_hash(
         &self,
+        peer_client: &mut PeerClient<Client>,
         option_birthday: Option<u16>,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = match option_birthday {
@@ -834,8 +850,7 @@ where
             None => self.resources.db.get_wallet_birthday()?,
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
-        let block_height_birthday = self
-            .local_node_wallet_query_service_client
+        let block_height_birthday = peer_client
             .get_height_at_time(epoch_time_birthday)
             .await
             .unwrap_or_else(|e| {
@@ -845,18 +860,14 @@ where
         // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let block_height_scanning_start = self
-            .local_node_wallet_query_service_client
+        let block_height_scanning_start = peer_client
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        let header = self
-            .local_node_wallet_query_service_client
-            .get_header_by_height(block_height_scanning_start)
-            .await?;
+        let header = peer_client.get_header_by_height(block_height_scanning_start).await?;
         let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,

@@ -2621,12 +2621,7 @@ pub async fn command_runner(
                         None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
-                    let peer_config = PeerConfig::new(
-                        selected_base_node,
-                        base_node_peers,
-                        peer_seeds,
-                        config.base_node_http_wallet_query_service_url.clone(),
-                    );
+                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
 
                     let base_nodes = peer_config
                         .get_base_node_peers()

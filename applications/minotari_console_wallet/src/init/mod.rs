@@ -363,12 +363,7 @@ pub async fn set_peer_and_get_base_node_peer_config(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
 
-    let peer_config = PeerConfig::new(
-        selected_base_node,
-        base_node_peers,
-        peer_seeds,
-        config.base_node_http_wallet_query_service_url.clone(),
-    );
+    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 
     Ok(peer_config)

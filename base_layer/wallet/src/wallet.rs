@@ -345,11 +345,11 @@ where
             &spend_key.pub_key,
             spend_key.key_id,
         )
-            .await
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "{:?}", e);
-                e
-            })?;
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "{:?}", e);
+            e
+        })?;
 
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
@@ -517,11 +517,11 @@ where
                     update.download_url(),
                     update.to_hash_hex()
                 ))
-            }
+            },
             None => {
                 debug!(target: LOG_TARGET, "No updates found.",);
                 None
-            }
+            },
         }
     }
 
@@ -719,7 +719,7 @@ where
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
                 }
-            }
+            },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
     }
@@ -747,7 +747,7 @@ where
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
                 }
-            }
+            },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
     }
@@ -775,7 +775,7 @@ where
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
                 }
-            }
+            },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
     }
@@ -806,7 +806,7 @@ where
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
                 }
-            }
+            },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
     }
@@ -841,7 +841,7 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
                 let seed = CipherSeed::new();
                 db.set_master_seed(seed.clone())?;
                 seed
-            }
+            },
             Some(seed) => seed,
         },
         Some(recovery_seed) => {
@@ -856,7 +856,7 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
                 let msg = "Wallet already exists! Move the existing wallet database file.".to_string();
                 return Err(WalletError::WalletRecoveryError(msg));
             }
-        }
+        },
     };
 
     Ok(master_seed)
@@ -874,11 +874,11 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
             let wallet_type = WalletType::default();
             db.set_wallet_type(wallet_type.clone())?;
             Ok(wallet_type)
-        }
+        },
         (None, Some(t)) => {
             db.set_wallet_type(t.clone())?;
             Ok(t.clone())
-        }
+        },
         (Some(t), _) => Ok(t),
     }
 }

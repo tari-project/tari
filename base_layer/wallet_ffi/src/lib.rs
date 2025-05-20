@@ -53,7 +53,6 @@ use std::{
     ffi::{CStr, CString},
     fmt::{Display, Formatter},
     mem::ManuallyDrop,
-    net::{IpAddr, SocketAddr},
     num::NonZeroU16,
     path::PathBuf,
     slice,
@@ -143,7 +142,6 @@ use tari_comms::{
 use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
-    base_node::rpc::http::client::Client,
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
@@ -5960,7 +5958,6 @@ pub unsafe extern "C" fn comms_config_create(
                 rpc_max_sessions_per_peer: 0,
                 listener_self_liveness_check_interval: None,
                 cull_oldest_peer_rpc_connection_on_full: true,
-                base_node_http_wallet_query_service_listen_address: SocketAddr::new(IpAddr::from([0, 0, 0, 0]), 9000),
             };
 
             Box::into_raw(Box::new(config))
@@ -9637,8 +9634,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     } else {
         (*base_node_public_keys).0.clone()
     };
-    let mut recovery_task_builder =
-        UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, Client>::builder();
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
@@ -9662,11 +9658,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
         recovery_task_builder
             .with_peers(peer_public_keys)
             .with_retry_limit(10)
-            .build_with_wallet(
-                &(*wallet).wallet,
-                Client::new((*wallet).wallet.config.base_node_http_wallet_query_service_url.clone()),
-                shutdown_signal,
-            )
+            .build_with_wallet(&(*wallet).wallet, shutdown_signal)
             .await
     }) {
         Ok(v) => v,
