@@ -78,8 +78,6 @@ pub enum BlockHeaderValidationError {
     OldSeedHash,
     #[error("Monero blocks must have a nonce of 0")]
     InvalidNonce,
-    #[error("Nonce to high, Tari RandomX must have a 32 bit nonce")]
-    NonceTooHigh,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
