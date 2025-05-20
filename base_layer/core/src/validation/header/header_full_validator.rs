@@ -201,7 +201,13 @@ fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
             }
             Ok(())
         },
-        Sha3x | RandomXT => {
+        RandomXT => {
+            if block_header.pow.pow_data.len() > 32 {
+                return Err(PowError::RandomxTPowDataTooLong.into());
+            }
+            Ok(())
+        },
+        Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }
