@@ -47,8 +47,8 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
                 metadata.accumulated_difficulty_high.len()
             ));
         }
-        let mut bytes = metadata.accumulated_difficulty_low.to_vec();
-        bytes.extend_from_slice(&metadata.accumulated_difficulty_high);
+        let mut bytes = metadata.accumulated_difficulty_high.to_vec();
+        bytes.extend_from_slice(&metadata.accumulated_difficulty_low);
         let accumulated_difficulty = U512::from_big_endian(&bytes);
         let best_block_height = metadata.best_block_height;
 
@@ -88,8 +88,8 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             best_block_height: metadata.best_block_height(),
             best_block_hash: metadata.best_block_hash().to_vec(),
             pruned_height: metadata.pruned_height(),
-            accumulated_difficulty_low: accumulated_difficulty[0..32].to_vec(),
-            accumulated_difficulty_high: accumulated_difficulty[33..64].to_vec(),
+            accumulated_difficulty_low: accumulated_difficulty[33..64].to_vec(),
+            accumulated_difficulty_high: accumulated_difficulty[0..32].to_vec(),
             timestamp: metadata.timestamp(),
         }
     }
