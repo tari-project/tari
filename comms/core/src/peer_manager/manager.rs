@@ -103,12 +103,10 @@ impl PeerManager {
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn delete_all_stale_peers(&self, self_node_id: &NodeId) -> Result<Vec<NodeId>, PeerManagerError> {
+    pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
         let peer_manager = self.clone();
-        let self_node_id = self_node_id.clone();
         let deleted_peers =
-            tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.delete_all_stale_peers(&self_node_id))
-                .await??;
+            tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.delete_all_stale_peers()).await??;
         Ok(deleted_peers)
     }
 

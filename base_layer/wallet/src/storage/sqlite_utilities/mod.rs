@@ -74,16 +74,9 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     Ok(WalletDbConnection::new(pool, Some(file_lock)))
 }
 
-pub fn run_migration_and_create_sqlite_memory_connection(
-    sqlite_pool_size: usize,
-) -> Result<WalletDbConnection, WalletStorageError> {
-    let mut pool = SqliteConnectionPool::new(
-        String::from(":memory:"),
-        sqlite_pool_size,
-        true,
-        true,
-        Duration::from_secs(60),
-    );
+pub fn run_migration_and_create_sqlite_memory_connection() -> Result<WalletDbConnection, WalletStorageError> {
+    // Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
+    let mut pool = SqliteConnectionPool::new(String::from(":memory:"), 1, false, true, Duration::from_secs(60));
     pool.create_pool()?;
     let mut connection = pool.get_pooled_connection()?;
 

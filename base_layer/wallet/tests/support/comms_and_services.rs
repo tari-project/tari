@@ -42,6 +42,7 @@ pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector,
+    database_path: String,
     discovery_request_timeout: Duration,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht) {
@@ -49,6 +50,7 @@ pub async fn setup_comms_services(
     let (comms, dht, _) = initialize_local_test_comms(
         node_identity,
         publisher,
+        &database_path,
         discovery_request_timeout,
         peers,
         shutdown_signal,

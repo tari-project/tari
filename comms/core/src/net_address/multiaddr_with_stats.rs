@@ -216,6 +216,19 @@ impl MultiaddrWithStats {
         self.last_failed_reason = None;
     }
 
+    #[cfg(test)]
+    pub fn reset_stats_to_default(&mut self) {
+        self.last_seen = None;
+        self.connection_attempts = 0;
+        self.avg_initial_dial_time = None;
+        self.initial_dial_time_sample_count = 0;
+        self.avg_latency = None;
+        self.latency_sample_count = 0;
+        self.last_attempted = None;
+        self.last_failed_reason = None;
+        self.quality_score = None;
+    }
+
     /// Mark that a connection could not be established with this net address
     pub fn mark_failed_connection_attempt(&mut self, error_string: String) -> &mut Self {
         self.connection_attempts += 1;

@@ -23,6 +23,7 @@
 use std::{
     convert::{TryFrom, TryInto},
     mem::size_of,
+    path::Path,
     sync::Arc,
     time::Duration,
 };
@@ -178,12 +179,13 @@ use crate::support::{
     utils::{create_wallet_output_from_sender_data, make_fake_input_from_copy, make_input},
 };
 
-async fn setup_transaction_service(
+async fn setup_transaction_service<P: AsRef<Path>>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     db_connection: WalletDbConnection,
+    database_path: P,
     discovery_request_timeout: Duration,
     shutdown_signal: ShutdownSignal,
 ) -> (
@@ -200,6 +202,7 @@ async fn setup_transaction_service(
         node_identity.clone(),
         peers,
         publisher,
+        database_path.as_ref().to_str().unwrap().to_owned(),
         discovery_request_timeout,
         shutdown_signal.clone(),
     )
@@ -565,9 +568,9 @@ async fn manage_single_transaction() {
         bob_node_identity.node_id().short_str(),
         base_node_identity.node_id().short_str()
     );
-    let alice_connection = make_wallet_database_memory_connection();
-    let bob_connection = make_wallet_database_memory_connection();
 
+    let alice_temp_dir = tempdir().unwrap();
+    let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -576,6 +579,7 @@ async fn manage_single_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -585,6 +589,8 @@ async fn manage_single_transaction() {
 
     sleep(Duration::from_secs(2)).await;
 
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_connection = make_wallet_database_memory_connection();
     let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, _bob_key_manager_handle, _bob_db) =
         setup_transaction_service(
             bob_node_identity.clone(),
@@ -592,6 +598,7 @@ async fn manage_single_transaction() {
             consensus_manager,
             factories.clone(),
             bob_connection,
+            bob_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -724,10 +731,10 @@ async fn large_interactive_transaction() {
         bob_node_identity.node_id().short_str(),
         base_node_identity.node_id().short_str()
     );
-    let alice_connection = make_wallet_database_memory_connection();
-    let bob_connection = make_wallet_database_memory_connection();
 
     // Alice sets up her Transaction Service
+    let alice_temp_dir = tempdir().unwrap();
+    let alice_connection = make_wallet_database_memory_connection();
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -736,6 +743,7 @@ async fn large_interactive_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -745,6 +753,8 @@ async fn large_interactive_transaction() {
     sleep(Duration::from_secs(2)).await;
 
     // Bob sets up his Transaction Service
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_connection = make_wallet_database_memory_connection();
     let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, _bob_key_manager_handle, _bob_db) =
         setup_transaction_service(
             bob_node_identity.clone(),
@@ -752,6 +762,7 @@ async fn large_interactive_transaction() {
             consensus_manager,
             factories.clone(),
             bob_connection,
+            bob_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -899,6 +910,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
         alice_node_identity.node_id().short_str(),
         bob_node_identity.node_id().short_str(),
     );
+    let alice_temp_dir = tempdir().unwrap();
     let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
@@ -908,6 +920,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -994,6 +1007,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
         alice_node_identity.node_id().short_str(),
         bob_node_identity.node_id().short_str(),
     );
+    let alice_temp_dir = tempdir().unwrap();
     let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
@@ -1003,6 +1017,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1109,6 +1124,7 @@ async fn test_spend_dust_happy_path() {
         alice_node_identity.node_id().short_str(),
         bob_node_identity.node_id().short_str(),
     );
+    let alice_temp_dir = tempdir().unwrap();
     let alice_connection = make_wallet_database_memory_connection();
 
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
@@ -1118,6 +1134,7 @@ async fn test_spend_dust_happy_path() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1263,6 +1280,7 @@ async fn single_transaction_to_self() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
@@ -1273,6 +1291,7 @@ async fn single_transaction_to_self() {
             consensus_manager,
             factories.clone(),
             db_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1344,6 +1363,8 @@ async fn large_coin_split_transaction() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
+
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
@@ -1354,6 +1375,7 @@ async fn large_coin_split_transaction() {
             consensus_manager,
             factories.clone(),
             db_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1430,6 +1452,8 @@ async fn single_transaction_burn_tari() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
+
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
@@ -1440,6 +1464,7 @@ async fn single_transaction_burn_tari() {
             consensus_manager,
             factories.clone(),
             db_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1576,6 +1601,7 @@ async fn send_one_sided_transaction_to_other() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
     let db_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
@@ -1586,6 +1612,7 @@ async fn send_one_sided_transaction_to_other() {
             consensus_manager,
             factories.clone(),
             db_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1694,9 +1721,8 @@ async fn recover_one_sided_transaction() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
     let alice_connection = make_wallet_database_memory_connection();
-    let bob_connection = make_wallet_database_memory_connection();
-
     let shutdown = Shutdown::new();
     let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -1705,11 +1731,14 @@ async fn recover_one_sided_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
         .await;
 
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_comms, _bob_connectivity, bob_key_manager_handle, _bob_db) =
         setup_transaction_service(
             bob_node_identity.clone(),
@@ -1717,6 +1746,7 @@ async fn recover_one_sided_transaction() {
             consensus_manager,
             factories.clone(),
             bob_connection,
+            bob_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1824,9 +1854,8 @@ async fn recover_stealth_one_sided_transaction() {
         base_node_identity.node_id().short_str()
     );
 
+    let alice_temp_dir = tempdir().unwrap();
     let alice_connection = make_wallet_database_memory_connection();
-    let bob_connection = make_wallet_database_memory_connection();
-
     let shutdown = Shutdown::new();
     let (mut alice_ts, alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
@@ -1835,11 +1864,14 @@ async fn recover_stealth_one_sided_transaction() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
         .await;
 
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_connection = make_wallet_database_memory_connection();
     let (_bob_ts, mut bob_oms, _bob_comms, _bob_connectivity, bob_key_manager_handle, _bob_db) =
         setup_transaction_service(
             bob_node_identity.clone(),
@@ -1847,6 +1879,7 @@ async fn recover_stealth_one_sided_transaction() {
             consensus_manager,
             factories.clone(),
             bob_connection,
+            bob_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
@@ -1935,27 +1968,28 @@ async fn test_htlc_send_and_claim() {
         base_node_identity.node_id().short_str()
     );
 
-    let temp_dir_bob = tempdir().unwrap();
-    let path_string = temp_dir_bob.path().to_str().unwrap().to_string();
-    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-
-    let db_connection = make_wallet_database_memory_connection();
-    let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
+    let alice_connection = make_wallet_database_memory_connection();
 
     let shutdown = Shutdown::new();
+    let alice_temp_dir = tempdir().unwrap();
     let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle, alice_db) =
         setup_transaction_service(
             alice_node_identity,
             vec![],
             consensus_manager,
             factories.clone(),
-            db_connection,
+            alice_connection,
+            alice_temp_dir,
             Duration::from_secs(0),
             shutdown.to_signal(),
         )
         .await;
 
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_db_path_string = bob_temp_dir.path().to_str().unwrap().to_string();
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
+    let bob_db_path = format!("{}/{}", bob_db_path_string, bob_db_name);
+    let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), bob_connection, None).await;
 
     log::info!(
@@ -2079,16 +2113,11 @@ async fn manage_multiple_transactions() {
         carol_node_identity.node_id().short_str()
     );
 
-    let temp_dir = tempdir().unwrap();
-
-    let database_path = temp_dir.path().to_str().unwrap().to_string();
-
-    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-    let (carol_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
-
     let mut shutdown = Shutdown::new();
 
+    let alice_temp_dir = tempdir().unwrap();
+    let alice_path = alice_temp_dir.path().to_str().unwrap().to_string();
+    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(alice_path.clone()));
     let (mut alice_ts, mut alice_oms, alice_comms, _alice_connectivity, alice_key_manager_handle, alice_db) =
         setup_transaction_service(
             alice_node_identity.clone(),
@@ -2096,6 +2125,7 @@ async fn manage_multiple_transactions() {
             consensus_manager.clone(),
             factories.clone(),
             alice_connection,
+            alice_temp_dir,
             Duration::from_secs(1),
             shutdown.to_signal(),
         )
@@ -2105,6 +2135,9 @@ async fn manage_multiple_transactions() {
     sleep(Duration::from_secs(5)).await;
 
     // Spin up Bob and Carol
+    let bob_temp_dir = tempdir().unwrap();
+    let bob_path = bob_temp_dir.path().to_str().unwrap().to_string();
+    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(bob_path.clone()));
     let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, bob_key_manager_handle, bob_db) =
         setup_transaction_service(
             bob_node_identity.clone(),
@@ -2112,6 +2145,7 @@ async fn manage_multiple_transactions() {
             consensus_manager.clone(),
             factories.clone(),
             bob_connection,
+            bob_temp_dir,
             Duration::from_secs(1),
             shutdown.to_signal(),
         )
@@ -2119,6 +2153,9 @@ async fn manage_multiple_transactions() {
     let mut bob_event_stream = bob_ts.get_event_stream();
     sleep(Duration::from_secs(5)).await;
 
+    let carol_temp_dir = tempdir().unwrap();
+    let carol_path = carol_temp_dir.path().to_str().unwrap().to_string();
+    let (carol_connection, _tempdir) = make_wallet_database_connection(Some(carol_path.clone()));
     let (mut carol_ts, mut carol_oms, carol_comms, _carol_connectivity, key_manager_handle, carol_db) =
         setup_transaction_service(
             carol_node_identity.clone(),
@@ -2126,6 +2163,7 @@ async fn manage_multiple_transactions() {
             consensus_manager,
             factories.clone(),
             carol_connection,
+            carol_temp_dir,
             Duration::from_secs(1),
             shutdown.to_signal(),
         )
@@ -2742,6 +2780,8 @@ async fn finalize_tx_with_missing_output() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn discovery_async_return_test() {
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
@@ -2784,6 +2824,7 @@ async fn discovery_async_return_test() {
             consensus_manager.clone(),
             factories.clone(),
             carol_connection,
+            db_folder.join("carol"),
             Duration::from_secs(1),
             shutdown.to_signal(),
         )
@@ -2798,6 +2839,7 @@ async fn discovery_async_return_test() {
             consensus_manager,
             factories.clone(),
             alice_connection,
+            db_folder.join("alice"),
             Duration::from_secs(20),
             shutdown.to_signal(),
         )

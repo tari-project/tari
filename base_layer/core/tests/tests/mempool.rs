@@ -81,6 +81,7 @@ use tari_core::{
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
+use tempfile::tempdir;
 
 use crate::helpers::{
     block_builders::{
@@ -1042,6 +1043,7 @@ async fn test_reorg() {
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {
+    let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network)
         .with_coinbase_lockheight(100)
@@ -1060,6 +1062,7 @@ async fn receive_and_propagate_transaction() {
         vec![BlockchainDatabaseConfig::default(); 3],
         vec![P2pConfig::default(); 3],
         consensus_manager,
+        temp_dir.path().to_str().unwrap(),
         network,
     )
     .await;
@@ -1725,6 +1728,7 @@ async fn block_event_and_reorg_event_handling() {
         .with_coinbase_lockheight(1)
         .build();
 
+    let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManager::builder(network)
@@ -1739,6 +1743,7 @@ async fn block_event_and_reorg_event_handling() {
         vec![BlockchainDatabaseConfig::default(); 2],
         vec![P2pConfig::default(); 2],
         consensus_manager,
+        temp_dir.path().to_str().unwrap(),
         network,
     )
     .await;

@@ -19,7 +19,7 @@ CREATE TABLE peers (
    added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
    user_agent TEXT NOT NULL,
    metadata BLOB,
-   deleted_at TEXT,
+   deleted_at TIMESTAMP,
 
    CONSTRAINT unique_public_key UNIQUE (public_key),
    CONSTRAINT unique_node_id UNIQUE (node_id)

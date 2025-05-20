@@ -48,6 +48,7 @@ use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
+use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, watch},
     task,
@@ -69,6 +70,7 @@ use crate::helpers::{
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
+    let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
@@ -90,6 +92,7 @@ async fn test_listening_lagging() {
         vec![BlockchainDatabaseConfig::default(); 2],
         vec![P2pConfig::default(); 2],
         consensus_manager,
+        temp_dir.path().to_str().unwrap(),
         network,
     )
     .await;
@@ -152,6 +155,7 @@ async fn test_listening_lagging() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
+    let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
@@ -173,6 +177,7 @@ async fn test_listening_initial_fallen_behind() {
         vec![BlockchainDatabaseConfig::default(); 3],
         vec![P2pConfig::default(); 3],
         consensus_manager,
+        temp_dir.path().to_str().unwrap(),
         network,
     )
     .await;
@@ -272,8 +277,9 @@ async fn test_listening_initial_fallen_behind() {
 #[tokio::test]
 async fn test_event_channel() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
-        .start(BlockchainDatabaseConfig::default())
+        .start(temp_dir.path().to_str().unwrap(), BlockchainDatabaseConfig::default())
         .await;
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();

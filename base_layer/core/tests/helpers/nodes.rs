@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
@@ -187,7 +187,11 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
-    pub async fn start(self, blockchain_db_config: BlockchainDatabaseConfig) -> (NodeInterfaces, ConsensusManager) {
+    pub async fn start(
+        self,
+        data_path: &str,
+        blockchain_db_config: BlockchainDatabaseConfig,
+    ) -> (NodeInterfaces, ConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -220,6 +224,7 @@ impl BaseNodeBuilder {
             consensus_manager.clone(),
             self.liveness_service_config.unwrap_or_default(),
             self.p2p_config.unwrap_or_default(),
+            data_path,
         )
         .await;
 
@@ -239,12 +244,13 @@ pub async fn wait_until_online(nodes: &[&NodeInterfaces]) {
 }
 
 // Creates a network with multiple Base Nodes where each node in the network knows the other nodes in the network.
-pub async fn create_network_with_multiple_base_nodes_with_config(
+pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>(
     mempool_service_configs: Vec<MempoolServiceConfig>,
     liveness_service_configs: Vec<LivenessConfig>,
     blockchain_db_configs: Vec<BlockchainDatabaseConfig>,
     p2p_configs: Vec<P2pConfig>,
     consensus_manager: ConsensusManager,
+    data_path: P,
     network: Network,
 ) -> (Vec<NodeInterfaces>, ConsensusManager) {
     let num_of_nodes = mempool_service_configs.len();
@@ -272,7 +278,10 @@ pub async fn create_network_with_multiple_base_nodes_with_config(
             .with_liveness_service_config(liveness_service_configs[i].clone())
             .with_p2p_config(p2p_configs[i].clone())
             .with_consensus_manager(consensus_manager.clone())
-            .start(blockchain_db_configs[i])
+            .start(
+                data_path.as_ref().join(i.to_string()).as_os_str().to_str().unwrap(),
+                blockchain_db_configs[i],
+            )
             .await;
         node_interfaces.push(node);
     }
@@ -300,6 +309,7 @@ async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector,
+    data_path: &str,
     shutdown: &Shutdown,
 ) -> (UnspawnedCommsNode, Dht, MessagingEventSender) {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
@@ -307,6 +317,7 @@ async fn setup_comms_services(
     let (comms, dht, messaging_events) = initialize_local_test_comms(
         node_identity,
         publisher,
+        data_path,
         Duration::from_secs(2 * 60),
         peers,
         shutdown.to_signal(),
@@ -326,13 +337,14 @@ async fn setup_base_node_services(
     consensus_manager: ConsensusManager,
     liveness_service_config: LivenessConfig,
     p2p_config: P2pConfig,
+    data_path: &str,
 ) -> NodeInterfaces {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
 
     let (comms, dht, messaging_events) =
-        setup_comms_services(node_identity.clone(), peers, publisher.clone(), &shutdown).await;
+        setup_comms_services(node_identity.clone(), peers, publisher.clone(), data_path, &shutdown).await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
     let randomx_factory = RandomXFactory::new(2);
