@@ -79,18 +79,18 @@ pub fn tari_randomx_difficulty(
     // xmrig assumes the nonce is at offset 39.
 
     // The format is:
-    // | 1 byte | 1 byte | 5 bytes | 32 bytes | 4 bytes | 1 byte | 32 bytes|
-    // | major version | minor version | timestamp | mining_hash | nonce | pow_algo | pow_data, excluding algo, padded to 32 bytes |
+    // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
+    // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
     //
     // Major version: 0
     // Minor version: 0
     // Timestamp: 0
 
-    let mut blob = vec![0u8; 7];
+    let mut blob = vec![0u8; 3];
     blob.extend_from_slice(header.mining_hash().as_slice());
     // Note, only the first 4 bytes of the nonce are used (u32)
     let nonce = header.nonce.to_be_bytes();
-    blob.extend_from_slice(&nonce[4..8]);
+    blob.extend_from_slice(&nonce);
     // The pow_algo is the first byte of the pow field when serialized to bytes
     let mut pow_bytes = header.pow.to_bytes();
     if pow_bytes.len() < 33 {
@@ -205,8 +205,8 @@ fn check_aux_chains(
             .chain_update((109_u8).to_le_bytes())
             .finalize(),
     )
-    .low_u32() %
-        u32::from(merkle_tree_params.number_of_chains());
+    .low_u32()
+        % u32::from(merkle_tree_params.number_of_chains());
     let (merkle_root, pos) = monero_data
         .aux_chain_merkle_proof
         .calculate_root_with_pos(&t_hash, merkle_tree_params.number_of_chains());
@@ -249,7 +249,9 @@ pub fn extract_aux_merkle_root_from_block(monero: &monero::Block) -> Result<Opti
 
 /// Deserializes the given hex-encoded string into a Monero block
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, MergeMineError>
-where T: AsRef<[u8]> {
+where
+    T: AsRef<[u8]>,
+{
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
         .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
@@ -420,12 +422,7 @@ mod test {
         blockdata::transaction::TxOutTarget,
         consensus::deserialize,
         util::ringct::{RctSig, RctSigBase, RctType},
-        Hash,
-        PublicKey,
-        Transaction,
-        TransactionPrefix,
-        TxIn,
-        TxOut,
+        Hash, PublicKey, Transaction, TransactionPrefix, TxIn, TxOut,
     };
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
