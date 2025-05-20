@@ -52,7 +52,7 @@ use crate::{
             OutputSource,
         },
     },
-    transaction_service::handle::TransactionServiceHandle,
+    transaction_service::{handle::TransactionServiceHandle, storage::models::CompletedTransaction},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
@@ -158,19 +158,22 @@ where
             let tx_id = match tx_id {
                 Some(id) => *id,
                 None => {
-                    let last_block_txs = self
-                        .transaction_service_handle
-                        .get_completed_transactions(None, db_output.mined_in_block, db_output.mined_height)
-                        .await
-                        .unwrap_or_default();
-                    // Instead I want to:
-                    //
-                    // let txs = self
-                    //     .transaction_service_handle
-                    //     .get_completed_transactions_by_addresses(Some(db_output.source_address),
-                    // Some(db_output.destination_address))     .await
-                    //     .unwrap_or_default();
-                    let tx_id = last_block_txs.iter().find_map(|tx| {
+                    let mut related_txs: Vec<CompletedTransaction> = Vec::new();
+                    let (source_address, recipient_address) = match &db_output.payment_id {
+                        PaymentId::AddressAndData { sender_address, .. } => (Some(sender_address.clone()), None),
+                        PaymentId::TransactionInfo { recipient_address, .. } => (None, Some(recipient_address.clone())),
+                        _ => (None, None),
+                    };
+
+                    if source_address.is_some() || recipient_address.is_some() {
+                        related_txs = self
+                            .transaction_service_handle
+                            .get_completed_transactions_by_addresses(source_address, recipient_address)
+                            .await
+                            .unwrap_or_default();
+                    }
+
+                    let tx_id = related_txs.iter().find_map(|tx| {
                         tx.transaction
                             .body
                             .outputs()
@@ -178,6 +181,7 @@ where
                             .find(|tx| tx.commitment == db_output.commitment)
                             .map(|_| tx.tx_id)
                     });
+
                     tx_id.unwrap_or_else(TxId::new_random)
                 },
             };
