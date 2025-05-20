@@ -30,7 +30,7 @@ use std::{
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::{DateTime, Days, Duration as ChronoDuration, Utc};
+use chrono::{Days, Duration as ChronoDuration, Utc};
 use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
