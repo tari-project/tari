@@ -436,10 +436,7 @@ mod test {
     };
 
     use super::*;
-    use crate::{
-        proof_of_work::{difficulty, PowAlgorithm, PowData, ProofOfWork},
-        validation::block_body,
-    };
+    use crate::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -1308,9 +1305,9 @@ mod test {
         blob.extend_from_slice(&[0u8; 1]);
         // timestamp
         blob.extend_from_slice(&[0u8; 1]);
-        let mut mining_hash: Vec<u8> =
+        let mining_hash: Vec<u8> =
             Hex::from_hex("0ef6ed2c9c04830a899d388fbc5ec250acdb7b4b70fa2422c3d6e802c348d2c9").unwrap();
-        blob.extend_from_slice(&mining_hash.as_slice());
+        blob.extend_from_slice(mining_hash.as_slice());
         blob.extend_from_slice(&[0u8; 4]);
         let mut prep_mining_blob = blob.clone();
         prep_mining_blob.extend_from_slice(&[0u8; 4]);
@@ -1330,7 +1327,7 @@ mod test {
         // let nonce = 1u64;
 
         blob.extend_from_slice(hex::decode("00800700").unwrap().as_slice());
-        blob.extend_from_slice(&pow.to_bytes().as_slice());
+        blob.extend_from_slice(pow.to_bytes().as_slice());
         let difficulty = get_random_x_difficulty(&blob, &vm).unwrap();
         assert_eq!(
             hex::encode(&difficulty.1),
@@ -1339,7 +1336,7 @@ mod test {
         assert_eq!(difficulty.0.as_u64(), 15);
 
         // Now construct a block header and see if it matches
-        let mut block_header = BlockHeader {
+        let block_header = BlockHeader {
             version: 1,
             height: 123,
             prev_hash: FixedHash::try_from_slice(
