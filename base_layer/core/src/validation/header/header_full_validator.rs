@@ -79,6 +79,9 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header)?;
+        let vm_key = *db
+            .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2000))?
+            .hash();
 
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
@@ -87,6 +90,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
                 &self.difficulty_calculator.randomx_factory,
                 &self.gen_hash,
                 &self.rules,
+                vm_key,
             )?
         } else {
             self.difficulty_calculator
@@ -187,9 +191,9 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
 fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
-    use PowAlgorithm::{RandomX, Sha3x};
+    use PowAlgorithm::{RandomXM, RandomXT, Sha3x};
     match block_header.pow.pow_algo {
-        RandomX => {
+        RandomXM => {
             if block_header.nonce != 0 {
                 return Err(ValidationError::BlockHeaderError(
                     BlockHeaderValidationError::InvalidNonce,
@@ -197,7 +201,7 @@ fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
             }
             Ok(())
         },
-        Sha3x => {
+        Sha3x | RandomXT => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }

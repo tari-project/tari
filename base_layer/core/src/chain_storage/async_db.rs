@@ -22,7 +22,7 @@
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use log::*;
-use primitive_types::U256;
+use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -306,7 +306,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: U256,
+        accumulated_difficulty: U512,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     ) -> &mut Self {

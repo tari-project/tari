@@ -277,7 +277,7 @@ where
         };
         let one_sided_tari_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
-            comms_key.pub_key,
+            spend_key.pub_key.clone(),
             network,
             TariAddressFeatures::create_one_sided_only(),
             None,
@@ -1137,11 +1137,19 @@ where
     ) -> Result<(), TransactionServiceError> {
         let tx_id = TxId::new_random();
         if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
-            let _result = reply_channel
-                .send(Err(TransactionServiceError::InvalidNetwork))
-                .inspect_err(|_| {
-                    warn!(target: LOG_TARGET, "Failed to send service reply");
-                });
+            let err = match e {
+                TransactionServiceError::InvalidNetwork => TransactionServiceError::InvalidNetwork,
+                TransactionServiceError::InvalidAddress(ref reason) => {
+                    TransactionServiceError::InvalidAddress(reason.clone())
+                },
+                TransactionServiceError::NotSupported(ref reason) => {
+                    TransactionServiceError::NotSupported(reason.clone())
+                },
+                _ => TransactionServiceError::NotSupported(e.to_string()),
+            };
+            let _result = reply_channel.send(Err(err)).inspect_err(|_| {
+                warn!(target: LOG_TARGET, "Failed to send service reply");
+            });
             return Err(e);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately
@@ -1766,7 +1774,7 @@ where
         let payment_id = match payment_id.clone() {
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
-                self.resources.interactive_tari_address.clone(),
+                self.resources.one_sided_tari_address.clone(),
                 true,
                 amount,
                 fee_per_gram,

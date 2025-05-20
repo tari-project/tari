@@ -167,7 +167,7 @@ where
         };
         let one_sided_tari_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
-            comms_key.pub_key,
+            spend_key.pub_key.clone(),
             network,
             TariAddressFeatures::create_one_sided_only(),
             None,

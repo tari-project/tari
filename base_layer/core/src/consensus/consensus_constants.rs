@@ -366,6 +366,10 @@ impl ConsensusConstants {
         self.vn_epoch_length
     }
 
+    pub fn current_permitted_pow_algos(&self) -> Vec<PowAlgorithm> {
+        self.proof_of_work.keys().copied().collect()
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -374,7 +378,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::min(),
             target_time: 240,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 240,
@@ -434,7 +438,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: sha3x_target_time,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             // (target_time x 300/3)     ... for easy testing
             min_difficulty: Difficulty::from_u64(randomx_target_time * 100).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
@@ -495,7 +499,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 60,
@@ -535,6 +539,27 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
         };
+
+        // let mut con2 = consensus_constants1.clone();
+        // con2.effective_from_height = 2560;
+        // let mut algos = HashMap::new();
+        // algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+        //     min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+        //     max_difficulty: Difficulty::max(),
+        //     target_time: 60,
+        // });
+        // algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+        //     min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+        //     max_difficulty: Difficulty::max(),
+        //     target_time: 60,
+        // });
+        // algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+        //     min_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
+        //     max_difficulty: Difficulty::max(),
+        //     target_time: 60,
+        // });
+        // con2.proof_of_work = algos;
+
         let consensus_constants = vec![consensus_constants1];
         consensus_constants
     }
@@ -552,7 +577,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
@@ -602,7 +627,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,
@@ -659,7 +684,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 240,
         });
-        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(12_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 240,

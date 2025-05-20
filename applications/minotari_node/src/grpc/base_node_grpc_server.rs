@@ -281,8 +281,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut sha3x_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone());
-        let mut randomx_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::RandomX, self.consensus_rules.clone());
+        let mut monero_randomx_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone());
+        let mut tari_randomx_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone());
 
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
@@ -322,14 +324,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
                     // update the moving average calculation with the header data
                     let current_hash_rate_moving_average = match pow_algo {
-                        PowAlgorithm::RandomX => &mut randomx_hash_rate_moving_average,
+                        PowAlgorithm::RandomXM => &mut monero_randomx_hash_rate_moving_average,
+                        PowAlgorithm::RandomXT => &mut tari_randomx_hash_rate_moving_average,
                         PowAlgorithm::Sha3x => &mut sha3x_hash_rate_moving_average,
                     };
                     current_hash_rate_moving_average.add(current_height, current_difficulty);
 
                     let sha3x_estimated_hash_rate = sha3x_hash_rate_moving_average.average();
-                    let randomx_estimated_hash_rate = randomx_hash_rate_moving_average.average();
-                    let estimated_hash_rate = sha3x_estimated_hash_rate.saturating_add(randomx_estimated_hash_rate);
+                    let monero_randomx_estimated_hash_rate = monero_randomx_hash_rate_moving_average.average();
+                    let tari_randomx_estimated_hash_rate = tari_randomx_hash_rate_moving_average.average();
+                    let estimated_hash_rate = sha3x_estimated_hash_rate
+                        .saturating_add(monero_randomx_estimated_hash_rate)
+                        .saturating_add(tari_randomx_estimated_hash_rate);
 
                     let block = match handler.get_block(current_height, true).await {
                         Ok(block) => block,
@@ -356,7 +362,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
                         sha3x_estimated_hash_rate,
-                        randomx_estimated_hash_rate,
+                        tari_randomx_estimated_hash_rate,
+                        monero_randomx_estimated_hash_rate,
                         height: current_height,
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
@@ -379,6 +386,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_network_state(
         &self,
         _request: Request<tari_rpc::GetNetworkStateRequest>,
@@ -425,28 +433,55 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 estimated_hash_rate
             },
         };
-        let randomx_estimated_hash_rate = match self
+        let monero_randomx_estimated_hash_rate = match self
             .data_cache
-            .get_randomx_estimated_hash_rate(metadata.best_block_hash())
+            .get_monero_randomx_estimated_hash_rate(metadata.best_block_hash())
             .await
         {
             Some(hash_rate) => hash_rate,
             None => {
                 let target_difficulty = handler
-                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomX)
+                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomXM)
                     .await
                     .map_err(|e| {
                         warn!(
                             target: LOG_TARGET,
-                            "Could not get target difficulty for RandomX: {}",
+                            "Could not get target difficulty for Monero RandomX: {}",
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })?;
-                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomX);
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
                 let estimated_hash_rate = target_difficulty.as_u64() / target_time;
                 self.data_cache
-                    .set_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                    .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
+                    .await;
+                estimated_hash_rate
+            },
+        };
+
+        let tari_randomx_estimated_hash_rate = match self
+            .data_cache
+            .get_tari_randomx_estimated_hash_rate(metadata.best_block_hash())
+            .await
+        {
+            Some(hash_rate) => hash_rate,
+            None => {
+                let target_difficulty = handler
+                    .get_target_difficulty_for_next_block(PowAlgorithm::RandomXT)
+                    .await
+                    .map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not get target difficulty for Tari RandomX: {}",
+                            e.to_string()
+                        );
+                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                    })?;
+                let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
+                let estimated_hash_rate = target_difficulty.as_u64() / target_time;
+                self.data_cache
+                    .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
                 estimated_hash_rate
             },
@@ -480,7 +515,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             failed_checkpoints,
             reward,
             sha3x_estimated_hash_rate,
-            randomx_estimated_hash_rate,
+            monero_randomx_estimated_hash_rate,
+            tari_randomx_estimated_hash_rate,
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
         };
@@ -786,10 +822,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 }
             },
-            PowAlgorithm::RandomX => {
+            PowAlgorithm::RandomXM => {
                 match self
                     .data_cache
-                    .get_randomx_new_block_template(metadata.best_block_hash())
+                    .get_monero_randomx_new_block_template(metadata.best_block_hash())
                     .await
                 {
                     Some(template) => template,
@@ -807,7 +843,34 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                     obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                                 })?;
                         self.data_cache
-                            .set_randomx_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .set_monero_randomx_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
+                        new_template
+                    },
+                }
+            },
+            PowAlgorithm::RandomXT => {
+                match self
+                    .data_cache
+                    .get_tari_randomx_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
+                    None => {
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e.to_string()
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_tari_randomx_new_block_template(new_template.clone(), *metadata.best_block_hash())
                             .await;
                         new_template
                     },
@@ -836,6 +899,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_new_block(
         &self,
         request: Request<tari_rpc::NewBlockTemplate>,
@@ -877,6 +941,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 ))
             },
         };
+
         let fees = new_block.body.get_total_fee().map_err(|_| {
             obscure_error_if_true(
                 report_error_flag,
@@ -904,7 +969,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
-            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
         };
         let block: Option<tari_rpc::Block> = Some(
             new_block
@@ -928,13 +994,34 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
-
+        let vm_key = *handler
+            .get_header(
+                new_template
+                    .header
+                    .height
+                    .saturating_sub(new_template.header.height % 2000),
+            )
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .hash();
         let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
             merge_mining_hash: mining_hash,
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
+            vm_key: vm_key.to_vec(),
         };
         trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
@@ -1201,8 +1288,25 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
-            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
+        let vm_key = *handler
+            .get_header(new_block.header.height.saturating_sub(new_block.header.height % 2000))
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .hash();
         let block: Option<tari_rpc::Block> = Some(
             new_block
                 .try_into()
@@ -1215,6 +1319,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             merge_mining_hash: mining_hash,
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
+            vm_key: vm_key.to_vec(),
         };
         trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
@@ -1429,7 +1534,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
-            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
         let block: Option<tari_rpc::Block> = Some(
             new_block
@@ -1454,13 +1560,34 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             total_fees: fees.as_u64(),
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
-
+        let vm_key = *handler
+            .get_header(
+                new_template
+                    .header
+                    .height
+                    .saturating_sub(new_template.header.height % 2000),
+            )
+            .await
+            .map_err(|_| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .ok_or_else(|| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::not_found("Tari block not found ".to_string()),
+                )
+            })?
+            .hash();
         let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
             merge_mining_hash: mining_hash,
             tari_unique_id: gen_hash,
             miner_data: Some(miner_data),
+            vm_key: vm_key.to_vec(),
         };
         trace!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
@@ -1510,7 +1637,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
-            PowAlgorithm::RandomX => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
         let gen_hash = handler
             .get_header(0)

@@ -23,9 +23,10 @@
 use std::convert::TryInto;
 
 use minotari_app_grpc::tari_rpc::BlockHeader as grpc_header;
+use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::BlockHeader,
-    proof_of_work::{sha3x_difficulty, DifficultyError},
+    proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -37,14 +38,21 @@ pub type Difficulty = u64;
 pub struct BlockHeaderSha3 {
     pub header: BlockHeader,
     pub hashes: u64,
+    pub vm_key: FixedHash,
+    pub rx_factory: Option<RandomXFactory>,
 }
 
 impl BlockHeaderSha3 {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
-    pub fn new(header: grpc_header) -> Result<Self, MinerError> {
+    pub fn new(header: grpc_header, vm_key: FixedHash, rx_factory: Option<RandomXFactory>) -> Result<Self, MinerError> {
         let header: BlockHeader = header.try_into().map_err(MinerError::BlockHeader)?;
-        Ok(Self { header, hashes: 0 })
+        Ok(Self {
+            header,
+            hashes: 0,
+            vm_key,
+            rx_factory,
+        })
     }
 
     /// This function will update the timestamp of the header, but only if the new timestamp is greater than the current
@@ -68,9 +76,16 @@ impl BlockHeaderSha3 {
     }
 
     #[inline]
-    pub fn difficulty(&mut self) -> Result<Difficulty, DifficultyError> {
+    pub fn difficulty_sha3(&mut self) -> Result<Difficulty, MinerError> {
         self.hashes = self.hashes.saturating_add(1);
         Ok(sha3x_difficulty(&self.header)?.as_u64())
+    }
+
+    #[inline]
+    pub fn difficulty_rx(&mut self) -> Result<Difficulty, MinerError> {
+        self.hashes = self.hashes.saturating_add(1);
+        let randomx_factory = self.rx_factory.as_ref().ok_or(MinerError::RandomXFactoryNotSet)?;
+        Ok(tari_randomx_difficulty(&self.header, randomx_factory, &self.vm_key)?.as_u64())
     }
 
     #[allow(clippy::cast_possible_wrap)]
@@ -112,10 +127,10 @@ pub mod test {
         let (mut header, mut core_header) = get_header();
         header.nonce = 1;
         core_header.nonce = 1;
-        let mut hasher = BlockHeaderSha3::new(header).unwrap();
+        let mut hasher = BlockHeaderSha3::new(header, FixedHash::zero(), None).unwrap();
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty().unwrap(),
+                hasher.difficulty_sha3().unwrap(),
                 core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with nonces = {}:{}",
                 hasher.header.nonce,
@@ -131,11 +146,11 @@ pub mod test {
         let (mut header, mut core_header) = get_header();
         header.nonce = 1;
         core_header.nonce = 1;
-        let mut hasher = BlockHeaderSha3::new(header).unwrap();
+        let mut hasher = BlockHeaderSha3::new(header, FixedHash::zero(), None).unwrap();
         let mut timestamp = core_header.timestamp;
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty().unwrap(),
+                hasher.difficulty_sha3().unwrap(),
                 core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with timestamp = {}",
                 timestamp

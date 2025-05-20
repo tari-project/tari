@@ -47,9 +47,10 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        randomx_difficulty,
+        monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
+        tari_randomx_difficulty,
         Difficulty,
         PowAlgorithm,
         PowError,
@@ -563,13 +564,21 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(
+            PowAlgorithm::RandomXM => monero_randomx_difficulty(
                 &new_block.header,
                 &self.randomx_factory,
                 &gen_hash,
                 &self.consensus_manager,
             )?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
+            PowAlgorithm::RandomXT => {
+                let vm_key = *self
+                    .blockchain_db
+                    .fetch_chain_header(header.height().saturating_sub(header.height() % 2000))
+                    .await?
+                    .hash();
+                tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
+            },
         };
         if achieved < min_difficulty {
             return Err(CommsInterfaceError::InvalidBlockHeader(
@@ -966,8 +975,12 @@ where B: BlockchainBackend + 'static
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
-                PowAlgorithm::RandomX => {
-                    metrics::target_difficulty_randomx()
+                PowAlgorithm::RandomXM => {
+                    metrics::target_difficulty_monero_randomx()
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
+                PowAlgorithm::RandomXT => {
+                    metrics::target_difficulty_tari_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

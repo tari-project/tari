@@ -94,7 +94,7 @@ impl BlockTemplateManager<'_> {
         let block = match self.p2pool_client.as_mut() {
             Some(client) => {
                 let pow_algo = PowAlgo {
-                    pow_algo: PowAlgos::Randomx.into(),
+                    pow_algo: PowAlgos::Randomxm.into(),
                 };
                 let coinbase_extra = if self.config.coinbase_extra.trim().is_empty() {
                     String::new()
@@ -215,7 +215,7 @@ impl BlockTemplateManager<'_> {
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
                 algo: Some(grpc::PowAlgo {
-                    pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+                    pow_algo: grpc::pow_algo::PowAlgos::Randomxm.into(),
                 }),
                 max_weight: 0,
             })

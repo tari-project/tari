@@ -207,7 +207,7 @@ pub(crate) fn get_tari_monerod_entries(monero_fail_url: &str) -> Vec<MonerodEntr
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
     if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, grpc::NewBlockTemplateRequest {
         algo: Some(grpc::PowAlgo {
-            pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+            pow_algo: grpc::pow_algo::PowAlgos::Randomxm.into(),
         }),
         max_weight: 0,
     })

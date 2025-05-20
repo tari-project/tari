@@ -100,7 +100,8 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -160,7 +161,8 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -219,7 +221,8 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -285,7 +288,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -346,7 +350,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -386,7 +391,8 @@ pub fn get_localnet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
