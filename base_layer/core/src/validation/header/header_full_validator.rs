@@ -33,9 +33,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        ValidationError,
+        DifficultyCalculator, HeaderChainLinkedValidator, ValidationError,
     },
 };
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
@@ -79,7 +77,6 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header)?;
-        check_nonce(header)?;
         let vm_key = *db
             .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2000))?
             .hash();
@@ -127,27 +124,6 @@ fn sanity_check_timestamp_count(
     Ok(())
 }
 
-fn check_nonce(header: &BlockHeader) -> Result<(), ValidationError> {
-    match header.pow.pow_algo {
-        PowAlgorithm::RandomXM => {
-            if header.nonce != 0 {
-                return Err(ValidationError::BlockHeaderError(
-                    BlockHeaderValidationError::InvalidNonce,
-                ));
-            }
-        },
-        PowAlgorithm::RandomXT => {
-            // xmrig only allows 32 bit nonces
-            if header.nonce > u32::MAX.into() {
-                return Err(ValidationError::BlockHeaderError(
-                    BlockHeaderValidationError::NonceTooHigh,
-                ));
-            }
-        },
-        PowAlgorithm::Sha3x => {},
-    }
-    Ok(())
-}
 fn check_height(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
     if header.height != prev_header.height + 1 {
         return Err(ValidationError::BlockHeaderError(
