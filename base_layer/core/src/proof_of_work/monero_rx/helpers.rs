@@ -433,7 +433,7 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
+    use crate::proof_of_work::{difficulty, PowAlgorithm, PowData, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -1288,6 +1288,45 @@ mod test {
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
         );
         assert_eq!(difficulty.as_u64(), 430603);
+    }
+
+    #[test]
+    fn test_tari_randomx_difficulty() {
+        let randomx_factory = RandomXFactory::new(1);
+        let vm_key = from_hex("920647f8f10b8b484649adf83599c5b86bba137e7eb22e95dd8739d98528f677").unwrap();
+
+        let vm = randomx_factory.create(vm_key.as_slice(), None, None).unwrap();
+
+        let mut blob = 0u8.to_le_bytes().to_vec();
+
+        blob.extend_from_slice(&[0u8; 1]);
+        // timestamp
+        blob.extend_from_slice(&[0u8; 5]);
+        let mut mining_hash: Vec<u8> =
+            Hex::from_hex("7d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d0157").unwrap();
+        blob.extend_from_slice(&mining_hash.as_slice());
+        let mut prep_mining_blob = blob.clone();
+        prep_mining_blob.extend_from_slice(&[0u8; 4]);
+        // Add pow
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::RandomXT,
+            pow_data: PowData::try_from(vec![0u8; 32]).unwrap(),
+        };
+        prep_mining_blob.extend_from_slice(&pow.to_bytes());
+
+        assert_eq!(
+            hex::encode(&prep_mining_blob),
+            "000000000000007d0b4f7dfcae9fbf72114f5b17d84691c7ba5061bb1cfb414964eceaf56d015700000000020000000000000000000000000000000000000000000000000000000000000000"
+        );
+
+        blob.extend_from_slice(hex::decode("00000b00").unwrap().as_slice());
+        blob.extend_from_slice(&pow.to_bytes().as_slice());
+        let difficulty = get_random_x_difficulty(&blob, &vm).unwrap();
+        assert_eq!(
+            hex::encode(&difficulty.1),
+            "79cebc2e374e8d545017149bd05f25b04530984927bd6703f8cc2d216b0bca04"
+        );
+        assert_eq!(difficulty.0.as_u64(), 53);
     }
 
     #[test]
