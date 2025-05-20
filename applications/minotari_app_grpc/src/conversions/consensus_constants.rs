@@ -86,10 +86,16 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             });
         }
 
-        let randomx_pow = grpc::PowAlgorithmConstants {
-            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
-            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
-            target_time: cc.pow_target_block_interval(PowAlgorithm::RandomX),
+        let monero_randomx_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomXM).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::RandomXM).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::RandomXM),
+        };
+
+        let tari_randomx_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomXT).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::RandomXT).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::RandomXT),
         };
 
         let sha3x_pow = grpc::PowAlgorithmConstants {
@@ -98,7 +104,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             target_time: cc.pow_target_block_interval(PowAlgorithm::Sha3x),
         };
 
-        let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
+        let proof_of_work =
+            HashMap::from_iter([(0u32, monero_randomx_pow), (1u32, sha3x_pow), (2u32, tari_randomx_pow)]);
 
         #[allow(deprecated)]
         Self {

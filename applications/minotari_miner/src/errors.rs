@@ -59,6 +59,12 @@ pub enum MinerError {
     BaseNodeNotResponding(String),
     #[error("Limit error {0}")]
     MaxSizeBytesError(#[from] MaxSizeBytesError),
+    #[error("Miner is set to use Rx, but not RX factory is set")]
+    RandomXFactoryNotSet,
+    #[error("RandomX error: {0}")]
+    MergeMineError(#[from] tari_core::proof_of_work::monero_rx::MergeMineError),
+    #[error("Difficulty error: {0}")]
+    DifficultyError(#[from] tari_core::proof_of_work::DifficultyError),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use primitive_types::U256;
+use primitive_types::U512;
 use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
 use tari_utilities::hex::Hex;
 
@@ -207,7 +207,7 @@ impl DbTransaction {
     }
 
     /// Add an orphan to the orphan tip set
-    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: U256) -> &mut Self {
+    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: U512) -> &mut Self {
         self.operations
             .push(WriteOperation::InsertOrphanChainTip(hash, total_accumulated_difficulty));
         self
@@ -226,7 +226,7 @@ impl DbTransaction {
         &mut self,
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: U256,
+        accumulated_difficulty: U512,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     ) -> &mut Self {
@@ -311,7 +311,7 @@ pub enum WriteOperation {
     DeleteOrphan(HashOutput),
     DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
-    InsertOrphanChainTip(HashOutput, U256),
+    InsertOrphanChainTip(HashOutput, U512),
     InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdateBlockAccumulatedData {
         header_hash: HashOutput,
@@ -335,7 +335,7 @@ pub enum WriteOperation {
     SetBestBlock {
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: U256,
+        accumulated_difficulty: U512,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     },

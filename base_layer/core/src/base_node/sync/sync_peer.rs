@@ -26,7 +26,7 @@ use std::{
     time::Duration,
 };
 
-use primitive_types::U256;
+use primitive_types::U512;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 
@@ -47,7 +47,7 @@ impl SyncPeer {
         self.peer_metadata.claimed_chain_metadata()
     }
 
-    pub fn claimed_difficulty(&self) -> U256 {
+    pub fn claimed_difficulty(&self) -> U512 {
         self.peer_metadata.claimed_chain_metadata().accumulated_difficulty()
     }
 
@@ -147,7 +147,7 @@ mod test {
         use super::*;
 
         // Helper function to generate a peer with a given latency
-        fn generate_peer(latency: Option<usize>, accumulated_difficulty: Option<U256>) -> SyncPeer {
+        fn generate_peer(latency: Option<usize>, accumulated_difficulty: Option<U512>) -> SyncPeer {
             let sk = CommsSecretKey::random(&mut OsRng);
             let pk = CommsPublicKey::from_secret_key(&sk);
             let node_id = NodeId::from_key(&pk);
@@ -194,13 +194,13 @@ mod test {
         fn it_sorts_by_pow() {
             let mut peers = Vec::new();
 
-            let mut pow = U256::from(1);
+            let mut pow = U512::from(1);
             let new_peer = generate_peer(Some(1), Some(pow));
             peers.push(new_peer);
-            pow = U256::from(100);
+            pow = U512::from(100);
             let new_peer = generate_peer(Some(100), Some(pow));
             peers.push(new_peer);
-            pow = U256::from(1000);
+            pow = U512::from(1000);
             let new_peer = generate_peer(Some(1000), Some(pow));
             peers.push(new_peer);
 
