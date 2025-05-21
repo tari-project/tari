@@ -318,7 +318,8 @@ pub struct TariUtxo {
     pub lock_height: u64,
     pub status: u8,
     pub coinbase_extra: *const c_char,
-    pub payment_id: *const c_char,
+    pub raw_payment_id: *const c_char,
+    pub user_payment_id: *const c_char,
     pub mined_in_block: *const c_char,
 }
 
@@ -351,7 +352,10 @@ impl From<DbWalletOutput> for TariUtxo {
             coinbase_extra: CString::new(x.wallet_output.features.coinbase_extra.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            payment_id: CString::new(format!("{}", x.payment_id))
+            raw_payment_id: CString::new(format!("{}", x.payment_id))
+                .expect("failed to obtain string from a payment id")
+                .into_raw(),
+            user_payment_id: CString::new(format!("{}", x.payment_id.user_data_as_string()))
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
@@ -868,7 +872,7 @@ pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, err
     CString::into_raw(result)
 }
 
-/// Get the payment id from a TariUtxo
+/// Get the raw payment id from a TariUtxo
 ///
 /// ## Arguments
 /// `utxo` - The pointer to a TariUtxo.
@@ -882,7 +886,7 @@ pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, err
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn tari_utxo_get_raw_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -894,7 +898,44 @@ pub unsafe extern "C" fn tari_utxo_get_payment_id(utxo: *const TariUtxo, error_o
         return ptr::null_mut();
     }
 
-    let payment_id_str = match CStr::from_ptr((*utxo).payment_id).to_str() {
+    let payment_id_str = match CStr::from_ptr((*utxo).raw_payment_id).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("payment_id".to_string())).code;
+            return CString::into_raw(result);
+        },
+    };
+    let result = CString::new(payment_id_str).expect("Commitment will not fail.");
+    CString::into_raw(result)
+}
+
+/// Get the user payment id from a TariUtxo
+///
+/// ## Arguments
+/// `utxo` - The pointer to a TariUtxo.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
+/// there was an error
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_utxo_get_user_payment_id(utxo: *const TariUtxo, error_out: *mut c_int) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    let result = CString::new("").expect("Blank CString will not fail.");
+    if utxo.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let payment_id_str = match CStr::from_ptr((*utxo).user_payment_id).to_str() {
         Ok(s) => s,
         Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::PointerError("payment_id".to_string())).code;
