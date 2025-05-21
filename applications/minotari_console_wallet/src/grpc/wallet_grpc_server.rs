@@ -33,7 +33,61 @@ use futures::{
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest, ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest, CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse, CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest, GetBalanceResponse, GetCompleteAddressResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetIdentityRequest, GetIdentityResponse, GetPaymentIdAddressRequest, GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, ValidateRequest, ValidateResponse
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    GetAddressResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -1205,7 +1259,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<ImportTransactionsRequest>,
     ) -> Result<Response<ImportTransactionsResponse>, Status> {
         let request = request.into_inner();
-        let file_contents = std::fs::read_to_string(request.file_path).map_err(|_| Status::invalid_argument("File path is malformed!"))?;
+        let file_contents = std::fs::read_to_string(request.file_path)
+            .map_err(|_| Status::invalid_argument("File path is malformed!"))?;
         let mut txs: Vec<WalletTransaction> = Vec::new();
         for line in file_contents.lines() {
             serde_json::from_str(line)
