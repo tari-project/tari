@@ -77,6 +77,7 @@ use tari_comms::{
 use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -158,6 +159,7 @@ where
 {
     fs::create_dir_all(&data_path)?;
     let database_url = DbConnectionUrl::File(PathBuf::from(data_path).join("peers.db"));
+    debug!(target: LOG_TARGET, "initialize_local_test_comms - node_identity: {}, database URL: {}", node_identity.node_id().to_hex(), database_url.to_url_string());
     let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
     let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
 

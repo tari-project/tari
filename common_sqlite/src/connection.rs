@@ -141,6 +141,7 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
+    #[allow(dead_code)]
     fn acquire_migration_write_lock() -> Result<RwLockWriteGuard<'static, ()>, StorageError> {
         match DB_WRITE_LOCK.write() {
             Ok(value) => Ok(value),
@@ -153,7 +154,7 @@ impl DbConnection {
 
     /// Connect and migrate the database, once complete, then return a handle to the migrated database.
     pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        let _lock = Self::acquire_migration_write_lock()?;
+        // let _lock = Self::acquire_migration_write_lock()?;
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
@@ -211,14 +212,14 @@ impl DbConnection {
 impl Drop for DbConnection {
     fn drop(&mut self) {
         let path = self.pool.db_path();
-        debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
-        // Explicitly cleanup and drop the connection pool to ensure all connections are released
-        let pool_state = self.pool.cleanup();
-        debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {:?}", pool_state);
 
         if path.exists() {
             if let Some(parent) = path.parent() {
                 if parent.starts_with(DbConnection::temp_db_dir()) {
+                    debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
+                    // Explicitly cleanup and drop the connection pool to ensure all connections are released
+                    let pool_state = self.pool.cleanup();
+                    debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {:?}", pool_state);
                     debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
                     if let Err(e) = fs::remove_dir_all(parent) {
                         error!(target: LOG_TARGET, "Failed to clean up temp dir: {}", e);
