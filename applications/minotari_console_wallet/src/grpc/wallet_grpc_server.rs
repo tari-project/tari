@@ -1215,19 +1215,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
         let mut transaction_service = self.get_transaction_service();
 
-        info!(target: LOG_TARGET, "====AAA Txs to import: {:?}", txs);
         let mut tx_ids = Vec::new();
         for tx in txs {
             match transaction_service.import_transaction(tx).await {
                 Ok(id) => {
-                    info!(target: LOG_TARGET, "====BBB Single imported transaction: {:?}", id);
-                    println!("imported tx: {}", id);
+                    println!("Imported tx: {}", id);
                     tx_ids.push(id.into());
                 },
                 Err(e) => eprintln!("Could not import tx {}", e),
             };
         }
-        info!(target: LOG_TARGET, "====CCCCC All Imported transactions: {:?}", tx_ids);
         Ok(Response::new(ImportTransactionsResponse { tx_ids }))
     }
 }
