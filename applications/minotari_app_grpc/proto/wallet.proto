@@ -107,8 +107,8 @@ service Wallet {
 
   // The `Identify` RPC call returns the identity information of the wallet node.
   // This includes:
-  // - **Public Key**: The wallet’s cryptographic public key.
-  // - **Public Address**: The wallet’s public address used to receive funds.
+  // - **Public Key**: The wallet's cryptographic public key.
+  // - **Public Address**: The wallet's public address used to receive funds.
   // - **Node ID**: The unique identifier of the wallet node in the network.
   //
   // Example usage (JavaScript):
@@ -260,7 +260,6 @@ service Wallet {
   //     }
   //   ]
   // }
-  // ```
   rpc Transfer (TransferRequest)  returns (TransferResponse);
   
   // Returns the transaction details for the given transaction IDs.
@@ -310,7 +309,6 @@ service Wallet {
   //     }
   //   ]
   // }
-  // ```
   rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
 
   // Streams completed transactions for a given user payment ID.
@@ -385,6 +383,56 @@ service Wallet {
   // }
   // ```
   rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
+
+  // Returns all transactions that were mined at a specific block height.
+  //
+  // The `GetBlockHeightTransactions` call retrieves all wallet transactions that were mined
+  // at the specified block height. The response includes all transactions in a single response,
+  // with each transaction including details such as status, direction, amount,
+  // fees, and associated metadata.
+  //
+  // ### Request Parameters:
+  //
+  // - `block_height` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The specific block height to fetch transactions for.
+  //   - **Restrictions**:
+  //     - Must be a valid block height (greater than 0).
+  //     - If the block height is beyond the current chain height, no transactions will be returned.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   block_height: 1523493
+  // };
+  // const response = await client.getBlockHeightTransactions(request);
+  // console.log(response.transactions);
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "transactions": [
+  //     {
+  //       "tx_id": 12345,
+  //       "source_address": "0x1234abcd...",
+  //       "dest_address": "0x5678efgh...",
+  //       "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
+  //       "direction": "TRANSACTION_DIRECTION_INBOUND",
+  //       "amount": 500000,
+  //       "fee": 20,
+  //       "is_cancelled": false,
+  //       "excess_sig": "0xabcdef...",
+  //       "timestamp": 1681234567,
+  //       "payment_id": "0xdeadbeef...",
+  //       "mined_in_block_height": 1523493
+  //     }
+  //   ]
+  // }
+  // ```
+  rpc GetBlockHeightTransactions (GetBlockHeightTransactionsRequest) returns (GetBlockHeightTransactionsResponse);
 
   // Returns the wallet balance details.
   //
@@ -566,7 +614,7 @@ service Wallet {
 
   // Returns the wallet's current network connectivity status.
   //
-  // The `GetNetworkStatus` call provides a snapshot of the wallet’s connection to the Tari network,
+  // The `GetNetworkStatus` call provides a snapshot of the wallet's connection to the Tari network,
   // including whether it is online, the number of active peer connections, and the average latency
   // to the configured base node.
   //
@@ -818,7 +866,7 @@ service Wallet {
   //
   // The `ClaimShaAtomicSwapTransaction` call allows the user to unlock and claim funds from
   // a hash-time-locked contract (HTLC) by supplying the correct pre-image that matches a
-  // previously committed SHA-256 hash. This pre-image proves the user’s knowledge of the
+  // previously committed SHA-256 hash. This pre-image proves the user's knowledge of the
   // secret required to spend the output.
   //
   // ### Request Parameters:
@@ -1354,4 +1402,15 @@ message RegisterValidatorNodeResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
+}
+
+// Request message for getting transactions at a specific block height
+message GetBlockHeightTransactionsRequest {
+  // The block height to fetch transactions for
+  uint64 block_height = 1;
+}
+
+message GetBlockHeightTransactionsResponse {
+  // List of transactions mined at the specified block height
+  repeated TransactionInfo transactions = 1;
 }

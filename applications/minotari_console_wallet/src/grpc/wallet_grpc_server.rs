@@ -86,6 +86,8 @@ use minotari_app_grpc::tari_rpc::{
     TransferResult,
     ValidateRequest,
     ValidateResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -1001,6 +1003,58 @@ impl wallet_server::Wallet for WalletGrpcServer {
         trace!(target: LOG_TARGET, "'get_completed_transactions' completed in {:.2?}", start.elapsed());
 
         Ok(Response::new(receiver))
+    }
+
+    async fn get_block_height_transactions(
+        &self,
+        request: Request<GetBlockHeightTransactionsRequest>,
+    ) -> Result<Response<GetBlockHeightTransactionsResponse>, Status> {
+        let start = std::time::Instant::now();
+        trace!(
+            target: LOG_TARGET,
+            "GetBlockHeightTransactions: Incoming GRPC request"
+        );
+        let message = request.into_inner();
+        let block_height = message.block_height;
+
+        let mut transaction_service = self.get_transaction_service();
+        let transactions = transaction_service
+            .get_completed_transactions(None, None, Some(block_height))
+            .await
+            .map_err(|err| Status::not_found(format!("No transactions found at block height {}: {:?}", block_height, err)))?;
+        debug!(
+            target: LOG_TARGET,
+            "GetBlockHeightTransactions: Found {} transactions at block height {}",
+            transactions.len(),
+            block_height
+        );
+
+        let transactions = transactions
+            .iter()
+            .map(|txn| TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status.clone()) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
+                    .transaction
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                payment_id: txn.payment_id.to_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+            })
+            .collect();
+
+        trace!(target: LOG_TARGET, "'get_block_height_transactions' completed in {:.2?}", start.elapsed());
+
+        Ok(Response::new(GetBlockHeightTransactionsResponse { transactions }))
     }
 
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
