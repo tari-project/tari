@@ -1,3 +1,8 @@
+/*
+ * Copyright 2025 The Tari Project
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 use log::trace;
 use thiserror::Error;
 
