@@ -997,6 +997,8 @@ service Wallet {
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+
+  rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 }
 
 
@@ -1354,4 +1356,12 @@ message RegisterValidatorNodeResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
+}
+
+message ImportTransactionsRequest {
+  string file_path = 1;
+}
+
+message ImportTransactionsResponse {
+    repeated uint64 tx_ids = 1;
 }

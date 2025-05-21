@@ -33,59 +33,7 @@ use futures::{
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    GetAddressResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest, ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest, CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse, CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest, GetBalanceResponse, GetCompleteAddressResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetIdentityRequest, GetIdentityResponse, GetPaymentIdAddressRequest, GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetUnspentAmountsResponse, GetVersionRequest, GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, ValidateRequest, ValidateResponse
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -1250,6 +1198,37 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         };
         Ok(Response::new(response))
+    }
+
+    async fn import_transactions(
+        &self,
+        request: Request<ImportTransactionsRequest>,
+    ) -> Result<Response<ImportTransactionsResponse>, Status> {
+        let request = request.into_inner();
+        // Extract file contents
+        let file_contents = std::fs::read_to_string(request.file_path).map_err(|_| Status::invalid_argument("File path is malformed!"))?;
+        let mut txs: Vec<WalletTransaction> = Vec::new();
+        for line in file_contents.lines() {
+            serde_json::from_str(line)
+                .map(|tx| txs.push(tx))
+                .map_err(|_| Status::invalid_argument("File path is malformed!"))?;
+        }
+        let mut transaction_service = self.get_transaction_service();
+
+        info!(target: LOG_TARGET, "====AAA Txs to import: {:?}", txs);
+        let mut tx_ids = Vec::new();
+        for tx in txs {
+            match transaction_service.import_transaction(tx).await {
+                Ok(id) => {
+                    info!(target: LOG_TARGET, "====BBB Single imported transaction: {:?}", id);
+                    println!("imported tx: {}", id);
+                    tx_ids.push(id.into());
+                },
+                Err(e) => eprintln!("Could not import tx {}", e),
+            };
+        }
+        info!(target: LOG_TARGET, "====CCCCC All Imported transactions: {:?}", tx_ids);
+        Ok(Response::new(ImportTransactionsResponse { tx_ids }))
     }
 }
 
