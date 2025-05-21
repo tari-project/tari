@@ -427,6 +427,7 @@ mod test {
         TxIn,
         TxOut,
     };
+    use serial_test::serial;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
@@ -1294,7 +1295,19 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_tari_randomx_difficulty() {
+        let network = Network::Esmeralda;
+        if std::env::var("TARI_NETWORK").is_err() {
+            std::env::set_var("TARI_NETWORK", network.as_key_str());
+        }
+        if Network::get_current_or_user_setting_or_default() != network {
+            let _ = Network::set_current(network);
+        }
+        let current_network = Network::get_current_or_user_setting_or_default();
+        if current_network != network {
+            panic!("could not set network");
+        }
         let randomx_factory = RandomXFactory::new(1);
         let vm_key = from_hex("920647f8f10b8b484649adf83599c5b86bba137e7eb22e95dd8739d98528f677").unwrap();
 

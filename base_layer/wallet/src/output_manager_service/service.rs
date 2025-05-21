@@ -115,6 +115,7 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
+    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 
@@ -156,6 +157,7 @@ where
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
         utxo_scanner_handle: UtxoScannerHandle,
+        transaction_service_handle: TransactionServiceHandle,
     ) -> Result<Self, OutputManagerError> {
         let view_key = key_manager.get_view_key().await?;
         let spend_key = key_manager.get_spend_key().await?;
@@ -186,6 +188,7 @@ where
             one_sided_tari_address,
             interactive_tari_address,
             utxo_scanner_handle,
+            transaction_service_handle,
         };
 
         Ok(Self {
@@ -486,12 +489,14 @@ where
                 .await
                 .map(OutputManagerResponse::Transaction),
 
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => {
-                StandardUtxoRecoverer::new(self.resources.key_manager.clone(), self.resources.db.clone())
-                    .scan_and_recover_outputs(outputs)
-                    .await
-                    .map(OutputManagerResponse::RewoundOutputs)
-            },
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
+                self.resources.key_manager.clone(),
+                self.resources.db.clone(),
+                self.resources.transaction_service_handle.clone(),
+            )
+            .scan_and_recover_outputs(outputs)
+            .await
+            .map(OutputManagerResponse::RewoundOutputs),
             OutputManagerRequest::ScanOutputs(outputs) => self
                 .scan_outputs_for_one_sided_payments(outputs)
                 .await

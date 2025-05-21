@@ -27,20 +27,29 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
 
-const ACCUMULATED_DIFFICULTY_BYTE_SIZE: usize = 64;
+const ACCUMULATED_DIFFICULTY_BYTE_SIZE_U256: usize = 32;
+const ACCUMULATED_DIFFICULTY_BYTE_SIZE_U512: usize = 64;
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        if metadata.accumulated_difficulty.len() > ACCUMULATED_DIFFICULTY_BYTE_SIZE {
+        if metadata.accumulated_difficulty_low.len() > ACCUMULATED_DIFFICULTY_BYTE_SIZE_U256 {
             return Err(format!(
-                "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
-                ACCUMULATED_DIFFICULTY_BYTE_SIZE,
-                metadata.accumulated_difficulty.len()
+                "Invalid accumulated difficulty low byte length. {} was expected but the actual length was {}",
+                ACCUMULATED_DIFFICULTY_BYTE_SIZE_U256,
+                metadata.accumulated_difficulty_low.len()
             ));
         }
-
-        let accumulated_difficulty = U512::from_big_endian(&metadata.accumulated_difficulty);
+        if metadata.accumulated_difficulty_high.len() > ACCUMULATED_DIFFICULTY_BYTE_SIZE_U256 {
+            return Err(format!(
+                "Invalid accumulated difficulty byte high length. {} was expected but the actual length was {}",
+                ACCUMULATED_DIFFICULTY_BYTE_SIZE_U256,
+                metadata.accumulated_difficulty_high.len()
+            ));
+        }
+        let mut bytes = metadata.accumulated_difficulty_high.to_vec();
+        bytes.extend_from_slice(&metadata.accumulated_difficulty_low);
+        let accumulated_difficulty = U512::from_big_endian(&bytes);
         let best_block_height = metadata.best_block_height;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
@@ -71,7 +80,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let mut accumulated_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE];
+        let mut accumulated_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE_U512];
         metadata
             .accumulated_difficulty()
             .to_big_endian(&mut accumulated_difficulty);
@@ -79,7 +88,8 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             best_block_height: metadata.best_block_height(),
             best_block_hash: metadata.best_block_hash().to_vec(),
             pruned_height: metadata.pruned_height(),
-            accumulated_difficulty: accumulated_difficulty.to_vec(),
+            accumulated_difficulty_low: accumulated_difficulty[32..=63].to_vec(),
+            accumulated_difficulty_high: accumulated_difficulty[0..=31].to_vec(),
             timestamp: metadata.timestamp(),
         }
     }

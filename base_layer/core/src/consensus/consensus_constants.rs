@@ -670,8 +670,29 @@ impl ConsensusConstants {
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
         con_2.effective_from_height = 30 * 24 * 2; // 2 days
+        let mut con_3 = con_2.clone();
+        con_3.effective_from_height = 1500;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        con_3.blockchain_version = 1;
+        con_3.valid_blockchain_version_range = 1..=1;
+        con_3.proof_of_work = algos;
 
-        let consensus_constants = vec![con_1, con_2];
+        let consensus_constants = vec![con_1, con_2, con_3];
         consensus_constants
     }
 
@@ -730,9 +751,30 @@ impl ConsensusConstants {
         let mut con_3 = con_2.clone();
         con_3.coinbase_min_maturity = 360;
         con_3.effective_from_height = 30 * 24 * 7 * 2; // 2 weeks
+
         let mut con_4 = con_3.clone();
+        con_4.effective_from_height = 15_000;
         con_4.coinbase_min_maturity = 180; // 6 hours
-        con_4.effective_from_height = 30 * 24 * 7 * 3; // 3 weeks
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        con_4.blockchain_version = 1;
+        con_4.valid_blockchain_version_range = 1..=1;
+        con_4.proof_of_work = algos;
+
         let consensus_constants = vec![con_1, con_2, con_3, con_4];
         consensus_constants
     }

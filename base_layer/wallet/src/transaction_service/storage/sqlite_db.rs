@@ -1048,6 +1048,31 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(coinbases)
     }
 
+    fn find_completed_transactions_filter_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        let mut query = completed_transactions::table.into_boxed();
+        if let Some(source_address) = source_address {
+            query = query.filter(completed_transactions::source_address.eq(source_address.to_vec()));
+        }
+        if let Some(destination_address) = destination_address {
+            query = query.filter(completed_transactions::destination_address.eq(destination_address.to_vec()));
+        }
+
+        query
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
     fn find_completed_transactions_filter_payment_id_block_hash(
         &self,
         payment_id: Option<Vec<u8>>,

@@ -42,14 +42,17 @@ use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
 
-use crate::output_manager_service::{
-    error::{OutputManagerError, OutputManagerStorageError},
-    handle::RecoveredOutput,
-    storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::{DbWalletOutput, KnownOneSidedPaymentScript},
-        OutputSource,
+use crate::{
+    output_manager_service::{
+        error::{OutputManagerError, OutputManagerStorageError},
+        handle::RecoveredOutput,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::{DbWalletOutput, KnownOneSidedPaymentScript},
+            OutputSource,
+        },
     },
+    transaction_service::{handle::TransactionServiceHandle, storage::models::CompletedTransaction},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
@@ -57,6 +60,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
     db: OutputManagerDatabase<TBackend>,
+    transaction_service_handle: TransactionServiceHandle,
 }
 
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
@@ -64,12 +68,21 @@ where
     TBackend: OutputManagerBackend + 'static,
     TKeyManagerInterface: TransactionKeyManagerInterface,
 {
-    pub fn new(master_key_manager: TKeyManagerInterface, db: OutputManagerDatabase<TBackend>) -> Self {
-        Self { master_key_manager, db }
+    pub fn new(
+        master_key_manager: TKeyManagerInterface,
+        db: OutputManagerDatabase<TBackend>,
+        transaction_service_handle: TransactionServiceHandle,
+    ) -> Self {
+        Self {
+            master_key_manager,
+            db,
+            transaction_service_handle,
+        }
     }
 
     /// Attempt to rewind all of the given transaction outputs into key_manager outputs. If they can be rewound then add
     /// them to the database and increment the key manager index
+    #[allow(clippy::too_many_lines)]
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<(TransactionOutput, Option<TxId>)>,
@@ -145,7 +158,33 @@ where
             .await?;
             let tx_id = match tx_id {
                 Some(id) => *id,
-                None => TxId::new_random(),
+                None => {
+                    let mut related_txs: Vec<CompletedTransaction> = Vec::new();
+                    let (source_address, recipient_address) = match &db_output.payment_id {
+                        PaymentId::AddressAndData { sender_address, .. } => (Some(sender_address.clone()), None),
+                        PaymentId::TransactionInfo { recipient_address, .. } => (None, Some(recipient_address.clone())),
+                        _ => (None, None),
+                    };
+
+                    if source_address.is_some() || recipient_address.is_some() {
+                        related_txs = self
+                            .transaction_service_handle
+                            .get_completed_transactions_by_addresses(source_address, recipient_address)
+                            .await
+                            .unwrap_or_default();
+                    }
+
+                    let tx_id = related_txs.iter().find_map(|tx| {
+                        tx.transaction
+                            .body
+                            .outputs()
+                            .iter()
+                            .find(|tx| tx.commitment == db_output.commitment)
+                            .map(|_| tx.tx_id)
+                    });
+
+                    tx_id.unwrap_or_else(TxId::new_random)
+                },
             };
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
