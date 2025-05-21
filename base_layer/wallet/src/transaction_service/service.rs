@@ -946,6 +946,9 @@ where
                         tx_id
                     },
                 };
+                let _size = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::TransactionImported(tx_id)));
                 Ok(TransactionServiceResponse::TransactionImported(tx_id))
             },
             TransactionServiceRequest::ImportUtxoWithStatus {
