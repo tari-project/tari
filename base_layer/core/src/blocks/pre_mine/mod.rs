@@ -1473,8 +1473,8 @@ mod test {
         // Initial maturity schedule up to 3 weeks ( | height | (maturity) |):
         // | 0 -> 5040 - 1 | (720) |
         //                 | 5040 -> 10080 - 1 | (540) |
-        //                                     | 10080 -> 15120 - 1 | (360) |
-        //                                                          | 15120 -> | (180) |
+        //                                     | 10080 -> 15000 - 1 | (360) |
+        //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
         let consensus_manager = ConsensusManager::builder(network)
@@ -1510,14 +1510,14 @@ mod test {
                 898513007030503,
             ),
             // Within 4th tranche
-            (maturity_tranches[3].effective_from_height, 960614382886959),
+            (maturity_tranches[3].effective_from_height, 958961532039375),
             (
                 maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity / 2,
-                963093332298424,
+                961440742937559,
             ),
             (
                 maturity_tranches[3].effective_from_height + maturity_tranches[2].maturity,
-                968050054592502,
+                966397988109264,
             ),
             // Within pre-mine maturity range 1
             (180 * BLOCKS_PER_DAY, 2573982676047120),
