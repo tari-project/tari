@@ -1,7 +1,5 @@
-/*
- * Copyright 2025 The Tari Project
- * SPDX-License-Identifier: BSD-3-Clause
- */
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
 
 use std::convert::{TryFrom, TryInto};
 
@@ -125,9 +123,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                             mined_timestamp: header.timestamp.as_u64(),
                         };
                         return Ok(response);
-                    }
+                    },
                 }
-            }
+            },
         };
 
         // If not in a block then check the mempool
@@ -245,9 +243,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                                 is_synced,
                             },
                         }
-                    }
+                    },
                 }
-            }
+            },
         };
         Ok(Response::new(response))
     }
@@ -426,7 +424,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                             Ok(output) => Some(output),
                             Err(err) => {
                                 return Err(err);
-                            }
+                            },
                         },
                         mined_timestamp: utxo.mined_timestamp,
                     })

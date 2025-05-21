@@ -1,7 +1,5 @@
-/*
- * Copyright 2025 The Tari Project
- * SPDX-License-Identifier: BSD-3-Clause
- */
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
 
 use std::{convert::TryInto, time::Instant};
 
@@ -24,8 +22,7 @@ pub(crate) struct SyncUtxosByBlockTask<B> {
 }
 
 impl<B> SyncUtxosByBlockTask<B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
         Self { db }
