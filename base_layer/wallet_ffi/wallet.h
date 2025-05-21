@@ -173,7 +173,8 @@ struct TariUtxo {
   uint64_t lock_height;
   uint8_t status;
   const char *coinbase_extra;
-  const char *payment_id;
+  const char *raw_payment_id;
+  const char *user_payment_id;
   const char *mined_in_block;
 };
 
@@ -453,7 +454,7 @@ char *tari_utxo_get_coinbase_extra(const struct TariUtxo *utxo,
                                    int *error_out);
 
 /**
- * Get the payment id from a TariUtxo
+ * Get the raw payment id from a TariUtxo
  *
  * ## Arguments
  * `utxo` - The pointer to a TariUtxo.
@@ -467,8 +468,26 @@ char *tari_utxo_get_coinbase_extra(const struct TariUtxo *utxo,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *tari_utxo_get_payment_id(const struct TariUtxo *utxo,
-                               int *error_out);
+char *tari_utxo_get_raw_payment_id(const struct TariUtxo *utxo,
+                                   int *error_out);
+
+/**
+ * Get the user payment id from a TariUtxo
+ *
+ * ## Arguments
+ * `utxo` - The pointer to a TariUtxo.
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut c_char` - Returns a pointer to a char array (that contains the payment id). Note that it returns empty if
+ * there was an error
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+ */
+char *tari_utxo_get_user_payment_id(const struct TariUtxo *utxo,
+                                    int *error_out);
 
 /**
  * Get the mined in block hash from a TariUtxo

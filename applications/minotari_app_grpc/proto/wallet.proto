@@ -1065,6 +1065,8 @@ message PaymentRecipient {
   }
   // The type of payment to perform.
   PaymentType payment_type = 5;
+  // Reserve the old payment_id tag to prevent future reuse.
+  reserved 6;
   // Optional encrypted payment ID for reference (max 256 bytes).
   UserPaymentId user_payment_id = 7;
 }
