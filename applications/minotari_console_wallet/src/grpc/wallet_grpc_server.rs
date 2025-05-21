@@ -1205,7 +1205,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<ImportTransactionsRequest>,
     ) -> Result<Response<ImportTransactionsResponse>, Status> {
         let request = request.into_inner();
-        // Extract file contents
         let file_contents = std::fs::read_to_string(request.file_path).map_err(|_| Status::invalid_argument("File path is malformed!"))?;
         let mut txs: Vec<WalletTransaction> = Vec::new();
         for line in file_contents.lines() {
