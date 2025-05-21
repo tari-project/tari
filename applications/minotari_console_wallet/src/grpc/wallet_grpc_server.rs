@@ -1021,7 +1021,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(None, None, Some(block_height))
             .await
-            .map_err(|err| Status::not_found(format!("No transactions found at block height {}: {:?}", block_height, err)))?;
+            .map_err(|err| Status::not_found(format!("GetBlockHeightTransactions: Error found at block height {}: {:?}", block_height, err)))?;
         debug!(
             target: LOG_TARGET,
             "GetBlockHeightTransactions: Found {} transactions at block height {}",

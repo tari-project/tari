@@ -5,7 +5,6 @@ const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 const { promisifyAll } = require("grpc-promise");
 const path = require("path");
-console.log(path.join(__dirname, "../../../applications/minotari_app_grpc/proto/wallet.proto"));
 const packageDefinition = protoLoader.loadSync(
   `${__dirname}/../../../applications/minotari_app_grpc/proto/wallet.proto`,
   {
@@ -91,10 +90,10 @@ module.exports = {
   types: tariGrpc,
 };
 
-(async () => {
-    const a = Client.connect('localhost:18183');
-    const {version} = await a.getVersion();
-    console.log(version);
-    const resp = await a.GetBlockHeightTransactions({block_height: 1550});
-    console.log(resp);
-})()
+// (async () => {
+//     const a = Client.connect('localhost:18183');
+//     const {version} = await a.getVersion();
+//     console.log(version);
+//     const resp = await a.GetBlockHeightTransactions({block_height: 1550});
+//     console.log(resp);
+// })()
