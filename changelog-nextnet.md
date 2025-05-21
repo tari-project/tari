@@ -1,6 +1,21 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## [3.0.0-rc.2](https://github.com/tari-project/tari/compare/v3.0.0-rc.1...v3.0.0-rc.2) (2025-05-21)
+
+### Bug Fixes
+
+* fix bad fix in node estimate hash rate
+
+
+## [3.0.0-rc.1](https://github.com/tari-project/tari/compare/v3.0.0-rc.0...v3.0.0-rc.1) (2025-05-21)
+
+
+### Bug Fixes
+
+* base node panic ([#7074](https://github.com/tari-project/tari/issues/7074)) ([c64b79a](https://github.com/tari-project/tari/commit/c64b79aec0b694f22573607f6304e559fdf39b34))
+
 ## [3.0.0-rc.0](https://github.com/tari-project/tari/compare/v2.1.1-rc.0...v3.0.0-rc.0) (2025-05-20)
 
 

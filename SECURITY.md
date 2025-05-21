@@ -151,24 +151,24 @@ Cash bounties are paid via HackerOne immediately after the vulnerability has bee
 In some cases, Tari Labs may request a retest of the vulnerability for no additional bounty reward after the
 vulnerability has been addressed.
 
-| Severity | Maximum bounty | Example of vulnerability                                                                                       |
-|----------|----------------|----------------------------------------------------------------------------------------------------------------|
-| Critical | $5,000         | Inflation bugs, spending unowned funds, Producing valid blocks without mining                                  |
-| High     | $2,000         | Double spends, Severe DoS, Forcing hard forks, severe TariScript vulnerabilities, remote access of wallet keys |
-| Medium   | $750           | Other DoS, other TariScript vulnerabilities                                                                    |
-| Low      | $100           |                                                                                                                |
+| Severity | Maximum bounty |                                                                                     
+|----------|----------------|
+| Critical | $5,000         | 
+| High     | $2,000         | 
+| Medium   | $750           | 
+| Low      | $100           | 
 
 ### Token-based bounties
 
 It is preferred, but it is not an absolute requirement to make use of the HackerOne bounty programme to claim 
 Minotari token rewards.
 
-| Severity | Bounty Range\*      | Example of vulnerability                                                                                       |
-|----------|---------------------|----------------------------------------------------------------------------------------------------------------|
-| Critical | $100,000 - $250,000 | Inflation bugs, spending unowned funds, Producing valid blocks without mining                                  |
-| High     | $25,000 - $75,000   | Double spends, Severe DoS, Forcing hard forks, severe TariScript vulnerabilities, remote access of wallet keys |
-| Medium   | $5,000 - $15,000    | Other DoS, other TariScript vulnerabilities                                                                    |
-| Low      | $500 - $5,000       |                                                                                                                |
+| Severity | Bounty Range\*      | 
+|----------|---------------------|
+| Critical | $100,000 - $250,000 | 
+| High     | $25,000 - $75,000   | 
+| Medium   | $5,000 - $15,000    | 
+| Low      | $500 - $5,000       | 
 
 *As the Minotari price is unknown prior to launch, values are quoted in USD-equivalent terms at time of delivery. The
 bounties will be paid out in Minotari. For example, if the trading price of Minotari was $0.04, a
