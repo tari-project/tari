@@ -696,7 +696,6 @@ impl ConsensusConstants {
         consensus_constants
     }
 
-    // These values are mainly place holder till the final decision has been made about their values.
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -759,17 +758,17 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 360,
+            target_time: 240,
         });
         algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 360,
+            target_time: 480,
         });
         algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
-            target_time: 360,
+            target_time: 480,
         });
         con_4.blockchain_version = 1;
         con_4.valid_blockchain_version_range = 1..=1;
