@@ -146,7 +146,7 @@ where T: WalletBackend + 'static
         &mut self,
         request: BaseNodeServiceRequest,
     ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Handling Wallet Base Node Service Request: {:?}", request
         );

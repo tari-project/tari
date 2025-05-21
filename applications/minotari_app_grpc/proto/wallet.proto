@@ -1066,7 +1066,7 @@ message PaymentRecipient {
   // The type of payment to perform.
   PaymentType payment_type = 5;
   // Optional encrypted payment ID for reference (max 256 bytes).
-  bytes payment_id = 6;
+  UserPaymentId user_payment_id = 7;
 }
 
 message TransferResponse {
@@ -1136,8 +1136,9 @@ message TransactionInfo {
   bool is_cancelled = 8;
   bytes excess_sig = 9;
   uint64 timestamp = 10;
-  bytes payment_id = 12;
+  bytes raw_payment_id = 12;
   uint64 mined_in_block_height = 13;
+  bytes user_payment_id = 14;
 }
 
 enum TransactionDirection {
