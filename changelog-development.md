@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.0.0-pre.2](https://github.com/tari-project/tari/compare/v3.0.0-pre.1...v3.0.0-pre.2) (2025-05-21)
+
+### Bug Fixes
+
+* fix bad fix in node estimate hash rate
+
 ## [3.0.0-pre.1](https://github.com/tari-project/tari/compare/v3.0.0-pre.0...v3.0.0-pre.1) (2025-05-21)
 
 

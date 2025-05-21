@@ -426,7 +426,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })?;
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
-                let estimated_hash_rate = target_difficulty.as_u64().saturating_sub(target_time);
+                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
                     .set_sha3x_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
@@ -452,7 +452,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })?;
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
-                let estimated_hash_rate = target_difficulty.as_u64().saturating_sub(target_time);
+                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
                     .set_monero_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
@@ -479,7 +479,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })?;
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
-                let estimated_hash_rate = target_difficulty.as_u64().saturating_sub(target_time);
+                let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
                     .set_tari_randomx_estimated_hash_rate(estimated_hash_rate, *metadata.best_block_hash())
                     .await;
