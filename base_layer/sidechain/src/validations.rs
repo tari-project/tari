@@ -189,7 +189,7 @@ fn validate_qc(
 
         if !sig.verify(&block_id, quorum_decision) {
             return Err(SidechainProofValidationError::InvalidProof {
-                details: "Invalid signature".to_string(),
+                details: format!("Invalid signature for QC for block ID {block_id}",),
             });
         }
     }

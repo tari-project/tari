@@ -471,8 +471,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
             signature: value
                 .signature
                 .ok_or("SidechainBlockHeader signature not provided")?
-                .try_into()
-                .map_err(|_| "Invalid signature")?,
+                .try_into()?,
             metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
         })
     }

@@ -23,7 +23,7 @@ pub fn tari_hasher32<M: DomainSeparation>(label: &'static str) -> TariDomainHash
     TariDomainHasher::<M, U32>::new_with_label(label)
 }
 
-fn tari_consensus_hasher(label: &'static str) -> TariConsensusHasher {
+pub fn tari_consensus_hasher(label: &'static str) -> TariConsensusHasher {
     TariConsensusHasher::new_with_label(label)
 }
 
@@ -43,12 +43,12 @@ pub fn command_hasher() -> TariConsensusHasher {
     tari_consensus_hasher("Command")
 }
 
-pub fn quorum_certificate_hasher() -> TariConsensusHasher {
-    tari_consensus_hasher("QuorumCertificate")
+pub fn proposal_vote_signature_hasher() -> TariConsensusHasher {
+    tari_consensus_hasher("VoteSignature")
 }
 
-pub fn vote_signature_hasher() -> TariConsensusHasher {
-    tari_consensus_hasher("VoteSignature")
+pub fn timeout_vote_signature_hasher() -> TariConsensusHasher {
+    tari_consensus_hasher("TimeoutVoteSignature")
 }
 
 pub type ValidatorNodeBmtHasherBlake2b = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeMerkleHashDomain>;

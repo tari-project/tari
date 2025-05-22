@@ -232,17 +232,6 @@ impl QuorumCertificate {
             .finalize()
             .into()
     }
-
-    pub fn calculate_id(&self, epoch: u64) -> FixedHash {
-        layer2::quorum_certificate_hasher()
-            .chain(&epoch)
-            .chain(&self.header_hash)
-            .chain(&self.parent_id)
-            .chain(&self.signatures)
-            .chain(&self.decision)
-            .finalize()
-            .into()
-    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
@@ -316,10 +305,9 @@ impl ValidatorQcSignature {
             return false;
         };
 
-        let message = layer2::vote_signature_hasher()
-            .chain(block_id)
-            .chain(&decision)
-            .finalize();
+        let fields = ProposalCertificateSignatureFields { block_id, decision };
+
+        let message = layer2::proposal_vote_signature_hasher().chain(&fields).finalize();
         signature.verify(&public_key, message)
     }
 
@@ -330,6 +318,12 @@ impl ValidatorQcSignature {
     pub fn signature(&self) -> &ValidatorBlockSignature {
         &self.signature
     }
+}
+
+#[derive(Debug, BorshSerialize)]
+pub struct ProposalCertificateSignatureFields<'a> {
+    pub block_id: &'a FixedHash,
+    pub decision: QuorumDecision,
 }
 
 #[derive(Debug, BorshSerialize)]
