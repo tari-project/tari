@@ -53,12 +53,7 @@ impl DifficultyCalculator {
         );
         let gen_hash = *self.rules.get_genesis_block().hash();
         let vm_key = *db
-            .fetch_chain_header_by_height(
-                block_header
-                    .height
-                    .saturating_sub(block_header.height % 2048)
-                    .saturating_sub(64),
-            )?
+            .fetch_chain_header_by_height(tari_rx_vm_key_height(block_header.height))?
             .hash();
         let achieved_target = check_target_difficulty(
             block_header,
@@ -70,5 +65,56 @@ impl DifficultyCalculator {
         )?;
 
         Ok(achieved_target)
+    }
+}
+
+pub fn tari_rx_vm_key_height(height: u64) -> u64 {
+    // The VM key is calculated from the block at height - (height % 2048) - 64
+    // This is to ensure that the VM key is not too far in the past
+    // and that it is not too close to the current block
+    height.saturating_sub(height % 2048).saturating_sub(64)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_tari_vm_key_calc() {
+        let height = 0;
+        let expected = 0;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 1000;
+        let expected = 0;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 2047;
+        let expected = 0;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 2048;
+        let expected = 1984;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 3048;
+        let expected = 1984;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 4000;
+        let expected = 1984;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 4095;
+        let expected = 1984;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 4096;
+        let expected = 4032;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
+
+        let height = 4097;
+        let expected = 4032;
+        assert_eq!(tari_rx_vm_key_height(height), expected);
     }
 }
