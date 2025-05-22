@@ -2423,7 +2423,7 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-char *completed_transaction_user_get_payment_id(TariCompletedTransaction *transaction,
+char *completed_transaction_get_user_payment_id(TariCompletedTransaction *transaction,
                                                 int *error_out);
 
 /**
@@ -2442,7 +2442,7 @@ char *completed_transaction_user_get_payment_id(TariCompletedTransaction *transa
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *completed_transaction_user_get_payment_id_as_bytes(TariCompletedTransaction *transaction,
+struct ByteVector *completed_transaction_get_user_payment_id_as_bytes(TariCompletedTransaction *transaction,
                                                                       int *error_out);
 
 /**
@@ -2726,7 +2726,7 @@ const char *pending_outbound_transaction_get_payment_id(TariPendingOutboundTrans
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *pending_outbound_transaction_user_get_payment_id_as_bytes(TariPendingOutboundTransaction *transaction,
+struct ByteVector *pending_outbound_transaction_get_user_payment_id_as_bytes(TariPendingOutboundTransaction *transaction,
                                                                              int *error_out);
 
 /**
@@ -2895,7 +2895,7 @@ const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransac
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *pending_inbound_transaction_user_get_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
+struct ByteVector *pending_inbound_transaction_get_user_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
                                                                             int *error_out);
 
 /**

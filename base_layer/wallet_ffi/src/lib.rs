@@ -4833,7 +4833,7 @@ pub unsafe extern "C" fn completed_transaction_get_mined_in_block(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_user_get_payment_id(
+pub unsafe extern "C" fn completed_transaction_get_user_payment_id(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut c_char {
@@ -4873,7 +4873,7 @@ pub unsafe extern "C" fn completed_transaction_user_get_payment_id(
 /// # Safety
 /// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_user_get_payment_id_as_bytes(
+pub unsafe extern "C" fn completed_transaction_get_user_payment_id_as_bytes(
     transaction: *mut TariCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
@@ -5402,7 +5402,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
 /// # Safety
 /// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_user_get_payment_id_as_bytes(
+pub unsafe extern "C" fn pending_outbound_transaction_get_user_payment_id_as_bytes(
     transaction: *mut TariPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
@@ -5690,7 +5690,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
 /// # Safety
 /// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transaction_user_get_payment_id_as_bytes(
+pub unsafe extern "C" fn pending_inbound_transaction_get_user_payment_id_as_bytes(
     transaction: *mut TariPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
