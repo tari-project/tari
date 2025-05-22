@@ -1016,6 +1016,14 @@ impl PeerDatabaseSql {
     pub fn get_all_peers(&self, features: Option<PeerFeatures>) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
+        self.get_all_peers_inner(features, &mut conn)
+    }
+
+    fn get_all_peers_inner(
+        &self,
+        features: Option<PeerFeatures>,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Vec<Peer>, StorageError> {
         let mut query = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
             .into_boxed(); // Enables dynamic query building
@@ -1031,21 +1039,34 @@ impl PeerDatabaseSql {
             }
         }
 
-        let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
 
         PeerDatabaseSql::peers_from_join_query(results)
     }
 
-    // Return all deleted peers' node_ids
-    fn get_all_deleted_peers(&self) -> Result<Vec<NodeId>, StorageError> {
-        let mut conn = self.connection.get_pooled_connection()?;
-
-        // Perform a join query to fetch peers and their addresses
-        let peers = peers::table
+    // // Return all deleted peers' node_ids
+    fn get_all_deleted_peers(
+        &self,
+        features: Option<PeerFeatures>,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+    ) -> Result<Vec<NodeId>, StorageError> {
+        let mut query = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
             .filter(peers::deleted_at.is_not_null())
-            .select(peers::node_id)
-            .load::<String>(&mut conn)?;
+            .into_boxed(); // Enables dynamic query building
+
+        if let Some(features) = features {
+            if features == PeerFeatures::COMMUNICATION_CLIENT {
+                query = query.filter(peers::features.eq(features.to_i32()));
+            } else {
+                query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                    "features & {} != 0",
+                    features.to_i32()
+                )));
+            }
+        }
+
+        let peers = query.select(peers::node_id).load::<String>(conn)?;
         let peers = peers
             .into_iter()
             .map(|p| NodeId::from_hex(&p))
@@ -1387,17 +1408,20 @@ impl PeerDatabaseSql {
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
     /// - Stale Nodes:
+    ///   - The node must not be identified as a node (not a client).
     ///   - A node is considered stale if:
     ///     - it has been deleted;
     ///     - all its addresses have either failed or not been seen for more than the threshold number of days.
-    ///   - The node must not be a seed node and be identified as a node (not a client).
+    ///   - Seed nodes are not stale.
+    ///   - Banned not deleted nodes are not stale.
     /// - Stale Wallets:
+    ///   - The node must be identified as a client (not a node).
     ///   - A wallet is considered stale if:
     ///     - it has been deleted;
     ///     - none of its addresses has ever been seen;
     ///     - all its addresses have either failed or not been seen for more than the threshold number of days.
-    ///   - The wallet must be identified as a client (not a node).
-    ///   - Wallets that are considered neighbours should not be deleted.
+    ///   - Wallets that are considered neighbours are not stale, except if they were deleted.
+    #[allow(clippy::too_many_lines)]
     pub fn delete_all_stale_peers(
         &self,
         stale_peer_threshold: Duration,
@@ -1439,11 +1463,14 @@ impl PeerDatabaseSql {
                     SUM(
                         CASE
                             WHEN multi_addresses.last_failed_reason IS NULL
-                              AND multi_addresses.last_seen IS NOT NULL
-                              AND multi_addresses.last_seen >= ?
+                              AND (
+                                multi_addresses.last_seen IS NULL
+                                OR multi_addresses.last_seen >= ?
+                              )
                             THEN 1 ELSE 0
                         END
                     ) = 0
+
             "#)
                 .bind::<sql_types::Integer, _>(PeerFeatures::COMMUNICATION_NODE.to_i32())  // for WHERE
                 .bind::<sql_types::Integer, _>(PeerFlags::SEED.to_i32())                   // for WHERE
@@ -1487,15 +1514,16 @@ impl PeerDatabaseSql {
                 .load::<NodeIdRow>(conn)?;
 
             let mut stale_wallets_hex: Vec<String> = stale_wallets_hex.into_iter().map(|row| row.node_id).collect();
-
-            // Step 3: Exclude closest wallet peers that are not deleted
-            let mut neighbour_wallets = stale_wallets_hex
+            let mut stale_wallets = stale_wallets_hex
                 .iter()
                 .flat_map(|id| NodeId::from_hex(id).ok())
                 .collect::<Vec<_>>();
-            let deleted_peers = self.get_all_deleted_peers()?;
+            stale_wallets.sort_by_key(|a| a.distance(&self.this_peer_identity.node_id));
+
+            // Step 3: Exclude closest wallet peers that are not deleted
+            let mut neighbour_wallets = stale_wallets.clone();
+            let deleted_peers = self.get_all_deleted_peers(Some(PeerFeatures::COMMUNICATION_CLIENT), conn)?;
             neighbour_wallets.retain(|id| !deleted_peers.contains(id));
-            neighbour_wallets.sort_by_key(|a| a.distance(&self.this_peer_identity.node_id));
             neighbour_wallets.truncate(neighbours_count);
             let neighbour_wallets_hex = neighbour_wallets.into_iter().map(|id| id.to_hex()).collect::<Vec<_>>();
             stale_wallets_hex.retain(|id| !neighbour_wallets_hex.contains(id));
@@ -1513,6 +1541,32 @@ impl PeerDatabaseSql {
             )
             .execute(conn)?;
             diesel::delete(peers::table.filter(peers::node_id.eq_any(stale_peers.clone()))).execute(conn)?;
+
+            // Step 5: Retain at most the threshold number of wallets
+            let mut remaining_wallets = self
+                .get_all_peers_inner(Some(PeerFeatures::COMMUNICATION_CLIENT), conn)?
+                .iter()
+                .map(|p| p.node_id.clone())
+                .collect::<Vec<_>>();
+            remaining_wallets.sort_by_key(|a| a.distance(&self.this_peer_identity.node_id));
+            let surplus_wallets = remaining_wallets.iter().skip(neighbours_count).collect::<Vec<_>>();
+            let surplus_wallets_hex = surplus_wallets
+                .iter()
+                .map(|id| id.to_hex())
+                .collect::<Vec<_>>();
+
+            diesel::delete(
+                multi_addresses::table.filter(
+                    multi_addresses::peer_id.eq_any(
+                        peers::table
+                            .filter(peers::node_id.eq_any(&surplus_wallets_hex))
+                            .select(peers::peer_id),
+                    ),
+                ),
+            )
+            .execute(conn)?;
+            diesel::delete(peers::table.filter(peers::node_id.eq_any(surplus_wallets_hex.clone()))).execute(conn)?;
+            let stale_peers = stale_peers.into_iter().chain(surplus_wallets_hex).collect::<Vec<_>>();
 
             // Step 5: Return all deleted node_ids
             Ok(stale_peers
@@ -2489,7 +2543,6 @@ mod tests {
             .filter(|&p| (p.flags == PeerFlags::SEED))
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        println!("original_seeds:              {:?}", original_seeds);
         // Mark node peers failed (7, 13, 22, 23, 24, 25)
         for i in [7, 13, 22, 23, 24, 25] {
             mark_failed(&mut node_peers[i]);
@@ -2499,7 +2552,6 @@ mod tests {
             .filter(|&p| p.all_addresses_failed())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        println!("original_failed_nodes:       {:?}", original_failed_nodes);
         // Set never seen - node peers (14, 15, 16, 17, 18, 19, 20, 21)
         let original_never_seen_nodes = node_peers[14..=21]
             .iter()
@@ -2508,7 +2560,6 @@ mod tests {
         for peer in node_peers.iter_mut().take(21 + 1).skip(14) {
             reset_all_stats(peer);
         }
-        println!("original_never_seen_nodes:   {:?}", original_never_seen_nodes);
         // Shuffle and add to db
         let mut shuffled = node_peers.clone();
         shuffled.shuffle(&mut OsRng);
@@ -2532,7 +2583,6 @@ mod tests {
             .filter(|&p| p.all_addresses_failed())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        println!("original_failed_wallets:     {:?}", original_failed_wallets);
         // Set never seen - node peers (14, 15, 16, 17, 18, 19, 20, 21)
         let original_never_seen_wallets = wallet_peers[14..=21]
             .iter()
@@ -2541,7 +2591,6 @@ mod tests {
         for peer in wallet_peers.iter_mut().take(21 + 1).skip(14) {
             reset_all_stats(peer);
         }
-        println!("original_never_seen_wallets: {:?}", original_never_seen_wallets);
         // Shuffle and add to db
         let mut shuffled = wallet_peers.clone();
         shuffled.shuffle(&mut OsRng);
@@ -2555,26 +2604,30 @@ mod tests {
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
 
-        // Set deleted - node and wallet peers (1, 2)
-        let original_deleted_nodes = vec![node_peers[1].node_id.clone(), node_peers[2].node_id.clone()];
+        // Set deleted - node and wallet peers (1, 2, 7)
+        let original_deleted_nodes = vec![
+            node_peers[1].node_id.clone(),
+            node_peers[2].node_id.clone(),
+            node_peers[7].node_id.clone(),
+        ];
         original_deleted_nodes.iter().for_each(|node_id| {
             peers_db.set_deleted_at(node_id).unwrap();
         });
-        println!("original_deleted_nodes:      {:?}", original_deleted_nodes);
-        let original_deleted_wallets = vec![wallet_peers[1].node_id.clone(), wallet_peers[2].node_id.clone()];
+        let original_deleted_wallets = vec![
+            wallet_peers[1].node_id.clone(),
+            wallet_peers[2].node_id.clone(),
+            wallet_peers[7].node_id.clone(),
+        ];
         original_deleted_wallets.iter().for_each(|node_id| {
             peers_db.set_deleted_at(node_id).unwrap();
         });
-        println!("original_deleted_wallets:    {:?}", original_deleted_wallets);
 
-        // Set banned - node and wallet peers (5, 6)
-        let original_banned_nodes = node_peers[5..=6].iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        println!("original_banned_nodes:       {:?}", original_banned_nodes);
-        let original_banned_wallets = wallet_peers[5..=6]
+        // Set banned - node and wallet peers (5, 6, 7)
+        let original_banned_nodes = node_peers[5..=7].iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        let original_banned_wallets = wallet_peers[5..=7]
             .iter()
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        println!("original_banned_wallets:     {:?}", original_banned_wallets);
         for peer in original_banned_nodes.iter().chain(original_banned_wallets.iter()) {
             peers_db
                 .set_banned(peer, Duration::from_secs(12345), "Misbehaviour is punished".to_string())
@@ -2585,7 +2638,6 @@ mod tests {
         let last_seen = chrono::Utc::now().naive_utc() -
             chrono::Duration::from_std(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
         let original_inactive_nodes = node_peers[8..=9].iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        println!("original_inactive_nodes:     {:?}", original_inactive_nodes);
         for peer in &original_inactive_nodes {
             for address in node_peers
                 .iter()
@@ -2603,7 +2655,6 @@ mod tests {
             .chain(wallet_peers[8..=12].iter().chain(wallet_peers[26..=29].iter()))
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        println!("original_inactive_wallets:   {:?}", original_inactive_wallets);
         for peer in &original_inactive_wallets {
             for address in wallet_peers
                 .iter()
@@ -2616,70 +2667,97 @@ mod tests {
             }
         }
 
-        // - build verification data (nodes)
-        let seed_peers_node_ids = peers_db
+        // - build verification data (all)
+        //   - seed peers
+        let seed_peers_ids = peers_db
             .get_seed_peers()
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        assert!(original_seeds.iter().all(|v| seed_peers_node_ids.contains(v)));
+        assert!(original_seeds.iter().all(|v| seed_peers_ids.contains(v)));
+        //   - all peers
         let all_peers = peers_db.get_all_peers(None).unwrap();
-        let all_peers_node_ids = all_peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        assert!(original_peers.iter().all(|p| all_peers_node_ids.contains(p)));
+        let all_peers_ids = all_peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        assert!(original_peers.iter().all(|p| all_peers_ids.contains(p)));
+
+        // - build verification data (nodes)
         let nodes_from_db = all_peers.iter().filter(|p| p.features.is_node()).collect::<Vec<_>>();
+        //   - failed nodes
         let mut nodes_failed = nodes_from_db
             .iter()
             .filter(|p| p.all_addresses_failed())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(nodes_failed.iter().all(|p| original_failed_nodes.contains(p)));
-        nodes_failed.retain(|p| !seed_peers_node_ids.contains(p));
+        nodes_failed.retain(|p| !seed_peers_ids.contains(p));
+        //   - banned nodes
+        let mut nodes_banned = nodes_from_db
+            .iter()
+            .filter(|p| p.is_banned())
+            .map(|p| p.node_id.clone())
+            .collect::<Vec<_>>();
+        assert!(nodes_banned.iter().all(|p| original_banned_nodes.contains(p)));
+        nodes_banned.retain(|p| !nodes_failed.contains(p));
+        //   - inactive nodes
         let stale_time_cutoff = chrono::Utc::now().naive_utc() -
             chrono::Duration::from_std(Duration::from_secs(60)).unwrap_or(TimeDelta::MAX);
-        let mut nodes_not_seen_recently = nodes_from_db
+        let mut nodes_inactive = nodes_from_db
             .iter()
             .filter(|p| p.last_seen().is_some() && p.last_seen().unwrap() < stale_time_cutoff)
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        assert!(nodes_not_seen_recently
-            .iter()
-            .all(|p| original_inactive_nodes.contains(p)));
-        nodes_not_seen_recently.retain(|p| !seed_peers_node_ids.contains(p));
+        assert!(nodes_inactive.iter().all(|p| original_inactive_nodes.contains(p)));
+        nodes_inactive.retain(|p| !seed_peers_ids.contains(p));
+        nodes_inactive.retain(|p| !nodes_banned.contains(p));
+        //   - deleted nodes
         let nodes_deleted = nodes_from_db
             .iter()
             .filter(|p| p.deleted_at.is_some())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(nodes_deleted.iter().all(|p| original_deleted_nodes.contains(p)));
+        //    - never seen before nodes
         let mut nodes_never_seen = nodes_from_db
             .iter()
             .filter(|p| p.last_seen().is_none())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(nodes_never_seen.iter().all(|p| original_never_seen_nodes.contains(p)));
-        nodes_never_seen.retain(|p| !seed_peers_node_ids.contains(p));
+        nodes_never_seen.retain(|p| !seed_peers_ids.contains(p));
 
         // - build verification data (wallets)
         let wallets_from_db = all_peers.iter().filter(|p| p.features.is_client()).collect::<Vec<_>>();
+        //   - failed wallets
         let wallets_failed = wallets_from_db
             .iter()
             .filter(|p| p.all_addresses_failed())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(wallets_failed.iter().all(|p| original_failed_wallets.contains(p)));
-        let wallets_not_seen = wallets_from_db
+        //   - banned wallets
+        let mut wallets_banned = wallets_from_db
+            .iter()
+            .filter(|p| p.is_banned())
+            .map(|p| p.node_id.clone())
+            .collect::<Vec<_>>();
+        assert!(wallets_banned.iter().all(|p| original_banned_wallets.contains(p)));
+        wallets_banned.retain(|p| !wallets_failed.contains(p));
+        //   - inactive wallets
+        let wallets_inactive = wallets_from_db
             .iter()
             .filter(|p| p.last_seen().is_some() && p.last_seen().unwrap() < stale_time_cutoff)
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
-        assert!(wallets_not_seen.iter().all(|p| original_inactive_wallets.contains(p)));
+        assert!(wallets_inactive.iter().all(|p| original_inactive_wallets.contains(p)));
+        //   - deleted wallets
         let wallets_deleted = wallets_from_db
             .iter()
             .filter(|&p| p.deleted_at.is_some())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(wallets_deleted.iter().all(|p| original_deleted_wallets.contains(p)));
+        //    - never seen before wallets
         let wallets_never_seen = wallets_from_db
             .iter()
             .filter(|p| p.last_seen().is_none())
@@ -2690,41 +2768,42 @@ mod tests {
             .all(|p| original_never_seen_wallets.contains(p)));
 
         // - perform test
-        let stale_peers_deleted = peers_db.delete_all_stale_peers(Duration::from_secs(60), 17).unwrap();
-        // assert_eq!(stale_peers_deleted.len(), 10);
-        println!();
-        println!("stale_peers_deleted: {}", stale_peers_deleted.len());
+        const NEIGHBOUR_COUNT: usize = 17;
+        let stale_peers_deleted = peers_db
+            .delete_all_stale_peers(Duration::from_secs(60), NEIGHBOUR_COUNT)
+            .unwrap();
+        assert_eq!(stale_peers_deleted.len(), 21);
 
         // - verify nodes
         //   - seed peers (0, 8, 16, 24)
         //   - node peers failed (7, 13, 22, 23, 24, 25)
-        //   - deleted node peers (1, 2)
-        //   - banned noe peers (5, 6)
+        //   - deleted node peers (1, 2, 7)
+        //   - banned node peers (5, 6, 7)
         //   - inactive node peers (8, 9)
         //   - never seen node peers (14, 15, 16, 17, 18, 19, 20, 21)
         let remaining = peers_db.get_all_peers(None).unwrap();
-        // assert_eq!(remaining.len(), 14);
-        println!("remaining: {}", remaining.len());
+        assert_eq!(remaining.len(), 39);
         let mut remaining_nodes = peers_db.get_all_peers(Some(PeerFeatures::COMMUNICATION_NODE)).unwrap();
         remaining_nodes.sort_by_key(|p| p.node_id.distance(&peers_db.this_peer_identity.node_id));
         let remaining_nodes_ids = remaining_nodes.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        // assert_eq!(remaining_nodes.len(), 8);
-        println!("remaining_nodes: {}", remaining_nodes_ids.len());
+        assert_eq!(remaining_nodes.len(), 22);
         // - verify all seeds are still present
-        assert!(seed_peers_node_ids.iter().all(|p| remaining_nodes_ids.contains(p)));
+        assert!(seed_peers_ids.iter().all(|p| remaining_nodes_ids.contains(p)));
+        // - verify all banned nodes (that were not delted) are still present
+        assert!(nodes_banned.iter().all(|p| remaining_nodes_ids.contains(p)));
         // - verify deleted nodes are removed
         assert!(!remaining_nodes_ids.iter().any(|p| nodes_deleted.contains(p)));
         // - verify failed nodes are removed
         assert!(!remaining_nodes_ids.iter().any(|p| nodes_failed.contains(p)));
         // - verify not seen recently nodes are removed
-        assert!(!remaining_nodes_ids.iter().any(|p| nodes_not_seen_recently.contains(p)));
+        assert!(!remaining_nodes_ids.iter().any(|p| nodes_inactive.contains(p)));
         // - verify never seen nodes are NOT removed
-        // assert!(remaining_nodes_ids.iter().any(|p| nodes_never_seen.contains(p)));
+        assert!(nodes_never_seen.iter().all(|p| remaining_nodes_ids.contains(p)));
 
         // - verify wallets
         //   - wallet peers failed (7, 13, 22, 23, 24, 25)
-        //   - deleted wallet peers (1, 2)
-        //   - banned wallet peers (5, 6)
+        //   - deleted wallet peers (1, 2, 7)
+        //   - banned wallet peers (5, 6, 7)
         //   - inactive wallet peers (0, 1, 2, 3, 4, 8, 9, 10, 11, 12, 26, 27, 28, 29)
         //   - never seen wallet peers (14, 15, 16, 17, 18, 19, 20, 21)
         let mut remaining_wallets = peers_db
@@ -2732,51 +2811,73 @@ mod tests {
             .unwrap();
         remaining_wallets.sort_by_key(|p| p.node_id.distance(&peers_db.this_peer_identity.node_id));
         let remaining_wallets_ids = remaining_wallets.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        // assert_eq!(remaining_wallets.len(), 6);
-        println!("remaining_wallets: {}", remaining_wallets_ids.len());
+        assert_eq!(remaining_wallets.len(), NEIGHBOUR_COUNT);
         // - verify deleted wallets are removed
         assert!(!remaining_wallets_ids.iter().any(|p| wallets_deleted.contains(p)));
 
-        println!();
-        println!("remaining nodes");
-        for (i, peer) in remaining_nodes.iter().enumerate() {
-            println!(
-                "{}: {}, seed: {}, offline: {}, banned: {}, deleted: {}, failed: {}, last seen: {}, inactive: {}",
-                i,
-                peer.node_id.to_hex(),
-                peer.is_seed(),
-                peer.is_offline(),
-                peer.is_banned(),
-                peer.deleted_at.is_some(),
-                peer.all_addresses_failed(),
-                peer.last_seen().is_some(),
-                if let Some(last_seen) = peer.last_seen() {
-                    (last_seen < stale_time_cutoff).to_string()
-                } else {
-                    "n/a".to_string()
-                },
-            );
-        }
+        let debug_print_results = false;
+        if debug_print_results {
+            println!();
+            println!("original_seeds:              {:?}", original_seeds);
+            println!("original_failed_nodes:       {:?}", original_failed_nodes);
+            println!("original_never_seen_nodes:   {:?}", original_never_seen_nodes);
+            println!("original_failed_wallets:     {:?}", original_failed_wallets);
+            println!("original_never_seen_wallets: {:?}", original_never_seen_wallets);
+            println!("original_deleted_nodes:      {:?}", original_deleted_nodes);
+            println!("original_deleted_wallets:    {:?}", original_deleted_wallets);
+            println!("original_banned_nodes:       {:?}", original_banned_nodes);
+            println!("original_banned_wallets:     {:?}", original_banned_wallets);
+            println!("original_inactive_nodes:     {:?}", original_inactive_nodes);
+            println!("original_inactive_wallets:   {:?}", original_inactive_wallets);
 
-        println!();
-        println!("remaining wallets");
-        for (i, peer) in remaining_wallets.iter().enumerate() {
-            println!(
-                "{}: {}, seed: {}, offline: {}, banned: {}, deleted: {}, failed: {}, last seen: {}, inactive: {}",
-                i,
-                peer.node_id.to_hex(),
-                peer.is_seed(),
-                peer.is_offline(),
-                peer.is_banned(),
-                peer.deleted_at.is_some(),
-                peer.all_addresses_failed(),
-                peer.last_seen().is_some(),
-                if let Some(last_seen) = peer.last_seen() {
-                    (last_seen < stale_time_cutoff).to_string()
-                } else {
-                    "n/a".to_string()
-                },
-            );
+            println!();
+            println!("stale_peers_deleted:         {}", stale_peers_deleted.len());
+            println!("stale_peers_deleted:         {:?}", stale_peers_deleted);
+            println!("remaining:                   {}", remaining.len());
+            println!("remaining_nodes:             {}", remaining_nodes_ids.len());
+            println!("remaining_wallets:           {}", remaining_wallets_ids.len());
+
+            println!();
+            println!("remaining nodes");
+            for (i, peer) in remaining_nodes.iter().enumerate() {
+                println!(
+                    "{}: {}, seed: {}, offline: {}, banned: {}, deleted: {}, failed: {}, last seen: {}, inactive: {}",
+                    i,
+                    peer.node_id.to_hex(),
+                    peer.is_seed(),
+                    peer.is_offline(),
+                    peer.is_banned(),
+                    peer.deleted_at.is_some(),
+                    peer.all_addresses_failed(),
+                    peer.last_seen().is_some(),
+                    if let Some(last_seen) = peer.last_seen() {
+                        (last_seen < stale_time_cutoff).to_string()
+                    } else {
+                        "n/a".to_string()
+                    },
+                );
+            }
+
+            println!();
+            println!("remaining wallets");
+            for (i, peer) in remaining_wallets.iter().enumerate() {
+                println!(
+                    "{}: {}, seed: {}, offline: {}, banned: {}, deleted: {}, failed: {}, last seen: {}, inactive: {}",
+                    i,
+                    peer.node_id.to_hex(),
+                    peer.is_seed(),
+                    peer.is_offline(),
+                    peer.is_banned(),
+                    peer.deleted_at.is_some(),
+                    peer.all_addresses_failed(),
+                    peer.last_seen().is_some(),
+                    if let Some(last_seen) = peer.last_seen() {
+                        (last_seen < stale_time_cutoff).to_string()
+                    } else {
+                        "n/a".to_string()
+                    },
+                );
+            }
         }
     }
 
