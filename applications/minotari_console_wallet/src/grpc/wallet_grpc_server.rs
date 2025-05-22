@@ -28,7 +28,8 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt,
+    future,
+    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
@@ -112,7 +113,11 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            OutputType,
+            SideChainFeature,
+            UnblindedOutput,
         },
     },
 };
@@ -1262,14 +1267,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(
-                1 * T,
-                OutputFeatures {
-                    output_type: OutputType::CodeTemplateRegistration,
-                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                    ..Default::default()
-                },
-            )
+            .create_output_with_features(1 * T, OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                ..Default::default()
+            })
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
