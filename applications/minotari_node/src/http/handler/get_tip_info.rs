@@ -5,16 +5,14 @@ use std::sync::Arc;
 
 use axum::{http::StatusCode, Extension, Json};
 use log::{debug, error};
-
-use crate::{
-    base_node::rpc::{http, models::TipInfoResponse, BaseNodeWalletQueryService},
-    chain_storage::BlockchainBackend,
-};
+use tari_core::base_node::rpc::models::TipInfoResponse;
+use tari_core::base_node::rpc::{query_service, BaseNodeWalletQueryService};
+use tari_core::chain_storage::BlockchainBackend;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_tip_info";
 
 pub async fn handle<B: BlockchainBackend + 'static>(
-    Extension(query_service): Extension<Arc<http::query_service::Service<B>>>,
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
 ) -> Result<Json<TipInfoResponse>, StatusCode> {
     debug!(target: LOG_TARGET, "Received get_tip_info request...");
 

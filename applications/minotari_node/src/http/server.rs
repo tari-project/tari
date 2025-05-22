@@ -3,16 +3,14 @@
 
 use std::sync::Arc;
 
+use crate::http::handler;
 use axum::{routing::get, Extension, Router};
 use log::{error, info};
+use tari_core::base_node::rpc::BaseNodeWalletQueryService;
+use tari_core::chain_storage::BlockchainBackend;
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{io, net::TcpListener};
-
-use crate::{
-    base_node::rpc::{http::handler, BaseNodeWalletQueryService},
-    chain_storage::BlockchainBackend,
-};
 
 const LOG_TARGET: &str = "c::bn::rpc::http::server";
 
@@ -61,3 +59,5 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
         Ok(())
     }
 }
+
+

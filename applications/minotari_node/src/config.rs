@@ -150,11 +150,11 @@ pub struct BaseNodeConfig {
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_health_check: Duration,
     /// Wallet query HTTP service configuration
-    pub http_wallet_query_service: WalletQueryServiceConfig,
+    pub http_wallet_query_service: WalletHttpServiceConfig,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct WalletQueryServiceConfig {
+pub struct WalletHttpServiceConfig {
     /// Port that the local wallet query service will listen on.
     pub port: u16,
     /// The external address of the wallet query service.
@@ -163,12 +163,24 @@ pub struct WalletQueryServiceConfig {
     pub external_address: Option<Url>,
 }
 
-impl Default for WalletQueryServiceConfig {
+impl Default for WalletHttpServiceConfig {
     fn default() -> Self {
+        let port = wallet_http_service_default_port(Network::get_current());
         Self {
-            port: 9000,
-            external_address: Some(Url::parse("http://127.0.0.1:9000").unwrap()),
+            port,
+            external_address: Some(Url::parse(format!("http://127.0.0.1:{port}").as_str()).unwrap()),
         }
+    }
+}
+
+pub fn wallet_http_service_default_port(network: Network) -> u16 {
+    match network {
+        Network::MainNet => 9000,
+        Network::StageNet => 9001,
+        Network::NextNet => 9002,
+        Network::LocalNet => 9003,
+        Network::Igor => 9004,
+        Network::Esmeralda => 9005,
     }
 }
 

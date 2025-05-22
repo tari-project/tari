@@ -6,12 +6,10 @@ use std::sync::Arc;
 use axum::{extract::Query, http::StatusCode, Extension, Json};
 use log::{debug, error};
 use serde::Deserialize;
-
-use crate::{
-    base_node::rpc::{http, http::query_service::Error, BaseNodeWalletQueryService},
-    blocks::BlockHeader,
-    chain_storage::BlockchainBackend,
-};
+use tari_core::base_node::rpc::query_service::Error;
+use tari_core::base_node::rpc::{query_service, BaseNodeWalletQueryService};
+use tari_core::blocks::BlockHeader;
+use tari_core::chain_storage::BlockchainBackend;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
 
@@ -21,7 +19,7 @@ pub struct QueryParams {
 }
 
 pub async fn handle<B: BlockchainBackend + 'static>(
-    Extension(query_service): Extension<Arc<http::query_service::Service<B>>>,
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<BlockHeader>, StatusCode> {
     debug!(target: LOG_TARGET, "Received get_header_by_height request: {}", params.height);

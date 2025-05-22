@@ -38,6 +38,8 @@ mod metrics;
 mod recovery;
 mod utils;
 
+mod http;
+
 use std::{process, sync::Arc};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
