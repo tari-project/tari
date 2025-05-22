@@ -159,8 +159,8 @@ service Wallet {
   // ```
   rpc GetAddress (Empty) returns (GetAddressResponse);
 
-  // This RPC returns addresses generated for a specific payment ID. It provides both the interactive 
-  // and one-sided addresses for the given payment ID, along with their respective representations in 
+  // This RPC returns addresses generated for a specific payment ID. It provides both the interactive
+  // and one-sided addresses for the given payment ID, along with their respective representations in
   // base58 and emoji formats.
   //
   // Example usage (JavaScript):
@@ -200,7 +200,7 @@ service Wallet {
   // - Raw binary
   // - Base58-encoded (human-readable)
   // - Emoji-encoded (for fun and friendliness)
-  // 
+  //
   // Example usage (JavaScript with gRPC):
   //
   // ```js
@@ -261,7 +261,7 @@ service Wallet {
   //   ]
   // }
   rpc Transfer (TransferRequest)  returns (TransferResponse);
-  
+
   // Returns the transaction details for the given transaction IDs.
   //
   // The GetTransactionInfo RPC retrieves detailed information about specific transactions based on their IDs.
@@ -269,10 +269,10 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - `transaction_ids` (required):  
-  //   - **Type**: `repeated uint64`  
-  //   - **Description**: A list of transaction IDs to query.  
-  //   - **Restrictions**:  
+  // - `transaction_ids` (required):
+  //   - **Type**: `repeated uint64`
+  //   - **Description**: A list of transaction IDs to query.
+  //   - **Restrictions**:
   //     - Must contain at least one ID.
   //     - All IDs must be valid unsigned 64-bit integers.
   //     - Duplicates will be ignored; only the first occurrence is processed.
@@ -488,7 +488,7 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - *(none)*  
+  // - *(none)*
   //   - This method uses an empty request body (`google.protobuf.Empty`).
   //   - No filters or arguments are required.
   //
@@ -518,29 +518,29 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - `amount_per_split` (required):  
-  //   - **Type**: `uint64`  
-  //   - **Description**: The value of each individual output in the split.  
+  // - `amount_per_split` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The value of each individual output in the split.
   //   - **Restrictions**: Must be greater than zero.
   //
-  // - `split_count` (required):  
-  //   - **Type**: `uint64`  
-  //   - **Description**: The number of outputs to create.  
+  // - `split_count` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The number of outputs to create.
   //   - **Restrictions**: Must be greater than zero and within practical system limits.
   //
-  // - `fee_per_gram` (required):  
-  //   - **Type**: `uint64`  
-  //   - **Description**: The transaction fee rate (per gram of weight).  
+  // - `fee_per_gram` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The transaction fee rate (per gram of weight).
   //   - **Restrictions**: Should be set high enough to ensure confirmation.
   //
-  // - `lock_height` (optional):  
-  //   - **Type**: `uint64`  
-  //   - **Description**: The earliest block height at which the transaction becomes valid.  
+  // - `lock_height` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: The earliest block height at which the transaction becomes valid.
   //   - **Restrictions**: Defaults to 0 if not specified.
   //
-  // - `payment_id` (optional):  
-  //   - **Type**: `bytes`  
-  //   - **Description**: A user-defined identifier for tracking or referencing the transaction.  
+  // - `payment_id` (optional):
+  //   - **Type**: `bytes`
+  //   - **Description**: A user-defined identifier for tracking or referencing the transaction.
   //   - **Restrictions**: Optional; can be left empty.
   //
   // ### Example JavaScript gRPC client usage:
@@ -576,17 +576,17 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - `outputs` (required):  
-  //   - **Type**: `repeated UnblindedOutput`  
-  //   - **Description**: A list of unblinded outputs to import into the wallet.  
-  //   - **Restrictions**:  
+  // - `outputs` (required):
+  //   - **Type**: `repeated UnblindedOutput`
+  //   - **Description**: A list of unblinded outputs to import into the wallet.
+  //   - **Restrictions**:
   //     - Each output must be valid and convertible to an internal UTXO format.
   //     - The list must contain at least one item.
   //
-  // - `payment_id` (optional):  
-  //   - **Type**: `bytes`  
-  //   - **Description**: An optional user-defined identifier to associate with the imported outputs.  
-  //   - **Restrictions**:  
+  // - `payment_id` (optional):
+  //   - **Type**: `bytes`
+  //   - **Description**: An optional user-defined identifier to associate with the imported outputs.
+  //   - **Restrictions**:
   //     - Can be left empty if not needed.
   //     - Must be a valid byte string if provided.
   //
@@ -620,7 +620,7 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - *(none)*  
+  // - *(none)*
   //   - This method uses an empty request body (`google.protobuf.Empty`).
   //   - No filters or arguments are required.
   //
@@ -647,16 +647,16 @@ service Wallet {
   //
   // The `status` field indicates the current network connectivity of the wallet. Possible values are:
   //
-  // - `ONLINE`:  
-  //   - The wallet is fully connected to the network and functioning normally.  
+  // - `ONLINE`:
+  //   - The wallet is fully connected to the network and functioning normally.
   //   - The node has enough active peer connections to operate efficiently.
   //
-  // - `DEGRADED`:  
-  //   - The wallet is connected to some peers but not enough to maintain full functionality.  
+  // - `DEGRADED`:
+  //   - The wallet is connected to some peers but not enough to maintain full functionality.
   //   - This could indicate issues with network connectivity, such as intermittent disconnections or insufficient peers, leading to reduced performance or reliability.
   //
-  // - `OFFLINE`:  
-  //   - The wallet is not connected to any peers.  
+  // - `OFFLINE`:
+  //   - The wallet is not connected to any peers.
   //   - This status means the wallet is unable to communicate with the network and cannot perform any network-related operations.
   //
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
@@ -669,7 +669,7 @@ service Wallet {
   //
   // ### Request Parameters:
   //
-  // - *(none)*  
+  // - *(none)*
   //   - This method uses an empty request body (`google.protobuf.Empty`).
   //   - No filters or arguments are required.
   //
@@ -729,7 +729,7 @@ service Wallet {
   // Cancels a specific transaction by its ID.
   //
   // The `CancelTransaction` call allows a transaction to be cancelled by its unique transaction ID (TxId).
-  // If the cancellation is successful, the response will indicate success. Otherwise, the response will 
+  // If the cancellation is successful, the response will indicate success. Otherwise, the response will
   // contain a failure message with the reason for the failure.
   //
   // ### Request Parameters:
@@ -771,13 +771,13 @@ service Wallet {
 
   // Sends a XTR SHA Atomic Swap transaction.
   //
-  // The `SendShaAtomicSwapTransaction` call is used to initiate an Atomic Swap 
-  // transaction using SHA. It allows the sender to send a payment to the recipient 
+  // The `SendShaAtomicSwapTransaction` call is used to initiate an Atomic Swap
+  // transaction using SHA. It allows the sender to send a payment to the recipient
   // in exchange for an atomic swap, with SHA used as the secret for the swap.
   // The method accepts the recipient's information and initiates the transaction.
   //
   // ### Request Parameters:
-  // - **recipient** (required): A PaymentRecipient object containing the recipient's address, 
+  // - **recipient** (required): A PaymentRecipient object containing the recipient's address,
   //   the amount to be swapped, the fee per gram, and the payment ID to identify the transaction.
   //
   // ### Response Fields:
@@ -1045,6 +1045,8 @@ service Wallet {
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+
+  rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 }
 
 
@@ -1113,8 +1115,10 @@ message PaymentRecipient {
   }
   // The type of payment to perform.
   PaymentType payment_type = 5;
-  // Optional encrypted payment ID for reference (max 256 bytes).
-  bytes payment_id = 6;
+  // raw payment id
+  bytes raw_payment_id = 6;
+  // Optional user encrypted payment ID for reference (max 256 bytes).
+  UserPaymentId user_payment_id = 7;
 }
 
 message TransferResponse {
@@ -1184,8 +1188,9 @@ message TransactionInfo {
   bool is_cancelled = 8;
   bytes excess_sig = 9;
   uint64 timestamp = 10;
-  bytes payment_id = 12;
+  bytes raw_payment_id = 12;
   uint64 mined_in_block_height = 13;
+  bytes user_payment_id = 14;
 }
 
 enum TransactionDirection {
@@ -1402,6 +1407,14 @@ message RegisterValidatorNodeResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
+}
+
+message ImportTransactionsRequest {
+  string txs = 1;
+}
+
+message ImportTransactionsResponse {
+    repeated uint64 tx_ids = 1;
 }
 
 // Request message for getting transactions at a specific block height

@@ -32,19 +32,63 @@ use futures::{
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
-    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest,
-    GetBalanceResponse, GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse,
-    GetCompleteAddressResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse,
-    GetConnectivityRequest, GetIdentityRequest, GetIdentityResponse, GetPaymentIdAddressRequest, GetStateRequest,
-    GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetUnspentAmountsResponse,
-    GetVersionRequest, GetVersionResponse, ImportUtxosRequest, ImportUtxosResponse, RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse, RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse, TransactionDirection, TransactionEvent,
-    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
-    TransferResponse, TransferResult, ValidateRequest, ValidateResponse,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    GetAddressResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -444,7 +488,30 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
-
+        let payment_id = if !message.raw_payment_id.is_empty() {
+            PaymentId::from_bytes(&message.raw_payment_id)
+        } else if let Some(user_pay_id) = message.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ));
+                },
+            };
+            PaymentId::Open {
+                user_data: bytes,
+                tx_type: TxType::ClaimAtomicSwap,
+            }
+        } else {
+            PaymentId::Empty
+        };
         let mut transaction_service = self.get_transaction_service();
         let response = match transaction_service
             .send_sha_atomic_swap_transaction(
@@ -452,7 +519,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                PaymentId::from_bytes(&message.payment_id),
+                payment_id,
             )
             .await
         {
@@ -604,6 +671,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
         let recipients = message
@@ -619,15 +687,39 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     dest.amount,
                     dest.fee_per_gram,
                     dest.payment_type,
-                    dest.payment_id,
+                    dest.user_payment_id,
+                    dest.raw_payment_id,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, payment_type, payment_id) in recipients {
-            let payment_id = PaymentId::from_bytes(&payment_id);
+        for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
+            let payment_id = if !raw_payment_id.is_empty() {
+                PaymentId::from_bytes(&raw_payment_id)
+            } else if let Some(user_pay_id) = user_payment_id {
+                let bytes = match (
+                    user_pay_id.u256.is_empty(),
+                    user_pay_id.utf8_string.is_empty(),
+                    user_pay_id.user_bytes.is_empty(),
+                ) {
+                    (false, true, true) => user_pay_id.u256,
+                    (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                    (true, true, false) => user_pay_id.user_bytes,
+                    _ => {
+                        return Err(Status::invalid_argument(
+                            "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                        ));
+                    },
+                };
+                PaymentId::Open {
+                    user_data: bytes,
+                    tx_type: TxType::PaymentToOther,
+                }
+            } else {
+                PaymentId::Empty
+            };
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
                 (
@@ -926,7 +1018,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .unwrap_or(&Signature::default())
                             .get_signature()
                             .to_vec(),
-                        payment_id: txn.payment_id.to_bytes(),
+                        raw_payment_id: txn.payment_id.to_bytes(),
+                        user_payment_id: txn.payment_id.user_data_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                     }),
                 };
@@ -1266,6 +1359,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
         Ok(Response::new(response))
     }
+
+    async fn import_transactions(
+        &self,
+        request: Request<ImportTransactionsRequest>,
+    ) -> Result<Response<ImportTransactionsResponse>, Status> {
+        let request = request.into_inner();
+        let txs: Vec<WalletTransaction> = serde_json::from_str(&request.txs)
+            .map_err(|_| Status::invalid_argument("Could not parse transactions. Use valid JSON format."))?;
+        info!(target: LOG_TARGET, "Importing {:?} transactions", txs.len());
+
+        let mut transaction_service = self.get_transaction_service();
+        let mut tx_ids = Vec::new();
+        for tx in txs {
+            match transaction_service.import_transaction(tx).await {
+                Ok(id) => {
+                    tx_ids.push(id.into());
+                },
+                Err(e) => eprintln!("Could not import tx {}", e),
+            };
+        }
+        Ok(Response::new(ImportTransactionsResponse { tx_ids }))
+    }
 }
 
 async fn handle_completed_tx(
@@ -1336,7 +1451,8 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: 0,
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            payment_id: tx.payment_id.to_bytes(),
+            raw_payment_id: tx.payment_id.to_bytes(),
+            user_payment_id: tx.payment_id.user_data_as_bytes(),
             mined_in_block_height: 0,
         },
         PendingOutbound(tx) => TransactionInfo {
@@ -1350,7 +1466,8 @@ fn convert_wallet_transaction_into_transaction_info(
             fee: tx.fee.into(),
             excess_sig: Default::default(),
             timestamp: tx.timestamp.timestamp() as u64,
-            payment_id: tx.payment_id.to_bytes(),
+            raw_payment_id: tx.payment_id.to_bytes(),
+            user_payment_id: tx.payment_id.user_data_as_bytes(),
             mined_in_block_height: 0,
         },
         Completed(tx) => TransactionInfo {
@@ -1368,7 +1485,8 @@ fn convert_wallet_transaction_into_transaction_info(
                 .first_kernel_excess_sig()
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
-            payment_id: tx.payment_id.to_bytes(),
+            raw_payment_id: tx.payment_id.to_bytes(),
+            user_payment_id: tx.payment_id.user_data_as_bytes(),
             mined_in_block_height: tx.mined_height.unwrap_or(0),
         },
     }

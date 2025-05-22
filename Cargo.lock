@@ -1005,6 +1005,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7caa3f9de89ddbe2c607f4101924c5abec803763ae9534e4f4d7d8f84aa81f0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5908,11 +5917,12 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "1.3.2"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09c347596479c4796192e68aec20e62e31655b57753586f2b1ec320b779ef14c"
+checksum = "deaa87bef86369a9bbe6165b78343886dfb42bdb282339a4198f1b6230363e0f"
 dependencies = [
  "bitflags 1.3.2",
+ "cmake",
  "libc",
  "thiserror 1.0.69",
 ]
