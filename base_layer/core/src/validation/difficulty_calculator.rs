@@ -28,6 +28,9 @@ use crate::{
     validation::{helpers::check_target_difficulty, ValidationError},
 };
 
+const TARI_RX_VM_KEY_BLOCK_SWAP: u64 = 2048;
+const TARI_RX_VM_KEY_REORG_SAFETY_NUMBER: u64 = 64;
+
 #[derive(Clone)]
 pub struct DifficultyCalculator {
     pub rules: ConsensusManager,
@@ -72,7 +75,9 @@ pub fn tari_rx_vm_key_height(height: u64) -> u64 {
     // The VM key is calculated from the block at height - (height % 2048) - 64
     // This is to ensure that the VM key is not too far in the past
     // and that it is not too close to the current block
-    height.saturating_sub(height % 2048).saturating_sub(64)
+    height
+        .saturating_sub(height % TARI_RX_VM_KEY_BLOCK_SWAP)
+        .saturating_sub(TARI_RX_VM_KEY_REORG_SAFETY_NUMBER)
 }
 
 #[cfg(test)]
