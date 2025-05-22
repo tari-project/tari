@@ -1273,7 +1273,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for tx in txs {
             match transaction_service.import_transaction(tx).await {
                 Ok(id) => {
-                    println!("Imported tx: {}", id);
                     tx_ids.push(id.into());
                 },
                 Err(e) => eprintln!("Could not import tx {}", e),
