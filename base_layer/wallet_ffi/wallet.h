@@ -2366,7 +2366,7 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
                                                int *error_out);
 
 /**
- * Gets the payment ID of a TariCompletedTransaction
+ * Gets the user payment ID of a TariCompletedTransaction in string format
  *
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
@@ -2380,8 +2380,46 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-char *completed_transaction_get_payment_id(TariCompletedTransaction *transaction,
-                                           int *error_out);
+char *completed_transaction_user_get_payment_id(TariCompletedTransaction *transaction,
+                                                int *error_out);
+
+/**
+ * Gets the user payment ID of a TariCompletedTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *completed_transaction_user_get_payment_id_as_bytes(TariCompletedTransaction *transaction,
+                                                                      int *error_out);
+
+/**
+ * Gets the payment ID of a TariCompletedTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariCompletedTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *completed_transaction_get_payment_id_as_bytes(TariCompletedTransaction *transaction,
+                                                                 int *error_out);
 
 /**
  * Extract the transaction type from a TariCompletedTransaction
@@ -2630,6 +2668,44 @@ const char *pending_outbound_transaction_get_payment_id(TariPendingOutboundTrans
                                                         int *error_out);
 
 /**
+ * Gets the user payment ID of a TariPendingOutboundTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariPendingOutboundTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *pending_outbound_transaction_user_get_payment_id_as_bytes(TariPendingOutboundTransaction *transaction,
+                                                                             int *error_out);
+
+/**
+ * Gets the payment ID of a TariPendingOutboundTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariPendingOutboundTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *pending_outbound_transaction_get_payment_id_as_bytes(TariPendingOutboundTransaction *transaction,
+                                                                        int *error_out);
+
+/**
  * Gets the status of a TariPendingOutboundTransaction
  *
  * ## Arguments
@@ -2759,6 +2835,44 @@ unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundT
  */
 const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransaction *transaction,
                                                        int *error_out);
+
+/**
+ * Gets the user payment ID of a TariPendingInboundTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariPendingInboundTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *pending_inbound_transaction_user_get_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
+                                                                            int *error_out);
+
+/**
+ * Gets the payment ID of a TariPendingInboundTransaction as bytes
+ *
+ * ## Arguments
+ * `transaction` - The pointer to a TariPendingInboundTransaction
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *pending_inbound_transaction_get_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
+                                                                       int *error_out);
 
 /**
  * Gets the status of a TariPendingInboundTransaction
