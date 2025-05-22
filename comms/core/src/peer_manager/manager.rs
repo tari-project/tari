@@ -41,8 +41,8 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 
-/// The PeerManager consist of a routing table of previously discovered peers.
-/// It also provides functionality to add, find and delete peers.
+/// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
+/// WAL-enabled SQLite database access and provides an async interface to the rest of the code base.
 #[derive(Clone)]
 pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
@@ -64,21 +64,13 @@ impl PeerManager {
 
     /// Get the number of peers in the PeerManager - any error will translate to a size of zero
     pub async fn count(&self) -> usize {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.count())
-            .await
-            .unwrap_or_else(|err| {
-                log::error!("Count task panicked: {}", err);
-                0
-            })
+        self.peer_storage_sql.count()
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
-        let peer_manager = self.clone();
-        let peer_id =
-            tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.add_or_update_peer(peer)).await??;
+        let peer_id = self.peer_storage_sql.add_or_update_peer(peer)?;
         #[cfg(feature = "metrics")]
         {
             let count = self.count().await;
@@ -90,9 +82,7 @@ impl PeerManager {
 
     /// The peer with the specified public_key will be removed from the PeerManager
     pub async fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.delete_peer(&node_id)).await??;
+        self.peer_storage_sql.delete_peer(node_id)?;
         #[cfg(feature = "metrics")]
         {
             let count = self.count().await;
@@ -104,70 +94,53 @@ impl PeerManager {
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
     pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let deleted_peers =
-            tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.delete_all_stale_peers()).await??;
+        let deleted_peers = self.peer_storage_sql.delete_all_stale_peers()?;
         Ok(deleted_peers)
     }
 
     /// Get all peers based on a list of their node_ids
     pub async fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_ids = node_ids.to_vec();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.get_peers_by_node_ids(&node_ids)).await?
+        self.peer_storage_sql.get_peers_by_node_ids(node_ids)
     }
 
     /// Get all banned peers
     pub async fn get_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.get_banned_peers()).await?
+        self.peer_storage_sql.get_banned_peers()
     }
 
     /// Find the peer with the provided NodeID
     pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.find_by_node_id(&node_id)).await?
+        self.peer_storage_sql.find_by_node_id(node_id)
     }
 
     /// gets all seed peers
     pub async fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.get_seed_peers()).await?
+        self.peer_storage_sql.get_seed_peers()
     }
 
     /// Find the peer with the provided PublicKey
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let public_key = public_key.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.find_by_public_key(&public_key)).await?
+        self.peer_storage_sql.find_by_public_key(public_key)
     }
 
     /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
     pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let partial = partial.to_vec();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.find_all_starts_with(&partial)).await?
+        self.peer_storage_sql.find_all_starts_with(partial)
     }
 
     /// Check if a peer exist using the specified public_key
     pub async fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
-        let peer_manager = self.clone();
-        let public_key = public_key.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_public_key(&public_key)).await?
+        self.peer_storage_sql.exists_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified node_id
     pub async fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.exists_node_id(&node_id)).await?
+        self.peer_storage_sql.exists_node_id(node_id)
     }
 
     /// Returns all peers
     pub async fn all(&self, features: Option<PeerFeatures>) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.all(features)).await?
+        self.peer_storage_sql.all(features)
     }
 
     /// Return "good" peers for syncing
@@ -182,14 +155,9 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let excluded_peers = excluded_peers.to_vec();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .discovery_syncing(n, &excluded_peers, features)
-        })
-        .await?
+        self
+            .peer_storage_sql
+            .discovery_syncing(n, excluded_peers, features)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -251,16 +219,11 @@ impl PeerManager {
 
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(
-            move || match peer_manager.peer_storage_sql.direct_identity_node_id(&node_id) {
-                Ok(peer) => Ok(Some(peer)),
-                Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
-                Err(err) => Err(err),
-            },
-        )
-        .await?
+        match self.peer_storage_sql.direct_identity_node_id(node_id) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     /// Get a peer matching the given public key
@@ -268,22 +231,16 @@ impl PeerManager {
         &self,
         public_key: &CommsPublicKey,
     ) -> Result<Option<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let public_key = public_key.clone();
-        tokio::task::spawn_blocking(move || {
-            match peer_manager.peer_storage_sql.direct_identity_public_key(&public_key) {
-                Ok(peer) => Ok(Some(peer)),
-                Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
-                Err(err) => Err(err),
-            }
-        })
-        .await?
+        match self.peer_storage_sql.direct_identity_public_key(public_key) {
+            Ok(peer) => Ok(Some(peer)),
+            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 
     /// Fetch all peers (except banned ones)
-    pub async fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.flood_peers()).await?
+    pub async fn get_not_banned_or_deleted_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.get_not_banned_or_deleted_peers()
     }
 
     /// Fetch n nearest active neighbours. If features are supplied, the function will return the closest peers matching
@@ -298,22 +255,15 @@ impl PeerManager {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        let excluded_peers = excluded_peers.to_vec();
-        let exclusion_distance = exclusion_distance.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager.peer_storage_sql.closest_n_active_peers(
-                &node_id,
-                n,
-                &excluded_peers,
-                features,
-                stale_peer_threshold,
-                exclude_if_all_address_failed,
-                exclusion_distance,
-            )
-        })
-        .await?
+        self.peer_storage_sql.closest_n_active_peers(
+            node_id,
+            n,
+            excluded_peers,
+            features,
+            stale_peer_threshold,
+            exclude_if_all_address_failed,
+            exclusion_distance,
+        )
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
@@ -322,47 +272,37 @@ impl PeerManager {
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .get_closest_n_good_standing_peers(n, features)
-        })
-        .await?
+        self
+            .peer_storage_sql
+            .get_closest_n_good_standing_peers(n, features)
     }
 
     /// Fetch n random peers that are Communication Nodes
     pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let excluded = excluded.to_vec();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.random_peers(n, &excluded)).await?
+        self.peer_storage_sql.random_peers(n, excluded)
     }
 
+    /// Calculate the region threshold for a given number of peers and features
     pub async fn calc_region_threshold(
         &self,
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.calc_region_threshold(n, features)).await?
+        self.peer_storage_sql.calc_region_threshold(n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
     pub async fn unban_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.unban_peer(&node_id)).await?
+        self.peer_storage_sql.unban_peer(node_id)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
     pub async fn unban_all_peers(&self) -> Result<usize, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.unban_all_peers()).await?
+        self.peer_storage_sql.unban_all_peers()
     }
 
     pub async fn reset_offline_non_wallet_peers(&self) -> Result<usize, PeerManagerError> {
-        let peer_manager = self.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.reset_offline_non_wallet_peers()).await?
+        self.peer_storage_sql.reset_offline_non_wallet_peers()
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -372,11 +312,7 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        let peer_manager = self.clone();
-        let public_key = public_key.clone();
-        let reason = reason.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.ban_peer(&public_key, duration, reason))
-            .await?
+        self.peer_storage_sql.ban_peer(public_key, duration, reason)
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -386,21 +322,13 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        let reason = reason.clone();
-        tokio::task::spawn_blocking(move || {
-            peer_manager
-                .peer_storage_sql
-                .ban_peer_by_node_id(&node_id, duration, reason)
-        })
-        .await?
+        self
+            .peer_storage_sql
+            .ban_peer_by_node_id(node_id, duration, reason)
     }
 
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.is_peer_banned(&node_id)).await?
+        self.peer_storage_sql.is_peer_banned(node_id)
     }
 
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
@@ -430,11 +358,7 @@ impl PeerManager {
         key: u8,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, PeerManagerError> {
-        let peer_manager = self.clone();
-        let node_id = node_id.clone();
-        let data = data.clone();
-        tokio::task::spawn_blocking(move || peer_manager.peer_storage_sql.set_peer_metadata(&node_id, key, data))
-            .await?
+        self.peer_storage_sql.set_peer_metadata(node_id, key, data)
     }
 }
 
@@ -549,7 +473,7 @@ mod test {
             .is_none());
 
         // Test Flood
-        let selected_peers = peer_manager.flood_peers().await.unwrap();
+        let selected_peers = peer_manager.get_not_banned_or_deleted_peers().await.unwrap();
         assert_eq!(selected_peers.len(), 18);
         for peer_identity in &selected_peers {
             assert!(!peer_manager

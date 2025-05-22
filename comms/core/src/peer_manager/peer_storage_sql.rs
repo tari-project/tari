@@ -186,7 +186,7 @@ impl PeerStorageSql {
     }
 
     /// Compile a list of all known peers
-    pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+    pub fn get_not_banned_or_deleted_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self
             .peer_db
             .get_n_not_banned_or_deleted_peers(PEER_MANAGER_SYNC_PEERS)?)
