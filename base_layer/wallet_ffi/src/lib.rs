@@ -895,7 +895,12 @@ pub unsafe extern "C" fn tari_utxo_get_raw_payment_id(utxo: *const TariUtxo, err
     let result = CString::new("").expect("Blank CString will not fail.");
     if utxo.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
-        return ptr::null_mut();
+        return result.into_raw();
+    }
+
+    if (*utxo).raw_payment_id.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("raw_payment_id".to_string())).code;
+        return CString::into_raw(result);
     }
 
     let payment_id_str = match CStr::from_ptr((*utxo).raw_payment_id).to_str() {
