@@ -149,7 +149,7 @@ pub struct BaseNodeConfig {
     // Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_health_check: Duration,
-    /// Wallet query HTTP service configuration
+    /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
 }
 
