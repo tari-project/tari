@@ -28,66 +28,23 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    GetAddressResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    ValidateRequest,
-    ValidateResponse,
-    GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse,
+    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse, GetBalanceRequest,
+    GetBalanceResponse, GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse,
+    GetCompleteAddressResponse, GetCompletedTransactionsRequest, GetCompletedTransactionsResponse,
+    GetConnectivityRequest, GetIdentityRequest, GetIdentityResponse, GetPaymentIdAddressRequest, GetStateRequest,
+    GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetUnspentAmountsResponse,
+    GetVersionRequest, GetVersionResponse, ImportUtxosRequest, ImportUtxosResponse, RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse, RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse, SetBaseNodeRequest, SetBaseNodeResponse, TransactionDirection, TransactionEvent,
+    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
+    TransferResponse, TransferResult, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -111,11 +68,7 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
+            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
         },
     },
 };
@@ -1021,7 +974,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(None, None, Some(block_height))
             .await
-            .map_err(|err| Status::not_found(format!("GetBlockHeightTransactions: Error found at block height {}: {:?}", block_height, err)))?;
+            .map_err(|err| {
+                Status::not_found(format!(
+                    "GetBlockHeightTransactions: Error found at block height {}: {:?}",
+                    block_height, err
+                ))
+            })?;
         debug!(
             target: LOG_TARGET,
             "GetBlockHeightTransactions: Found {} transactions at block height {}",
@@ -1211,11 +1169,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
+            .create_output_with_features(
+                1 * T,
+                OutputFeatures {
+                    output_type: OutputType::CodeTemplateRegistration,
+                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
