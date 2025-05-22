@@ -1507,7 +1507,10 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_bytes(
         return ptr::null_mut();
     }
     *error_out = 0;
-
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
     if bytes.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
         return ptr::null_mut();
@@ -1548,6 +1551,16 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_utf8(
         return ptr::null_mut();
     }
     *error_out = 0;
+
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    if utf8string.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("utf8string".to_string())).code;
+        return ptr::null_mut();
+    }
 
     let utf8_str = match CStr::from_ptr(utf8string).to_str() {
         Ok(v) => v.to_owned(),

@@ -489,7 +489,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
-        let payment_id = if let Some(user_pay_id) = message.user_payment_id {
+        let payment_id = if !message.raw_payment_id.is_empty() {
+            PaymentId::from_bytes(&message.raw_payment_id)
+        } else if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
                 user_pay_id.utf8_string.is_empty(),
