@@ -4742,12 +4742,12 @@ pub unsafe extern "C" fn completed_transaction_user_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
+    let payment_id = (*transaction).payment_id.clone();
     match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
@@ -4782,11 +4782,11 @@ pub unsafe extern "C" fn completed_transaction_user_get_payment_id_as_bytes(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.user_data_as_bytes();
 
@@ -4817,11 +4817,11 @@ pub unsafe extern "C" fn completed_transaction_get_payment_id_as_bytes(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.to_bytes();
 
@@ -5270,13 +5270,13 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
 
+    let payment_id = (*transaction).payment_id.clone();
     match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
@@ -5311,11 +5311,11 @@ pub unsafe extern "C" fn pending_outbound_transaction_user_get_payment_id_as_byt
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.user_data_as_bytes();
 
@@ -5346,11 +5346,11 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id_as_bytes(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.to_bytes();
 
@@ -5558,12 +5558,12 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     let mut result = CString::new("").expect("Blank CString will not fail.");
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return result.into_raw();
     }
+    let payment_id = (*transaction).payment_id.clone();
 
     match CString::new(payment_id.user_data_as_string()) {
         Ok(v) => result = v,
@@ -5599,11 +5599,11 @@ pub unsafe extern "C" fn pending_inbound_transaction_user_get_payment_id_as_byte
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.user_data_as_bytes();
 
@@ -5634,11 +5634,11 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id_as_bytes(
     }
     *error_out = 0;
 
-    let payment_id = (*transaction).payment_id.clone();
     if transaction.is_null() {
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return ptr::null_mut();
     }
+    let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id.to_bytes();
 

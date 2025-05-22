@@ -710,7 +710,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 };
                 PaymentId::Open {
                     user_data: bytes,
-                    tx_type: TxType::ClaimAtomicSwap,
+                    tx_type: TxType::PaymentToOther,
                 }
             } else {
                 PaymentId::Empty
