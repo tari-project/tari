@@ -1259,16 +1259,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<ImportTransactionsRequest>,
     ) -> Result<Response<ImportTransactionsResponse>, Status> {
         let request = request.into_inner();
-        let file_contents = std::fs::read_to_string(request.file_path)
-            .map_err(|_| Status::invalid_argument("File path is malformed!"))?;
-        let mut txs: Vec<WalletTransaction> = Vec::new();
-        for line in file_contents.lines() {
-            serde_json::from_str(line)
-                .map(|tx| txs.push(tx))
-                .map_err(|_| Status::invalid_argument("File path is malformed!"))?;
-        }
-        let mut transaction_service = self.get_transaction_service();
+        let txs: Vec<WalletTransaction> = serde_json::from_str(&request.txs)
+            .map_err(|_| Status::invalid_argument("Could not parse transactions. Use valid JSON format."))?;
+        info!(target: LOG_TARGET, "Importing {:?} transactions", txs.len());
 
+        let mut transaction_service = self.get_transaction_service();
         let mut tx_ids = Vec::new();
         for tx in txs {
             match transaction_service.import_transaction(tx).await {
