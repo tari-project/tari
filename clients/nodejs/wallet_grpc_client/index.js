@@ -90,10 +90,10 @@ module.exports = {
   types: tariGrpc,
 };
 
-(async () => {
-    const a = Client.connect('localhost:18143');
-    const {version} = await a.getVersion();
-    console.log(version);
-    const resp = await a.GetBlockHeightTransactions({block_height: 1550});
-    console.log(resp);
-})()
+// (async () => {
+//     const a = Client.connect('localhost:18143');
+//     const {version} = await a.getVersion();
+//     console.log(version);
+//     const resp = await a.GetBlockHeightTransactions({block_height: 1550});
+//     console.log(resp);
+// })()
