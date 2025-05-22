@@ -229,15 +229,12 @@ where
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
                 if let Some(address) = source_peer.last_address_used() {
-                    let public_key = public_key.clone();
-                    let address = address.clone();
-                    let peer_manager = self.peer_manager.clone();
-
-                    // tokio::task::spawn_blocking is used herr to offload the blocking operation to a separate thread
-                    // pool, ensuring that the async event loop remains responsive.
-                    peer_manager
-                        .update_peer_address_latency_and_last_seen(&public_key, &address, maybe_latency)
-                        .await?;
+                    let mut peer_to_update = source_peer.clone();
+                    if let Some(val) = maybe_latency {
+                        peer_to_update.addresses.update_latency(&address, val);
+                    }
+                    peer_to_update.addresses.mark_last_seen_now(&address);
+                    self.peer_manager.add_or_update_peer(peer_to_update).await?;
                 }
             },
         }

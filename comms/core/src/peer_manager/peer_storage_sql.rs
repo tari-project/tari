@@ -23,8 +23,10 @@
 use std::{cmp::min, time::Duration};
 
 use log::*;
+use multiaddr::Multiaddr;
 
 use crate::{
+    net_address::PeerAddressSource,
     peer_manager::{
         database::{PeerDatabaseSql, ThisPeerIdentity},
         peer::Peer,
@@ -76,10 +78,25 @@ impl PeerStorageSql {
         self.peer_db.size()
     }
 
-    /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
-    /// exists, the stored version will be replaced with the newly provided peer.
+    /// Adds or updates a peer and sets the last connection as successful.
+    /// If the peer is marked as offline, it will be unmarked.
     pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
         Ok(self.peer_db.add_or_update_peer(peer)?)
+    }
+
+    /// Adds a peer an online peer if the peer does not already exist. When a peer already
+    /// exists, the stored version will be replaced with the newly provided peer.
+    pub fn add_or_update_online_peer(
+        &self,
+        pubkey: &CommsPublicKey,
+        node_id: &NodeId,
+        addresses: &[Multiaddr],
+        peer_features: &PeerFeatures,
+        source: &PeerAddressSource,
+    ) -> Result<Peer, PeerManagerError> {
+        Ok(self
+            .peer_db
+            .add_or_update_online_peer(pubkey, node_id, addresses, peer_features, source)?)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
@@ -89,13 +106,21 @@ impl PeerStorageSql {
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
+    pub fn get_peer_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_peer_by_node_id(node_id)?)
     }
 
     /// Get all peers based on a list of their node_ids
     pub fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_peers_by_node_ids(node_ids)?)
+    }
+
+    /// Get all peers based on a list of their node_ids
+    pub fn get_peer_public_keys_by_node_ids(
+        &self,
+        node_ids: &[NodeId],
+    ) -> Result<Vec<CommsPublicKey>, PeerManagerError> {
+        Ok(self.peer_db.get_peer_public_keys_by_node_ids(node_ids)?)
     }
 
     /// Get all banned peers
@@ -133,7 +158,7 @@ impl PeerStorageSql {
     /// Return the peer by corresponding to the provided NodeId if it is not banned
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         let peer = self
-            .find_by_node_id(node_id)?
+            .get_peer_by_node_id(node_id)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
 
         if peer.is_banned() {
@@ -195,7 +220,7 @@ impl PeerStorageSql {
     /// Compile a list of closest `n` active peers
     pub fn closest_n_active_peers(
         &self,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
@@ -204,7 +229,7 @@ impl PeerStorageSql {
         exclusion_distance: Option<NodeDistance>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_closest_n_active_peers(
-            node_id,
+            region_node_id,
             n,
             excluded_peers,
             features,
@@ -325,7 +350,7 @@ impl PeerStorageSql {
 
     pub fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         let peer = self
-            .find_by_node_id(node_id)?
+            .get_peer_by_node_id(node_id)?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         Ok(peer.is_banned())
     }
@@ -546,15 +571,27 @@ mod test {
         );
 
         assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
+            peer_storage
+                .get_peer_by_node_id(&peer1.node_id)
+                .unwrap()
+                .unwrap()
+                .node_id,
             peer1.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
+            peer_storage
+                .get_peer_by_node_id(&peer2.node_id)
+                .unwrap()
+                .unwrap()
+                .node_id,
             peer2.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer3.node_id).unwrap().unwrap().node_id,
+            peer_storage
+                .get_peer_by_node_id(&peer3.node_id)
+                .unwrap()
+                .unwrap()
+                .node_id,
             peer3.node_id
         );
 
@@ -592,15 +629,23 @@ mod test {
             .is_some());
 
         assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
+            peer_storage
+                .get_peer_by_node_id(&peer1.node_id)
+                .unwrap()
+                .unwrap()
+                .node_id,
             peer1.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
+            peer_storage
+                .get_peer_by_node_id(&peer2.node_id)
+                .unwrap()
+                .unwrap()
+                .node_id,
             peer2.node_id
         );
         assert!(peer_storage
-            .find_by_node_id(&peer3.node_id)
+            .get_peer_by_node_id(&peer3.node_id)
             .unwrap()
             .unwrap()
             .deleted_at

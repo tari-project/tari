@@ -37,12 +37,11 @@ use diesel::{
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use log::{trace, warn};
 use multiaddr::Multiaddr;
-use rand::prelude::SliceRandom;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_utilities::{hex, hex::Hex};
 
 use crate::{
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats},
+    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         generate_peer_id_as_i64,
         peer_id::peer_id_from_i64,
@@ -447,32 +446,67 @@ impl PeerDatabaseSql {
     // ==============================================================================================================
 
     /// Add a new peer or update an existing peer with its associated multi-addresses
-    pub fn add_or_update_peer(&self, mut peer: Peer) -> Result<PeerId, StorageError> {
+    pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
+
         conn.transaction::<_, StorageError, _>(|conn| {
             let node_id = peer.node_id.clone();
-            match self.peer_exists_by_node_id_inner(&node_id, conn) {
-                Ok(Some(peer_id)) => {
-                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", peer.node_id);
-                    // Replace existing entry
-                    peer.set_id(peer_id);
-                    let mut existing_peer = match self.get_peer_by_node_id_inner(&node_id, conn)? {
-                        Some(peer) => peer,
-                        None => return Err(StorageError::DatabaseStateChanged),
-                    };
+
+            match self.get_peer_by_node_id_inner(&node_id, conn)? {
+                Some(mut existing_peer) => {
+                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", node_id);
                     existing_peer.merge(&peer);
-                    self.update_peer_inner(existing_peer, conn)?;
-                    Ok(peer_id)
+                    self.update_peer_inner(existing_peer.clone(), conn)?;
+                    Ok(existing_peer.id.unwrap_or_default())
                 },
-                Ok(None) => {
-                    // Add new entry
-                    trace!(target: LOG_TARGET, "Adding peer with node id '{}'", peer.node_id);
-                    let new_peer_sql = self.add_peer_sql(peer.clone())?;
+                None => {
+                    trace!(target: LOG_TARGET, "Adding peer with node id '{}'", node_id);
+                    let new_peer_sql = self.add_peer_sql(peer)?;
                     let peer_id = self.add_peer_to_db_inner(new_peer_sql, conn)?;
-                    peer.set_id(peer_id);
                     Ok(peer_id)
                 },
-                Err(err) => Err(err),
+            }
+        })
+    }
+
+    /// Adds or updates a peer and sets the last connection as successful.
+    /// If the peer is marked as offline, it will be unmarked.
+    pub fn add_or_update_online_peer(
+        &self,
+        pubkey: &CommsPublicKey,
+        node_id: &NodeId,
+        addresses: &[Multiaddr],
+        peer_features: &PeerFeatures,
+        source: &PeerAddressSource,
+    ) -> Result<Peer, StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        conn.transaction::<_, StorageError, _>(|conn| {
+            match self.get_peer_by_node_id_inner(node_id, conn)? {
+                Some(mut peer) => {
+                    // Update existing
+                    peer.addresses.update_addresses(addresses, source);
+                    peer.features = *peer_features;
+                    self.update_peer_inner(peer.clone(), conn)?;
+                    Ok(peer)
+                },
+                None => {
+                    // Create new
+                    let new_peer = Peer::new(
+                        pubkey.clone(),
+                        node_id.clone(),
+                        MultiaddressesWithStats::from_addresses_with_source(addresses.to_vec(), source),
+                        PeerFlags::default(),
+                        *peer_features,
+                        Default::default(),
+                        Default::default(),
+                    );
+                    let new_peer_sql = self.add_peer_sql(new_peer.clone())?;
+                    let peer_id = self.add_peer_to_db_inner(new_peer_sql, conn)?;
+                    let mut peer = new_peer;
+                    peer.set_id(peer_id);
+                    Ok(peer)
+                },
             }
         })
     }
@@ -483,7 +517,10 @@ impl PeerDatabaseSql {
             peer_id: generate_peer_id_as_i64(),
             public_key: peer.public_key.to_hex(),
             node_id: peer.node_id.to_hex(),
-            distance_to_self: self.this_peer_identity.node_id.distance(&peer.node_id).to_string(),
+            distance_to_self: format!(
+                "{:032}",
+                self.this_peer_identity.node_id.distance(&peer.node_id).as_u128()
+            ),
             flags: peer.flags.to_i32(),
             banned_until: peer.banned_until,
             banned_reason: Some(peer.banned_reason.clone()),
@@ -1121,6 +1158,23 @@ impl PeerDatabaseSql {
         self.get_peers_by_node_ids_str(&node_ids_hex, &mut conn)
     }
 
+    /// Get all peers based on a list of their node_ids
+    pub fn get_peer_public_keys_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<CommsPublicKey>, StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        let node_ids = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+        let public_keys = peers::table
+            .filter(peers::node_id.eq_any(node_ids))
+            .select(peers::public_key)
+            .load::<String>(&mut conn)?;
+        let public_keys = public_keys
+            .iter()
+            .map(|p| CommsPublicKey::from_hex(p))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(public_keys)
+    }
+
     pub fn get_peers_by_node_ids_str(
         &self,
         node_ids: &[String],
@@ -1173,16 +1227,18 @@ impl PeerDatabaseSql {
     pub fn get_addresses(&self, node_id: &NodeId) -> Result<MultiaddressesWithStats, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let node_id = node_id.to_hex();
-        let peer_id = peers::table
-            .filter(peers::node_id.eq(node_id))
-            .select(peers::peer_id)
-            .first::<i64>(&mut conn)?;
-        let addresses_query: Vec<NewMultiaddrWithStatsSql> = multi_addresses::table
-            .filter(multi_addresses::peer_id.eq(peer_id))
-            .load::<NewMultiaddrWithStatsSql>(&mut conn)?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_id = node_id.to_hex();
+            let peer_id = peers::table
+                .filter(peers::node_id.eq(node_id))
+                .select(peers::peer_id)
+                .first::<i64>(conn)?;
+            let addresses_query: Vec<NewMultiaddrWithStatsSql> = multi_addresses::table
+                .filter(multi_addresses::peer_id.eq(peer_id))
+                .load::<NewMultiaddrWithStatsSql>(conn)?;
 
-        MultiaddressesWithStats::try_from(addresses_query)
+            MultiaddressesWithStats::try_from(addresses_query)
+        })
     }
 
     // Get the closest `n` not failed, banned or deleted node ids, ordered by their distance to the given node ID.
@@ -1213,6 +1269,10 @@ impl PeerDatabaseSql {
             )));
         }
 
+        query = query
+            .order_by(peers::distance_to_self.asc())
+            .limit(i64::try_from(n).unwrap_or(i64::MAX));
+
         // Note: To debug the SQL query, uncomment the following lines:
         // --------------------------------
         // use diesel::{debug_query, sqlite::Sqlite};
@@ -1220,19 +1280,14 @@ impl PeerDatabaseSql {
         // println!("SQL Query: {}", debug_query::<Sqlite, _>(&query));
         // --------------------------------
 
-        let nodes = query.select(peers::node_id).load::<String>(conn)?;
+        let nodes_ids_hex = query.select(peers::node_id).load::<String>(conn)?;
 
-        // Step 2: Sort not failed node_ids in Rust
-        let mut filtered_node_ids = nodes
+        let nodes_ids = nodes_ids_hex
             .into_iter()
             .filter_map(|v| NodeId::from_hex(&v).ok())
             .collect::<Vec<_>>();
 
-        let region_node_id = self.this_peer_identity().node_id;
-        filtered_node_ids.sort_by_key(|a| a.distance(&region_node_id));
-        filtered_node_ids.truncate(n);
-
-        Ok(filtered_node_ids)
+        Ok(nodes_ids)
     }
 
     /// Get the closest `n` not failed, banned or deleted node ids, ordered by their distance to the given node ID.
@@ -1257,23 +1312,21 @@ impl PeerDatabaseSql {
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let node_ids = self.get_closest_n_good_standing_peer_node_ids_inner(n, features, &mut conn)?;
 
-        let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-        let results = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::node_id.eq_any(node_ids_hex))
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_ids = self.get_closest_n_good_standing_peer_node_ids_inner(n, features, conn)?;
 
-        let mut peers = PeerDatabaseSql::peers_from_join_query(results)?;
-        let region_node_id = self.this_peer_identity().node_id;
-        peers.sort_by(|a, b| {
-            a.node_id
-                .distance(&region_node_id)
-                .cmp(&b.node_id.distance(&region_node_id))
-        });
+            let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+            let results = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(peers::node_id.eq_any(node_ids_hex))
+                .order_by(peers::distance_to_self.asc())
+                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
 
-        Ok(peers)
+            let peers = PeerDatabaseSql::peers_from_join_query(results)?;
+
+            Ok(peers)
+        })
     }
 
     // Get the closest `n` active peer ids (have been seen, optionally within a threshold, not banned, not deleted,
@@ -1284,8 +1337,9 @@ impl PeerDatabaseSql {
         features: Option<PeerFeatures>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
+        n: Option<usize>,
+        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<String>, StorageError> {
-        let mut conn = self.connection.get_pooled_connection()?;
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
 
         // Step 1: Retrieve relevant node_ids
@@ -1321,6 +1375,12 @@ impl PeerDatabaseSql {
             }
         }
 
+        if let Some(n) = n {
+            query = query
+                .order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"))
+                .limit(i64::try_from(n).unwrap_or(i64::MAX));
+        }
+
         // Note: To debug the SQL query, uncomment the following lines:
         // --------------------------------
         // use diesel::{debug_query, sqlite::Sqlite};
@@ -1328,13 +1388,13 @@ impl PeerDatabaseSql {
         // println!("SQL Query: {}", debug_query::<Sqlite, _>(&query));
         // --------------------------------
 
-        let node_ids_hex = query.select(peers::node_id).load::<String>(&mut conn)?;
+        let node_ids_hex = query.select(peers::node_id).load::<String>(conn)?;
 
         Ok(node_ids_hex)
     }
 
     /// Get the closest `n` active peers (have been seen, optionally within a threshold, not banned, not deleted,
-    /// optional features), ordered by their distance to the given node ID.
+    /// optional features), ordered by their distance to the given region node ID.
     pub fn get_closest_n_active_peers(
         &self,
         region_node_id: &NodeId,
@@ -1351,37 +1411,40 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let node_ids_hex = self.get_active_peer_node_ids(
-            excluded_peers,
-            features,
-            stale_peer_threshold,
-            exclude_if_all_address_failed,
-        )?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_ids_hex = self.get_active_peer_node_ids(
+                excluded_peers,
+                features,
+                stale_peer_threshold,
+                exclude_if_all_address_failed,
+                None,
+                conn,
+            )?;
 
-        // Step 2: Filter and sort node_ids in Rust
-        let mut node_ids = node_ids_hex
-            .into_iter()
-            .filter_map(|id| NodeId::from_hex(&id).ok())
-            .filter(|id| {
-                exclusion_distance
-                    .clone()
-                    .map(|d| id.distance(region_node_id) < d)
-                    .unwrap_or(true)
-            })
-            .collect::<Vec<_>>();
-        node_ids.sort_by_key(|a| a.distance(region_node_id));
-        node_ids.truncate(n);
+            let mut node_ids = node_ids_hex
+                .into_iter()
+                .filter_map(|id| NodeId::from_hex(&id).ok())
+                .filter(|id| {
+                    exclusion_distance
+                        .clone()
+                        .map(|d| id.distance(region_node_id) < d)
+                        .unwrap_or(true)
+                })
+                .collect::<Vec<_>>();
+            node_ids.sort_by_key(|a| a.distance(region_node_id));
+            node_ids.truncate(n);
 
-        let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-        let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, &mut conn)?;
+            let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+            let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, conn)?;
 
-        peers.sort_by(|a, b| {
-            a.node_id
-                .distance(region_node_id)
-                .cmp(&b.node_id.distance(region_node_id))
-        });
+            peers.sort_by(|a, b| {
+                a.node_id
+                    .distance(region_node_id)
+                    .cmp(&b.node_id.distance(region_node_id))
+            });
 
-        Ok(peers)
+            Ok(peers)
+        })
     }
 
     /// Get `n` active random peers, ordered by their distance to the given node ID.
@@ -1398,12 +1461,12 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let mut node_ids_hex = self.get_active_peer_node_ids(excluded_peers, features, stale_peer_threshold, true)?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_ids_hex =
+                self.get_active_peer_node_ids(excluded_peers, features, stale_peer_threshold, true, Some(n), conn)?;
 
-        node_ids_hex.shuffle(&mut rand::thread_rng());
-        node_ids_hex.truncate(n);
-
-        self.get_peers_by_node_ids_str(&node_ids_hex, &mut conn)
+            self.get_peers_by_node_ids_str(&node_ids_hex, conn)
+        })
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
@@ -1550,10 +1613,7 @@ impl PeerDatabaseSql {
                 .collect::<Vec<_>>();
             remaining_wallets.sort_by_key(|a| a.distance(&self.this_peer_identity.node_id));
             let surplus_wallets = remaining_wallets.iter().skip(neighbours_count).collect::<Vec<_>>();
-            let surplus_wallets_hex = surplus_wallets
-                .iter()
-                .map(|id| id.to_hex())
-                .collect::<Vec<_>>();
+            let surplus_wallets_hex = surplus_wallets.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
 
             diesel::delete(
                 multi_addresses::table.filter(

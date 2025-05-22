@@ -741,8 +741,8 @@ impl DhtActor {
         };
 
         let mut filtered_peers = Vec::with_capacity(peers.len());
-        for id in &peers {
-            let addresses = peer_manager.get_peer_multi_addresses(id).await?;
+        let peer_addresses = peer_manager.get_peers_multi_addresses(&peers).await?;
+        for (id, addresses) in &peer_addresses {
             if addresses.iter().all(|addr| {
                 config
                     .excluded_dial_addresses
@@ -774,7 +774,7 @@ impl DhtActor {
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
     async fn select_closest_peers_for_propagation(
         peer_manager: &PeerManager,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
@@ -788,7 +788,7 @@ impl DhtActor {
         // - it is not in the exclusion list in closest_request
         let peers = peer_manager
             .closest_n_active_peers(
-                node_id,
+                region_node_id,
                 n,
                 excluded_peers,
                 Some(features),

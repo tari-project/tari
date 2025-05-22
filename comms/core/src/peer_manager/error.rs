@@ -70,6 +70,8 @@ pub enum PeerManagerError {
     HexError(String),
     #[error("Tokio task join error: `{0}`")]
     JoinError(String),
+    #[error("Process error: `{0}`")]
+    ProcessError(String),
 }
 
 impl From<JoinError> for PeerManagerError {

@@ -29,7 +29,7 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::{Peer, PeerFlags},
+        peer::Peer,
         peer_id::PeerId,
         peer_storage_sql::PeerStorageSql,
         NodeDistance,
@@ -103,6 +103,14 @@ impl PeerManager {
         self.peer_storage_sql.get_peers_by_node_ids(node_ids)
     }
 
+    /// Get all peers based on a list of their node_ids
+    pub async fn get_peer_public_keys_by_node_ids(
+        &self,
+        node_ids: &[NodeId],
+    ) -> Result<Vec<CommsPublicKey>, PeerManagerError> {
+        self.peer_storage_sql.get_peer_public_keys_by_node_ids(node_ids)
+    }
+
     /// Get all banned peers
     pub async fn get_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.get_banned_peers()
@@ -110,7 +118,7 @@ impl PeerManager {
 
     /// Find the peer with the provided NodeID
     pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        self.peer_storage_sql.find_by_node_id(node_id)
+        self.peer_storage_sql.get_peer_by_node_id(node_id)
     }
 
     /// gets all seed peers
@@ -155,9 +163,7 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self
-            .peer_storage_sql
-            .discovery_syncing(n, excluded_peers, features)
+        self.peer_storage_sql.discovery_syncing(n, excluded_peers, features)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -165,56 +171,13 @@ impl PeerManager {
     pub async fn add_or_update_online_peer(
         &self,
         pubkey: &CommsPublicKey,
-        node_id: NodeId,
-        addresses: Vec<Multiaddr>,
-        peer_features: PeerFeatures,
+        node_id: &NodeId,
+        addresses: &[Multiaddr],
+        peer_features: &PeerFeatures,
         source: &PeerAddressSource,
     ) -> Result<Peer, PeerManagerError> {
-        match self.find_by_public_key(pubkey).await {
-            Ok(Some(mut peer)) => {
-                peer.addresses.update_addresses(&addresses, source);
-                peer.features = peer_features;
-                self.add_or_update_peer(peer.clone()).await?;
-                Ok(peer)
-            },
-            Ok(None) => {
-                self.add_or_update_peer(Peer::new(
-                    pubkey.clone(),
-                    node_id,
-                    MultiaddressesWithStats::from_addresses_with_source(addresses, source),
-                    PeerFlags::default(),
-                    peer_features,
-                    Default::default(),
-                    Default::default(),
-                ))
-                .await?;
-
-                self.find_by_public_key(pubkey)
-                    .await?
-                    .ok_or(PeerManagerError::PeerNotFoundError)
-            },
-            Err(err) => Err(err),
-        }
-    }
-
-    pub async fn update_peer_address_latency_and_last_seen(
-        &self,
-        pubkey: &CommsPublicKey,
-        address: &Multiaddr,
-        latency: Option<Duration>,
-    ) -> Result<(), PeerManagerError> {
-        match self.find_by_public_key(pubkey).await {
-            Ok(Some(mut peer)) => {
-                if let Some(val) = latency {
-                    peer.addresses.update_latency(address, val);
-                }
-                peer.addresses.mark_last_seen_now(address);
-                self.add_or_update_peer(peer.clone()).await?;
-                Ok(())
-            },
-            Ok(None) => Err(PeerManagerError::PeerNotFoundError),
-            Err(err) => Err(err),
-        }
+        self.peer_storage_sql
+            .add_or_update_online_peer(pubkey, node_id, addresses, peer_features, source)
     }
 
     /// Get a peer matching the given node ID
@@ -247,7 +210,7 @@ impl PeerManager {
     /// that feature
     pub async fn closest_n_active_peers(
         &self,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
@@ -256,7 +219,7 @@ impl PeerManager {
         exclusion_distance: Option<NodeDistance>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers(
-            node_id,
+            region_node_id,
             n,
             excluded_peers,
             features,
@@ -272,9 +235,7 @@ impl PeerManager {
         n: usize,
         features: PeerFeatures,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self
-            .peer_storage_sql
-            .get_closest_n_good_standing_peers(n, features)
+        self.peer_storage_sql.get_closest_n_good_standing_peers(n, features)
     }
 
     /// Fetch n random peers that are Communication Nodes
@@ -322,15 +283,15 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        self
-            .peer_storage_sql
-            .ban_peer_by_node_id(node_id, duration, reason)
+        self.peer_storage_sql.ban_peer_by_node_id(node_id, duration, reason)
     }
 
+    /// Get the ban status of a peer
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         self.peer_storage_sql.is_peer_banned(node_id)
     }
 
+    /// Get the peer's features
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
         let peer = self
             .find_by_node_id(node_id)
@@ -339,6 +300,7 @@ impl PeerManager {
         Ok(peer.features)
     }
 
+    /// Get a peer's multiaddresses
     pub async fn get_peer_multi_addresses(
         &self,
         node_id: &NodeId,
@@ -348,6 +310,24 @@ impl PeerManager {
             .await?
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         Ok(peer.addresses)
+    }
+
+    /// Get multiple peers' multiaddresses
+    pub async fn get_peers_multi_addresses(
+        &self,
+        node_ids: &[NodeId],
+    ) -> Result<Vec<(NodeId, MultiaddressesWithStats)>, PeerManagerError> {
+        if node_ids.is_empty() {
+            return Err(PeerManagerError::ProcessError(
+                "NodeId list cannot be empty".to_string(),
+            ));
+        }
+        let peers = self.get_peers_by_node_ids(node_ids).await?;
+        if peers.is_empty() {
+            return Err(PeerManagerError::PeerNotFoundError);
+        }
+        let results = peers.into_iter().map(|p| (p.node_id, p.addresses)).collect::<Vec<_>>();
+        Ok(results)
     }
 
     /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
@@ -373,6 +353,8 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
     use rand::{rngs::OsRng, Rng};
+
+    use crate::peer_manager::PeerFlags;
     let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let node_id = NodeId::from_key(&pk);
     let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
@@ -663,9 +645,9 @@ mod test {
         let peer = peer_manager
             .add_or_update_online_peer(
                 &peer.public_key,
-                peer.node_id,
-                vec![],
-                peer.features,
+                &peer.node_id,
+                &[],
+                &peer.features,
                 &PeerAddressSource::Config,
             )
             .await

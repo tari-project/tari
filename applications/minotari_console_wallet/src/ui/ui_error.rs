@@ -25,7 +25,7 @@ use minotari_wallet::{
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
-use tari_comms::connectivity::ConnectivityError;
+use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -46,6 +46,8 @@ pub enum UiError {
     WalletError(#[from] WalletError),
     #[error(transparent)]
     WalletStorageError(#[from] WalletStorageError),
+    #[error(transparent)]
+    PeerManagerError(#[from] PeerManagerError),
     #[error("Could not convert string into Public Key")]
     PublicKeyParseError,
     #[error("Could not convert string into Net Address")]

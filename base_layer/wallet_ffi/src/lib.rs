@@ -6016,15 +6016,14 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
     let mut connectivity = (*wallet).wallet.comms.connectivity();
     let peer_manager = (*wallet).wallet.comms.peer_manager();
 
-    #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
         let connections = connectivity.get_active_connections().await?;
-        let mut public_keys = Vec::with_capacity(connections.len());
-        for conn in connections {
-            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
-                public_keys.push(peer.public_key);
-            }
-        }
+        let node_ids = connections
+            .iter()
+            .map(|c| c.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let public_keys = peer_manager.get_peer_public_keys_by_node_ids(&node_ids).await?;
         Result::<_, WalletError>::Ok(public_keys)
     }) {
         Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
