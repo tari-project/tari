@@ -72,12 +72,11 @@ impl DifficultyCalculator {
 }
 
 pub fn tari_rx_vm_key_height(height: u64) -> u64 {
-    // The VM key is calculated from the block at height - (height % 2048) - 64
-    // This is to ensure that the VM key is not too far in the past
-    // and that it is not too close to the current block
-    height
-        .saturating_sub(height % TARI_RX_VM_KEY_BLOCK_SWAP)
-        .saturating_sub(TARI_RX_VM_KEY_REORG_SAFETY_NUMBER)
+    if height <= TARI_RX_VM_KEY_BLOCK_SWAP + TARI_RX_VM_KEY_REORG_SAFETY_NUMBER {
+        0
+    } else {
+        (height - TARI_RX_VM_KEY_REORG_SAFETY_NUMBER - 1) & !(TARI_RX_VM_KEY_BLOCK_SWAP - 1)
+    }
 }
 
 #[cfg(test)]
@@ -99,27 +98,27 @@ mod test {
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
         let height = 2048;
-        let expected = 1984;
+        let expected = 0;
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
         let height = 3048;
-        let expected = 1984;
+        let expected = 2048;
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
         let height = 4000;
-        let expected = 1984;
+        let expected = 2048;
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
-        let height = 4095;
-        let expected = 1984;
+        let height = 4159;
+        let expected = 2048;
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
-        let height = 4096;
-        let expected = 4032;
+        let height = 4160;
+        let expected = 2048;
         assert_eq!(tari_rx_vm_key_height(height), expected);
 
-        let height = 4097;
-        let expected = 4032;
+        let height = 4161;
+        let expected = 4096;
         assert_eq!(tari_rx_vm_key_height(height), expected);
     }
 }
