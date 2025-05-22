@@ -355,7 +355,7 @@ impl From<DbWalletOutput> for TariUtxo {
             raw_payment_id: CString::new(format!("{}", x.payment_id))
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
-            user_payment_id: CString::new(format!("{}", x.payment_id.user_data_as_string()))
+            user_payment_id: CString::new(x.payment_id.user_data_as_string())
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
@@ -1458,7 +1458,8 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 /// if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```public_key_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariWalletAddress {
     if error_out.is_null() {
@@ -1473,6 +1474,92 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
     let v = (*bytes).0.clone();
     let address = TariWalletAddress::from_bytes(&v);
     match address {
+        Ok(address) => Box::into_raw(Box::new(address)),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a ByteVector
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `bytes` - The pointer to a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_create_with_payment_id_bytes(
+    address: *mut TariWalletAddress,
+    bytes: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariWalletAddress {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if bytes.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("bytes".to_string())).code;
+        return ptr::null_mut();
+    }
+    let v = (*bytes).0.clone();
+    let new_address = (*address).with_payment_id_user_data(v);
+    match new_address {
+        Ok(address) => Box::into_raw(Box::new(address)),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a utf8 string
+///
+/// ## Arguments
+/// `address` - The pointer to a TariWalletAddress
+/// `utf8string` - The pointer to a char array which is base58 encoded
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_create_with_payment_id_utf8(
+    address: *mut TariWalletAddress,
+    utf8string: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariWalletAddress {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    let utf8_str = match CStr::from_ptr(utf8string).to_str() {
+        Ok(v) => v.to_owned(),
+        _ => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("utf8 string".to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    let v = utf8_str.as_bytes().to_vec();
+    let new_address = (*address).with_payment_id_user_data(v);
+    match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
@@ -1533,7 +1620,7 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 /// Creates a TariWalletAddress from a char array
 ///
 /// ## Arguments
-/// `address` - The pointer to a char array which is hex encoded
+/// `address` - The pointer to a char array which is base58 encoded
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -12137,10 +12224,10 @@ mod test {
                     CStr::from_ptr(utxo.coinbase_extra).to_str().unwrap()
                 );
                 string_destroy(coinbase_extra);
-                let payment_id = tari_utxo_get_payment_id(utxo, error_ptr);
+                let payment_id = tari_utxo_get_raw_payment_id(utxo, error_ptr);
                 assert_eq!(
                     CStr::from_ptr(payment_id).to_str().unwrap(),
-                    CStr::from_ptr(utxo.payment_id).to_str().unwrap()
+                    CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap()
                 );
                 string_destroy(payment_id);
                 let mined_in_block = tari_utxo_get_mined_in_block(utxo, error_ptr);
@@ -12743,7 +12830,7 @@ mod test {
             );
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
-                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
                 assert_eq!(
                     OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
                     OutputStatus::EncumberedToBeReceived
@@ -13022,7 +13109,7 @@ mod test {
             );
             let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
             for (utxo, utxo_from_db) in utxos.iter().zip(utxos_from_db.iter()) {
-                let payment_id_c_str: &str = CStr::from_ptr(utxo.payment_id).to_str().unwrap();
+                let payment_id_c_str: &str = CStr::from_ptr(utxo.raw_payment_id).to_str().unwrap();
                 assert_eq!(
                     OutputStatus::try_from(i32::from(utxo.status)).unwrap(),
                     OutputStatus::EncumberedToBeReceived

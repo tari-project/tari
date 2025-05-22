@@ -670,6 +670,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
         let recipients = message
@@ -686,14 +687,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     dest.fee_per_gram,
                     dest.payment_type,
                     dest.user_payment_id,
+                    dest.raw_payment_id,
                 ))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
         let mut transfers = Vec::new();
-        for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id) in recipients {
-            let payment_id = if let Some(user_pay_id) = user_payment_id {
+        for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
+            let payment_id = if !raw_payment_id.is_empty() {
+                PaymentId::from_bytes(&raw_payment_id)
+            } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
                     user_pay_id.utf8_string.is_empty(),

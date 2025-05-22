@@ -784,10 +784,53 @@ TariPublicKey *public_key_from_hex(const char *key,
  * if there was an error with the contents of bytes
  *
  * # Safety
- * The ```public_key_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+ * leak
  */
 TariWalletAddress *tari_address_create(struct ByteVector *bytes,
                                        int *error_out);
+
+/**
+ * Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a ByteVector
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariWalletAddress
+ * `bytes` - The pointer to a ByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+ * if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+ * leak
+ */
+TariWalletAddress *tari_address_create_with_payment_id_bytes(TariWalletAddress *address,
+                                                             struct ByteVector *bytes,
+                                                             int *error_out);
+
+/**
+ * Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a utf8 string
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariWalletAddress
+ * `utf8string` - The pointer to a char array which is base58 encoded
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+ * if there was an error with the contents of bytes
+ *
+ * # Safety
+ * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
+ * leak
+ */
+TariWalletAddress *tari_address_create_with_payment_id_utf8(TariWalletAddress *address,
+                                                            const char *utf8string,
+                                                            int *error_out);
 
 /**
  * Frees memory for a TariWalletAddress
@@ -824,7 +867,7 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
  * Creates a TariWalletAddress from a char array
  *
  * ## Arguments
- * `address` - The pointer to a char array which is hex encoded
+ * `address` - The pointer to a char array which is base58 encoded
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
