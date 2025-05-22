@@ -1103,7 +1103,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .unwrap_or(&Signature::default())
                     .get_signature()
                     .to_vec(),
-                payment_id: txn.payment_id.to_bytes(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
             })
             .collect();
