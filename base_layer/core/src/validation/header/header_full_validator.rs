@@ -80,7 +80,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header)?;
         let vm_key = *db
-            .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2000))?
+            .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2048).saturating_sub(64))?
             .hash();
 
         let achieved_target = if let Some(target) = target_difficulty {
