@@ -279,7 +279,7 @@ jobs:
         if: ${{ ( ! startsWith(github.ref, 'refs/tags/v') ) && ( ! matrix.builds.cross ) && ( env.CARGO_CACHE ) }}
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.builds.target }}
+          key: ${{ matrix.builds.runs-on }}-${{ matrix.builds.target }}-${{ matrix.builds.name }}
 
       - name: Install and setup cargo cross
         if: ${{ matrix.builds.cross }}
