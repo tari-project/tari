@@ -30,7 +30,7 @@ This policy does not apply to:
 * End-user documentation and educational or "help" materials (e.g., [Tari Labs University](https://tlu.tarilabs.com/));
 * Example or test code.
 * Proof-of-concept or demonstration applications.
-* Code clearly marked as "NOT READY FOR PRODUCTION", or similar wording. An exception is code that is marked as such, 
+* Code clearly marked as "NOT READY FOR PRODUCTION", "HEAVILY UNDER DEVELOPMENT", or similar wording. An exception is code that is marked as such, 
   but is demonstrably used in production applications covered by the scope anyway.
 * Support, marketing, and social media channels (e.g., Telegram or Discord);
 * Social engineering of Tari users and Tari Labs staff or contractors;
@@ -132,31 +132,7 @@ you are not part of the Tari HackerOne Bounty programme, you may request an invi
    [security mailing list](mailto:security@tari.com),
 3. accepting the invitation when it lands in your inbox.
 
-There are two types of rewards:
-
-* Cash (USD-based) rewards. These are only claimable via the HackerOne platform. If you do not have a HackerOne
-  account, and do not want to register on the platform as a security researcher, you are not eligible for the cash
-  bounties. However, you may still qualify for the Minotari token rewards by making a
-  [Private Security Disclosure](https://github.com/tari-project/tari/security/advisories/new).
-* Minotari (XTR) token rewards. These are rewards up to the value of $250,000 equivalent, and can be awarded via
-  _either_ the HackerOne bounty programme (preferred), or via a
-  [Private Security Disclosure](https://github.com/tari-project/tari/security/advisories/new). Please take note of
-  the conditions attached to the Minotari token rewards below.
-
 **Note:** Multiple vulnerabilities caused by one underlying issue will be awarded one bounty.
-
-### Cash bounties
-
-Cash bounties are paid via HackerOne immediately after the vulnerability has been validated and accepted.
-In some cases, Tari Labs may request a retest of the vulnerability for no additional bounty reward after the
-vulnerability has been addressed.
-
-| Severity | Maximum bounty |                                                                                     
-|----------|----------------|
-| Critical | $5,000         | 
-| High     | $2,000         | 
-| Medium   | $750           | 
-| Low      | $100           | 
 
 ### Token-based bounties
 
@@ -165,38 +141,21 @@ Minotari token rewards.
 
 | Severity | Bounty Range\*      | 
 |----------|---------------------|
-| Critical | $100,000 - $250,000 | 
-| High     | $25,000 - $75,000   | 
-| Medium   | $5,000 - $15,000    | 
-| Low      | $500 - $5,000       | 
-
-*As the Minotari price is unknown prior to launch, values are quoted in USD-equivalent terms at time of delivery. The
-bounties will be paid out in Minotari. For example, if the trading price of Minotari was $0.04, a
-medium-severity award of $10,000 would be converted to 250,000 Minotari tokens.
+| Critical | 100,000 XTM - 250,000 XTM | 
+| High     | 25,000 XTM - 75,000 XTM | 
+| Medium   | 5,000 - 15,000  XTM  | 
+| Low      | 500 - 5,000 XTM      | 
 
 #### Notes and conditions for token bounty rewards:
 
-* Security researchers must be registered on the HackerOne platform in order to be eligible for the USD-based rewards.
-* During the course of the Tari testnet programme (i.e. pre-mainnet launch), **valid bounties will be awarded as an
-  IOU or other suitable bearer instrument that can be exchanged for the USD-equivalent value of Minotari tokens after
-  mainnet launch**.
-* A cool-off period of 3 months will be observed post-genesis block in order for token price to stabilise before
-  allowing IOUs to be converted into tokens.
-* Tari Labs will determine the prevailing Minotari price the day after the cool-off period expires. This price will
-  determine the _conversion rate_. If there is insufficient public trading to determine a prevailing price, Tari
-  Labs may choose to extend the cool-off period for an additional 3 months.
-* If after 6 months, there is still no prevailing price, Tari Labs will set the conversion rate.
-* All IOUs issued for the entire duration of the testnet bounty programme will have their USD-denominated values
-  converted into Minotari tokens at the same conversion rate.
 * Minotari earned through the bounty programme will unencumbered and can be spent or traded immediately after
   conversion.
 * Researchers will have to provide a valid Tari wallet emoji id in order to receive their Minotari tokens. Tari Labs
   will not custody any tokens on behalf of researchers.
-* Tari Labs reserves the right to adjust the bounty reward amounts from time to time. All IOUs issued will retain
-  their claim amount (in nominal USD value) at the time of issuance.
+* Tari Labs reserves the right to adjust the bounty reward amounts from time to time. 
 
-Our rewards are based on severity per CVSS (the Common Vulnerability Scoring Standard). Please note these are general
-guidelines, and reward decisions are up to the discretion of Tari Labs.
+Our rewards are based on severity per CVSS (the Common Vulnerability Scoring Standard) as determined by Tari Labs. 
+Please note these are general guidelines, and reward decisions are up to the discretion of Tari Labs.
 
 Please allow up to one week from the time the report was approved and validated to receive your bounty reward payment.
 
