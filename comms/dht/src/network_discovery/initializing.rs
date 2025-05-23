@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use log::*;
 use tari_comms::connectivity::ConnectivityError;
+use tari_comms::peer_manager::{PeerFlags, PeerQuery};
 
 use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
 
@@ -48,6 +49,7 @@ impl<'a> Initializing<'a> {
                     debug!(target: LOG_TARGET, "Still waiting for this node to come online...");
                 },
                 _ => {
+                    error!(target: LOG_TARGET, "Connectivity error during initialization: {}. Discovery cannot proceed.", err);
                     return err.into();
                 },
             }
@@ -60,7 +62,32 @@ impl<'a> Initializing<'a> {
             debug!(target: LOG_TARGET, "Discovery starting after delayed for {:.0?}", delay);
         }
 
-        debug!(target: LOG_TARGET, "Node is online. Starting network discovery");
-        StateEvent::Initialized
+        // Check number of non-seed peers in the database
+        let num_non_seed_peers = match self.context.peer_manager.perform_query(
+            PeerQuery::new().select_where(|peer| {
+                !peer.is_banned() &&
+                !peer.flags.contains(PeerFlags::SEED) &&
+                peer.deleted_at.is_none() 
+            })
+        ).await {
+            Ok(peers) => peers.len(),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Failed to query peer database for initial peer count: {}. Proceeding to bootstrap anyway.", e);
+                0 // If DB query fails, assume 0 peers and proceed to bootstrap
+            }
+        };
+
+        let min_peers_for_bootstrap_skip = self.context.config.network_discovery.min_desired_peers;
+        info!(target: LOG_TARGET, "Found {} non-seed, non-banned, non-deleted peers in DB. Minimum desired to skip bootstrap is {}.", num_non_seed_peers, min_peers_for_bootstrap_skip);
+
+        if num_non_seed_peers >= min_peers_for_bootstrap_skip {
+            info!(target: LOG_TARGET, "Sufficient non-seed peers found ({} >= {}). Skipping SeedStrap and transitioning to Ready state.", num_non_seed_peers, min_peers_for_bootstrap_skip);
+            StateEvent::InitialPeersSufficient
+        } else {
+            info!(target: LOG_TARGET, "Not enough non-seed peers ({} < {}). Proceeding to SeedStrap normally via Initialized event.", num_non_seed_peers, min_peers_for_bootstrap_skip);
+            // Standard initialization path which leads to SeedStrap
+            debug!(target: LOG_TARGET, "Node is online. Starting network discovery (will proceed to SeedStrap)");
+            StateEvent::Initialized
+        }
     }
 }
