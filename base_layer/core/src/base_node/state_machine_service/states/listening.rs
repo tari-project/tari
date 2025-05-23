@@ -352,9 +352,16 @@ impl Listening {
                                 },
                                 
                                 DhtEvent::PrimaryBootstrapComplete => {
-                                    debug!(target: LOG_TARGET, "Received PrimaryBootstrapComplete event. Updating state machine.");
+                                    info!(
+                                        target: LOG_TARGET,
+                                        "[BN SM LISTENING] Received DhtEvent::PrimaryBootstrapComplete. Current is_primary_bootstrap_complete = {}",
+                                        shared.is_primary_bootstrap_complete
+                                    );
                                     shared.set_primary_bootstrap_complete(true);
-                                    // This will trigger set_state_info via set_primary_bootstrap_complete
+                                    info!(
+                                        target: LOG_TARGET,
+                                        "[BN SM LISTENING] Called set_primary_bootstrap_complete(true). UI should now show 'Listening' instead of 'Bootstrapping'"
+                                    );
                                 },
                                 _ => {}
                             }
