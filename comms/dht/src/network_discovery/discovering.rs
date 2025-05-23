@@ -257,7 +257,7 @@ impl Discovering {
                     NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
                         self.ban_peer(peer, OffenceSeverity::Low, &err).await;
                     },
-                    // Other errors
+                    // Other errors - no banning needed
                     NetworkDiscoveryError::RpcStatus(_) |
                     NetworkDiscoveryError::NoSyncPeers |
                     NetworkDiscoveryError::PeerManagerError(_) |

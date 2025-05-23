@@ -78,14 +78,28 @@ impl<'a> Initializing<'a> {
         };
 
         let min_peers_for_bootstrap_skip = self.context.config.network_discovery.min_desired_peers;
-        info!(target: LOG_TARGET, "Found {} non-seed, non-banned, non-deleted peers in DB. Minimum desired to skip bootstrap is {}.", num_non_seed_peers, min_peers_for_bootstrap_skip);
+        info!(
+            target: LOG_TARGET,
+            "BOOTSTRAP DECISION: Found {} non-seed, non-banned, non-deleted peers in DB. Minimum desired to skip bootstrap is {}.",
+            num_non_seed_peers,
+            min_peers_for_bootstrap_skip
+        );
 
         if num_non_seed_peers >= min_peers_for_bootstrap_skip {
-            info!(target: LOG_TARGET, "Sufficient non-seed peers found ({} >= {}). Skipping SeedStrap and transitioning to Ready state.", num_non_seed_peers, min_peers_for_bootstrap_skip);
+            info!(
+                target: LOG_TARGET,
+                "BOOTSTRAP DECISION: Skipping SeedStrap - found {} suitable peers (>= {} required)",
+                num_non_seed_peers,
+                min_peers_for_bootstrap_skip
+            );
             StateEvent::InitialPeersSufficient
         } else {
-            info!(target: LOG_TARGET, "Not enough non-seed peers ({} < {}). Proceeding to SeedStrap normally via Initialized event.", num_non_seed_peers, min_peers_for_bootstrap_skip);
-            // Standard initialization path which leads to SeedStrap
+            info!(
+                target: LOG_TARGET,
+                "BOOTSTRAP DECISION: Starting SeedStrap - found {} suitable peers (< {} required)",
+                num_non_seed_peers,
+                min_peers_for_bootstrap_skip
+            );
             debug!(target: LOG_TARGET, "Node is online. Starting network discovery (will proceed to SeedStrap)");
             StateEvent::Initialized
         }
