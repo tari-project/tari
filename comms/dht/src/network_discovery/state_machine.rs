@@ -90,6 +90,7 @@ impl State {
 #[derive(Debug)]
 pub enum StateEvent {
     Initialized,
+    InitialPeersSufficient,
     BeginDiscovery(DiscoveryParams),
     Ready,
     Idle,
@@ -105,6 +106,7 @@ impl Display for StateEvent {
         use StateEvent::*;
         match self {
             Initialized => write!(f, "Initialized"),
+            InitialPeersSufficient => write!(f, "InitialPeersSufficient (skipping seed bootstrap)"),
             BeginDiscovery(params) => write!(f, "BeginDiscovery({})", params),
             Ready => write!(f, "Ready"),
             Idle => write!(f, "Idle"),
@@ -217,6 +219,11 @@ impl DhtNetworkDiscovery {
         );
         match (current_state, next_event) {
             (State::Initializing, StateEvent::Initialized) => State::SeedStrap(SeedStrap::new(self.context.clone())),
+            (State::Initializing, StateEvent::InitialPeersSufficient) => {
+                info!(target: LOG_TARGET, "Sufficient peers found in DB. Bypassing SeedStrap and considering primary bootstrap complete.");
+                self.context.publish_event(DhtEvent::PrimaryBootstrapComplete);
+                State::Ready(DiscoveryReady::new(self.context.clone()))
+            },
             (State::SeedStrap(_), StateEvent::DiscoveryComplete(stats)) => {
                 if stats.has_new_peers() {
                     self.context
