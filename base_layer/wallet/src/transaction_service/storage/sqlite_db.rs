@@ -1093,6 +1093,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             query = query.filter(completed_transactions::mined_height.eq(height as i64));
         }
 
+        // Add ordering to prioritize mined_height = 0, then descending mined_height
+        query = query.order((
+            completed_transactions::mined_height.eq(0).desc(),
+            completed_transactions::mined_height.desc(),
+        ));
+
         query
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
