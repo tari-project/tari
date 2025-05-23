@@ -77,6 +77,7 @@ minotari_app_grpc = { path = "applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "applications/minotari_app_utilities" }
 minotari_wallet = { path = "base_layer/wallet" }
 minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client" }
+minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client" }
 minotari_chat_ffi = { path = "base_layer/chat_ffi" }
 minotari_console_wallet = { path = "applications/minotari_console_wallet" }
 minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy" }

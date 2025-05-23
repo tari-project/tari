@@ -69,8 +69,7 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::http::create_base_node_wallet_http_server;
-use crate::{config::WalletHttpServiceConfig, ApplicationConfig};
+use crate::{config::WalletHttpServiceConfig, http::create_base_node_wallet_http_server, ApplicationConfig};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -88,8 +87,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
-where
-    B: BlockchainBackend + 'static,
+where B: BlockchainBackend + 'static
 {
     #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
@@ -193,7 +191,7 @@ where
             &self.app_config.base_node.http_wallet_query_service,
             self.interrupt_signal.clone(),
         )
-            .await;
+        .await;
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let tor_id_path = base_node_config.tor_identity_file.clone();
@@ -228,11 +226,11 @@ where
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
-            TransportType::Tcp => {} // Do not overwrite TCP public_address in the base_node_id!
+            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-            }
+            },
         };
 
         handles.register(comms);
@@ -285,13 +283,13 @@ where
         match wallet_http_server.start::<B>().await {
             Ok(_) => {
                 handles.register(wallet_http_server);
-            }
+            },
             Err(error) => {
                 error!(
                     target: LOG_TARGET,
                     "Failed to start wallet http server: {:?}", error
                 );
-            }
+            },
         }
 
         comms.add_protocol_extension(rpc_server)

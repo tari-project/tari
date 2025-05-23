@@ -6,10 +6,11 @@ use std::sync::Arc;
 use axum::{extract::Query, http::StatusCode, Extension, Json};
 use log::{debug, error};
 use serde::Deserialize;
-use tari_core::base_node::rpc::query_service::Error;
-use tari_core::base_node::rpc::{query_service, BaseNodeWalletQueryService};
-use tari_core::blocks::BlockHeader;
-use tari_core::chain_storage::BlockchainBackend;
+use tari_core::{
+    base_node::rpc::{query_service, query_service::Error, BaseNodeWalletQueryService},
+    blocks::BlockHeader,
+    chain_storage::BlockchainBackend,
+};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
 

@@ -4441,6 +4441,7 @@ dependencies = [
  "itertools 0.10.5",
  "libsqlite3-sys",
  "log",
+ "minotari_node_wallet_client",
  "prost 0.13.4",
  "rand 0.8.5",
  "serde",

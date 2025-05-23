@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use minotari_node_wallet_client::error::ClientError;
 use serde_json::Error as SerdeJsonError;
 use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
-use tari_core::base_node::rpc::BaseNodeWalletQueryServiceClientError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -64,8 +64,12 @@ pub enum UtxoScannerError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Connectivity has shut down")]
     ConnectivityShutdown,
-    #[error("Base node wallet query service client error: `{0}`")]
-    BaseNodeWalletQueryServiceClient(#[from] BaseNodeWalletQueryServiceClientError),
+    #[error("Base node wallet service client error: `{0}`")]
+    BaseNodeWalletServiceClient(#[from] ClientError),
+    #[error("Base node wallet service URL is empty")]
+    BaseNodeWalletServiceUrlEmpty,
+    #[error("Base node wallet service URL is invalid: {0}")]
+    BaseNodeWalletServiceUrlInvalid(#[from] url::ParseError),
 }
 
 impl From<HexError> for UtxoScannerError {

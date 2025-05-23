@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use axum::{http::StatusCode, Extension, Json};
 use log::{debug, error};
-use tari_core::base_node::rpc::models::TipInfoResponse;
-use tari_core::base_node::rpc::{query_service, BaseNodeWalletQueryService};
-use tari_core::chain_storage::BlockchainBackend;
+use tari_core::{
+    base_node::rpc::{models::TipInfoResponse, query_service, BaseNodeWalletQueryService},
+    chain_storage::BlockchainBackend,
+};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_tip_info";
 

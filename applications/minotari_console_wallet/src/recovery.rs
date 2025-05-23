@@ -36,7 +36,6 @@ use minotari_wallet::{
 };
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_core::base_node::rpc::http::client::Client;
 use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
