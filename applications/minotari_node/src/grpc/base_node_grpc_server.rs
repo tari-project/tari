@@ -82,7 +82,7 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
-
+use tari_core::proof_of_work::Difficulty;
 use crate::{
     builder::BaseNodeContext,
     grpc::{
@@ -424,7 +424,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    }).unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
@@ -450,7 +450,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    }).unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
@@ -477,7 +477,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    }).unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
