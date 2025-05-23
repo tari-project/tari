@@ -46,6 +46,25 @@ impl TargetDifficulties {
         Ok(Self { algos })
     }
 
+    pub fn update_algos(&mut self, consensus_rules: &ConsensusManager, height: u64) -> Result<(), String> {
+        let permitted_algos = consensus_rules
+            .consensus_constants(height)
+            .current_permitted_pow_algos();
+        let current_keys: Vec<PowAlgorithm> = self.algos.keys().cloned().collect();
+        for algo in current_keys {
+            if !permitted_algos.contains(&algo) {
+                self.algos.remove(&algo);
+            }
+        }
+        for algo in permitted_algos {
+            if !self.algos.contains_key(&algo) {
+                let target_difficulty_window = consensus_rules.new_target_difficulty(algo, height)?;
+                self.algos.insert(algo, target_difficulty_window);
+            }
+        }
+        Ok(())
+    }
+
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) -> Result<(), String> {
         self.get_mut(header.pow_algo())?
             .add_back(header.timestamp(), target_difficulty);
@@ -76,5 +95,9 @@ impl TargetDifficulties {
 
     fn get_mut(&mut self, algo: PowAlgorithm) -> Result<&mut TargetDifficultyWindow, String> {
         self.algos.get_mut(&algo).ok_or("Algorithm not found".to_string())
+    }
+
+    pub fn algo_count(&self) -> usize {
+        self.algos.len()
     }
 }

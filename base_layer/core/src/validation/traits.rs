@@ -20,7 +20,10 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{CompressedCommitment, FixedHash},
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -64,6 +67,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
+        vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 
