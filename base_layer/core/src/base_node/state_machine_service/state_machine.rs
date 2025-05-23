@@ -287,13 +287,34 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     }
 
     pub fn set_primary_bootstrap_complete(&mut self, complete: bool) {
+        info!(
+            target: LOG_TARGET,
+            "[BN SM UPDATE] Setting primary_bootstrap_complete to {}. Was: {}. Current state: {}",
+            complete,
+            self.is_primary_bootstrap_complete,
+            self.info.short_desc()
+        );
+        
         self.is_primary_bootstrap_complete = complete;
-        // Optionally update state info to reflect changes in the UI
+        
         if let StateInfo::Listening(mut info) = self.info.clone() {
+            let had_bootstrap_phase = info.bootstrap_phase.is_some();
             if complete {
                 info.bootstrap_phase = None;
             }
             self.set_state_info(StateInfo::Listening(info));
+            
+            info!(
+                target: LOG_TARGET,
+                "[BN SM UPDATE] Updated Listening state. Removed bootstrap_phase: {}. Console should now show 'Listening'",
+                had_bootstrap_phase
+            );
+        } else {
+            warn!(
+                target: LOG_TARGET,
+                "[BN SM UPDATE] Not in Listening state ({}), bootstrap_complete flag updated but UI unchanged",
+                self.info.short_desc()
+            );
         }
     }
 

@@ -153,7 +153,32 @@ impl NetworkDiscoveryContext {
     }
 
     pub(super) fn publish_event(&self, event: DhtEvent) {
-        let _result = self.event_tx.send(Arc::new(event));
+        let num_receivers = self.event_tx.receiver_count();
+        let event_name = match &event {
+            DhtEvent::PrimaryBootstrapComplete => "PrimaryBootstrapComplete",
+            DhtEvent::NetworkDiscoveryPeersAdded(_) => "NetworkDiscoveryPeersAdded",
+            _ => "Other",
+        };
+        
+        match self.event_tx.send(Arc::new(event)) {
+            Ok(_) => {
+                info!(
+                    target: LOG_TARGET,
+                    "[DHT EVENT PUBLISH] Successfully published DhtEvent::{} to {} receiver(s)",
+                    event_name,
+                    num_receivers
+                );
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[DHT EVENT PUBLISH] Failed to publish DhtEvent::{}: {}. Receivers: {}",
+                    event_name,
+                    e,
+                    num_receivers
+                );
+            }
+        }
     }
 
     pub(super) async fn set_last_round(&self, last_round: DhtNetworkDiscoveryRoundInfo) {
