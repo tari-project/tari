@@ -78,6 +78,12 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 5
     #[serde(default)]
     pub min_successful_seed_contacts_for_early_exit: usize,
+
+    /// Maximum time to wait for bootstrap to complete before forcing completion
+    /// Default: 5 minutes
+    #[serde(default)]
+    #[serde(with = "serializers::seconds")]
+    pub bootstrap_timeout: Duration,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -94,6 +100,7 @@ impl Default for NetworkDiscoveryConfig {
             initial_peer_sync_delay: None,
             seed_peer_min_initial_sync_peers_needed: 15,
             min_successful_seed_contacts_for_early_exit: 5,
+            bootstrap_timeout: Duration::from_secs(300), // 5 minutes
         }
     }
 }

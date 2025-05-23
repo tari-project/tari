@@ -28,6 +28,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::Instant,
 };
 
 use futures::{future, future::Either};
@@ -54,6 +55,23 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BootstrapMethod {
+    None,           // No bootstrap needed
+    SeedStrap,      // Traditional seed bootstrap
+    ExistingPeers,  // Skipped due to sufficient existing peers
+}
+
+impl Display for BootstrapMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BootstrapMethod::None => write!(f, "None"),
+            BootstrapMethod::SeedStrap => write!(f, "SeedStrap"),
+            BootstrapMethod::ExistingPeers => write!(f, "ExistingPeers"),
+        }
+    }
+}
 
 #[derive(Debug)]
 enum State {
@@ -84,6 +102,10 @@ impl Display for State {
 impl State {
     pub fn is_shutdown(&self) -> bool {
         matches!(self, State::Shutdown)
+    }
+
+    pub fn is_seed_strap(&self) -> bool {
+        matches!(self, State::SeedStrap(_))
     }
 }
 
@@ -118,6 +140,24 @@ impl Display for StateEvent {
     }
 }
 
+impl PartialEq for StateEvent {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StateEvent::Initialized, StateEvent::Initialized) => true,
+            (StateEvent::InitialPeersSufficient, StateEvent::InitialPeersSufficient) => true,
+            (StateEvent::Ready, StateEvent::Ready) => true,
+            (StateEvent::Idle, StateEvent::Idle) => true,
+            (StateEvent::OnConnectMode, StateEvent::OnConnectMode) => true,
+            (StateEvent::Shutdown, StateEvent::Shutdown) => true,
+            // For complex variants, we only check the variant type, not the data
+            (StateEvent::BeginDiscovery(_), StateEvent::BeginDiscovery(_)) => true,
+            (StateEvent::DiscoveryComplete(_), StateEvent::DiscoveryComplete(_)) => true,
+            (StateEvent::Errored(_), StateEvent::Errored(_)) => true,
+            _ => false,
+        }
+    }
+}
+
 impl<E: Into<NetworkDiscoveryError>> From<E> for StateEvent {
     fn from(err: E) -> Self {
         Self::Errored(err.into())
@@ -134,6 +174,8 @@ pub(super) struct NetworkDiscoveryContext {
     pub all_attempted_peers: Arc<RwLock<Vec<NodeId>>>,
     pub event_tx: broadcast::Sender<Arc<DhtEvent>>,
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
+    pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
+    pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
 }
 
 impl NetworkDiscoveryContext {
@@ -152,11 +194,46 @@ impl NetworkDiscoveryContext {
         self.num_rounds.store(0, Ordering::SeqCst);
     }
 
+    /// Set the bootstrap method and notify the base node
+    pub(super) async fn set_bootstrap_method(&self, method: BootstrapMethod) {
+        *self.bootstrap_method.write().await = method.clone();
+        
+        info!(
+            target: LOG_TARGET,
+            "[DHT BOOTSTRAP] Bootstrap method determined: {}",
+            method
+        );
+        
+        // Publish event to inform base node of bootstrap method
+        self.publish_event(DhtEvent::BootstrapMethodDetermined(method));
+    }
+
+    /// Mark bootstrap as started
+    pub(super) async fn mark_bootstrap_started(&self) {
+        *self.bootstrap_started_at.write().await = Some(Instant::now());
+    }
+
+    /// Complete bootstrap and publish event
+    pub(super) async fn complete_bootstrap(&self, method: BootstrapMethod) {
+        let started_at = *self.bootstrap_started_at.read().await;
+        let duration = started_at.map(|start| start.elapsed());
+        
+        info!(
+            target: LOG_TARGET,
+            "[DHT BOOTSTRAP] Bootstrap completed via {} in {:?}",
+            method,
+            duration.unwrap_or_default()
+        );
+        
+        self.publish_event(DhtEvent::PrimaryBootstrapComplete);
+    }
+
     pub(super) fn publish_event(&self, event: DhtEvent) {
         let num_receivers = self.event_tx.receiver_count();
         let event_name = match &event {
             DhtEvent::PrimaryBootstrapComplete => "PrimaryBootstrapComplete",
             DhtEvent::NetworkDiscoveryPeersAdded(_) => "NetworkDiscoveryPeersAdded",
+            DhtEvent::BootstrapMethodDetermined(_) => "BootstrapMethodDetermined",
             _ => "Other",
         };
         
@@ -218,6 +295,8 @@ impl DhtNetworkDiscovery {
                 num_rounds: Default::default(),
                 last_round: Default::default(),
                 event_tx,
+                bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
+                bootstrap_started_at: Arc::new(RwLock::new(None)),
             },
             shutdown_signal,
         }
@@ -242,11 +321,20 @@ impl DhtNetworkDiscovery {
             target: LOG_TARGET,
             "Transition triggered from current state `{}` by event `{}`", current_state, next_event
         );
-        match (current_state, next_event) {
-            (State::Initializing, StateEvent::Initialized) => State::SeedStrap(SeedStrap::new(self.context.clone())),
+        
+        // Remember if current state is SeedStrap for error handling
+        let was_seed_strap = current_state.is_seed_strap();
+        
+        let new_state = match (current_state, next_event) {
+            (State::Initializing, StateEvent::Initialized) => {
+                self.context.mark_bootstrap_started().await;
+                self.context.set_bootstrap_method(BootstrapMethod::SeedStrap).await;
+                State::SeedStrap(SeedStrap::new(self.context.clone()))
+            },
             (State::Initializing, StateEvent::InitialPeersSufficient) => {
-                info!(target: LOG_TARGET, "Sufficient peers found in DB. Bypassing SeedStrap and considering primary bootstrap complete.");
-                self.context.publish_event(DhtEvent::PrimaryBootstrapComplete);
+                info!(target: LOG_TARGET, "BOOTSTRAP DECISION: Sufficient peers found in DB. Bypassing SeedStrap and considering primary bootstrap complete.");
+                self.context.set_bootstrap_method(BootstrapMethod::ExistingPeers).await;
+                self.context.complete_bootstrap(BootstrapMethod::ExistingPeers).await;
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::SeedStrap(_), StateEvent::DiscoveryComplete(stats)) => {
@@ -263,6 +351,9 @@ impl DhtNetworkDiscovery {
                     );
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
+                
+                // SeedStrap completed successfully, mark bootstrap complete
+                self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                 self.context.increment_num_rounds();
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
@@ -289,11 +380,21 @@ impl DhtNetworkDiscovery {
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (_, StateEvent::Shutdown) => State::Shutdown,
-            (_, StateEvent::Errored(err)) => {
+            (_state, StateEvent::Errored(err)) => {
                 error!(
                     target: LOG_TARGET,
                     "Network discovery errored: {}. Waiting for {:.0?}", err, config.on_failure_idle_period
                 );
+                
+                // If we're in SeedStrap and get an error, still mark bootstrap complete to prevent UI stuck state
+                if was_seed_strap {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap failed with error: {}. Marking bootstrap complete anyway to prevent UI deadlock.", err
+                    );
+                    self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
+                }
+                
                 State::Waiting(config.on_failure_idle_period.into())
             },
             (state, event) => {
@@ -303,7 +404,9 @@ impl DhtNetworkDiscovery {
                 );
                 state
             },
-        }
+        };
+        
+        new_state
     }
 
     #[inline]
@@ -321,17 +424,46 @@ impl DhtNetworkDiscovery {
                 target: LOG_TARGET,
                 "Network discovery is disabled. This node may fail to participate in the network."
             );
-
             return;
         }
+        
         let mut state = State::Initializing;
+        let mut bootstrap_completed = false;
+
         loop {
             let shutdown_signal = self.shutdown_signal.clone();
-            let next_event = {
+            
+            let next_event = if !bootstrap_completed {
+                // Create a separate context to avoid borrow issues
+                let context_clone = self.context.clone();
+                let bootstrap_timeout_duration = self.config().network_discovery.bootstrap_timeout;
+                
+                let fut = self.get_next_event(&mut state);
+                futures::pin_mut!(fut);
+                
+                tokio::select! {
+                    event = or_shutdown(shutdown_signal, fut) => event,
+                    _ = tokio::time::sleep(bootstrap_timeout_duration) => {
+                        warn!(target: LOG_TARGET, "Bootstrap timeout reached - forcing completion");
+                        context_clone.complete_bootstrap(BootstrapMethod::SeedStrap).await;
+                        bootstrap_completed = true;
+                        StateEvent::Ready
+                    }
+                }
+            } else {
                 let fut = self.get_next_event(&mut state);
                 futures::pin_mut!(fut);
                 or_shutdown(shutdown_signal, fut).await
             };
+            
+            // Check if bootstrap completed with this event
+            if matches!(next_event, StateEvent::DiscoveryComplete(_)) && state.is_seed_strap() {
+                bootstrap_completed = true;
+            }
+            if matches!(next_event, StateEvent::InitialPeersSufficient) {
+                bootstrap_completed = true;
+            }
+            
             state = self.transition(state, next_event).await;
             if state.is_shutdown() {
                 break;
@@ -348,7 +480,7 @@ where Fut: Future<Output = StateEvent> + Unpin {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DiscoveryParams {
     pub peers: Vec<NodeId>,
     pub num_peers_to_request: u32,
@@ -381,7 +513,7 @@ impl Default for DiscoveryPhase {
     fn default() -> Self { DiscoveryPhase::General }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct DhtNetworkDiscoveryRoundInfo {
     pub num_new_peers: usize,
     pub num_duplicate_peers: usize,
