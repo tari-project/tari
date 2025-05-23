@@ -25,7 +25,10 @@ use std::sync::{
     Arc,
 };
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{CompressedCommitment, FixedHash},
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -114,6 +117,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         _: &BlockHeader,
         _: &[EpochTime],
         _: Option<Difficulty>,
+        _: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             // this assumes consensus rules are the same as the test rules which is a little brittle

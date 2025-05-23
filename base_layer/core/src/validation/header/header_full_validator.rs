@@ -33,7 +33,6 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
-        tari_rx_vm_key_height,
         DifficultyCalculator,
         HeaderChainLinkedValidator,
         ValidationError,
@@ -67,6 +66,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
+        vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
@@ -79,11 +79,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header)?;
-        let vm_key = *db
-            .fetch_chain_header_by_height(tari_rx_vm_key_height(header.height))?
-            .hash();
-
+        check_pow_data(header, constants)?;
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,
@@ -191,8 +187,14 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
 }
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
+fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     use PowAlgorithm::{RandomXM, RandomXT, Sha3x};
+    let allowed_algos = consensus_constants.current_permitted_pow_algos();
+    if !allowed_algos.contains(&block_header.pow.pow_algo) {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidPowAlgorithm(block_header.pow.pow_algo.to_string()),
+        ));
+    }
     match block_header.pow.pow_algo {
         RandomXM => {
             if block_header.nonce != 0 {

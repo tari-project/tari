@@ -108,6 +108,7 @@ use crate::{
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
+        tari_rx_vm_key_height,
         CandidateBlockValidator,
         DifficultyCalculator,
         HeaderChainLinkedValidator,
@@ -2183,6 +2184,26 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     Ok(())
 }
 
+// this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// so we need to search for it.
+fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
+    db: &mut T,
+    candidate_block: Arc<Block>,
+) -> Result<FixedHash, ChainStorageError> {
+    let vm_height = tari_rx_vm_key_height(candidate_block.header.height);
+    let mut current_header = candidate_block.header.clone();
+    while current_header.height != vm_height {
+        let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
+        let chain_header = db.fetch_chain_header_by_height(h.height())?;
+        if *h.header() == *chain_header.header() {
+            // Now we now the orphan links back to the main chain here
+            return Ok(*db.fetch_chain_header_by_height(vm_height)?.hash());
+        }
+        current_header = h.header().clone();
+    }
+    Ok(FixedHash::from(*current_header.hash()))
+}
+
 /// Insert the provided block into the orphan pool and returns any new tips that were created.
 #[allow(clippy::too_many_lines)]
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
@@ -2247,7 +2268,15 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     // validate the block header
     let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
-    let result = validator.validate(db, &candidate_block.header, parent.header(), &prev_timestamps, None);
+    let vm_key = get_vm_key_for_candidate_block(db, candidate_block.clone())?;
+    let result = validator.validate(
+        db,
+        &candidate_block.header,
+        parent.header(),
+        &prev_timestamps,
+        None,
+        vm_key,
+    );
     let achieved_target_diff = match result {
         Ok(achieved_target_diff) => achieved_target_diff,
         // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
@@ -2341,7 +2370,17 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         );
 
         // we need to validate the header here because it may never have been validated.
-        match validator.validate(db, &child.header, prev_chain_header.header(), &prev_timestamps, None) {
+        let vm_key = *db
+            .fetch_chain_header_by_height(tari_rx_vm_key_height(child.header.height))?
+            .hash();
+        match validator.validate(
+            db,
+            &child.header,
+            prev_chain_header.header(),
+            &prev_timestamps,
+            None,
+            vm_key,
+        ) {
             Ok(achieved_target) => {
                 // Append the child timestamp - a RollingVec ensures that the number of timestamps can never be more
                 // than the median timestamp window size.
