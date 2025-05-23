@@ -65,16 +65,14 @@ pub enum StorageError {
     DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Hex conversion error: `{0}`")]
     HexError(String),
-    #[error("Json conversion error: `{0}`")]
-    JsonError(String),
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
     #[error("TryFromInt conversion error: `{0}`")]
     TryFromIntError(#[from] TryFromIntError),
     #[error("The requested peer does not exist")]
     PeerNotFoundError,
     #[error("Error: `{0}`")]
     Error(#[from] Error),
-    #[error("Error: `{0}`")]
-    SerdeJsonError(#[from] serde_json::Error),
     #[error("Database is locked: {0}")]
     DatabaseLockError(String),
     #[error("The state of the database changed between queries")]

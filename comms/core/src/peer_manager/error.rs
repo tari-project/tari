@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use std::sync::PoisonError;
+// use std::sync::PoisonError;
 
 use multiaddr::Multiaddr;
 use tari_common_sqlite::error::StorageError;
-use tari_storage::KeyValStoreError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -40,12 +39,8 @@ pub enum PeerManagerError {
     DataInconsistency(String),
     #[error("The peer has been banned")]
     BannedPeer,
-    #[error("A problem has been encountered with the database: {0}")]
-    DatabaseError(#[from] KeyValStoreError),
     #[error("A problem has been encountered with the sql database: {0}")]
     StorageError(String),
-    #[error("A problem has been encountered with the sql database: {0}")]
-    SqlDatabaseError(String),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),
     #[error("Identity signature is invalid")]
@@ -90,12 +85,6 @@ impl PeerManagerError {
     /// Returns true if this error indicates that the peer is not found, otherwise false
     pub fn is_peer_not_found(&self) -> bool {
         matches!(self, PeerManagerError::PeerNotFoundError)
-    }
-}
-
-impl<T> From<PoisonError<T>> for PeerManagerError {
-    fn from(_: PoisonError<T>) -> Self {
-        PeerManagerError::DatabaseError(KeyValStoreError::PoisonedAccess)
     }
 }
 

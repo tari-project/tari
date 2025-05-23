@@ -544,13 +544,13 @@ impl PeerDatabaseSql {
                 } else {
                     Some(i32::try_from(address.connection_attempts())?)
                 },
-                avg_initial_dial_time: duration_to_i64_infallible(address.avg_initial_dial_time()),
+                avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
                 initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
                     None
                 } else {
                     Some(i32::try_from(address.initial_dial_time_sample_count())?)
                 },
-                avg_latency: duration_to_i64_infallible(address.avg_latency()),
+                avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
                 latency_sample_count: if address.latency_sample_count() == 0 {
                     None
                 } else {
@@ -664,13 +664,13 @@ impl PeerDatabaseSql {
                 } else {
                     Some(i32::try_from(address.connection_attempts())?)
                 },
-                avg_initial_dial_time: duration_to_i64_infallible(address.avg_initial_dial_time()),
+                avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
                 initial_dial_time_sample_count: if address.initial_dial_time_sample_count() == 0 {
                     None
                 } else {
                     Some(i32::try_from(address.initial_dial_time_sample_count())?)
                 },
-                avg_latency: duration_to_i64_infallible(address.avg_latency()),
+                avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
                 latency_sample_count: if address.latency_sample_count() == 0 {
                     None
                 } else {
@@ -1818,7 +1818,7 @@ pub fn serialize_metadata(metadata: &HashMap<u8, Vec<u8>>) -> Result<Option<Vec<
 /// Deserialize the metadata from a `Vec<u8>`, mapping empty to `None`
 pub fn deserialize_metadata(data: Option<Vec<u8>>) -> Result<HashMap<u8, Vec<u8>>, StorageError> {
     match data {
-        Some(d) if !d.is_empty() => serde_json::from_slice(&d).map_err(|e| StorageError::JsonError(e.to_string())),
+        Some(d) if !d.is_empty() => serde_json::from_slice(&d).map_err(StorageError::JsonError),
         _ => Ok(HashMap::new()),
     }
 }
@@ -1829,13 +1829,17 @@ impl From<MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
     }
 }
 
-fn duration_to_i64_infallible(duration: Option<Duration>) -> Option<i64> {
-    duration.map(|d| {
-        d.as_millis().try_into().unwrap_or({
-            warn!(target: LOG_TARGET, "duration_to_i64_infallible conversion error");
-            i64::MAX
-        })
-    })
+fn duration_to_i64_ms_infallible(duration: Option<Duration>) -> Option<i64> {
+    match duration.map(|v| v.as_millis()) {
+        Some(ms_u128) => match ms_u128.try_into() {
+            Ok(ms_i64) => Some(ms_i64),
+            Err(e) => {
+                warn!(target: LOG_TARGET, "duration_to_i64_ms_infallible {:?} conversion error: {}", duration, e);
+                Some(i64::MAX)
+            },
+        },
+        _ => None,
+    }
 }
 
 fn u32_to_i32_infallible(value: u32) -> i32 {
@@ -1851,9 +1855,9 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             address: address.to_string(),
             last_seen: address.last_seen(),
             connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
-            avg_initial_dial_time: duration_to_i64_infallible(address.avg_initial_dial_time()),
+            avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
             initial_dial_time_sample_count: Some(u32_to_i32_infallible(address.initial_dial_time_sample_count())),
-            avg_latency: duration_to_i64_infallible(address.avg_latency()),
+            avg_latency: duration_to_i64_ms_infallible(address.avg_latency()),
             latency_sample_count: Some(u32_to_i32_infallible(address.latency_sample_count())),
             last_attempted: address.last_attempted(),
             last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
@@ -1919,7 +1923,7 @@ impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
                 addr.last_attempted,
                 addr.last_failed_reason,
                 addr.quality_score,
-                serde_json::from_str(&addr.source).map_err(|e| StorageError::JsonError(e.to_string()))?,
+                serde_json::from_str(&addr.source).map_err(StorageError::JsonError)?,
             );
             addresses.push(address);
         }
@@ -1963,7 +1967,10 @@ mod tests {
         peer_manager::{
             create_test_peer,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
-            storage::schema::{multi_addresses, peers},
+            storage::{
+                database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
+                schema::{multi_addresses, peers},
+            },
             Peer,
             PeerFeatures,
             PeerFlags,
@@ -3015,5 +3022,53 @@ mod tests {
         for i in 0..closest_peers.len() - 1 {
             assert!(closest_peers[i].distance(&region_node_id) <= closest_peers[i + 1].distance(&region_node_id));
         }
+    }
+
+    #[test]
+    fn test_duration_to_i64_ms_infallible() {
+        // None input should yield None
+        assert_eq!(duration_to_i64_ms_infallible(None), None);
+
+        // ms
+        assert_eq!(duration_to_i64_ms_infallible(Some(Duration::from_millis(0))), Some(0));
+        assert_eq!(duration_to_i64_ms_infallible(Some(Duration::from_millis(42))), Some(42));
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_millis(1234))),
+            Some(1234)
+        );
+
+        // s
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_secs(12))),
+            Some(12 * 1000)
+        );
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_secs(1234))),
+            Some(1234 * 1000)
+        );
+
+        // d
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_secs(3 * 60 * 60 * 24))),
+            Some(3 * 60 * 60 * 24 * 1000)
+        );
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_secs(123 * 60 * 60 * 24))),
+            Some(123 * 60 * 60 * 24 * 1000)
+        );
+
+        // max
+        assert_eq!(
+            duration_to_i64_ms_infallible(Some(Duration::from_secs(u64::MAX))),
+            Some(i64::MAX)
+        );
+    }
+
+    #[test]
+    fn test_u32_to_i32_infallible() {
+        // ms
+        assert_eq!(u32_to_i32_infallible(0u32), 0i32);
+        assert_eq!(u32_to_i32_infallible(1234u32), 1234i32);
+        assert_eq!(u32_to_i32_infallible(u32::MAX), i32::MAX);
     }
 }
