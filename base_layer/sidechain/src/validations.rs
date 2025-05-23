@@ -89,7 +89,7 @@ pub fn check_proof_elements(
                             ),
                         });
                     }
-                    expected = block_id;
+                    expected = link.parent_id;
                     last_parent = Some(&link.parent_id);
                 }
             },
