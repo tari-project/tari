@@ -946,6 +946,9 @@ where
                         tx_id
                     },
                 };
+                let _size = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::TransactionImported(tx_id)));
                 Ok(TransactionServiceResponse::TransactionImported(tx_id))
             },
             TransactionServiceRequest::ImportUtxoWithStatus {
@@ -1142,6 +1145,7 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
+        debug!(target: LOG_TARGET, "Sending transaction to {} with {}", destination, amount);
         let tx_id = TxId::new_random();
         if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
             let err = match e {
@@ -1158,6 +1162,11 @@ where
                 warn!(target: LOG_TARGET, "Failed to send service reply");
             });
             return Err(e);
+        }
+        // let override the payment_id if the address says we should
+        if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_payment_id_user_data_bytes());
+            payment_id = PaymentId::open(destination.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if &self
@@ -1218,10 +1227,6 @@ where
                 });
 
             return Ok(());
-        }
-        // let override the payment_id if the address says we should
-        if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            payment_id = PaymentId::open(destination.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
         let (cancellation_sender, cancellation_receiver) = oneshot::channel();
@@ -1773,9 +1778,11 @@ where
         recipient_script: Option<TariScript>,
         mut payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
+        debug!(target: LOG_TARGET, "Sending one sided transaction to {} with {}", dest_address, amount);
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
             payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         let payment_id = match payment_id.clone() {

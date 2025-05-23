@@ -76,6 +76,7 @@ use tari_core::{
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     },
+    validation::tari_rx_vm_key_height,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
@@ -93,7 +94,6 @@ use crate::{
     grpc_method::GrpcMethod,
     BaseNodeConfig,
 };
-
 const LOG_TARGET: &str = "minotari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
 const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
@@ -995,12 +995,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
         let vm_key = *handler
-            .get_header(
-                new_template
-                    .header
-                    .height
-                    .saturating_sub(new_template.header.height % 2000),
-            )
+            .get_header(tari_rx_vm_key_height(new_template.header.height))
             .await
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1292,7 +1287,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
         };
         let vm_key = *handler
-            .get_header(new_block.header.height.saturating_sub(new_block.header.height % 2000))
+            .get_header(tari_rx_vm_key_height(new_block.header.height))
             .await
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1561,12 +1556,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
         };
         let vm_key = *handler
-            .get_header(
-                new_template
-                    .header
-                    .height
-                    .saturating_sub(new_template.header.height % 2000),
-            )
+            .get_header(tari_rx_vm_key_height(new_template.header.height))
             .await
             .map_err(|_| {
                 obscure_error_if_true(

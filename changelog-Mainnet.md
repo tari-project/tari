@@ -9,15 +9,20 @@ All notable changes to this project will be documented in this file. See [standa
 * allow nextnet to mine randomxT (#7070)
 * make tari randomx pow compatible with xmrig (#7069)
 * add second tari only randomx mining (#7057)
+* vm calc height (#7082)
 
 ### Features
 
+* add GetBlockHeightTransactions grpc method ([#7081](https://github.com/tari-project/tari/issues/7081)) ([d8fa8f3](https://github.com/tari-project/tari/commit/d8fa8f3d9ae11a8a2c3189a5022db816a8d68b1e))
 * add second tari only randomx mining ([#7057](https://github.com/tari-project/tari/issues/7057)) ([f593638](https://github.com/tari-project/tari/commit/f5936380e9ba4e7e76b83e365c65eb02fbfcb730))
 * add spendable supply grpc query ([#7055](https://github.com/tari-project/tari/issues/7055)) ([8901bcb](https://github.com/tari-project/tari/commit/8901bcbbbbfc50c392ba3c11462c9e2f350f37af))
 * allow nextnet to mine randomxT ([#7070](https://github.com/tari-project/tari/issues/7070)) ([3152af2](https://github.com/tari-project/tari/commit/3152af2cdba9c52fe2c746a736c1d0ea5c67c02b))
 * improve listening error propagation ([#7050](https://github.com/tari-project/tari/issues/7050)) ([894d70a](https://github.com/tari-project/tari/commit/894d70a71a6c37067d73cc2a5c944a0d1ab35a15))
 * make tari randomx pow compatible with xmrig ([#7069](https://github.com/tari-project/tari/issues/7069)) ([e82e5ff](https://github.com/tari-project/tari/commit/e82e5ffa6948fa6b3efe0d56900f5ae61b503a0c))
 * print out errors better ([#7053](https://github.com/tari-project/tari/issues/7053)) ([5127a3d](https://github.com/tari-project/tari/commit/5127a3db295ccf67a81261af0b8f4fb8b1c5b8f9))
+* expose user payment id ([#7077](https://github.com/tari-project/tari/issues/7077)) ([e7bb008](https://github.com/tari-project/tari/commit/e7bb008e7f0e35778c8fc5712cf99bfc32ddf33f))
+* import transactions via grpc ([#7078](https://github.com/tari-project/tari/issues/7078)) ([12db85d](https://github.com/tari-project/tari/commit/12db85da0541a1d8bc0301001aac3fc515e14247))
+* vm calc height ([#7082](https://github.com/tari-project/tari/issues/7082)) ([c7bec97](https://github.com/tari-project/tari/commit/c7bec97f3d5e217f03db6969898c5bfa9110e7cd))
 
 
 ### Bug Fixes

@@ -304,7 +304,7 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *mut c_char;
-    pub fn completed_transaction_get_payment_id(
+    pub fn completed_transaction_get_user_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *mut c_char;

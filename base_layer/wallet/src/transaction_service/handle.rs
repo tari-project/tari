@@ -490,6 +490,7 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
+    TransactionImported(TxId),
     TransactionValidationStateChanged(OperationId),
     TransactionValidationCompleted(OperationId),
     TransactionValidationFailed(OperationId, u64),
@@ -550,6 +551,9 @@ impl fmt::Display for TransactionEvent {
                     "TransactionMinedUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. is_valid: \
                      {is_valid}",
                 )
+            },
+            TransactionEvent::TransactionImported(tx) => {
+                write!(f, "TransactionImported for {tx}")
             },
             TransactionEvent::Error(error) => {
                 write!(f, "Error:{error}")
