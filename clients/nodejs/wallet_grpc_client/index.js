@@ -49,6 +49,7 @@ function Client(address) {
     "CreateBurnTransaction",
     "claimShaAtomicSwapTransaction",
     "ClaimHtlcRefundTransaction",
+    "GetBlockHeightTransactions",
     "registerAsset",
     "getOwnedAssets",
     "mintTokens",
@@ -93,6 +94,6 @@ module.exports = {
 //     const a = Client.connect('localhost:18143');
 //     const {version} = await a.getVersion();
 //     console.log(version);
-//     const resp = await a.getCoinbase({fee: 1, amount: 10000, reward: 124, height: 1001});
+//     const resp = await a.GetBlockHeightTransactions({block_height: 1550});
 //     console.log(resp);
 // })()

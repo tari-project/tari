@@ -56,7 +56,7 @@ use crate::{
         PowError,
     },
     transactions::aggregated_body::AggregateBody,
-    validation::{helpers, ValidationError},
+    validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -574,7 +574,7 @@ where B: BlockchainBackend + 'static
             PowAlgorithm::RandomXT => {
                 let vm_key = *self
                     .blockchain_db
-                    .fetch_chain_header(header.height().saturating_sub(header.height() % 2000))
+                    .fetch_chain_header(tari_rx_vm_key_height(header.height()))
                     .await?
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?

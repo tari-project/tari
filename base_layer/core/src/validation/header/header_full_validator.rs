@@ -33,6 +33,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
+        tari_rx_vm_key_height,
         DifficultyCalculator,
         HeaderChainLinkedValidator,
         ValidationError,
@@ -80,7 +81,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header)?;
         let vm_key = *db
-            .fetch_chain_header_by_height(header.height.saturating_sub(header.height % 2000))?
+            .fetch_chain_header_by_height(tari_rx_vm_key_height(header.height))?
             .hash();
 
         let achieved_target = if let Some(target) = target_difficulty {
