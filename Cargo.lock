@@ -4402,7 +4402,6 @@ name = "minotari_node_wallet_client"
 version = "3.0.1-pre.0"
 dependencies = [
  "async-trait",
- "axum 0.8.4",
  "reqwest 0.12.15",
  "tari_core",
  "thiserror 1.0.69",
