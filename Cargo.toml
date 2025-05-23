@@ -7,7 +7,6 @@ license = "BSD-3-Clause"
 
 [workspace]
 members = [
-    "base_layer/chat_ffi",
     "base_layer/core",
     "base_layer/common_types",
     "base_layer/contacts",
@@ -48,7 +47,6 @@ resolver = "2"
 
 [workspace.dependencies]
 # tari_jellyfish = { path = "infrastructure/jellyfish" }
-tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
 tari_common = { path = "common" }
 tari_common_sqlite = { path = "common_sqlite" }
 tari_common_types = { path = "base_layer/common_types" }
@@ -76,7 +74,6 @@ minotari_app_grpc = { path = "applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "applications/minotari_app_utilities" }
 minotari_wallet = { path = "base_layer/wallet" }
 minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client" }
-minotari_chat_ffi = { path = "base_layer/chat_ffi" }
 minotari_console_wallet = { path = "applications/minotari_console_wallet" }
 minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy" }
 minotari_miner = { path = "applications/minotari_miner" }

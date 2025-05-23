@@ -4105,31 +4105,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minotari_chat_ffi"
-version = "4.0.0-pre.0"
-dependencies = [
- "cbindgen",
- "chrono",
- "libc",
- "libsqlite3-sys",
- "log",
- "log4rs",
- "minotari_app_utilities",
- "openssl",
- "rand 0.8.5",
- "tari_chat_client",
- "tari_common",
- "tari_common_types",
- "tari_contacts",
- "tari_crypto",
- "tari_p2p",
- "tari_shutdown",
- "tari_utilities",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "minotari_console_wallet"
 version = "4.0.0-pre.0"
 dependencies = [
@@ -7157,33 +7132,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_chat_client"
-version = "4.0.0-pre.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "config",
- "diesel",
- "lmdb-zero",
- "log",
- "minotari_app_utilities",
- "rand 0.8.5",
- "serde",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_max_size",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "tari_common"
 version = "4.0.0-pre.0"
 dependencies = [
@@ -7517,7 +7465,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "config",
  "csv",
  "cucumber",
  "futures 0.3.31",
@@ -7526,7 +7473,6 @@ dependencies = [
  "log",
  "minotari_app_grpc",
  "minotari_app_utilities",
- "minotari_chat_ffi",
  "minotari_console_wallet",
  "minotari_merge_mining_proxy",
  "minotari_miner",
@@ -7538,13 +7484,11 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "serde_json",
- "tari_chat_client",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_p2p",
