@@ -1361,7 +1361,13 @@ impl PeerDatabaseSql {
             let threshold = min(threshold, Duration::from_secs(i64::MAX.unsigned_abs() - 1));
             let stale_threshold =
                 chrono::Utc::now().naive_utc() - chrono::Duration::from_std(threshold).unwrap_or(TimeDelta::MAX);
-            query = query.filter(multi_addresses::last_seen.ge(stale_threshold));
+            query = query.filter(
+                multi_addresses::last_seen
+                    // Never tried to connect
+                    .is_null()
+                    // Or last seen after the stale threshold
+                    .or(multi_addresses::last_seen.ge(stale_threshold)),
+            );
         }
 
         if let Some(features) = features {
