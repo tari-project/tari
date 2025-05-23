@@ -153,7 +153,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 Err(_) => {
                     // header not found, lets search our cached headers
                     let mut vm_key = None;
-                    for (height, hash) in state.vm_key.iter() {
+                    for (height, hash) in &state.vm_key {
                         if *height == vm_key_height {
                             vm_key = Some(*hash);
                             break;

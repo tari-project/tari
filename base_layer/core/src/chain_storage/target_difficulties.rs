@@ -50,16 +50,16 @@ impl TargetDifficulties {
         let permitted_algos = consensus_rules
             .consensus_constants(height)
             .current_permitted_pow_algos();
-        let current_keys: Vec<PowAlgorithm> = self.algos.keys().cloned().collect();
+        let current_keys: Vec<PowAlgorithm> = self.algos.keys().copied().collect();
         for algo in current_keys {
             if !permitted_algos.contains(&algo) {
                 self.algos.remove(&algo);
             }
         }
         for algo in permitted_algos {
-            if !self.algos.contains_key(&algo) {
+            if let std::collections::hash_map::Entry::Vacant(e) = self.algos.entry(algo) {
                 let target_difficulty_window = consensus_rules.new_target_difficulty(algo, height)?;
-                self.algos.insert(algo, target_difficulty_window);
+                e.insert(target_difficulty_window);
             }
         }
         Ok(())

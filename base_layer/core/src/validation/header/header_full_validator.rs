@@ -79,7 +79,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header, &constants)?;
+        check_pow_data(header, constants)?;
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,

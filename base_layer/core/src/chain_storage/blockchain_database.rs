@@ -2186,7 +2186,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
 // this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
 // so we need to search for it.
-fn get_vm_key_for_candiate_block<T: BlockchainBackend>(
+fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
 ) -> Result<FixedHash, ChainStorageError> {
@@ -2268,7 +2268,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     // validate the block header
     let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
-    let vm_key = get_vm_key_for_candiate_block(db, candidate_block.clone())?;
+    let vm_key = get_vm_key_for_candidate_block(db, candidate_block.clone())?;
     let result = validator.validate(
         db,
         &candidate_block.header,
