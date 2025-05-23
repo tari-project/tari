@@ -99,44 +99,46 @@ impl PeerDatabaseSql {
     fn add_this_peer_node_identity_to_db(&self) -> Result<(), StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let node_identity_indexes = node_identity::table.load::<NewThisPeerIdentitySql>(&mut conn)?;
-        if node_identity_indexes.len() > 1 {
-            return Err(StorageError::UnexpectedResult(format!(
-                "There are multiple node identities for this peer in the database, expected 1, found {}",
-                node_identity_indexes.len()
-            )));
-        }
-        if !node_identity_indexes.is_empty() {
-            if self.this_peer_identity.public_key.to_hex() == node_identity_indexes[0].public_key &&
-                self.this_peer_identity.node_id.to_hex() == node_identity_indexes[0].node_id
-            {
-                return Ok(());
-            } else {
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let node_identity_indexes = node_identity::table.load::<NewThisPeerIdentitySql>(conn)?;
+            if node_identity_indexes.len() > 1 {
                 return Err(StorageError::UnexpectedResult(format!(
-                    "This peer node identity does not match, expected '{}', found '{}'",
-                    self.this_peer_identity.node_id.to_hex(),
-                    node_identity_indexes[0].node_id
+                    "There are multiple node identities for this peer in the database, expected 1, found {}",
+                    node_identity_indexes.len()
                 )));
             }
-        }
+            if !node_identity_indexes.is_empty() {
+                if self.this_peer_identity.public_key.to_hex() == node_identity_indexes[0].public_key &&
+                    self.this_peer_identity.node_id.to_hex() == node_identity_indexes[0].node_id
+                {
+                    return Ok(());
+                } else {
+                    return Err(StorageError::UnexpectedResult(format!(
+                        "This peer node identity does not match, expected '{}', found '{}'",
+                        self.this_peer_identity.node_id.to_hex(),
+                        node_identity_indexes[0].node_id
+                    )));
+                }
+            }
 
-        let node_identity_sql = NewThisPeerIdentitySql {
-            public_key: self.this_peer_identity.public_key.to_hex(),
-            node_id: self.this_peer_identity.node_id.to_hex(),
-            features: self.this_peer_identity.features.to_i32(),
-        };
+            let node_identity_sql = NewThisPeerIdentitySql {
+                public_key: self.this_peer_identity.public_key.to_hex(),
+                node_id: self.this_peer_identity.node_id.to_hex(),
+                features: self.this_peer_identity.features.to_i32(),
+            };
 
-        let inserted = diesel::insert_into(node_identity::table)
-            .values(node_identity_sql)
-            .execute(&mut conn)?;
-        if inserted == 0 {
-            return Err(StorageError::UnexpectedResult(format!(
-                "Could not insert own node identity '{}'",
-                self.this_peer_identity.node_id
-            )));
-        }
+            let inserted = diesel::insert_into(node_identity::table)
+                .values(node_identity_sql)
+                .execute(conn)?;
+            if inserted == 0 {
+                return Err(StorageError::UnexpectedResult(format!(
+                    "Could not insert own node identity '{}'",
+                    self.this_peer_identity.node_id
+                )));
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     // Note: This function is not properly working at the moment, but must be kept here for in its commented out form
@@ -156,7 +158,7 @@ impl PeerDatabaseSql {
     //     peers_with_addresses: Vec<NewPeerWithAddressesSql>,
     // ) -> Result<usize, StorageError> {
     //     let mut conn = self.connection.get_pooled_connection()?;
-    //     conn.transaction::<_, StorageError, _>(|conn| {
+    //     conn.immediate_transaction::<_, StorageError, _>(|conn| {
     //         // Step 1: Insert new peers with ON CONFLICT DO NOTHING
     //         let values = peers_with_addresses
     //             .iter()
@@ -302,7 +304,7 @@ impl PeerDatabaseSql {
     //     peers_with_addresses: Vec<UpdatePeerWithAddressesSql>,
     // ) -> Result<(), StorageError> {
     //     let mut conn = self.connection.get_pooled_connection()?;
-    //     conn.transaction::<_, StorageError, _>(|conn| {
+    //     conn.immediate_transaction::<_, StorageError, _>(|conn| {
     //         // Batch update peers
     //         if !peers_with_addresses.is_empty() {
     //             let mut peer_query = String::from("UPDATE peers SET ");
@@ -449,20 +451,21 @@ impl PeerDatabaseSql {
     pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        conn.transaction::<_, StorageError, _>(|conn| {
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let node_id = peer.node_id.clone();
 
             match self.get_peer_by_node_id_inner(&node_id, conn)? {
                 Some(mut existing_peer) => {
                     trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", node_id);
                     existing_peer.merge(&peer);
-                    self.update_peer_inner(existing_peer.clone(), conn)?;
+                    let update_peer_sql = PeerDatabaseSql::update_peer_sql(existing_peer.clone())?;
+                    self.update_peer_inner(update_peer_sql, conn)?;
                     Ok(existing_peer.id.unwrap_or_default())
                 },
                 None => {
                     trace!(target: LOG_TARGET, "Adding peer with node id '{}'", node_id);
                     let new_peer_sql = self.add_peer_sql(peer)?;
-                    let peer_id = self.add_peer_to_db_inner(new_peer_sql, conn)?;
+                    let peer_id = self.add_peer_inner(new_peer_sql, conn)?;
                     Ok(peer_id)
                 },
             }
@@ -481,13 +484,14 @@ impl PeerDatabaseSql {
     ) -> Result<Peer, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        conn.transaction::<_, StorageError, _>(|conn| {
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
             match self.get_peer_by_node_id_inner(node_id, conn)? {
                 Some(mut peer) => {
                     // Update existing
                     peer.addresses.update_addresses(addresses, source);
                     peer.features = *peer_features;
-                    self.update_peer_inner(peer.clone(), conn)?;
+                    let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer.clone())?;
+                    self.update_peer_inner(update_peer_sql, conn)?;
                     Ok(peer)
                 },
                 None => {
@@ -502,7 +506,7 @@ impl PeerDatabaseSql {
                         Default::default(),
                     );
                     let new_peer_sql = self.add_peer_sql(new_peer.clone())?;
-                    let peer_id = self.add_peer_to_db_inner(new_peer_sql, conn)?;
+                    let peer_id = self.add_peer_inner(new_peer_sql, conn)?;
                     let mut peer = new_peer;
                     peer.set_id(peer_id);
                     Ok(peer)
@@ -573,73 +577,55 @@ impl PeerDatabaseSql {
     }
 
     // Add a new peer with its associated multi-addresses
-    fn add_peer_to_db_inner(
+    fn add_peer_inner(
         &self,
         new_peer_sql: NewPeerWithAddressesSql,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &mut SqliteConnection,
     ) -> Result<PeerId, StorageError> {
-        conn.transaction::<_, StorageError, _>(|conn| {
-            // Insert the peer and get the last inserted ID
-            let node_id = new_peer_sql.peer.node_id.clone();
-            let inserted = diesel::insert_into(peers::table)
-                .values(&new_peer_sql.peer)
-                .execute(conn)?;
-            if inserted == 0 {
-                return Err(StorageError::UnexpectedResult(format!(
-                    "Could not insert peer '{}'",
-                    node_id
-                )));
-            }
+        // Insert the peer and get the last inserted ID
+        let node_id = new_peer_sql.peer.node_id.clone();
+        let inserted = diesel::insert_into(peers::table)
+            .values(&new_peer_sql.peer)
+            .execute(conn)?;
+        if inserted == 0 {
+            return Err(StorageError::UnexpectedResult(format!(
+                "Could not insert peer '{}'",
+                node_id
+            )));
+        }
 
-            let peer_id = peers::table
-                .filter(peers::node_id.eq(new_peer_sql.peer.node_id))
-                .select(peers::peer_id)
-                .first::<i64>(conn)?;
+        let peer_id = peers::table
+            .filter(peers::node_id.eq(new_peer_sql.peer.node_id))
+            .select(peers::peer_id)
+            .first::<i64>(conn)?;
 
-            // Batch insert the associated multi-addresses
-            let addresses: Vec<_> = new_peer_sql
-                .addresses
-                .clone()
-                .iter_mut()
-                .map(|addr| {
-                    addr.peer_id = peer_id;
-                    addr.clone()
-                })
-                .collect();
+        // Batch insert the associated multi-addresses
+        let addresses: Vec<_> = new_peer_sql
+            .addresses
+            .clone()
+            .iter_mut()
+            .map(|addr| {
+                addr.peer_id = peer_id;
+                addr.clone()
+            })
+            .collect();
 
-            let inserted = diesel::insert_into(multi_addresses::table)
-                .values(&addresses)
-                .execute(conn)?;
-            if inserted != addresses.len() {
-                return Err(StorageError::UnexpectedResult(format!(
-                    "Could not insert address '{:?}' for peer '{}'",
-                    new_peer_sql
-                        .addresses
-                        .iter()
-                        .map(|v| v.address.clone())
-                        .collect::<Vec<_>>(),
-                    node_id
-                )));
-            }
+        let inserted = diesel::insert_into(multi_addresses::table)
+            .values(&addresses)
+            .execute(conn)?;
+        if inserted != addresses.len() {
+            return Err(StorageError::UnexpectedResult(format!(
+                "Could not insert address '{:?}' for peer '{}'",
+                new_peer_sql
+                    .addresses
+                    .iter()
+                    .map(|v| v.address.clone())
+                    .collect::<Vec<_>>(),
+                node_id
+            )));
+        }
 
-            Ok(peer_id_from_i64(peer_id))
-        })
-    }
-
-    /// Add a new peer with its associated multi-addresses
-    pub fn update_peer(&self, peer: Peer) -> Result<(), StorageError> {
-        let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer)?;
-        self.update_peer_in_db(update_peer_sql)
-    }
-
-    // Add a new peer with its associated multi-addresses
-    fn update_peer_inner(
-        &self,
-        peer: Peer,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<(), StorageError> {
-        let update_peer_sql = PeerDatabaseSql::update_peer_sql(peer)?;
-        self.update_peer_in_db_inner(update_peer_sql, conn)
+        Ok(peer_id_from_i64(peer_id))
     }
 
     // Helper function to convert a Peer to an UpdatePeerWithAddressesSql
@@ -695,63 +681,47 @@ impl PeerDatabaseSql {
     }
 
     // Update an existing peer with its associated multi-addresses
-    fn update_peer_in_db(&self, update_peer_sql: UpdatePeerWithAddressesSql) -> Result<(), StorageError> {
-        let mut conn = self.connection.get_pooled_connection()?;
-        self.update_peer_in_db_inner(update_peer_sql, &mut conn)
-    }
-
-    // Update an existing peer with its associated multi-addresses
-    fn update_peer_in_db_inner(
+    fn update_peer_inner(
         &self,
         update_peer_sql: UpdatePeerWithAddressesSql,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &mut SqliteConnection,
     ) -> Result<(), StorageError> {
-        conn.transaction::<_, StorageError, _>(|conn| {
-            // Update the peer
-            diesel::update(peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone())))
-                .set(&update_peer_sql.peer)
-                .execute(conn)?;
+        // Update the peer
+        diesel::update(peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone())))
+            .set(&update_peer_sql.peer)
+            .execute(conn)?;
 
-            // Update the associated multi-addresses
-            for address_update in update_peer_sql.addresses {
-                let updated = diesel::update(
-                    multi_addresses::table.filter(multi_addresses::address.eq(address_update.address.clone())),
-                )
-                .set(&address_update)
-                .execute(conn)?;
-                // If the address does not exist, add it
-                if updated == 0 {
-                    let peer_id = peers::table
-                        .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone()))
-                        .select(peers::peer_id)
-                        .first::<i64>(conn)?;
-                    let new_address_sql = NewMultiaddrWithStatsSql::from((address_update.clone(), peer_id));
-                    diesel::insert_into(multi_addresses::table)
-                        .values(&new_address_sql)
-                        .execute(conn)?;
-                }
+        // Update the associated multi-addresses
+        for address_update in update_peer_sql.addresses {
+            let updated = diesel::update(
+                multi_addresses::table.filter(multi_addresses::address.eq(address_update.address.clone())),
+            )
+            .set(&address_update)
+            .execute(conn)?;
+            // If the address does not exist, add it
+            if updated == 0 {
+                let peer_id = peers::table
+                    .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone()))
+                    .select(peers::peer_id)
+                    .first::<i64>(conn)?;
+                let new_address_sql = NewMultiaddrWithStatsSql::from((address_update.clone(), peer_id));
+                diesel::insert_into(multi_addresses::table)
+                    .values(&new_address_sql)
+                    .execute(conn)?;
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 
     /// Check if a peer exists by querying its node ID - if it exits the peer_id will be returned
     pub fn peer_exists_by_node_id(&self, node_id: &NodeId) -> Result<Option<PeerId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        self.peer_exists_by_node_id_inner(node_id, &mut conn)
-    }
 
-    // Check if a peer exists by querying its node ID - if it exits the peer_id will be returned
-    fn peer_exists_by_node_id_inner(
-        &self,
-        node_id: &NodeId,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
-    ) -> Result<Option<PeerId>, StorageError> {
         if let Ok(peer_id) = peers::table
             .filter(peers::node_id.eq(node_id.to_hex()))
             .select(peers::peer_id)
-            .first::<i64>(conn)
+            .first::<i64>(&mut conn)
         {
             Ok(Some(peer_id_from_i64(peer_id)))
         } else {
@@ -778,21 +748,23 @@ impl PeerDatabaseSql {
     pub fn set_deleted_at(&self, node_id: &NodeId) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
-            .set(peers::deleted_at.eq(chrono::Utc::now().naive_utc()))
-            .execute(&mut conn)?;
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
+                .set(peers::deleted_at.eq(chrono::Utc::now().naive_utc()))
+                .execute(conn)?;
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Set the metadata for a peer, returning 'None' if the value was empty and the old value if the value was updated
     pub fn set_metadata(&self, node_id: &NodeId, key: u8, data: Vec<u8>) -> Result<Option<Vec<u8>>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let result = conn.transaction::<_, StorageError, _>(|conn| {
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let metadata = peers::table
                 .filter(peers::node_id.eq(node_id.to_string()))
                 .select(peers::metadata)
@@ -807,9 +779,7 @@ impl PeerDatabaseSql {
                 .execute(conn)?;
 
             Ok(result)
-        })?;
-
-        Ok(result)
+        })
     }
 
     /// Set the banned metadata for a peer, returning 'Some(node_id)' if successful, 'None' otherwise
@@ -821,58 +791,64 @@ impl PeerDatabaseSql {
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let dt = safe_future_datetime_from_duration(ban_duration);
-        let banned_until = dt.naive_utc();
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let dt = safe_future_datetime_from_duration(ban_duration);
+            let banned_until = dt.naive_utc();
 
-        let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
-            .set((
-                peers::banned_until.eq(banned_until),
-                peers::banned_reason.eq(banned_reason),
-            ))
-            .execute(&mut conn)?;
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+            let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
+                .set((
+                    peers::banned_until.eq(banned_until),
+                    peers::banned_reason.eq(banned_reason),
+                ))
+                .execute(conn)?;
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Reset the banned metadata for a peer, returning 'Some(node_id)' if successful, 'None' otherwise
     pub fn reset_banned(&self, node_id: &NodeId) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
-            .set((
-                peers::banned_until.eq(None::<NaiveDateTime>),
-                peers::banned_reason.eq(None::<String>),
-            ))
-            .execute(&mut conn)?;
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
+                .set((
+                    peers::banned_until.eq(None::<NaiveDateTime>),
+                    peers::banned_reason.eq(None::<String>),
+                ))
+                .execute(conn)?;
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Reset all banned metadata for all peers that were banned
     pub fn reset_all_banned(&self) -> Result<usize, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(peers::table.filter(peers::banned_until.is_not_null()))
-            .set((
-                peers::banned_until.eq(None::<NaiveDateTime>),
-                peers::banned_reason.eq(None::<String>),
-            ))
-            .execute(&mut conn)?;
-        Ok(affected)
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(peers::table.filter(peers::banned_until.is_not_null()))
+                .set((
+                    peers::banned_until.eq(None::<NaiveDateTime>),
+                    peers::banned_reason.eq(None::<String>),
+                ))
+                .execute(conn)?;
+            Ok(affected)
+        })
     }
 
     /// Reset all offline non-wallet peers (zero their connection attempts)
     pub fn reset_offline_non_wallet_peers(&self) -> Result<usize, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected =
-            diesel::update(multi_addresses::table)
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(multi_addresses::table)
                 .filter(
                     multi_addresses::peer_id.eq_any(peers::table.select(peers::peer_id).filter(diesel::dsl::sql::<
                         diesel::sql_types::Bool,
@@ -886,9 +862,10 @@ impl PeerDatabaseSql {
                     multi_addresses::last_attempted.eq(None::<NaiveDateTime>),
                     multi_addresses::last_failed_reason.eq(None::<String>),
                 ))
-                .execute(&mut conn)?;
+                .execute(conn)?;
 
-        Ok(affected)
+            Ok(affected)
+        })
     }
 
     /// Set the last seen metadata for a peer's address, returning 'Some(node_id)' if successful, 'None' otherwise
@@ -900,48 +877,52 @@ impl PeerDatabaseSql {
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(
-            multi_addresses::table
-                .filter(
-                    multi_addresses::peer_id.nullable().eq(peers::table
-                        .filter(peers::node_id.eq(node_id.to_string()))
-                        .select(peers::peer_id)
-                        .single_value()),
-                )
-                .filter(multi_addresses::address.eq(address.to_string())),
-        )
-        .set(multi_addresses::last_seen.eq(last_seen))
-        .execute(&mut conn)?;
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(
+                multi_addresses::table
+                    .filter(
+                        multi_addresses::peer_id.nullable().eq(peers::table
+                            .filter(peers::node_id.eq(node_id.to_string()))
+                            .select(peers::peer_id)
+                            .single_value()),
+                    )
+                    .filter(multi_addresses::address.eq(address.to_string())),
+            )
+            .set(multi_addresses::last_seen.eq(last_seen))
+            .execute(conn)?;
 
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Reset the last seen metadata for a peer's address, returning 'Some(node_id)' if successful, 'None' otherwise
     pub fn reset_last_seen(&self, node_id: &NodeId, address: &Multiaddr) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(
-            multi_addresses::table
-                .filter(
-                    multi_addresses::peer_id.nullable().eq(peers::table
-                        .filter(peers::node_id.eq(node_id.to_string()))
-                        .select(peers::peer_id)
-                        .single_value()),
-                )
-                .filter(multi_addresses::address.eq(address.to_string())),
-        )
-        .set(multi_addresses::last_seen.eq(None::<NaiveDateTime>))
-        .execute(&mut conn)?;
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(
+                multi_addresses::table
+                    .filter(
+                        multi_addresses::peer_id.nullable().eq(peers::table
+                            .filter(peers::node_id.eq(node_id.to_string()))
+                            .select(peers::peer_id)
+                            .single_value()),
+                    )
+                    .filter(multi_addresses::address.eq(address.to_string())),
+            )
+            .set(multi_addresses::last_seen.eq(None::<NaiveDateTime>))
+            .execute(conn)?;
 
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Set the last failed reason metadata for a peer's address
@@ -953,24 +934,26 @@ impl PeerDatabaseSql {
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(
-            multi_addresses::table
-                .filter(
-                    multi_addresses::peer_id.nullable().eq(peers::table
-                        .filter(peers::node_id.eq(node_id.to_string()))
-                        .select(peers::peer_id)
-                        .single_value()),
-                )
-                .filter(multi_addresses::address.eq(address.to_string())),
-        )
-        .set(multi_addresses::last_failed_reason.eq(sql_escape(&last_failed_reason)))
-        .execute(&mut conn)?;
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(
+                multi_addresses::table
+                    .filter(
+                        multi_addresses::peer_id.nullable().eq(peers::table
+                            .filter(peers::node_id.eq(node_id.to_string()))
+                            .select(peers::peer_id)
+                            .single_value()),
+                    )
+                    .filter(multi_addresses::address.eq(address.to_string())),
+            )
+            .set(multi_addresses::last_failed_reason.eq(sql_escape(&last_failed_reason)))
+            .execute(conn)?;
 
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     /// Reset the last failed reason metadata for a peer's address
@@ -981,24 +964,26 @@ impl PeerDatabaseSql {
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        let affected = diesel::update(
-            multi_addresses::table
-                .filter(
-                    multi_addresses::peer_id.nullable().eq(peers::table
-                        .filter(peers::node_id.eq(node_id.to_string()))
-                        .select(peers::peer_id)
-                        .single_value()),
-                )
-                .filter(multi_addresses::address.eq(address.to_string())),
-        )
-        .set(multi_addresses::last_failed_reason.eq(None::<String>))
-        .execute(&mut conn)?;
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let affected = diesel::update(
+                multi_addresses::table
+                    .filter(
+                        multi_addresses::peer_id.nullable().eq(peers::table
+                            .filter(peers::node_id.eq(node_id.to_string()))
+                            .select(peers::peer_id)
+                            .single_value()),
+                    )
+                    .filter(multi_addresses::address.eq(address.to_string())),
+            )
+            .set(multi_addresses::last_failed_reason.eq(None::<String>))
+            .execute(conn)?;
 
-        if affected > 0 {
-            Ok(Some(node_id.clone()))
-        } else {
-            Ok(None)
-        }
+            if affected > 0 {
+                Ok(Some(node_id.clone()))
+            } else {
+                Ok(None)
+            }
+        })
     }
 
     // Helper function to convert a Vec of join query results into a Vec of Peer
@@ -1053,13 +1038,13 @@ impl PeerDatabaseSql {
     pub fn get_all_peers(&self, features: Option<PeerFeatures>) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        self.get_all_peers_inner(features, &mut conn)
+        conn.transaction::<_, StorageError, _>(|conn| self.get_all_peers_inner(features, conn))
     }
 
     fn get_all_peers_inner(
         &self,
         features: Option<PeerFeatures>,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<Peer>, StorageError> {
         let mut query = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
@@ -1085,7 +1070,7 @@ impl PeerDatabaseSql {
     fn get_all_deleted_peers(
         &self,
         features: Option<PeerFeatures>,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &mut SqliteConnection,
     ) -> Result<Vec<NodeId>, StorageError> {
         let mut query = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
@@ -1137,7 +1122,7 @@ impl PeerDatabaseSql {
     fn get_peer_by_node_id_inner(
         &self,
         node_id: &NodeId,
-        conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        conn: &mut SqliteConnection,
     ) -> Result<Option<Peer>, StorageError> {
         // Perform a join query to fetch peers and their addresses
         let node_id = node_id.to_hex();
@@ -1175,7 +1160,7 @@ impl PeerDatabaseSql {
         Ok(public_keys)
     }
 
-    pub fn get_peers_by_node_ids_str(
+    fn get_peers_by_node_ids_str(
         &self,
         node_ids: &[String],
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
@@ -1302,7 +1287,9 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
 
-        self.get_closest_n_good_standing_peer_node_ids_inner(n, features, &mut conn)
+        conn.transaction::<_, StorageError, _>(|conn| {
+            self.get_closest_n_good_standing_peer_node_ids_inner(n, features, conn)
+        })
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
@@ -1497,7 +1484,8 @@ impl PeerDatabaseSql {
         neighbours_count: usize,
     ) -> Result<Vec<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        conn.transaction::<_, StorageError, _>(|conn| {
+
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let stale_threshold = chrono::Utc::now().naive_utc() -
                 chrono::Duration::from_std(stale_peer_threshold).unwrap_or(TimeDelta::MAX);
 
@@ -1643,7 +1631,7 @@ impl PeerDatabaseSql {
     }
 
     /// Get a random set of `n` peers from the database that are not banned and not deleted
-    pub fn random_peers_sqlite(&self, n: usize, exclude_node_ids: &[NodeId]) -> Result<Vec<Peer>, StorageError> {
+    pub fn get_n_random_peers(&self, n: usize, exclude_node_ids: &[NodeId]) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
         }
@@ -2062,8 +2050,7 @@ mod tests {
             .merge(&MultiaddressesWithStats::new(vec![address_to_update.clone()]));
 
         // Update the peer in the database
-        let update_sql = PeerDatabaseSql::update_peer_sql(new_peer.clone()).unwrap();
-        peers_db.update_peer_in_db(update_sql).unwrap();
+        peers_db.add_or_update_peer(new_peer.clone()).unwrap();
 
         // Verify the updated peer can be retrieved from the db by node_id
         let peer_from_db = peers_db.get_peer_by_node_id(&new_peer.node_id).unwrap().unwrap();
@@ -2480,7 +2467,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .random_peers_sqlite(5, &[node_peers[0].node_id.clone()])
+            .get_n_random_peers(5, &[node_peers[0].node_id.clone()])
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned

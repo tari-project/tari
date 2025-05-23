@@ -60,7 +60,7 @@ mod not_test {
             .join(random_name())
             .with_extension("db");
         let database_url = DbConnectionUrl::File(peer_database_name);
-        let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+        let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
         let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
         Ok(Arc::new(PeerManager::new(peers_db)?))
     }

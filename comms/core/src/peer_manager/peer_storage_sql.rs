@@ -252,7 +252,7 @@ impl PeerStorageSql {
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
     pub fn random_peers(&self, n: usize, exclude_peers: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.random_peers_sqlite(n, exclude_peers)?)
+        Ok(self.peer_db.get_n_random_peers(n, exclude_peers)?)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.

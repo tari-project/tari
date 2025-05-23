@@ -655,4 +655,113 @@ mod test {
 
         assert!(!peer.is_offline());
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn test_concurrent_add_or_update_and_get_closest_peers() {
+        let peer_manager = create_peer_manager();
+        let num_peers = 75;
+        let num_write_tasks = 20;
+        let num_read_tasks = 1500;
+        let n = 100;
+
+        // Spawn tasks to concurrently add peers and update their stats
+        let add_tasks: Vec<_> = (0..num_write_tasks)
+            .map(|_| {
+                let peer_manager = peer_manager.clone();
+                tokio::spawn(async move {
+                    let mut peers_to_update_last_seen = Vec::new();
+                    let mut peers_to_set_metadata = Vec::new();
+                    for i in 0..num_peers {
+                        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+                        if i % 7 == 0 {
+                            peers_to_update_last_seen.push(peer.clone());
+                        }
+                        if i % 11 == 0 {
+                            peers_to_set_metadata.push(peer.clone());
+                        }
+                        peers_to_update_last_seen.push(peer.clone());
+                        peer_manager.add_or_update_peer(peer).await.unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    for peer in &mut peers_to_update_last_seen {
+                        let addresses = peer.addresses.addresses().to_vec();
+                        peer.addresses.mark_last_seen_now(addresses[0].address());
+                        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    for (key, peer) in peers_to_set_metadata.iter().enumerate() {
+                        peer_manager
+                            .set_peer_metadata(
+                                &peer.node_id,
+                                u8::try_from(key % usize::from(u8::MAX)).unwrap_or_default(),
+                                vec![1, 2, 3],
+                            )
+                            .await
+                            .unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    Ok::<_, PeerManagerError>(())
+                    // println!("Added {} peers", num_peers);
+                })
+            })
+            .collect();
+
+        // Spawn tasks to concurrently fetch closest peers
+        let get_tasks: Vec<_> = (0..num_read_tasks)
+            .map(|_| {
+                let peer_manager = peer_manager.clone();
+                tokio::spawn(async move {
+                    let region_node_id = peer_manager.this_peer_identity().node_id;
+                    tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    let _closest_peers = peer_manager
+                        .closest_n_active_peers(
+                            &region_node_id,
+                            n,
+                            &[],
+                            Some(PeerFeatures::COMMUNICATION_NODE),
+                            None,
+                            false,
+                            None,
+                        )
+                        .await
+                        .unwrap();
+                    tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    let _total_peers = peer_manager.count().await;
+                    // println!("Total peers: {}, Closest peers: {}", _total_peers, _closest_peers.len());
+                    Ok::<_, PeerManagerError>(())
+                })
+            })
+            .collect();
+
+        // Wait for all tasks to complete
+        let all_tasks = add_tasks.into_iter().chain(get_tasks);
+
+        for (i, task) in all_tasks.enumerate() {
+            match task.await {
+                Ok(Ok(_)) => { /* success */ },
+                Ok(Err(e)) => panic!("Task {i} failed with PeerManagerError: {e:?}"),
+                Err(e) => panic!("Task {i} panicked: {e:?}"),
+            }
+        }
+
+        // Do one final read
+        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+        let region_node_id = peer_manager.this_peer_identity().node_id;
+        let closest_peers = peer_manager
+            .closest_n_active_peers(
+                &region_node_id,
+                n,
+                &[],
+                Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+        let total_peers = peer_manager.count().await;
+        // println!("Total peers: {}, Closest peers: {}", total_peers, closest_peers.len());
+        assert_eq!(total_peers, num_peers * num_write_tasks);
+        assert_eq!(closest_peers.len(), n);
+    }
 }

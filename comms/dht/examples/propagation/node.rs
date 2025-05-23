@@ -63,7 +63,7 @@ pub async fn create(
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(CommsNode, Dht, mpsc::Receiver<DecryptedDhtMessage>)> {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
     let this_node_identity = node_identity
         .as_ref()
         .map(|ni| ni.as_ref().clone())

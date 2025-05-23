@@ -31,20 +31,12 @@ use tokio::task;
 pub enum SqliteStorageError {
     #[error("Poolsize is too big")]
     PoolSize(#[from] TryFromIntError),
-    #[error("Operation not supported")]
-    OperationNotSupported,
-    #[error("Conversion error: `{0}`")]
-    ConversionError(String),
     #[error("Database error: `{0}`")]
     R2d2Error(#[from] r2d2::Error),
     #[error("Database error: `{0}`")]
     DieselR2d2Error(String),
     #[error("Database error: `{0}`")]
     DieselConnectionError(#[from] diesel::ConnectionError),
-    #[error("Database error: `{0}`")]
-    DatabaseMigrationError(String),
-    #[error("Database error: `{0}`")]
-    BlockingTaskSpawnError(String),
 }
 
 #[derive(Debug, Error)]
@@ -55,8 +47,8 @@ pub enum StorageError {
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
     DatabaseMigrationFailed(String),
-    #[error("ResultError: {0}")]
-    ResultError(#[from] diesel::result::Error),
+    #[error("Diesel result error: {0}")]
+    DieselResultError(#[from] diesel::result::Error),
     #[error("MessageFormatError: {0}")]
     MessageFormatError(String),
     #[error("Unexpected result: {0}")]
@@ -69,14 +61,10 @@ pub enum StorageError {
     JsonError(#[from] serde_json::Error),
     #[error("TryFromInt conversion error: `{0}`")]
     TryFromIntError(#[from] TryFromIntError),
-    #[error("The requested peer does not exist")]
-    PeerNotFoundError,
-    #[error("Error: `{0}`")]
-    Error(#[from] Error),
-    #[error("Database is locked: {0}")]
-    DatabaseLockError(String),
-    #[error("The state of the database changed between queries")]
-    DatabaseStateChanged,
+    #[error("IO error: `{0}`")]
+    IoError(#[from] Error),
+    #[error("Database migration lock error: {0}")]
+    DatabaseMigrartionLockError(String),
 }
 
 impl From<MessageFormatError> for StorageError {

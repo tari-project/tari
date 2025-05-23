@@ -191,7 +191,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     Error,
 > {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
     let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer())?;
 
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();

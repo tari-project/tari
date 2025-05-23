@@ -222,7 +222,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone());
 
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5)).unwrap();
     let cipher = CipherSeed::new();
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);

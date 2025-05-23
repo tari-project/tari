@@ -37,7 +37,7 @@ const LOG_TARGET: &str = "contacts::chat_client::database";
 
 pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, SqliteStorageError> {
     let url: DbConnectionUrl = DbConnectionUrl::File(db_path);
-    let connection = DbConnection::connect_url(&url)?;
+    let connection = DbConnection::connect_url(&url, Some(5))?;
     trace!(target: LOG_TARGET, "Connected to chat storage db {:?}", url);
     Ok(ContactsServiceSqliteDatabase::init(connection))
 }

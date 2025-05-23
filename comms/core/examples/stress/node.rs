@@ -98,7 +98,7 @@ pub async fn create(
     Error,
 > {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS)?;
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
     let this_node = if let Some(node) = node_identity.as_ref() {
         node.to_peer()
     } else {
