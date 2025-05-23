@@ -150,7 +150,7 @@ impl SidechainBlockCommitProof {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum CommitProofElement {
     QuorumCertificate(QuorumCertificate),
-    DummyChain(Vec<ChainLink>),
+    ChainLinks(Vec<ChainLink>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
