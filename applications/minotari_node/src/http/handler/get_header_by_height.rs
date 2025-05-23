@@ -30,10 +30,10 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         .await
         .map_err(|error| {
             error!(target: LOG_TARGET, "Error getting header by height: {:?}", error);
-            if matches!(error, Error::HeaderNotFound { .. }) {
-                return StatusCode::NOT_FOUND;
+            match error {
+                Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
+                Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
             }
-            StatusCode::INTERNAL_SERVER_ERROR
         })?;
     Ok(Json(response))
 }

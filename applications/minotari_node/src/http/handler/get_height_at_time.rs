@@ -26,10 +26,10 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     let response = query_service.get_height_at_time(params.time).await.map_err(|error| {
         error!(target: LOG_TARGET, "Error getting height at specific time: {:?}", error);
-        if matches!(error, Error::HeaderNotFound { .. }) {
-            return StatusCode::NOT_FOUND;
+        match error {
+            Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
+            Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
-        StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(response))
 }

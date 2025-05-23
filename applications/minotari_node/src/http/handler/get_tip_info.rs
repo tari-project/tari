@@ -6,7 +6,7 @@ use std::sync::Arc;
 use axum::{http::StatusCode, Extension, Json};
 use log::{debug, error};
 use tari_core::{
-    base_node::rpc::{models::TipInfoResponse, query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{models::TipInfoResponse, query_service, query_service::Error, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 
@@ -19,7 +19,10 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 
     let tip_info = query_service.get_tip_info().await.map_err(|error| {
         error!(target: LOG_TARGET, "Error getting tip info: {:?}", error);
-        StatusCode::INTERNAL_SERVER_ERROR
+        match error {
+            Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
+            Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     })?;
     Ok(Json(tip_info))
 }

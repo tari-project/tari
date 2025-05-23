@@ -4364,7 +4364,6 @@ dependencies = [
  "minotari_app_utilities",
  "nom",
  "qrcode",
- "reqwest 0.12.15",
  "rustyline",
  "rustyline-derive",
  "serde",
