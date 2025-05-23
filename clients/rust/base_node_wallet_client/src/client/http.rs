@@ -1,7 +1,5 @@
-/*
- * Copyright 2025 The Tari Project
- * SPDX-License-Identifier: BSD-3-Clause
- */
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
 use async_trait::async_trait;
 use tari_core::{base_node::rpc::models::TipInfoResponse, blocks::BlockHeader};
 use url::Url;
