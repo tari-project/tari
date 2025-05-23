@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [3.0.1-pre.0](https://github.com/tari-project/tari/compare/v3.0.0-pre.3...v3.0.1-pre.0) (2025-05-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* sync (#7088)
+
+### Bug Fixes
+[
+* sync ([#7088](https://github.com/tari-project/tari/issues/7088)) ([b268384](https://github.com/tari-project/tari/commit/b2683849b4d6f631b5b7efb3b66cd75b7526c119))]()
+
 ## [3.0.0-pre.3](https://github.com/tari-project/tari/compare/v3.0.0-pre.2...v3.0.0-pre.3) (2025-05-22)
 
 
