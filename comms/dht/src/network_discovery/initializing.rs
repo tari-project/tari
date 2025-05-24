@@ -75,7 +75,9 @@ impl<'a> Initializing<'a> {
         let mut seed_peers = 0;
         let mut banned_peers = 0;
         let mut deleted_peers = 0;
-        let mut other_unsuitable = 0;
+        let mut offline_peers = 0;
+        let mut failed_address_peers = 0;
+        let mut non_communication_node_peers = 0;
         let mut suitable_peers = 0;
 
         for peer in &all_peers {
@@ -87,8 +89,12 @@ impl<'a> Initializing<'a> {
                 banned_peers += 1;
             } else if peer.deleted_at.is_some() {
                 deleted_peers += 1;
-            } else if peer.is_offline() || peer.all_addresses_failed() {
-                other_unsuitable += 1;
+            } else if peer.is_offline() {
+                offline_peers += 1;
+            } else if peer.all_addresses_failed() {
+                failed_address_peers += 1;
+            } else if !peer.features.is_communication_node() {
+                non_communication_node_peers += 1;
             } else {
                 suitable_peers += 1;
             }
@@ -98,8 +104,8 @@ impl<'a> Initializing<'a> {
         
         info!(
             target: LOG_TARGET,
-            "BOOTSTRAP DECISION: Peer DB analysis - Total: {}, Seeds: {}, Banned: {}, Deleted: {}, Other unsuitable: {}, Suitable: {} (min required: {})",
-            total_peers, seed_peers, banned_peers, deleted_peers, other_unsuitable, suitable_peers, min_peers_for_bootstrap_skip
+            "BOOTSTRAP DECISION: Peer DB analysis - Total: {}, Seeds: {}, Banned: {}, Deleted: {}, Offline: {}, Failed addresses: {}, Non-comm nodes: {}, Suitable: {} (min required: {})",
+            total_peers, seed_peers, banned_peers, deleted_peers, offline_peers, failed_address_peers, non_communication_node_peers, suitable_peers, min_peers_for_bootstrap_skip
         );
 
         if suitable_peers >= min_peers_for_bootstrap_skip {
