@@ -129,7 +129,7 @@ impl PeerStorageSql {
     }
 
     pub fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.find_all_peers_match_partial_node_id_bytes(partial)?)
+        Ok(self.peer_db.find_all_peers_match_partial_key(partial)?)
     }
 
     /// Find the peer with the provided PublicKey

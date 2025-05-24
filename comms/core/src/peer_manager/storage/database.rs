@@ -1011,25 +1011,42 @@ impl PeerDatabaseSql {
         Ok(peers)
     }
 
-    /// Find all peers that match a partial node ID
-    pub fn find_all_peers_match_partial_node_id_bytes(&self, start_bytes: &[u8]) -> Result<Vec<Peer>, StorageError> {
+    /// Find all peers that match a partial node ID or public key
+    pub fn find_all_peers_match_partial_key(&self, start_bytes: &[u8]) -> Result<Vec<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
-        if start_bytes.len() % 2 != 0 {
-            return Err(StorageError::MessageFormatError(
-                "Invalid length for start_bytes, must be even".to_string(),
-            ));
-        }
-        if start_bytes.is_empty() || start_bytes.len() > NodeId::byte_size() {
+        if start_bytes.is_empty() {
             return Ok(Vec::new());
         }
+        let partial_key = hex::to_hex(start_bytes);
 
-        // Perform a join query to fetch peers and their addresses
-        let partial_node_id = hex::to_hex(start_bytes);
-        let results = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::node_id.like(format!("{}%", partial_node_id)))
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        if start_bytes.len() > CommsPublicKey::key_length() {
+            return Err(StorageError::MessageFormatError(format!(
+                "Invalid length ({}) for peer NodeId or PublicKey, must be less than or equal to {}",
+                start_bytes.len(),
+                CommsPublicKey::key_length(),
+            )));
+        }
+
+        let mut results;
+        if start_bytes.len() > NodeId::byte_size() {
+            results = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(peers::public_key.like(format!("{}%", partial_key)))
+                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        } else {
+            results = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(peers::node_id.like(format!("{}%", partial_key)))
+                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+
+            if results.is_empty() {
+                results = peers::table
+                    .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                    .filter(peers::public_key.like(format!("{}%", partial_key)))
+                    .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+            }
+        }
 
         PeerDatabaseSql::peers_from_join_query(results)
     }
@@ -1965,11 +1982,13 @@ mod tests {
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
                 schema::{multi_addresses, peers},
             },
+            NodeId,
             Peer,
             PeerFeatures,
             PeerFlags,
         },
         protocol::ProtocolId,
+        types::CommsPublicKey,
     };
 
     #[test]
@@ -2260,11 +2279,19 @@ mod tests {
         // Test 'get_peer_indexes'
         assert_eq!(peers_db.size(), 24);
 
-        // Test 'find_all_peers_match_partial_node_id_bytes'
-        let matches = peers_db
-            .find_all_peers_match_partial_node_id_bytes(&node_peers[0].node_id.as_bytes()[0..2])
-            .unwrap();
-        assert!(matches.contains(&node_peers[0]));
+        // Test 'find_all_peers_match_partial_key'
+        for i in 1..NodeId::byte_size() {
+            let matches = peers_db
+                .find_all_peers_match_partial_key(&node_peers[0].node_id.as_bytes()[0..i])
+                .unwrap();
+            assert!(matches.contains(&node_peers[0]));
+        }
+        for i in 1..CommsPublicKey::key_length() {
+            let matches = peers_db
+                .find_all_peers_match_partial_key(&node_peers[0].public_key.as_bytes()[0..i])
+                .unwrap();
+            assert!(matches.contains(&node_peers[0]));
+        }
 
         // Test 'set_deleted_at'
         peers_db.set_deleted_at(&node_peers[1].node_id).unwrap();
