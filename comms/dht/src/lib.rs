@@ -92,7 +92,7 @@ mod error;
 pub use error::DhtEncryptError;
 
 mod network_discovery;
-pub use network_discovery::{NetworkDiscoveryConfig, state_machine::DiscoveryPhase};
+pub use network_discovery::{NetworkDiscoveryConfig, state_machine::{DiscoveryPhase, BootstrapMethod}};
 
 mod storage;
 

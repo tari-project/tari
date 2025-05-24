@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms_dht::event::DhtEvent;
 use tari_comms_dht::DiscoveryPhase;
+use tari_comms_dht::BootstrapMethod;
 use crate::base_node::state_machine_service::states::events_and_states;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
@@ -325,6 +326,25 @@ impl Listening {
                         Ok(dht_event_arc) => {
                             let dht_event = dht_event_arc.deref();
                             match dht_event {
+                                DhtEvent::BootstrapMethodDetermined(method) => {
+                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method determined by DHT: {}", method);
+                                    if *method == BootstrapMethod::ExistingPeers {
+                                        info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method is ExistingPeers. Marking primary bootstrap as complete.");
+                                        shared.set_primary_bootstrap_complete(true);
+
+                                        // Explicitly clear UI state here as well
+                                        if let StateInfo::Listening(mut li) = shared.info.clone() {
+                                            if li.bootstrap_phase.is_some() {
+                                                li.bootstrap_phase = None;
+                                                shared.set_state_info(StateInfo::Listening(li));
+                                                info!(
+                                                    target: LOG_TARGET,
+                                                    "[BN SM LISTENING] Bootstrap (ExistingPeers) determined. UI bootstrap_phase cleared explicitly."
+                                                );
+                                            }
+                                        }
+                                    }
+                                },
                                 DhtEvent::NetworkDiscoveryPeersAdded(round_info) => {
                                     if round_info.phase == DiscoveryPhase::SeedStrap && !shared.is_primary_bootstrap_complete {
                                         if let StateInfo::Listening(mut li) = shared.info.clone() {
