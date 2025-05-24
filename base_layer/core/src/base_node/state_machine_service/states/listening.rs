@@ -32,7 +32,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms_dht::event::DhtEvent;
 use tari_comms_dht::DiscoveryPhase;
-use tari_comms_dht::BootstrapMethod;
 use crate::base_node::state_machine_service::states::events_and_states;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
@@ -146,6 +145,7 @@ impl Listening {
         network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
+        
         if network_silence {
             self.set_synced_response(shared);
             warn!(
@@ -165,20 +165,69 @@ impl Listening {
                     bootstrap_phase: None,
                 },
             };
+
+            // Check for any missed DHT events first (to handle timing issues)
+            let mut dht_events_check = shared.dht_event_stream.resubscribe();
+            info!(target: LOG_TARGET, "[BN SM LISTENING] Checking for any missed DHT bootstrap events before setting up UI state");
+            
+            // Try to receive any recent DHT events that might have been published before we started listening
+            let mut events_processed = 0;
+            loop {
+                match dht_events_check.try_recv() {
+                    Ok(event_arc) => {
+                        events_processed += 1;
+                        let event = event_arc.deref();
+                        match event {
+                            DhtEvent::BootstrapMethodDetermined(method) => {
+                                let method_str = format!("{}", method);
+                                info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed BootstrapMethodDetermined event: {}", method_str);
+                                if method_str == "ExistingPeers" {
+                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Processing missed ExistingPeers event - marking bootstrap complete");
+                                    shared.set_primary_bootstrap_complete(true);
+                                }
+                            },
+                            DhtEvent::PrimaryBootstrapComplete => {
+                                info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed PrimaryBootstrapComplete event - marking bootstrap complete");
+                                shared.set_primary_bootstrap_complete(true);
+                            },
+                            _ => {}
+                        }
+                    },
+                    Err(broadcast::error::TryRecvError::Empty) => {
+                        // No more events to process
+                        break;
+                    },
+                    Err(broadcast::error::TryRecvError::Lagged(n)) => {
+                        warn!(target: LOG_TARGET, "[BN SM LISTENING] DHT event stream lagged by {} events during startup check", n);
+                        // Continue processing in case there are still events available
+                    },
+                    Err(broadcast::error::TryRecvError::Closed) => {
+                        warn!(target: LOG_TARGET, "[BN SM LISTENING] DHT event stream closed during startup check");
+                        break;
+                    }
+                }
+            }
+            
+            info!(target: LOG_TARGET, "[BN SM LISTENING] Processed {} missed DHT events. Bootstrap complete: {}", events_processed, shared.is_primary_bootstrap_complete);
+
             if !shared.is_primary_bootstrap_complete {
                 // Default to round 0 until first DhtEvent updates it
                 current_listening_info.bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo {
                     current_round: 0,
                     total_rounds: shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap(),
                 });
+                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap not complete - setting UI to show bootstrap phase 0/{}", shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap());
             } else {
                 current_listening_info.bootstrap_phase = None;
+                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
             }
+            
             // Ensure other fields are also current
             current_listening_info.synced = self.is_synced;
             current_listening_info.initial_delay_connected_count = self.initial_delay_count;
             shared.set_state_info(StateInfo::Listening(current_listening_info));
         }
+        
         let mut chain_metadata_events = shared.metadata_event_stream.resubscribe();
         let mut dht_events = shared.dht_event_stream.resubscribe();
         let mut time_since_better_block = None;
@@ -327,8 +376,9 @@ impl Listening {
                             let dht_event = dht_event_arc.deref();
                             match dht_event {
                                 DhtEvent::BootstrapMethodDetermined(method) => {
-                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method determined by DHT: {}", method);
-                                    if *method == BootstrapMethod::ExistingPeers {
+                                    let method_str = format!("{}", method);
+                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method determined by DHT: {}", method_str);
+                                    if method_str == "ExistingPeers" {
                                         info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method is ExistingPeers. Marking primary bootstrap as complete.");
                                         shared.set_primary_bootstrap_complete(true);
 
