@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use log::*;
 use tari_comms::connectivity::ConnectivityError;
-use tari_comms::peer_manager::{PeerFlags, PeerQuery};
+use tari_comms::peer_manager::PeerQuery;
 
 use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
 
@@ -62,34 +62,51 @@ impl<'a> Initializing<'a> {
             debug!(target: LOG_TARGET, "Discovery starting after delayed for {:.0?}", delay);
         }
 
-        // Check number of non-seed peers in the database
-        let num_non_seed_peers = match self.context.peer_manager.perform_query(
-            PeerQuery::new().select_where(|peer| {
-                !peer.is_banned() &&
-                !peer.flags.contains(PeerFlags::SEED) &&
-                peer.deleted_at.is_none() 
-            })
-        ).await {
-            Ok(peers) => peers.len(),
+        // Get detailed peer count breakdown - query all peers
+        let all_peers = match self.context.peer_manager.perform_query(PeerQuery::new()).await {
+            Ok(peers) => peers,
             Err(e) => {
-                error!(target: LOG_TARGET, "Failed to query peer database for initial peer count: {}. Proceeding to bootstrap anyway.", e);
-                0 // If DB query fails, assume 0 peers and proceed to bootstrap
+                error!(target: LOG_TARGET, "Failed to query peer database: {}. Proceeding to bootstrap anyway.", e);
+                vec![] // If DB query fails, assume no peers and proceed to bootstrap
             }
         };
 
+        let mut total_peers = 0;
+        let mut seed_peers = 0;
+        let mut banned_peers = 0;
+        let mut deleted_peers = 0;
+        let mut other_unsuitable = 0;
+        let mut suitable_peers = 0;
+
+        for peer in &all_peers {
+            total_peers += 1;
+            
+            if peer.is_seed() {
+                seed_peers += 1;
+            } else if peer.is_banned() {
+                banned_peers += 1;
+            } else if peer.deleted_at.is_some() {
+                deleted_peers += 1;
+            } else if peer.is_offline() || peer.all_addresses_failed() {
+                other_unsuitable += 1;
+            } else {
+                suitable_peers += 1;
+            }
+        }
+
         let min_peers_for_bootstrap_skip = self.context.config.network_discovery.min_desired_peers;
+        
         info!(
             target: LOG_TARGET,
-            "BOOTSTRAP DECISION: Found {} non-seed, non-banned, non-deleted peers in DB. Minimum desired to skip bootstrap is {}.",
-            num_non_seed_peers,
-            min_peers_for_bootstrap_skip
+            "BOOTSTRAP DECISION: Peer DB analysis - Total: {}, Seeds: {}, Banned: {}, Deleted: {}, Other unsuitable: {}, Suitable: {} (min required: {})",
+            total_peers, seed_peers, banned_peers, deleted_peers, other_unsuitable, suitable_peers, min_peers_for_bootstrap_skip
         );
 
-        if num_non_seed_peers >= min_peers_for_bootstrap_skip {
+        if suitable_peers >= min_peers_for_bootstrap_skip {
             info!(
                 target: LOG_TARGET,
                 "BOOTSTRAP DECISION: Skipping SeedStrap - found {} suitable peers (>= {} required)",
-                num_non_seed_peers,
+                suitable_peers,
                 min_peers_for_bootstrap_skip
             );
             StateEvent::InitialPeersSufficient
@@ -97,7 +114,7 @@ impl<'a> Initializing<'a> {
             info!(
                 target: LOG_TARGET,
                 "BOOTSTRAP DECISION: Starting SeedStrap - found {} suitable peers (< {} required)",
-                num_non_seed_peers,
+                suitable_peers,
                 min_peers_for_bootstrap_skip
             );
             debug!(target: LOG_TARGET, "Node is online. Starting network discovery (will proceed to SeedStrap)");
