@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use log::*;
 use tari_comms::connectivity::ConnectivityError;
-use tari_comms::peer_manager::PeerQuery;
+use tari_comms::peer_manager::{PeerQuery, PeerFeatures};
 
 use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
 
@@ -93,7 +93,7 @@ impl<'a> Initializing<'a> {
                 offline_peers += 1;
             } else if peer.all_addresses_failed() {
                 failed_address_peers += 1;
-            } else if !peer.features.is_communication_node() {
+            } else if peer.features != PeerFeatures::COMMUNICATION_NODE {
                 non_communication_node_peers += 1;
             } else {
                 suitable_peers += 1;
