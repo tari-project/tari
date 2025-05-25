@@ -169,8 +169,13 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                         let stored_contact = ContactSql::find_by_node_id(&c.node_id.to_vec(), &mut conn)?;
                         let stored_address = TariAddress::from_bytes(stored_contact.address.as_slice())
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
-                        let new_address = TariAddress::combine_addresses(&stored_address, &k)
+                        let mut new_address = TariAddress::combine_addresses(&stored_address, &k)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        if !k.get_payment_id_user_data_bytes().is_empty() {
+                            new_address = new_address
+                                .with_payment_id_user_data(k.get_payment_id_user_data_bytes())
+                                .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        }
                         ContactSql::set_address_of_node_id(&c.node_id.to_vec(), &new_address.to_vec(), &mut conn)?;
                     }
                 },

@@ -30,7 +30,7 @@ use std::{
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use chrono::{Days, Duration as ChronoDuration, Utc};
 use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -420,6 +420,7 @@ async fn setup_transaction_service_no_comms(
         wallet_connectivity_service_mock.clone(),
         key_manager.clone(),
         scanner_handle,
+        transaction_service_handle.clone(),
     )
     .await
     .unwrap();
@@ -6248,26 +6249,48 @@ async fn test_get_fee_per_gram_per_block_basic() {
     assert_eq!(estimates.stats.len(), 1)
 }
 
+fn create_mock_completed_transaction(
+    source_address: TariAddress,
+    destination_address: TariAddress,
+    amount: MicroMinotari,
+    direction: TransactionDirection,
+    description: &str,
+) -> CompletedTransaction {
+    CompletedTransaction {
+        tx_id: TxId::new_random(),
+        source_address,
+        destination_address,
+        amount,
+        fee: MicroMinotari::from(123),
+        transaction: Transaction::new(
+            vec![],
+            vec![],
+            vec![],
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        status: TransactionStatus::Completed,
+        timestamp: Utc::now(),
+        cancelled: None,
+        direction,
+        send_count: 0,
+        last_send_timestamp: None,
+        transaction_signature: Signature::default(),
+        confirmations: None,
+        mined_height: None,
+        mined_in_block: None,
+        mined_timestamp: Utc::now().checked_add_days(Days::new(1)),
+        payment_id: PaymentId::open_from_string(description, TxType::PaymentToOther),
+    }
+}
+
 #[tokio::test]
 async fn test_completed_transactions_ordering() {
     let factories = CryptoFactories::default();
     let connection = make_wallet_database_memory_connection();
-
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let tx_backend = alice_ts_interface.ts_db;
 
-    let kernel = KernelBuilder::new()
-        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
-        .with_signature(Signature::default())
-        .build()
-        .unwrap();
-    let tx = Transaction::new(
-        vec![],
-        vec![],
-        vec![kernel],
-        PrivateKey::random(&mut OsRng),
-        PrivateKey::random(&mut OsRng),
-    );
     let source_address = TariAddress::new_dual_address_with_default_features(
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -6282,27 +6305,13 @@ async fn test_completed_transactions_ordering() {
     .unwrap();
 
     for i in 1u32..5u32 {
-        let random_timestamp = i64::from(OsRng.next_u32());
-        let completed_tx = CompletedTransaction {
-            tx_id: u64::from(i).into(),
-            source_address: source_address.clone(),
-            destination_address: destination_address.clone(),
-            amount: MicroMinotari::from(1000),
-            fee: MicroMinotari::from(100),
-            transaction: tx.clone(),
-            status: TransactionStatus::Completed,
-            timestamp: DateTime::<Utc>::from_timestamp(random_timestamp, 0).unwrap(),
-            cancelled: None,
-            direction: TransactionDirection::Outbound,
-            send_count: 0,
-            last_send_timestamp: None,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
-            mined_height: None,
-            mined_in_block: None,
-            mined_timestamp: DateTime::<Utc>::from_timestamp(random_timestamp + 100i64, 0),
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
-        };
+        let completed_tx = create_mock_completed_transaction(
+            source_address.clone(),
+            destination_address.clone(),
+            MicroMinotari::from(1000),
+            TransactionDirection::Outbound,
+            "Yo!",
+        );
 
         tx_backend
             .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
@@ -6332,4 +6341,122 @@ async fn test_completed_transactions_ordering() {
             .collect::<Vec<_>>(),
         mined_timestamps
     );
+}
+
+#[tokio::test]
+async fn test_get_completed_transactions_by_addresses() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
+
+    let alice_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    )
+    .unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    )
+    .unwrap();
+    let carol_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let alice_to_bob_1 = create_mock_completed_transaction(
+        alice_address.clone(),
+        bob_address.clone(),
+        MicroMinotari::from(100),
+        TransactionDirection::Outbound,
+        "Alice to Bob 1",
+    );
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            alice_to_bob_1.tx_id,
+            Box::new(alice_to_bob_1.clone()),
+        )))
+        .unwrap();
+    let bob_to_alice_1 = create_mock_completed_transaction(
+        bob_address.clone(),
+        alice_address.clone(),
+        MicroMinotari::from(200),
+        TransactionDirection::Inbound,
+        "Bob to Alice 1",
+    );
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            bob_to_alice_1.tx_id,
+            Box::new(bob_to_alice_1.clone()),
+        )))
+        .unwrap();
+    let alice_to_bob_2 = create_mock_completed_transaction(
+        alice_address.clone(),
+        bob_address.clone(),
+        MicroMinotari::from(300),
+        TransactionDirection::Outbound,
+        "Alice to Bob 2",
+    );
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            alice_to_bob_2.tx_id,
+            Box::new(alice_to_bob_2.clone()),
+        )))
+        .unwrap();
+    let alice_to_carol_1 = create_mock_completed_transaction(
+        alice_address.clone(),
+        carol_address.clone(),
+        MicroMinotari::from(400),
+        TransactionDirection::Outbound,
+        "Alice to Carol 1",
+    );
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            alice_to_carol_1.tx_id,
+            Box::new(alice_to_carol_1.clone()),
+        )))
+        .unwrap();
+
+    let alice_to_bob_txs = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions_by_addresses(Some(alice_address.clone()), Some(bob_address.clone()))
+        .await
+        .unwrap();
+    assert_eq!(alice_to_bob_txs.len(), 2);
+    assert!(alice_to_bob_txs.iter().any(|tx| tx.tx_id == alice_to_bob_1.tx_id));
+    assert!(alice_to_bob_txs.iter().any(|tx| tx.tx_id == alice_to_bob_2.tx_id));
+
+    let from_alice_txs = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions_by_addresses(Some(alice_address.clone()), None)
+        .await
+        .unwrap();
+    assert_eq!(from_alice_txs.len(), 3);
+    assert!(from_alice_txs.iter().any(|tx| tx.tx_id == alice_to_bob_1.tx_id));
+    assert!(from_alice_txs.iter().any(|tx| tx.tx_id == alice_to_bob_2.tx_id));
+    assert!(from_alice_txs.iter().any(|tx| tx.tx_id == alice_to_carol_1.tx_id));
+
+    let to_bob_txs = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions_by_addresses(None, Some(bob_address.clone()))
+        .await
+        .unwrap();
+    assert_eq!(to_bob_txs.len(), 2);
+    assert!(to_bob_txs.iter().any(|tx| tx.tx_id == alice_to_bob_1.tx_id));
+    assert!(to_bob_txs.iter().any(|tx| tx.tx_id == alice_to_bob_2.tx_id));
+
+    let all_txs = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transactions_by_addresses(None, None)
+        .await
+        .unwrap();
+    assert_eq!(all_txs.len(), 4);
 }

@@ -62,6 +62,7 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
+    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
@@ -126,6 +127,7 @@ where
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
+            let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -140,6 +142,7 @@ where
                 connectivity,
                 key_manager,
                 utxo_scanner_handle,
+                transaction_service_handle,
             )
             .await
             .expect("Could not initialize Output Manager Service")

@@ -168,6 +168,13 @@ impl WalletEventMonitor {
                                     self.trigger_full_tx_state_refresh().await;
                                     self.trigger_balance_refresh();
                                 },
+                                TransactionEvent::TransactionImported(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(
+                                        format!("Transaction Imported - TxId: {}", tx_id)
+                                    ).await;
+                                },
                                 // Only the above variants trigger state refresh
                                 _ => (),
                             }

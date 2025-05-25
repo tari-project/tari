@@ -107,7 +107,7 @@ async fn test_monero_blocks() {
             max_difficulty: Difficulty::min(),
             target_time: 300,
         })
-        .add_proof_of_work(PowAlgorithm::RandomX, PowAlgorithmConstants {
+        .add_proof_of_work(PowAlgorithm::RandomXM, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 200,
@@ -235,7 +235,7 @@ fn add_monero_test_data(tblock: &mut Block, seed_key: &str) {
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
-    tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
+    tblock.header.pow.pow_algo = PowAlgorithm::RandomXM;
     tblock.header.pow.pow_data = PowData::try_from(serialized).unwrap();
 }
 

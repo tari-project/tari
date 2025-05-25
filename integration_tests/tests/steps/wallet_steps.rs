@@ -717,7 +717,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         amount,
         fee_per_gram: fee,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -727,6 +727,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -781,7 +782,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "One sided transfer amount {} from {} to {}",
                 amount,
@@ -791,6 +792,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -883,7 +885,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // mimblewimble transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "Transfer amount {} from {} to {} as fee {}",
                 amount,
@@ -894,6 +896,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1329,7 +1332,7 @@ async fn send_num_transactions_to_wallets_at_fee(
             amount,
             fee_per_gram,
             payment_type: 0, // standard mimblewimble transaction
-            payment_id: PaymentId::open_from_string(
+            raw_payment_id: PaymentId::open_from_string(
                 &format!(
                     "transfer amount {} from {} to {}",
                     amount,
@@ -1339,6 +1342,7 @@ async fn send_num_transactions_to_wallets_at_fee(
                 TxType::PaymentToOther,
             )
             .to_bytes(),
+            user_payment_id: None,
         };
         let transfer_req = TransferRequest {
             recipients: vec![payment_recipient],
@@ -1474,7 +1478,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
         payment_type: 0,                // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1484,6 +1488,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1673,7 +1678,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1683,6 +1688,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
 
     let payment_recipient2 = PaymentRecipient {
@@ -1690,7 +1696,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
                 amount,
@@ -1700,6 +1706,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient1, payment_recipient2],
@@ -1810,11 +1817,12 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble payment type
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!("transfer amount {} from {} to self", amount, sender.as_str()),
             TxType::PaymentToSelf,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -1893,7 +1901,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
         amount,
         fee_per_gram,
         payment_type: 0, // normal mimblewimble transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "Atomic Swap from {} to {} with amount {} at fee {}",
                 sender.as_str(),
@@ -1904,6 +1912,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
 
     let atomic_swap_request = SendShaAtomicSwapRequest {
@@ -2187,7 +2196,7 @@ async fn send_one_sided_stealth_transaction(
         amount,
         fee_per_gram,
         payment_type: 2, // one sided stealth transaction
-        payment_id: PaymentId::open_from_string(
+        raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "One sided stealth transfer amount {} from {} to {}",
                 amount,
@@ -2197,6 +2206,7 @@ async fn send_one_sided_stealth_transaction(
             TxType::PaymentToOther,
         )
         .to_bytes(),
+        user_payment_id: None,
     };
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
@@ -2726,7 +2736,7 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             payment_type: 0, // mimblewimble transaction
-            payment_id: PaymentId::open_from_string(
+            raw_payment_id: PaymentId::open_from_string(
                 &format!(
                     "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                     amount,
@@ -2737,6 +2747,7 @@ async fn multi_send_txs_from_wallet(
                 TxType::PaymentToOther,
             )
             .to_bytes(),
+            user_payment_id: None,
         };
 
         let transfer_req = TransferRequest {

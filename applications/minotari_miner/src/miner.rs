@@ -32,6 +32,8 @@ use crossbeam::channel::{bounded, Select, Sender, TrySendError};
 use futures::Stream;
 use log::*;
 use minotari_app_grpc::tari_rpc::BlockHeader;
+use tari_common_types::types::FixedHash;
+use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use thread::JoinHandle;
 
 use super::difficulty::BlockHeaderSha3;
@@ -40,7 +42,8 @@ pub const LOG_TARGET: &str = "minotari::miner::standalone";
 
 // Identify how often mining thread is reporting / checking context
 // ~400_000 hashes per second
-const REPORTING_FREQUENCY: u64 = 3_000_000;
+const REPORTING_FREQUENCY_RX: u64 = 300;
+const REPORTING_FREQUENCY_SHA3: u64 = 3_000_000;
 
 // Thread's stack size, ideally we would fit all thread's data in the CPU L1 cache
 const STACK_SIZE: usize = 320_000;
@@ -67,10 +70,19 @@ pub struct Miner {
     header: BlockHeader,
     target_difficulty: u64,
     share_mode: bool,
+    vm_key: FixedHash,
+    rx_factory: Option<RandomXFactory>,
 }
 
 impl Miner {
-    pub fn init_mining(header: BlockHeader, target_difficulty: u64, num_threads: usize, share_mode: bool) -> Self {
+    pub fn init_mining(
+        header: BlockHeader,
+        target_difficulty: u64,
+        num_threads: usize,
+        share_mode: bool,
+        vm_key: FixedHash,
+        rx_factory: Option<RandomXFactory>,
+    ) -> Self {
         Self {
             threads: vec![],
             channels: vec![],
@@ -78,6 +90,8 @@ impl Miner {
             num_threads,
             target_difficulty,
             share_mode,
+            vm_key,
+            rx_factory,
         }
     }
 
@@ -103,8 +117,10 @@ impl Miner {
                 let waker = ctx.waker().clone();
                 let difficulty = self.target_difficulty;
                 let share_mode = self.share_mode;
+                let vm_key = self.vm_key;
+                let rx_factory = self.rx_factory.clone();
                 let handle = thread
-                    .spawn(move || mining_task(header, difficulty, tx, waker, i, share_mode))
+                    .spawn(move || mining_task(header, difficulty, tx, waker, i, share_mode, vm_key, rx_factory))
                     .expect("Failed to create mining thread");
                 (handle, rx)
             });
@@ -177,9 +193,11 @@ pub fn mining_task(
     waker: Waker,
     miner: usize,
     share_mode: bool,
+    vm_key: FixedHash,
+    rx_factory: Option<RandomXFactory>,
 ) {
     let start = Instant::now();
-    let mut hasher = match BlockHeaderSha3::new(header) {
+    let mut hasher = match BlockHeaderSha3::new(header, vm_key, rx_factory) {
         Ok(hasher) => hasher,
         Err(err) => {
             let err = format!("Miner {} failed to create hasher: {:?}", miner, err);
@@ -192,7 +210,13 @@ pub fn mining_task(
     trace!(target: LOG_TARGET, "Mining thread {} started", miner);
     // Mining work
     loop {
-        let difficulty = match hasher.difficulty() {
+        let hashed = if hasher.rx_factory.is_some() {
+            hasher.difficulty_rx()
+        } else {
+            hasher.difficulty_sha3()
+        };
+
+        let difficulty = match hashed {
             Ok(difficulty) => difficulty,
             Err(err) => {
                 let err = format!("Miner {} failed to calculate difficulty: {:?}", miner, err);
@@ -226,7 +250,12 @@ pub fn mining_task(
                 return;
             }
         }
-        if hasher.header.nonce % REPORTING_FREQUENCY == 0 {
+        let reporting_frequency = if hasher.rx_factory.is_some() {
+            REPORTING_FREQUENCY_RX
+        } else {
+            REPORTING_FREQUENCY_SHA3
+        };
+        if hasher.header.nonce % reporting_frequency == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
                 difficulty,

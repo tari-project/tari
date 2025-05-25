@@ -46,13 +46,24 @@ impl ChainStrengthComparer for ThenComparer {
 }
 
 #[derive(Default, Debug)]
-pub struct RandomxDifficultyComparer {}
+pub struct MoneroRandomxDifficultyComparer {}
 
-impl ChainStrengthComparer for RandomxDifficultyComparer {
+impl ChainStrengthComparer for MoneroRandomxDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
-            .accumulated_randomx_difficulty
-            .cmp(&b.accumulated_data().accumulated_randomx_difficulty)
+            .accumulated_monero_randomx_difficulty
+            .cmp(&b.accumulated_data().accumulated_monero_randomx_difficulty)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct TariRandomxDifficultyComparer {}
+
+impl ChainStrengthComparer for TariRandomxDifficultyComparer {
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
+        a.accumulated_data()
+            .accumulated_tari_randomx_difficulty
+            .cmp(&b.accumulated_data().accumulated_tari_randomx_difficulty)
     }
 }
 
@@ -97,8 +108,12 @@ impl ChainStrengthComparerBuilder {
         self.add_comparer_as_then(Box::<AccumulatedDifficultySquaredComparer>::default())
     }
 
-    pub fn by_randomx_difficulty(self) -> Self {
-        self.add_comparer_as_then(Box::<RandomxDifficultyComparer>::default())
+    pub fn by_monero_randomx_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::<MoneroRandomxDifficultyComparer>::default())
+    }
+
+    pub fn by_tari_randomx_difficulty(self) -> Self {
+        self.add_comparer_as_then(Box::<TariRandomxDifficultyComparer>::default())
     }
 
     pub fn by_sha3x_difficulty(self) -> Self {

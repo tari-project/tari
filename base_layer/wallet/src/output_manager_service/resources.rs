@@ -30,6 +30,7 @@ use crate::{
         handle::OutputManagerEventSender,
         storage::database::OutputManagerDatabase,
     },
+    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
@@ -47,4 +48,5 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub interactive_tari_address: TariAddress,
     pub one_sided_tari_address: TariAddress,
     pub utxo_scanner_handle: UtxoScannerHandle,
+    pub transaction_service_handle: TransactionServiceHandle,
 }

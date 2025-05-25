@@ -30,8 +30,9 @@ pub use helpers::{
     deserialize_monero_block_from_hex,
     extract_aux_merkle_root_from_block,
     insert_aux_chain_mr_and_info_into_block,
-    randomx_difficulty,
+    monero_randomx_difficulty,
     serialize_monero_block_to_hex,
+    tari_randomx_difficulty,
     verify_header,
 };
 

@@ -237,7 +237,7 @@ impl AppState {
     pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
 
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&tari_emoji)?;
 
         let contact = Contact::new(alias, address, None, None, false);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
@@ -267,7 +267,7 @@ impl AppState {
 
     pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
-        let address = TariAddress::from_str(&tari_emoji).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&tari_emoji)?;
 
         inner.wallet.contacts_service.remove_contact(address).await?;
 
@@ -303,7 +303,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&address)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 
@@ -333,7 +333,7 @@ impl AppState {
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address).map_err(|_| UiError::PublicKeyParseError)?;
+        let address = TariAddress::from_str(&address)?;
 
         let output_features = OutputFeatures { ..Default::default() };
 

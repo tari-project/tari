@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use primitive_types::U256;
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
@@ -123,16 +123,26 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             field: "Current achieved difficulty",
         })?;
 
-        let (randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
-            PowAlgorithm::RandomX => (
+        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
+            PowAlgorithm::RandomXM => (
                 previous_accum
-                    .accumulated_randomx_difficulty
+                    .accumulated_monero_randomx_difficulty
+                    .checked_add_difficulty(achieved_target.target())
+                    .ok_or(BlockError::DifficultyOverflow)?,
+                previous_accum.accumulated_tari_randomx_difficulty,
+                previous_accum.accumulated_sha3x_difficulty,
+            ),
+            PowAlgorithm::RandomXT => (
+                previous_accum.accumulated_monero_randomx_difficulty,
+                previous_accum
+                    .accumulated_tari_randomx_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
             ),
             PowAlgorithm::Sha3x => (
-                previous_accum.accumulated_randomx_difficulty,
+                previous_accum.accumulated_monero_randomx_difficulty,
+                previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum
                     .accumulated_sha3x_difficulty
                     .checked_add_difficulty(achieved_target.target())
@@ -146,21 +156,26 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             .ok_or(BlockError::BuilderMissingField {
                 field: "total_kernel_offset",
             })?;
+        let total_accumulated: U512 = U512::from(monero_randomx_diff.as_u128()) *
+            U512::from(tari_randomx_diff.as_u128()) *
+            U512::from(sha3x_diff.as_u128());
 
         let result = BlockHeaderAccumulatedData {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_difficulty: U256::from(randomx_diff.as_u128()) * U256::from(sha3x_diff.as_u128()),
-            accumulated_randomx_difficulty: randomx_diff,
+            total_accumulated_difficulty: total_accumulated,
+            accumulated_monero_randomx_difficulty: monero_randomx_diff,
+            accumulated_tari_randomx_difficulty: tari_randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
-            "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
+            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}",
             result.total_accumulated_difficulty,
-            result.accumulated_randomx_difficulty,
+            result.accumulated_monero_randomx_difficulty,
+            result.accumulated_tari_randomx_difficulty,
             result.accumulated_sha3x_difficulty,
         );
         Ok(result)
@@ -178,10 +193,13 @@ pub struct BlockHeaderAccumulatedData {
     pub achieved_difficulty: Difficulty,
     /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
     /// separately.
-    pub total_accumulated_difficulty: U256,
-    /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
+    pub total_accumulated_difficulty: U512,
+    /// The total accumulated difficulty for Merged mined monero RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
+    /// The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
@@ -202,8 +220,13 @@ impl Display for BlockHeaderAccumulatedData {
         writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
         writeln!(
             f,
-            "Accumulated RandomX difficulty: {}",
-            self.accumulated_randomx_difficulty
+            "Accumulated Monero RandomX difficulty: {}",
+            self.accumulated_monero_randomx_difficulty
+        )?;
+        writeln!(
+            f,
+            "Accumulated Tari RandomX difficulty: {}",
+            self.accumulated_tari_randomx_difficulty
         )?;
         writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;

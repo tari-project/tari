@@ -206,7 +206,7 @@ impl WalletConnectivityService {
         match self.pools.get(&node_id) {
             Some(pools) => match pools.base_node_wallet_rpc_client.get().await {
                 Ok(client) => {
-                    debug!(target: LOG_TARGET, "Obtained pool RPC 'wallet' connection to base node '{}'", node_id);
+                    trace!(target: LOG_TARGET, "Obtained pool RPC 'wallet' connection to base node '{}'", node_id);
                     let _result = reply.send(client);
                 },
                 Err(e) => {
@@ -247,7 +247,7 @@ impl WalletConnectivityService {
         match self.pools.get(&node_id) {
             Some(pools) => match pools.base_node_sync_rpc_client.get().await {
                 Ok(client) => {
-                    debug!(target: LOG_TARGET, "Obtained pool RPC 'sync' connection to base node '{}'", node_id);
+                    trace!(target: LOG_TARGET, "Obtained pool RPC 'sync' connection to base node '{}'", node_id);
                     let _result = reply.send(client);
                 },
                 Err(e) => {

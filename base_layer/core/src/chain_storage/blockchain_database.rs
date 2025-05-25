@@ -40,7 +40,7 @@ use blake2::Blake2b;
 use digest::consts::U32;
 use jmt::{JellyfishMerkleTree, KeyHash};
 use log::*;
-use primitive_types::U256;
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -430,7 +430,7 @@ where B: BlockchainBackend
 
     /// Return the accumulated proof of work of the longest chain.
     /// The proof of work is returned as the product of total difficulties of all PoW algorithms
-    pub fn get_accumulated_difficulty(&self) -> Result<U256, ChainStorageError> {
+    pub fn get_accumulated_difficulty(&self) -> Result<U512, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
     }
@@ -853,27 +853,34 @@ where B: BlockchainBackend
     ) -> Result<TargetDifficulties, ChainStorageError> {
         let db = self.db_read_access()?;
         let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
+
         let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height().saturating_add(1))
             .map_err(ChainStorageError::UnexpectedResult)?;
         // Add start header since we have it on hand
-        targets.add_front(
-            current_header.header(),
-            current_header.accumulated_data().target_difficulty,
-        );
+        targets
+            .add_front(
+                current_header.header(),
+                current_header.accumulated_data().target_difficulty,
+            )
+            .map_err(ChainStorageError::UnexpectedResult)?;
 
         while current_header.height() > 0 && !targets.is_full() {
             current_header = db.fetch_chain_header_in_all_chains(&current_header.header().prev_hash)?;
-            if !targets.is_algo_full(current_header.header().pow_algo()) {
-                targets.add_front(
-                    current_header.header(),
-                    current_header.accumulated_data().target_difficulty,
-                );
+            if !targets
+                .is_algo_full(current_header.header().pow_algo())
+                .map_err(ChainStorageError::UnexpectedResult)?
+            {
+                targets
+                    .add_front(
+                        current_header.header(),
+                        current_header.accumulated_data().target_difficulty,
+                    )
+                    .map_err(ChainStorageError::UnexpectedResult)?;
             }
             if targets.is_full() {
                 break;
             }
         }
-
         Ok(targets)
     }
 
@@ -3515,8 +3522,8 @@ mod test {
         );
     }
 
-    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U256>) {
-        let accum_difficulty: Vec<U256> = result
+    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U512>) {
+        let accum_difficulty: Vec<U512> = result
             .added_blocks()
             .iter()
             .map(|cb| cb.accumulated_data().total_accumulated_difficulty)

@@ -162,6 +162,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn find_completed_transactions_filter_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -609,6 +614,15 @@ where T: TransactionBackend + 'static
         block_height: Option<u64>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height)
+    }
+
+    pub fn get_completed_transactions_by_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db
+            .find_completed_transactions_filter_addresses(source_address, destination_address)
     }
 
     pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {

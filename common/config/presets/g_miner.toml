@@ -47,3 +47,6 @@
 #wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
 # Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
 #range_proof_type = "revealed_value"
+
+# mine sha3x, or set to RandomXT to mine randomx using tari randomx
+#proof_of_work_algo = "Sha3X"

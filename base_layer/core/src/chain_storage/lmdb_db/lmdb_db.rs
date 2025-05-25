@@ -34,7 +34,7 @@ use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
-use primitive_types::U256;
+use primitive_types::{U256, U512};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -46,6 +46,7 @@ use tari_common_types::{
         CompressedPublicKey,
         FixedHash,
         HashOutput,
+        PrivateKey,
         Signature,
         UncompressedCommitment,
     },
@@ -79,6 +80,7 @@ use crate::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
                 fetch_db_entry_sizes,
+                lmdb_all,
                 lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
@@ -117,7 +119,7 @@ use crate::{
         ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
+    proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
@@ -843,7 +845,7 @@ impl LMDBDatabase {
             // we can continue
         }
 
-        if header.pow_algo() == PowAlgorithm::RandomX {
+        if header.pow_algo() == PowAlgorithm::RandomXM {
             let monero_header = MoneroPowData::from_header(header, &self.consensus_manager).map_err(|e| {
                 ChainStorageError::InvalidArguments {
                     func: "insert_best_block",
@@ -2779,8 +2781,9 @@ fn fetch_best_block_timestamp(txn: &ConstTransaction<'_>, db: &Database) -> Resu
 }
 
 // Fetches the accumulated work from the provided metadata db.
-fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<U256, ChainStorageError> {
+fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<U512, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
+
     let val: Option<MetadataValue> = lmdb_get(txn, db, &k.as_u32())?;
     match val {
         Some(MetadataValue::AccumulatedWork(accumulated_difficulty)) => Ok(accumulated_difficulty),
@@ -2848,7 +2851,7 @@ impl fmt::Display for MetadataKey {
 enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    AccumulatedWork(U256),
+    AccumulatedWork(U512),
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),
@@ -2873,9 +2876,8 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 0;
+    const MIGRATION_VERSION: u64 = 1;
     let txn = db.read_transaction()?;
-
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
     let last_migrated_version = match val {
@@ -2888,8 +2890,120 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     );
     drop(txn);
 
-    for _migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
+    for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
+        if migrate_from_version == 0 {
+            let txn = db.read_transaction()?;
+
+            let chain_height = match fetch_chain_height(&txn, &db.metadata_db) {
+                Ok(v) => v,
+                Err(_) => {
+                    // if the chain height does not exist, then we know we dont have a db
+                    continue;
+                },
+            };
+
+            let k = MetadataKey::AccumulatedWork;
+
+            let val: Option<OldMetadataValue> = lmdb_get(&txn, &db.metadata_db, &k.as_u32())?;
+            if val.is_some() {
+                let accum_data = match val {
+                    Some(OldMetadataValue::AccumulatedWork(accumulated_difficulty)) => {
+                        Ok(U512::from(accumulated_difficulty))
+                    },
+                    _ => Err(ChainStorageError::ValueNotFound {
+                        entity: "ChainMetadata",
+                        field: "AccumulatedWork",
+                        value: "".to_string(),
+                    }),
+                }?;
+                let txn = db.write_transaction()?;
+                lmdb_replace(
+                    &txn,
+                    &db.metadata_db,
+                    &k.as_u32(),
+                    &MetadataValue::AccumulatedWork(accum_data),
+                    None,
+                )?;
+                txn.commit()?;
+                info!(
+                    target: LOG_TARGET,
+                    "Replaced tip accumulated data ",
+                );
+            }
+            let txn = db.write_transaction()?;
+            for height in 0..=chain_height {
+                let block_accum_data: V0BLockHeaderAccumulatedData =
+                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
+                        ChainStorageError::ValueNotFound {
+                            entity: "BlockAccumulatedData",
+                            field: "height",
+                            value: height.to_string(),
+                        }
+                    })?;
+                let new_block_accum_data = BlockHeaderAccumulatedData {
+                    hash: block_accum_data.hash,
+                    total_kernel_offset: block_accum_data.total_kernel_offset,
+                    achieved_difficulty: block_accum_data.achieved_difficulty,
+                    total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
+                    accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
+                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                    accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
+                    target_difficulty: block_accum_data.target_difficulty,
+                };
+
+                lmdb_replace(
+                    &txn,
+                    &db.header_accumulated_data_db,
+                    &height,
+                    &new_block_accum_data,
+                    None,
+                )?;
+            }
+            txn.commit()?;
+            let txn = db.write_transaction()?;
+            info!(
+                target: LOG_TARGET,
+                "Replaced accumulated data for blocks",
+            );
+            let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
+                lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
+            for (hash, orphan_header_accum_data) in orphan_headers_accum_data {
+                let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
+                    hash: orphan_header_accum_data.hash,
+                    total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
+                    achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
+                    total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
+                    accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
+                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                    accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
+                    target_difficulty: orphan_header_accum_data.target_difficulty,
+                };
+                lmdb_replace(
+                    &txn,
+                    &db.block_accumulated_data_db,
+                    &hash,
+                    &new_orphan_block_accum_data,
+                    None,
+                )?;
+            }
+            txn.commit()?;
+            let txn = db.write_transaction()?;
+            info!(
+                target: LOG_TARGET,
+                "Replaced accumulated data for orphan blocks",
+            );
+            let orphan_chain_tips: Vec<(Vec<u8>, OldChainTipData)> = lmdb_all(&txn, &db.orphan_chain_tips_db)?;
+
+            for (parent_hash, val) in orphan_chain_tips {
+                let val = ChainTipData {
+                    hash: val.hash,
+                    total_accumulated_difficulty: U512::from(val.total_accumulated_difficulty),
+                };
+                lmdb_replace(&txn, &db.orphan_chain_tips_db, &parent_hash, &val, None)?;
+            }
+            txn.commit()?;
+        }
     }
     if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;
@@ -2905,4 +3019,44 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
     }
 
     Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct V0BLockHeaderAccumulatedData {
+    /// The block hash.
+    pub hash: HashOutput,
+    /// The total accumulated offset for all kernels in the block.
+    pub total_kernel_offset: PrivateKey,
+    /// The achieved difficulty for solving the current block using the specified proof of work algorithm.
+    pub achieved_difficulty: Difficulty,
+    /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
+    /// separately.
+    pub total_accumulated_difficulty: U256,
+    /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_randomx_difficulty: AccumulatedDifficulty,
+    /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    /// The target difficulty for solving the current block using the specified proof of work algorithm.
+    pub target_difficulty: Difficulty,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+enum OldMetadataValue {
+    ChainHeight(u64),
+    BestBlock(BlockHash),
+    AccumulatedWork(U256),
+    PruningHorizon(u64),
+    PrunedHeight(u64),
+    HorizonData(HorizonData),
+    BestBlockTimestamp(u64),
+    MigrationVersion(u64),
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct OldChainTipData {
+    pub hash: HashOutput,
+    pub total_accumulated_difficulty: U256,
 }

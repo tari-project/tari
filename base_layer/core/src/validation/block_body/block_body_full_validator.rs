@@ -104,7 +104,7 @@ impl BlockBodyFullValidator {
         rules: &ConsensusManager,
         backend: &B,
     ) -> Result<(), ValidationError> {
-        if header.pow.pow_algo == PowAlgorithm::RandomX {
+        if header.pow.pow_algo == PowAlgorithm::RandomXM {
             let monero_data = MoneroPowData::from_header(header, rules)?;
             let seed_height = backend.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
             if seed_height != 0 {

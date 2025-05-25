@@ -136,7 +136,7 @@ impl CompletedTransaction {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::completed_transaction_get_payment_id(self.ptr, &mut error);
+            ptr = ffi_import::completed_transaction_get_user_payment_id(self.ptr, &mut error);
             if error > 0 {
                 println!("completed_transaction_get_payment_id error {}", error);
                 panic!("completed_transaction_get_payment_id error");

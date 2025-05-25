@@ -2062,6 +2062,7 @@ pub async fn command_runner(
                             target: LOG_TARGET,
                             "send-one-sided-to-stealth-address concluded with tx_id {}", tx_id
                         );
+                        println!("Transaction ID: {}", tx_id);
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("SendOneSidedToStealthAddress error! {}", e),

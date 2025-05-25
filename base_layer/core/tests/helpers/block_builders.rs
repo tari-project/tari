@@ -32,7 +32,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     kernel_mr_hash_from_mmr,
-    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
@@ -203,7 +203,8 @@ pub async fn create_genesis_block_with_coinbase_value(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
@@ -244,7 +245,8 @@ pub async fn create_genesis_block_with_utxos(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
@@ -569,7 +571,10 @@ pub async fn construct_chained_blocks<B: BlockchainBackend>(
     let mut prev_block = block0;
     let mut blocks = Vec::new();
     for _i in 0..n {
-        let (block, _) = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)
+        let diff = consensus
+            .consensus_constants(prev_block.height() + 1)
+            .min_pow_difficulty(PowAlgorithm::Sha3x);
+        let (block, _) = append_block(db, &prev_block, vec![], consensus, diff, key_manager)
             .await
             .unwrap();
         prev_block = block.clone();

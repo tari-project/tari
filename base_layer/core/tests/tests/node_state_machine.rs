@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::time::Duration;
 
 use blake2::{Blake2b, Digest};
@@ -39,7 +38,7 @@ use tari_core::{
     chain_storage::BlockchainDatabaseConfig,
     consensus::ConsensusManagerBuilder,
     mempool::MempoolServiceConfig,
-    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     test_helpers::blockchain::create_test_blockchain_db,
     transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::mocks::MockValidator,
@@ -57,7 +56,7 @@ use tokio::{
 };
 
 use crate::helpers::{
-    block_builders::{append_block, chain_block, create_genesis_block},
+    block_builders::{append_block, chain_block, create_genesis_block, find_header_with_achieved_difficulty},
     chain_metadata::MockChainMetadata,
     nodes::{
         create_network_with_multiple_base_nodes_with_config,
@@ -130,7 +129,7 @@ async fn test_listening_lagging() {
         &prev_block,
         vec![],
         &consensus_manager,
-        Difficulty::from_u64(3).unwrap(),
+        Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
     .await
@@ -196,7 +195,7 @@ async fn test_listening_initial_fallen_behind() {
         &gen_block,
         vec![],
         &consensus_manager,
-        Difficulty::from_u64(3).unwrap(),
+        Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
     .await
@@ -207,6 +206,10 @@ async fn test_listening_initial_fallen_behind() {
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
+    let pow = consensus_manager
+        .consensus_constants(prev_block.header.height)
+        .min_pow_difficulty(PowAlgorithm::Sha3x);
+    find_header_with_achieved_difficulty(&mut prev_block.header, pow);
     bob_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(bob_db.get_height().unwrap(), 2);
 
@@ -219,7 +222,7 @@ async fn test_listening_initial_fallen_behind() {
         &gen_block,
         vec![],
         &consensus_manager,
-        Difficulty::from_u64(3).unwrap(),
+        Difficulty::from_u64(4).unwrap(),
         &key_manager,
     )
     .await
@@ -230,6 +233,10 @@ async fn test_listening_initial_fallen_behind() {
         .unwrap();
     prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
+    let pow = consensus_manager
+        .consensus_constants(prev_block.header.height)
+        .min_pow_difficulty(PowAlgorithm::Sha3x);
+    find_header_with_achieved_difficulty(&mut prev_block.header, pow);
     charlie_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(charlie_db.get_height().unwrap(), 2);
 
