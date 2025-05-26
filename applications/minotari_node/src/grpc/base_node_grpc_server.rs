@@ -62,7 +62,7 @@ use tari_core::{
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
@@ -424,7 +424,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    })
+                    .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
@@ -450,7 +451,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    })
+                    .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
@@ -477,7 +479,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             e.to_string()
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-                    })?;
+                    })
+                    .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
                 let estimated_hash_rate = target_difficulty.as_u64().checked_div(target_time).unwrap_or(0);
                 self.data_cache
