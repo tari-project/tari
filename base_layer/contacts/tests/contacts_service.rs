@@ -76,7 +76,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
             ..Default::default()
         },
         auxiliary_tcp_listener_address: None,
-        datastore_path: tempdir().unwrap().into_path(),
+        datastore_path: tempdir().unwrap().keep(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
         max_concurrent_outbound_tasks: 10,
@@ -138,7 +138,7 @@ pub fn test_contacts_service() {
         let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
         let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-        let db = DbConnection::connect_url(&url).unwrap();
+        let db = DbConnection::connect_url(&url, Some(5)).unwrap();
         let backend = ContactsServiceSqliteDatabase::init(db);
 
         let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
@@ -224,7 +224,7 @@ pub fn test_message_pagination() {
         let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
         let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-        let db = DbConnection::connect_url(&url).unwrap();
+        let db = DbConnection::connect_url(&url, Some(5)).unwrap();
         let backend = ContactsServiceSqliteDatabase::init(db);
         let contacts_db = ContactsDatabase::new(backend.clone());
 

@@ -267,7 +267,7 @@ impl DhtDiscoveryService {
         let valid_peer = self
             .ban_offence(&public_key, validator.validate_peer(info, existing_peer))
             .await?;
-        self.peer_manager.add_peer(valid_peer.clone()).await?;
+        self.peer_manager.add_or_update_peer(valid_peer.clone()).await?;
 
         Ok(valid_peer)
     }

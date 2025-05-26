@@ -3866,6 +3866,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
+
+[[package]]
 name = "litemap"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7373,9 +7379,11 @@ version = "4.0.0-pre.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
+ "lazy_static",
  "log",
+ "rand 0.8.5",
  "serde",
- "tari_test_utils",
+ "serde_json",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -7420,10 +7428,11 @@ dependencies = [
  "cidr",
  "data-encoding",
  "derivative",
+ "diesel",
+ "diesel_migrations",
  "digest 0.10.7",
  "env_logger 0.7.1",
  "futures 0.3.31",
- "lmdb-zero",
  "log",
  "multiaddr",
  "nom",
@@ -7431,13 +7440,13 @@ dependencies = [
  "pin-project 1.1.10",
  "prost 0.13.5",
  "rand 0.8.5",
- "semver",
  "serde",
  "serde_derive",
  "serde_json",
  "sha3",
  "snow",
  "tari_common",
+ "tari_common_sqlite",
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_metrics",
@@ -7489,7 +7498,6 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7813,11 +7821,9 @@ dependencies = [
  "anyhow",
  "clap 3.2.25",
  "config",
- "fs2",
  "futures 0.3.31",
  "hickory-proto",
  "hickory-resolver",
- "lmdb-zero",
  "log",
  "pgp",
  "prost 0.13.5",
@@ -7831,7 +7837,6 @@ dependencies = [
  "tari_comms_dht",
  "tari_service_framework",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7937,6 +7942,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8a64e3985349f2441a1a9ef0b853f869006c3855f2cda6862a94d26ebb9d6a1"
 dependencies = [
  "fastrand",
+]
  "getrandom 0.3.3",
  "once_cell",
  "rustix 1.0.7",

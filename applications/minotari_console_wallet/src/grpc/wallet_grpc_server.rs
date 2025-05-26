@@ -1205,15 +1205,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        let mut peers = Vec::with_capacity(connected_peers.len());
-        for conn in connected_peers {
-            peers.push(
-                peer_manager
-                    .find_by_node_id(conn.peer_node_id())
-                    .await
-                    .map_err(|err| Status::internal(err.to_string()))?
-                    .ok_or_else(|| Status::not_found(format!("Peer '{}' not found", conn.peer_node_id())))?,
-            );
+        let node_ids = connected_peers
+            .iter()
+            .map(|c| c.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let peers = peer_manager
+            .get_peers_by_node_ids(&node_ids)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        if peers.len() != node_ids.len() {
+            let mut error_response = Vec::new();
+            node_ids.iter().for_each(|node_id| {
+                if !peers.iter().any(|p| p.node_id == *node_id) {
+                    warn!(target: LOG_TARGET, "Peer '{}' not found", node_id);
+                    error_response.push(format!("'{}'", node_id));
+                }
+            });
+            if !error_response.is_empty() {
+                return Err(Status::not_found(format!(
+                    "Peer(s) not found: {}",
+                    error_response.join(", ")
+                )));
+            }
         }
 
         let resp = tari_rpc::ListConnectedPeersResponse {

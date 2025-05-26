@@ -11,12 +11,11 @@ license.workspace = true
 [dependencies]
 tari_comms = { workspace = true, features = ["rpc"] }
 tari_common = { workspace = true }
+tari_common_sqlite = { workspace = true }
 tari_comms_rpc_macros = { workspace = true }
 tari_crypto = { workspace = true }
 tari_utilities = { workspace = true }
 tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
-tari_common_sqlite = { workspace = true }
 
 anyhow = "1.0.53"
 bitflags = { version = "2.4", features = ["serde"] }

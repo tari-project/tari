@@ -15,13 +15,10 @@ tari_common = { workspace = true }
 tari_common_sqlite = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
 tari_utilities = { workspace = true }
 
 anyhow = "1.0.53"
-fs2 = "0.4.0"
 futures = { version = "^0.3.1" }
-lmdb-zero = "0.4.4"
 log = "0.4.6"
 pgp = { version = "0.14.2", optional = true }
 prost = "0.13.3"

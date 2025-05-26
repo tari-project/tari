@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     ];
     let (node, dht, msg_in) = node::create(
         Some(node_identity),
-        &tmp_path,
+        &tmp_path.keep(),
         None,
         port,
         seed_peers.as_slice(),

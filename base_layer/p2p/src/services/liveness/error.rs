@@ -29,6 +29,7 @@ use tari_comms::{
 use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
@@ -58,6 +59,8 @@ pub enum LivenessError {
     NodeIdDoesNotExist,
     #[error("PingPongDecodeError: {0}")]
     PingPongDecodeError(#[from] prost::DecodeError),
-    #[error("Peer not found: `{0}`")]
+    #[error("Peer manager error: `{0}`")]
     PeerNotFoundError(#[from] PeerManagerError),
+    #[error("Tokio task join error: `{0}`")]
+    JoinError(#[from] JoinError),
 }

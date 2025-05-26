@@ -29,6 +29,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     runtime::Handle,
     sync::{broadcast, mpsc, oneshot},
+    time::sleep,
 };
 
 use crate::{
@@ -61,7 +62,7 @@ async fn connect_to_nonexistent_peer() {
     let mut requester = ConnectionManagerRequester::new(request_tx, event_tx.clone());
     let mut shutdown = Shutdown::new();
 
-    let peer_manager = build_peer_manager();
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
 
     let connection_manager = ConnectionManager::new(
         Default::default(),
@@ -83,6 +84,7 @@ async fn connect_to_nonexistent_peer() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[allow(clippy::similar_names)]
 async fn dial_success() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
@@ -95,7 +97,7 @@ async fn dial_success() {
     let (proto_tx2, mut proto_rx2) = mpsc::channel(1);
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx1);
@@ -116,7 +118,7 @@ async fn dial_success() {
 
     conn_man1.wait_until_listening().await.unwrap();
 
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx2);
     let mut conn_man2 = build_connection_manager(
@@ -138,7 +140,7 @@ async fn dial_success() {
     let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
@@ -149,20 +151,58 @@ async fn dial_success() {
         ))
         .await
         .unwrap();
-
-    let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
-    assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1
-        .find_by_node_id(conn_out.peer_node_id())
+        .find_by_node_id(node_identity2.node_id())
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
-    assert_eq!(peer2.user_agent, "node2");
+    assert_ne!(peer2.supported_protocols, [&TEST_PROTO]);
+    assert_ne!(peer2.user_agent, "node2");
+
+    let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
+    assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
+
+    let mut retries = 10;
+    while retries > 0 {
+        let peer2 = peer_manager1
+            .find_by_node_id(conn_out.peer_node_id())
+            .await
+            .unwrap()
+            .unwrap();
+        if peer2.supported_protocols == [&TEST_PROTO] && peer2.user_agent == "node2" {
+            assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
+            assert_eq!(peer2.user_agent, "node2");
+            break;
+        }
+        retries -= 1;
+        sleep(Duration::from_millis(100)).await;
+    }
+    if retries == 0 {
+        panic!("Failed to verify peer2's supported_protocols and user_agent after 10 retries");
+    }
 
     let event = subscription2.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
+
+    retries = 10;
+    while retries > 0 {
+        let peer1 = peer_manager2
+            .find_by_node_id(node_identity1.node_id())
+            .await
+            .unwrap()
+            .unwrap();
+        if peer1.supported_protocols() == [&TEST_PROTO] && peer1.user_agent == "node1" {
+            assert_eq!(peer1.supported_protocols(), [&TEST_PROTO]);
+            assert_eq!(peer1.user_agent, "node1");
+            break;
+        }
+        retries -= 1;
+        sleep(Duration::from_millis(100)).await;
+    }
+    if retries == 0 {
+        panic!("Failed to verify peer2's supported_protocols and user_agent after 10 retries");
+    }
 
     let peer1 = peer_manager2
         .find_by_node_id(node_identity1.node_id())
@@ -207,7 +247,7 @@ async fn dial_success_aux_tcp_listener() {
     let (proto_tx2, _) = mpsc::channel(1);
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO.clone()], &proto_tx1);
@@ -239,9 +279,9 @@ async fn dial_success_aux_tcp_listener() {
         .unwrap()
         .clone();
 
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     peer_manager2
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![tcp_listener_addr], &PeerAddressSource::Config),
@@ -297,7 +337,7 @@ async fn simultaneous_dial_events() {
     let node_identities = ordered_node_identities(2, Default::default());
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identities[0].to_peer()).unwrap();
     let mut conn_man1 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identities[0].clone(),
@@ -313,7 +353,7 @@ async fn simultaneous_dial_events() {
     let listener_info = conn_man1.wait_until_listening().await.unwrap();
     let public_address1 = listener_info.bind_address().clone();
 
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identities[1].to_peer()).unwrap();
     let mut conn_man2 = build_connection_manager(
         TestNodeConfig {
             node_identity: node_identities[1].clone(),
@@ -329,7 +369,7 @@ async fn simultaneous_dial_events() {
     let public_address2 = listener_info.bind_address().clone();
 
     peer_manager1
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identities[1].public_key().clone(),
             node_identities[1].node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address2], &PeerAddressSource::Config),
@@ -342,7 +382,7 @@ async fn simultaneous_dial_events() {
         .unwrap();
 
     peer_manager2
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identities[0].public_key().clone(),
             node_identities[0].node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![public_address1], &PeerAddressSource::Config),
@@ -388,7 +428,7 @@ async fn dial_cancelled() {
     let node_identity2 = build_node_identity(PeerFeatures::empty());
 
     // Setup connection manager 1
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
 
     let mut conn_man1 = build_connection_manager(
         {
@@ -412,7 +452,10 @@ async fn dial_cancelled() {
 
     let mut subscription1 = conn_man1.get_event_subscription();
 
-    peer_manager1.add_peer(node_identity2.to_peer()).await.unwrap();
+    peer_manager1
+        .add_or_update_peer(node_identity2.to_peer())
+        .await
+        .unwrap();
 
     let (ready_tx, ready_rx) = oneshot::channel();
     let dial_result = tokio::spawn({

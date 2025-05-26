@@ -43,6 +43,8 @@ bitflags! {
     }
 }
 
+const UNKNOWN_PEER_FEATURE: i32 = -1;
+
 impl PeerFeatures {
     /// Returns true if these flags represent a COMMUNICATION_CLIENT.
     #[inline]
@@ -64,6 +66,17 @@ impl PeerFeatures {
             _ => "unknown",
         }
     }
+
+    /// Returns the bits of the PeerFeatures as an i32
+    pub fn to_i32(&self) -> i32 {
+        match *self {
+            PeerFeatures::MESSAGE_PROPAGATION => 1,
+            PeerFeatures::DHT_STORE_FORWARD => 2,
+            PeerFeatures::COMMUNICATION_NODE => 3,
+            PeerFeatures::COMMUNICATION_CLIENT => 0,
+            _ => UNKNOWN_PEER_FEATURE, // All cases must be handled explicitly,
+        }
+    }
 }
 
 impl Default for PeerFeatures {
@@ -75,5 +88,29 @@ impl Default for PeerFeatures {
 impl fmt::Display for PeerFeatures {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_i32_conversion() {
+        for feature in PeerFeatures::all() {
+            assert_ne!(
+                feature.to_i32(),
+                UNKNOWN_PEER_FEATURE,
+                "Failed for feature: {:?}",
+                feature
+            );
+            match feature {
+                PeerFeatures::NONE => assert_eq!(feature.to_i32(), 0),
+                PeerFeatures::MESSAGE_PROPAGATION => assert_eq!(feature.to_i32(), 1),
+                PeerFeatures::DHT_STORE_FORWARD => assert_eq!(feature.to_i32(), 2),
+                PeerFeatures::COMMUNICATION_NODE => assert_eq!(feature.to_i32(), 3),
+                _ => panic!("Unexpected feature: {:?}", feature),
+            }
+        }
     }
 }

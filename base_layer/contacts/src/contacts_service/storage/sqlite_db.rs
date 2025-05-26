@@ -251,7 +251,7 @@ mod test {
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
             let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-            let db = DbConnection::connect_url(&url).unwrap();
+            let db = DbConnection::connect_url(&url, Some(5)).unwrap();
             let _service = ContactsServiceSqliteDatabase::init(db.clone());
             let mut conn = db.get_pooled_connection().unwrap();
 

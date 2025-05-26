@@ -119,7 +119,7 @@ pub async fn wallet_recovery(
         );
         peer_public_keys.push(peer.public_key.clone());
         peer_manager
-            .add_peer(peer)
+            .add_or_update_peer(peer)
             .await
             .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
     }

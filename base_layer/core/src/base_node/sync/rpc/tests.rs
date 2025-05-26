@@ -24,7 +24,6 @@ use futures::StreamExt;
 use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
 use tari_service_framework::reply_channel;
 use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
-use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
 use super::BaseNodeSyncRpcService;
@@ -42,10 +41,8 @@ fn setup() -> (
     BaseNodeSyncRpcService<TempDatabase>,
     BlockchainDatabase<TempDatabase>,
     RpcRequestMock,
-    TempDir,
 ) {
-    let tmp = tempdir().unwrap();
-    let peer_manager = create_peer_manager(&tmp);
+    let peer_manager = create_peer_manager();
     let request_mock = RpcRequestMock::new(peer_manager);
 
     let db = create_new_blockchain();
@@ -56,7 +53,7 @@ fn setup() -> (
         db.clone().into(),
         LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
     );
-    (service, db, request_mock, tmp)
+    (service, db, request_mock)
 }
 
 mod sync_blocks {
@@ -64,7 +61,7 @@ mod sync_blocks {
 
     #[tokio::test]
     async fn it_returns_not_found_if_unknown_hash() {
-        let (service, _, rpc_request_mock, _tmp) = setup();
+        let (service, _, rpc_request_mock) = setup();
         let msg = SyncBlocksRequest {
             start_hash: vec![0; 32],
             end_hash: vec![0; 32],
@@ -76,7 +73,7 @@ mod sync_blocks {
 
     #[tokio::test]
     async fn it_sends_bad_request_on_bad_response() {
-        let (service, db, rpc_request_mock, _tmp) = setup();
+        let (service, db, rpc_request_mock) = setup();
 
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
 
@@ -91,7 +88,7 @@ mod sync_blocks {
 
     #[tokio::test]
     async fn it_streams_blocks_until_end() {
-        let (service, db, rpc_request_mock, _tmp) = setup();
+        let (service, db, rpc_request_mock) = setup();
 
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"])).await;
 
@@ -121,7 +118,7 @@ mod sync_utxos {
 
     #[tokio::test]
     async fn it_returns_not_found_if_unknown_hash() {
-        let (service, db, rpc_request_mock, _tmp) = setup();
+        let (service, db, rpc_request_mock) = setup();
         let gen_block_hash = db.fetch_header(0).unwrap().unwrap().hash();
         let msg = SyncUtxosRequest {
             start_header_hash: gen_block_hash.to_vec(),
@@ -134,7 +131,7 @@ mod sync_utxos {
 
     #[tokio::test]
     async fn it_returns_not_found_if_start_not_found() {
-        let (service, db, rpc_request_mock, _tmp) = setup();
+        let (service, db, rpc_request_mock) = setup();
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {

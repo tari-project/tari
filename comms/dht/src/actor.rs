@@ -37,7 +37,7 @@ use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
     types::CommsPublicKey,
     PeerConnection,
 };
@@ -741,8 +741,8 @@ impl DhtActor {
         };
 
         let mut filtered_peers = Vec::with_capacity(peers.len());
-        for id in &peers {
-            let addresses = peer_manager.get_peer_multi_addresses(id).await?;
+        let peer_addresses = peer_manager.get_peers_multi_addresses(&peers).await?;
+        for (id, addresses) in &peer_addresses {
             if addresses.iter().all(|addr| {
                 config
                     .excluded_dial_addresses
@@ -768,14 +768,13 @@ impl DhtActor {
 
     /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
     /// well as other peers which do not advertise the MESSAGE_PROPAGATION flag (unless excluded by some other means
-    /// e.g. `excluded` list, filter_predicate etc. The filter_predicate is called on each peer excluding them from
-    /// the final results if that returns false.
+    /// e.g. `excluded` list.
     ///
     /// This ensures that peers are selected which are able to propagate the message further while still allowing
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
     async fn select_closest_peers_for_propagation(
         peer_manager: &PeerManager,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
@@ -787,55 +786,23 @@ impl DhtActor {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        let mut connect_ineligable_count = 0;
-        let mut banned_count = 0;
-        let mut excluded_count = 0;
-        let mut filtered_out_node_count = 0;
-
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                if peer.is_banned() {
-                    banned_count += 1;
-                    return false;
-                }
-
-                if !peer.features.contains(features) {
-                    filtered_out_node_count += 1;
-                    return false;
-                }
-
-                if peer.is_offline() {
-                    connect_ineligable_count += 1;
-                    return false;
-                }
-
-                let is_excluded = excluded_peers.contains(&peer.node_id);
-                if is_excluded {
-                    excluded_count += 1;
-                    return false;
-                }
-
-                true
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
-            .limit(n);
-
-        let peers = peer_manager.perform_query(query).await?;
-        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
-                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
-                 explicitly excluded",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
+        let peers = peer_manager
+            .closest_n_active_peers(
+                region_node_id,
+                n,
+                excluded_peers,
+                Some(features),
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
+            .await?;
+        debug!(
+            target: LOG_TARGET,
+            "👨‍👧‍👦 Closest Peer Selection: {} peer(s) selected, {} explicitly excluded",
+            peers.len(),
+            excluded_peers.len(),
+        );
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
@@ -905,7 +872,7 @@ impl DiscoveryDialTask {
     }
 
     pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
-        if self.peer_manager.exists(&public_key).await {
+        if self.peer_manager.exists(&public_key).await? {
             let node_id = NodeId::from_public_key(&public_key);
             match self.connectivity.dial_peer(node_id).await {
                 Ok(conn) => Ok(conn),
@@ -959,7 +926,6 @@ mod test {
         ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
-    use tari_test_utils::random;
 
     use super::*;
     use crate::{
@@ -967,17 +933,17 @@ mod test {
         storage::MIGRATIONS,
         test_utils::{
             build_peer_manager,
+            build_peer_manager_with_node_identity,
             create_dht_discovery_mock,
+            create_good_standing_peer,
             make_client_identity,
             make_node_identity,
             DhtDiscoveryMockState,
         },
     };
 
-    async fn db_connection() -> DbConnection {
-        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        conn.migrate(MIGRATIONS).unwrap();
-        conn
+    fn db_connection() -> DbConnection {
+        DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap()
     }
 
     #[tokio::test]
@@ -994,7 +960,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1038,7 +1004,7 @@ mod test {
             mock.spawn();
             DhtActor::new(
                 Arc::new(DhtConfig::default_local_test()),
-                db_connection().await,
+                db_connection(),
                 node_identity.clone(),
                 peer_manager.clone(),
                 connectivity_manager,
@@ -1078,7 +1044,7 @@ mod test {
             let (mut dht, node_identity, connectivity_mock, discovery_mock, peer_manager) =
                 setup(shutdown.to_signal()).await;
             let peer = make_peer();
-            peer_manager.add_peer(peer.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
             let (conn1, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
             connectivity_mock.add_active_connection(conn1).await;
 
@@ -1113,7 +1079,7 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1163,7 +1129,7 @@ mod test {
                 excluded_dial_addresses: vec![].into(),
                 ..Default::default()
             }),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1235,21 +1201,23 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_select_peers() {
         let node_identity = make_node_identity();
-        let peer_manager = build_peer_manager();
+        let this_peer = create_good_standing_peer(node_identity.as_ref());
+        let peer_manager = build_peer_manager_with_node_identity(&node_identity);
 
         let client_node_identity = make_client_identity();
-        peer_manager.add_peer(client_node_identity.to_peer()).await.unwrap();
+        let client_peer = create_good_standing_peer(client_node_identity.as_ref());
+        peer_manager.add_or_update_peer(client_peer.clone()).await.unwrap();
 
         let (connectivity_manager, mock) = create_connectivity_mock();
         let connectivity_manager_mock_state = mock.get_shared_state();
         mock.spawn();
 
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
-        let (conn_in, _, conn_out, _) =
-            create_peer_connection_mock_pair(client_node_identity.to_peer(), node_identity.to_peer()).await;
+        let (conn_in, _, conn_out, _) = create_peer_connection_mock_pair(client_peer.clone(), this_peer.clone()).await;
         connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
-        peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
+        let other_peer = create_good_standing_peer(make_node_identity().as_ref());
+        peer_manager.add_or_update_peer(other_peer).await.unwrap();
 
         let (out_tx, _) = mpsc::unbounded_channel();
         let (actor_tx, actor_rx) = mpsc::unbounded_channel();
@@ -1258,9 +1226,9 @@ mod test {
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             Arc::clone(&node_identity),
-            peer_manager,
+            peer_manager.clone(),
             connectivity_manager,
             outbound_requester,
             actor_rx,
@@ -1359,7 +1327,7 @@ mod test {
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,

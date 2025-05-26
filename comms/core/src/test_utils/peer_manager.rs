@@ -20,13 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
-use crate::PeerManager;
+use rand::{distributions::Alphanumeric, Rng};
+use tari_common_sqlite::connection::DbConnection;
 
 #[cfg(test)]
-pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None, None).unwrap())
+use crate::peer_manager::{Peer, PeerManagerError};
+use crate::{
+    peer_manager::database::{PeerDatabaseSql, MIGRATIONS},
+    PeerManager,
+};
+
+#[cfg(test)]
+pub fn build_peer_manager(this_peer: &Peer) -> Result<Arc<PeerManager>, PeerManagerError> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS)?;
+    let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
+    Ok(Arc::new(PeerManager::new(peers_db)?))
 }
 
 #[cfg(not(test))]
@@ -34,30 +44,32 @@ pub use not_test::build_peer_manager;
 
 #[cfg(not(test))]
 mod not_test {
-    use std::{iter, path::Path};
+    use std::path::{Path, PathBuf};
 
-    use rand::{distributions::Alphanumeric, Rng};
-    use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+    use tari_common_sqlite::connection::DbConnectionUrl;
 
     use super::*;
+    use crate::peer_manager::{Peer, PeerManagerError};
 
-    pub fn build_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-        let peer_database_name = {
-            let mut rng = rand::thread_rng();
-            iter::repeat(())
-                .map(|_| rng.sample(Alphanumeric) as char)
-                .take(8)
-                .collect::<String>()
-        };
-        std::fs::create_dir_all(&data_path).unwrap();
-        let datastore = LMDBBuilder::new()
-            .set_path(data_path)
-            .set_env_config(Default::default())
-            .set_max_number_of_databases(1)
-            .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-            .build()
-            .unwrap();
-        let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-        Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None, None).unwrap())
+    pub fn build_peer_manager<P: AsRef<Path>>(
+        data_path: P,
+        this_peer: &Peer,
+    ) -> Result<Arc<PeerManager>, PeerManagerError> {
+        std::fs::create_dir_all(&data_path)?;
+        let peer_database_name = PathBuf::from(data_path.as_ref())
+            .join(random_name())
+            .with_extension("db");
+        let database_url = DbConnectionUrl::File(peer_database_name);
+        let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+        let peers_db = PeerDatabaseSql::new(db_connection, this_peer)?;
+        Ok(Arc::new(PeerManager::new(peers_db)?))
     }
+}
+
+pub fn random_name() -> String {
+    let mut rng = rand::thread_rng();
+    iter::repeat(())
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .take(12)
+        .collect::<String>()
 }

@@ -103,7 +103,10 @@ async fn large_join_messages_with_many_addresses() {
         interval = Duration::from_secs(1)
     );
     // Node B did not propagate
-    assert!(!node_c_peer_manager.exists(node_a.node_identity().public_key()).await);
+    assert!(!node_c_peer_manager
+        .exists(node_a.node_identity().public_key())
+        .await
+        .unwrap());
 
     node_a.shutdown().await;
     node_b.shutdown().await;

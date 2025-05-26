@@ -60,7 +60,7 @@ impl HandleCommand<ArgsAddPeer> for CommandContext {
             String::new(),
         );
         // If the peer exists, this will merge the given address
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
         println!("Peer with node id '{}' was added to the base node.", node_id);
         self.dial_peer(node_id).await?;
         Ok(())

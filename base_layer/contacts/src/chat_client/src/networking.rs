@@ -109,7 +109,7 @@ pub async fn start(
         .map_err(|e| NetworkingError::PeerSeeds(e.to_string()))?;
 
     for peer in seed_peers {
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
     }
     let comms = if p2p_config.transport.transport_type == TransportType::Tor {
         let path = config.chat_client.tor_identity_file.clone();
