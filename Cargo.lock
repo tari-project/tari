@@ -4399,7 +4399,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "3.0.1-pre.0"
+version = "3.0.2-pre.0"
 dependencies = [
  "async-trait",
  "reqwest 0.12.15",
@@ -4429,7 +4429,6 @@ dependencies = [
  "itertools 0.10.5",
  "libsqlite3-sys",
  "log",
- "minotari_node_wallet_client",
  "prost 0.13.5",
  "rand 0.8.5",
  "serde",
@@ -4457,7 +4456,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tower 0.4.13",
- "url",
  "zeroize",
 ]
 
