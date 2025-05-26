@@ -483,8 +483,7 @@ impl TryFrom<grpc::SidechainBlockHeader> for SidechainBlockHeader {
             signature: value
                 .signature
                 .ok_or("SidechainBlockHeader signature not provided")?
-                .try_into()
-                .map_err(|_| "Invalid signature")?,
+                .try_into()?,
             metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
         })
     }
@@ -518,7 +517,7 @@ impl TryFrom<grpc::CommitProofElement> for CommitProofElement {
             grpc::commit_proof_element::ProofElement::QuorumCertificate(qc) => {
                 Ok(CommitProofElement::QuorumCertificate(qc.try_into()?))
             },
-            grpc::commit_proof_element::ProofElement::DummyChain(chain) => Ok(CommitProofElement::DummyChain(
+            grpc::commit_proof_element::ProofElement::DummyChain(chain) => Ok(CommitProofElement::ChainLinks(
                 chain
                     .chain_links
                     .into_iter()
@@ -535,7 +534,7 @@ impl From<&CommitProofElement> for grpc::CommitProofElement {
             CommitProofElement::QuorumCertificate(qc) => Self {
                 proof_element: Some(grpc::commit_proof_element::ProofElement::QuorumCertificate(qc.into())),
             },
-            CommitProofElement::DummyChain(chain) => Self {
+            CommitProofElement::ChainLinks(chain) => Self {
                 proof_element: Some(grpc::commit_proof_element::ProofElement::DummyChain(grpc::DummyChain {
                     chain_links: chain.iter().map(Into::into).collect(),
                 })),

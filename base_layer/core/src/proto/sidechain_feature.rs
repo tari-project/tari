@@ -471,8 +471,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
             signature: value
                 .signature
                 .ok_or("SidechainBlockHeader signature not provided")?
-                .try_into()
-                .map_err(|_| "Invalid signature")?,
+                .try_into()?,
             metadata_hash: value.metadata_hash.try_into().map_err(|_| "Invalid metadata hash")?,
         })
     }
@@ -506,7 +505,7 @@ impl TryFrom<proto::types::CommitProofElement> for CommitProofElement {
             proto::types::commit_proof_element::ProofElement::QuorumCertificate(qc) => {
                 Ok(CommitProofElement::QuorumCertificate(qc.try_into()?))
             },
-            proto::types::commit_proof_element::ProofElement::DummyChain(chain) => Ok(CommitProofElement::DummyChain(
+            proto::types::commit_proof_element::ProofElement::DummyChain(chain) => Ok(CommitProofElement::ChainLinks(
                 chain
                     .chain_links
                     .into_iter()
@@ -525,7 +524,7 @@ impl From<&CommitProofElement> for proto::types::CommitProofElement {
                     qc.into(),
                 )),
             },
-            CommitProofElement::DummyChain(chain) => Self {
+            CommitProofElement::ChainLinks(chain) => Self {
                 proof_element: Some(proto::types::commit_proof_element::ProofElement::DummyChain(
                     proto::types::DummyChain {
                         chain_links: chain.iter().map(Into::into).collect(),

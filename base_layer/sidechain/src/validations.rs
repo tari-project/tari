@@ -57,7 +57,7 @@ pub fn check_proof_elements(
                 last_parent = Some(&qc.parent_id);
                 last_justify = Some(justifies);
             },
-            CommitProofElement::DummyChain(chain) => {
+            CommitProofElement::ChainLinks(chain) => {
                 if proven_3_chain != 3 {
                     return Err(SidechainProofValidationError::InvalidProof {
                         details: format!(
@@ -89,7 +89,7 @@ pub fn check_proof_elements(
                             ),
                         });
                     }
-                    expected = block_id;
+                    expected = link.parent_id;
                     last_parent = Some(&link.parent_id);
                 }
             },
@@ -136,7 +136,7 @@ pub fn check_proof_elements_num_qcs(
     if num_qcs < expected_len {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
-                "Expected at least {} proof elements, but got {}",
+                "Expected at least {} QC proof elements, but got {}",
                 expected_len,
                 proof_elems.len()
             ),
@@ -189,7 +189,7 @@ fn validate_qc(
 
         if !sig.verify(&block_id, quorum_decision) {
             return Err(SidechainProofValidationError::InvalidProof {
-                details: "Invalid signature".to_string(),
+                details: format!("Invalid signature for QC for block ID {block_id}",),
             });
         }
     }
