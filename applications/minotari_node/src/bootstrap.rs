@@ -87,7 +87,8 @@ pub struct BaseNodeBootstrapper<'a, B> {
 }
 
 impl<B> BaseNodeBootstrapper<'_, B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
@@ -183,7 +184,7 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config).await;
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let tor_id_path = base_node_config.tor_identity_file.clone();
@@ -218,11 +219,11 @@ where B: BlockchainBackend + 'static
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
-            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
+            TransportType::Tcp => {} // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-            },
+            }
         };
 
         handles.register(comms);
@@ -230,7 +231,7 @@ where B: BlockchainBackend + 'static
         Ok(handles)
     }
 
-    async fn setup_rpc_services(
+    fn setup_rpc_services(
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
