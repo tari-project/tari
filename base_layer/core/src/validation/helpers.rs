@@ -138,7 +138,6 @@ pub fn check_target_difficulty(
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
-
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {

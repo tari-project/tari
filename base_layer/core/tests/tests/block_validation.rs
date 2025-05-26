@@ -534,6 +534,7 @@ OutputFeatures::default()),
             genesis.header(),
             &timestamps,
             None,
+            FixedHash::zero(),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -562,6 +563,7 @@ OutputFeatures::default()),
             genesis.header(),
             &[],
             None,
+            FixedHash::zero()
         )
         .is_err());
 
@@ -605,6 +607,7 @@ OutputFeatures::default()),
             &prev_header,
             &timestamps,
             None,
+            FixedHash::zero(),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -637,6 +640,7 @@ OutputFeatures::default()),
             genesis.header(),
             &timestamps,
             None,
+            FixedHash::zero(),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -667,6 +671,7 @@ OutputFeatures::default()),
             &prev_header,
             &timestamps,
             None,
+            FixedHash::zero(),
         )
         .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(genesis.accumulated_data())
@@ -748,7 +753,8 @@ OutputFeatures::default()),
             &new_block.header,
             genesis.header(),
             &timestamps,
-            None
+            None,
+            FixedHash::zero()
         )
         .is_ok());
 
@@ -768,7 +774,8 @@ OutputFeatures::default()),
             &new_block.header,
             genesis.header(),
             &[],
-            None
+            None,
+            FixedHash::zero()
         )
         .is_err());
 
@@ -783,6 +790,7 @@ OutputFeatures::default()),
             genesis.header(),
             &[],
             None,
+            FixedHash::zero(),
         )
         .is_err();
     new_block.header.nonce = OsRng.next_u64();
@@ -798,6 +806,7 @@ OutputFeatures::default()),
                 genesis.header(),
                 &[],
                 None,
+                FixedHash::zero(),
             )
             .is_err();
     }

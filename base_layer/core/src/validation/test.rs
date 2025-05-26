@@ -48,6 +48,7 @@ use crate::{
 };
 
 mod header_validators {
+    use tari_common_types::types::FixedHash;
     use tari_utilities::epoch_time::EpochTime;
 
     use super::*;
@@ -118,7 +119,14 @@ mod header_validators {
         let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
 
         let err = validator
-            .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &header,
+                genesis.header(),
+                &[],
+                None,
+                FixedHash::zero(),
+            )
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX
@@ -146,6 +154,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
+                FixedHash::zero(),
             )
             .unwrap();
 
@@ -158,6 +167,7 @@ mod header_validators {
                 last_block.header(),
                 &timestamps,
                 None,
+                FixedHash::zero(),
             )
             .unwrap_err();
         assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {

@@ -28,7 +28,7 @@ use crate::{
     validation::{helpers::check_target_difficulty, ValidationError},
 };
 
-const TARI_RX_VM_KEY_BLOCK_SWAP: u64 = 2048;
+pub const TARI_RX_VM_KEY_BLOCK_SWAP: u64 = 2048;
 const TARI_RX_VM_KEY_REORG_SAFETY_NUMBER: u64 = 64;
 
 #[derive(Clone)]
