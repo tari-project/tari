@@ -48,7 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
-    use crate::rpc::UnvalidatedPeerInfo;
+    use crate::{rpc::UnvalidatedPeerInfo, test_utils::create_good_standing_peer};
 
     async fn setup(
         mut config: DhtConfig,
@@ -102,6 +102,8 @@ mod state_machine {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
+        // env_logger::builder().filter_level(log::LevelFilter::Debug).init();
+        // env_logger::init(); // Set `$env:RUST_LOG = "trace"`  //  > ./target/output.log 2>&1
         const NUM_PEERS: usize = 3;
         let config = DhtConfig {
             num_neighbouring_nodes: 4,
@@ -129,7 +131,7 @@ mod state_machine {
         let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         // Add the peer that we'll sync from
         peer_manager
-            .add_or_update_peer(peer_node_identity.to_peer())
+            .add_or_update_peer(create_good_standing_peer(&peer_node_identity))
             .await
             .unwrap();
         mock_server.serve();
