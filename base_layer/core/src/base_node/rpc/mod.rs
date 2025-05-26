@@ -6,13 +6,6 @@ mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
 
-pub mod models;
-
-#[cfg(feature = "base_node")]
-pub mod query_service;
-
-use std::{error::Error, fmt::Debug};
-
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};

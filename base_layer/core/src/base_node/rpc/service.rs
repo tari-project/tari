@@ -8,7 +8,6 @@ use tari_common_types::types::{FixedHash, Signature};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
-use url::Url;
 
 use crate::{
     base_node::{
@@ -25,7 +24,6 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
-            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedData,
             QueryDeletedRequest,
             QueryDeletedResponse,
