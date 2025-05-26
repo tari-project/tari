@@ -17,8 +17,6 @@ use std::{error::Error, fmt::Debug};
 pub use service::BaseNodeWalletRpcService;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
-#[cfg(feature = "base_node")]
-use url::Url;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
@@ -31,7 +29,6 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
-            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures,
@@ -125,12 +122,6 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<GetMempoolFeePerGramStatsRequest>,
     ) -> Result<Response<GetMempoolFeePerGramStatsResponse>, RpcStatus>;
-
-    #[rpc(method = 13)]
-    async fn get_wallet_query_http_service_address(
-        &self,
-        request: Request<()>,
-    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]
@@ -138,12 +129,6 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
     state_machine: StateMachineHandle,
-    wallet_query_service_address: Option<Url>,
 ) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>> {
-    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(
-        db,
-        mempool,
-        state_machine,
-        wallet_query_service_address,
-    ))
+    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine))
 }

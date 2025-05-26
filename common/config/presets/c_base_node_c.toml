@@ -335,10 +335,3 @@ excluded_dial_addresses = []
 # setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
 # peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
 #peer_validator_config.min_peer_version = ""
-
-# Wallet Query HTTP service details
-# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
-# This address must be accessible by the wallet (on a global scale over the internet).
-[base_node.http_wallet_query_service]
-port = 9000
-external_address = "http://127.0.0.1:9000"
