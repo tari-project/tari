@@ -86,6 +86,8 @@ Tari has a tail emission of 1% per year after initial supply.
 ### Does Tari have a token allocation plan?
 There will be a total supply of 21 billion XTM emitted gradually using an exponential decay function over approximately 27.8 years. Once annual emissions decline to 1% of total supply, a perpetual 1% tail emission will continue indefinitely, ensuring ongoing miner compensation and network security. Of this total supply, 6.3 billion XTM (30%) will be pre-mined, subject to significant lockups and vesting schedules. These pre-mined tokens will support protocol infrastructure, community incentives, grants, and long-term alignment with contributors. After the pre-mine distribution, all newly emitted tokens (100%) will go exclusively to miners who secure the Tari network.
 
+You can read more about Tari's tokenomics here: https://tari.com/tokenomics
+
 ## Installation and Operational Requirements
 ### What are the current networks for Tari?
 - **MainNet** (`mainnet`)- The primary network for live transactions.
