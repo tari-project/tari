@@ -64,7 +64,7 @@ pub enum StorageError {
     #[error("IO error: `{0}`")]
     IoError(#[from] Error),
     #[error("Database migration lock error: {0}")]
-    DatabaseMigrartionLockError(String),
+    DatabaseMigrationLockError(String),
 }
 
 impl From<MessageFormatError> for StorageError {

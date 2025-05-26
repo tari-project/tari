@@ -307,8 +307,7 @@ impl PeerStorageSql {
     pub fn unban_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let _node_id = self
             .peer_db
-            .reset_banned(node_id)
-            .map_err(|_e| PeerManagerError::PeerNotFoundError)?;
+            .reset_banned(node_id)?;
         Ok(())
     }
 

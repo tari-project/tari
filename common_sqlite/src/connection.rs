@@ -169,7 +169,7 @@ impl DbConnection {
     fn acquire_migration_write_lock() -> Result<RwLockWriteGuard<'static, ()>, StorageError> {
         match DB_WRITE_LOCK.write() {
             Ok(value) => Ok(value),
-            Err(err) => Err(StorageError::DatabaseMigrartionLockError(format!(
+            Err(err) => Err(StorageError::DatabaseMigrationLockError(format!(
                 "Failed to acquire write lock for database migration: {}",
                 err
             ))),
