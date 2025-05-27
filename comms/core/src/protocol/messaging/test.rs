@@ -25,6 +25,7 @@ use std::{sync::Arc, time::Duration};
 use bytes::Bytes;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{
@@ -37,7 +38,16 @@ use crate::{
     message::{InboundMessage, MessageTag, MessagingReplyRx, OutboundMessage},
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    peer_manager::{
+        create_test_peer,
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManager,
+    },
     protocol::{
         messaging::{MessagingEvent, SendFailReason},
         ProtocolEvent,
@@ -49,13 +59,23 @@ use crate::{
         node_id,
         node_identity::build_node_identity,
     },
-    types::{CommsDatabase, CommsPublicKey},
+    types::CommsPublicKey,
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
 static TEST_MSG2: Bytes = Bytes::from_static(b"TEST_MSG2");
 
 static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"test/msg");
+
+fn create_peer_manager() -> Arc<PeerManager> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(
+        db_connection,
+        &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+    )
+    .unwrap();
+    Arc::new(PeerManager::new(peers_db).unwrap())
+}
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -73,9 +93,7 @@ async fn spawn_messaging_protocol() -> (
     let mock_state = mock.get_shared_state();
     mock.spawn();
 
-    let peer_manager = PeerManager::new(CommsDatabase::new(), None, None)
-        .map(Arc::new)
-        .unwrap();
+    let peer_manager = create_peer_manager();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
     let (request_tx, request_rx) = mpsc::unbounded_channel();
@@ -122,7 +140,7 @@ async fn new_inbound_substream_handling() {
         Default::default(),
         Default::default(),
     );
-    peer_manager.add_peer(peer1.clone()).await.unwrap();
+    peer_manager.add_or_update_peer(peer1.clone()).await.unwrap();
 
     let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
     let peer2 = Peer::new(
@@ -381,7 +399,7 @@ async fn new_inbound_substream_only_single_session_permitted() {
         Default::default(),
         Default::default(),
     );
-    peer_manager.add_peer(peer2.clone()).await.unwrap();
+    peer_manager.add_or_update_peer(peer2.clone()).await.unwrap();
 
     let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(peer1.clone(), peer2.clone()).await;
 

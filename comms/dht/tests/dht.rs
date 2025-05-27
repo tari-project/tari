@@ -72,13 +72,19 @@ async fn test_dht_join_propagation() {
 
     // Check that Node B and C know node A
     async_assert_eventually!(
-        node_B_peer_manager.exists(node_A.node_identity().public_key()).await,
+        node_B_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap(),
         expect = true,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        node_C_peer_manager.exists(node_A.node_identity().public_key()).await,
+        node_C_peer_manager
+            .exists(node_A.node_identity().public_key())
+            .await
+            .unwrap(),
         expect = true,
         max_attempts = 10,
         interval = Duration::from_millis(500)
@@ -137,7 +143,12 @@ async fn test_dht_wallet_discover_propagation() {
     );
 
     // To receive messages, clients have to connect
-    client_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    client_D
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     client_D
         .comms
         .connectivity()
@@ -166,11 +177,26 @@ async fn test_dht_wallet_discover_propagation() {
     let client_D_peer_manager = client_D.comms.peer_manager();
 
     // Check that all the nodes know about each other in the chain and the discovery worked
-    assert!(node_A_peer_manager.exists(client_D.node_identity().public_key()).await);
-    assert!(node_B_peer_manager.exists(node_A.node_identity().public_key()).await);
-    assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
-    assert!(client_D_peer_manager.exists(node_C.node_identity().public_key()).await);
-    assert!(client_D_peer_manager.exists(node_A.node_identity().public_key()).await);
+    assert!(node_A_peer_manager
+        .exists(client_D.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_B_peer_manager
+        .exists(node_A.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_C_peer_manager
+        .exists(node_B.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(client_D_peer_manager
+        .exists(node_C.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(client_D_peer_manager
+        .exists(node_A.node_identity().public_key())
+        .await
+        .unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -214,7 +240,12 @@ async fn test_dht_node_discover_propagation() {
     );
 
     // To receive messages, clients have to connect
-    node_D.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_D
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     node_D
         .comms
         .connectivity()
@@ -243,11 +274,26 @@ async fn test_dht_node_discover_propagation() {
     let node_D_peer_manager = node_D.comms.peer_manager();
 
     // Check that all the nodes know about each other in the chain and the discovery worked
-    assert!(node_A_peer_manager.exists(node_D.node_identity().public_key()).await);
-    assert!(node_B_peer_manager.exists(node_A.node_identity().public_key()).await);
-    assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
-    assert!(node_D_peer_manager.exists(node_C.node_identity().public_key()).await);
-    assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
+    assert!(node_A_peer_manager
+        .exists(node_D.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_B_peer_manager
+        .exists(node_A.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_C_peer_manager
+        .exists(node_B.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_D_peer_manager
+        .exists(node_C.node_identity().public_key())
+        .await
+        .unwrap());
+    assert!(node_D_peer_manager
+        .exists(node_A.node_identity().public_key())
+        .await
+        .unwrap());
 }
 
 #[tokio::test]
@@ -284,7 +330,12 @@ async fn test_dht_propagate_dedup() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}, Node D = {}",
         node_A.node_identity().node_id().short_str(),
@@ -567,6 +618,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 #[allow(non_snake_case)]
 async fn test_dht_repropagate() {
     let mut config = dht_config();
@@ -581,10 +633,30 @@ async fn test_dht_repropagate() {
         node_C.to_peer(),
     ])
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
-    node_B.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
-    node_C.comms.peer_manager().add_peer(node_A.to_peer()).await.unwrap();
-    node_C.comms.peer_manager().add_peer(node_B.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
+    node_B
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
+    node_C
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_A.to_peer())
+        .await
+        .unwrap();
+    node_C
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_B.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}, Node C = {}",
         node_A.node_identity().node_id().short_str(),
@@ -690,7 +762,12 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",
         node_A.node_identity().node_id().short_str(),
@@ -795,7 +872,12 @@ async fn test_dht_header_not_malleable() {
         Some(node_B.to_peer()),
     )
     .await;
-    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    node_A
+        .comms
+        .peer_manager()
+        .add_or_update_peer(node_C.to_peer())
+        .await
+        .unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",
         node_A.node_identity().node_id().short_str(),

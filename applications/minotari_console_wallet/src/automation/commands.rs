@@ -80,7 +80,7 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerQuery},
+    peer_manager::Peer,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -2600,11 +2600,10 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let query = PeerQuery::new().select_where(|p| p.is_seed());
                     let peer_seeds = wallet
                         .comms
                         .peer_manager()
-                        .perform_query(query)
+                        .get_seed_peers()
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     // config

@@ -429,7 +429,7 @@ where
                     );
 
                     current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
-                    peer_manager.add_peer(current_peer.clone()).await?;
+                    peer_manager.add_or_update_peer(current_peer.clone()).await?;
                 }
             }
             let mut peer_list = vec![current_peer];
@@ -462,7 +462,7 @@ where
                 Default::default(),
                 String::new(),
             );
-            peer_manager.add_peer(peer.clone()).await?;
+            peer_manager.add_or_update_peer(peer.clone()).await?;
             connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
             let mut peer_list = vec![peer];
             if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {

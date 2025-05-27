@@ -52,10 +52,36 @@ pub use makers::*;
 
 mod service;
 pub use service::service_spy;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+};
 
 pub fn assert_send_static_service<T, S>(_: &S)
 where
     S: tower::Service<T> + Send + 'static,
     S::Future: Send,
 {
+}
+
+#[cfg(test)]
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
 }

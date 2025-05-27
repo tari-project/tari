@@ -20,13 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use rand::rngs::OsRng;
-use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::PeerFeatures,
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo, ProtocolId},
@@ -38,10 +45,6 @@ use tari_comms::{
 };
 use tari_comms_dht::{inbound::DecryptedDhtMessage, Dht};
 use tari_shutdown::ShutdownSignal;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
 use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
 
@@ -51,23 +54,21 @@ pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/m
 
 pub const TOR_CONTROL_PORT_ADDR: &str = "/ip4/127.0.0.1/tcp/9051";
 
-pub async fn create<P: AsRef<Path>>(
+pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
-    database_path: P,
+    database_path: &Path,
     tor_identity: Option<TorIdentity>,
     onion_port: u16,
     seed_peers: &[&str],
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(CommsNode, Dht, mpsc::Receiver<DecryptedDhtMessage>)> {
-    let datastore = LMDBBuilder::new()
-        .set_path(database_path.as_ref())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle("peerdb").unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+    let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let this_node_identity = node_identity
+        .as_ref()
+        .map(|ni| ni.as_ref().clone())
+        .unwrap_or_else(|| NodeIdentity::random_multiple_addresses(&mut OsRng, vec![], Default::default()));
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node_identity.to_peer())?;
 
     let node_identity = node_identity.unwrap_or_else(|| {
         Arc::new(NodeIdentity::random_multiple_addresses(
@@ -89,7 +90,7 @@ pub async fn create<P: AsRef<Path>>(
         })
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database, None)
+        .with_peer_storage(peer_database)
         .with_listener_liveness_max_sessions(10)
         .disable_connection_reaping();
 
@@ -112,7 +113,7 @@ pub async fn create<P: AsRef<Path>>(
     let comms_node = builder.with_listener_address(hs_ctl.proxied_address()).build()?;
 
     let dht = tari_comms_dht::Dht::builder()
-        .with_database_url(DbConnectionUrl::File(database_path.as_ref().join("dht.sqlite")))
+        .with_database_url(DbConnectionUrl::File(PathBuf::from(database_path).join("dht.sqlite")))
         .with_outbound_sender(outbound_tx)
         .enable_auto_join()
         .build(
@@ -125,9 +126,9 @@ pub async fn create<P: AsRef<Path>>(
 
     let peer_manager = comms_node.peer_manager();
     for peer in seed_peers {
-        peer_manager
-            .add_peer(parse_from_short_str(peer, PeerFeatures::COMMUNICATION_NODE).unwrap())
-            .await?;
+        let parsed_peer = parse_from_short_str(peer, PeerFeatures::COMMUNICATION_NODE)
+            .ok_or_else(|| anyhow::anyhow!("Invalid seed peer '{}'", peer))?;
+        peer_manager.add_or_update_peer(parsed_peer).await?;
     }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();

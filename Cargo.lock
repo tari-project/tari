@@ -1365,7 +1365,7 @@ dependencies = [
  "libc",
  "mio 1.0.3",
  "parking_lot 0.12.3",
- "rustix",
+ "rustix 0.38.42",
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -2243,7 +2243,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef033ed5e9bad94e55838ca0ca906db0e043f517adda0c8b79c7a8c66c93c1b5"
 dependencies = [
  "cfg-if",
- "rustix",
+ "rustix 0.38.42",
  "windows-sys 0.48.0",
 ]
 
@@ -3828,6 +3828,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
+
+[[package]]
 name = "litemap"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4096,31 +4102,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tonic 0.13.1",
-]
-
-[[package]]
-name = "minotari_chat_ffi"
-version = "4.0.0-pre.0"
-dependencies = [
- "cbindgen",
- "chrono",
- "libc",
- "libsqlite3-sys",
- "log",
- "log4rs",
- "minotari_app_utilities",
- "openssl",
- "rand 0.8.5",
- "tari_chat_client",
- "tari_common",
- "tari_common_types",
- "tari_contacts",
- "tari_crypto",
- "tari_p2p",
- "tari_shutdown",
- "tari_utilities",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -6209,7 +6190,20 @@ dependencies = [
  "bitflags 2.6.0",
  "errno",
  "libc",
- "linux-raw-sys",
+ "linux-raw-sys 0.4.14",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "rustix"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c71e83d6afe7ff64890ec6b71d6a69bb8a610ab78ce364b3352876bb4c801266"
+dependencies = [
+ "bitflags 2.6.0",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.9.4",
  "windows-sys 0.59.0",
 ]
 
@@ -7138,33 +7132,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_chat_client"
-version = "4.0.0-pre.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "config",
- "diesel",
- "lmdb-zero",
- "log",
- "minotari_app_utilities",
- "rand 0.8.5",
- "serde",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_max_size",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "tari_common"
 version = "4.0.0-pre.0"
 dependencies = [
@@ -7196,9 +7163,11 @@ version = "4.0.0-pre.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
+ "lazy_static",
  "log",
+ "rand 0.8.5",
  "serde",
- "tari_test_utils",
+ "serde_json",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -7243,10 +7212,11 @@ dependencies = [
  "cidr",
  "data-encoding",
  "derivative",
+ "diesel",
+ "diesel_migrations",
  "digest 0.10.7",
  "env_logger 0.7.1",
  "futures 0.3.31",
- "lmdb-zero",
  "log",
  "multiaddr",
  "nom",
@@ -7254,13 +7224,13 @@ dependencies = [
  "pin-project 1.1.7",
  "prost 0.13.4",
  "rand 0.8.5",
- "semver",
  "serde",
  "serde_derive",
  "serde_json",
  "sha3",
  "snow",
  "tari_common",
+ "tari_common_sqlite",
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_metrics",
@@ -7312,7 +7282,6 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7496,7 +7465,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "config",
  "csv",
  "cucumber",
  "futures 0.3.31",
@@ -7505,7 +7473,6 @@ dependencies = [
  "log",
  "minotari_app_grpc",
  "minotari_app_utilities",
- "minotari_chat_ffi",
  "minotari_console_wallet",
  "minotari_merge_mining_proxy",
  "minotari_miner",
@@ -7517,13 +7484,11 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "serde_json",
- "tari_chat_client",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_p2p",
@@ -7635,11 +7600,9 @@ dependencies = [
  "anyhow",
  "clap 3.2.25",
  "config",
- "fs2",
  "futures 0.3.31",
  "hickory-proto",
  "hickory-resolver",
- "lmdb-zero",
  "log",
  "pgp",
  "prost 0.13.4",
@@ -7653,7 +7616,6 @@ dependencies = [
  "tari_comms_dht",
  "tari_service_framework",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7754,14 +7716,14 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.14.0"
+version = "3.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
+checksum = "e8a64e3985349f2441a1a9ef0b853f869006c3855f2cda6862a94d26ebb9d6a1"
 dependencies = [
- "cfg-if",
  "fastrand",
+ "getrandom 0.3.2",
  "once_cell",
- "rustix",
+ "rustix 1.0.7",
  "windows-sys 0.59.0",
 ]
 
@@ -7791,7 +7753,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5352447f921fda68cf61b4101566c0bdb5104eff6804d0678e5227580ab6a4e9"
 dependencies = [
- "rustix",
+ "rustix 0.38.42",
  "windows-sys 0.59.0",
 ]
 
@@ -8731,7 +8693,7 @@ dependencies = [
  "either",
  "home",
  "once_cell",
- "rustix",
+ "rustix 0.38.42",
 ]
 
 [[package]]

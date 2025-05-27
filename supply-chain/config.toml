@@ -42,9 +42,6 @@ audit-as-crates-io = true
 [policy.minotari_app_utilities]
 audit-as-crates-io = true
 
-[policy.minotari_chat_ffi]
-audit-as-crates-io = true
-
 [policy.minotari_console_wallet]
 audit-as-crates-io = true
 
@@ -1264,10 +1261,6 @@ version = "4.0.0-pre.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_utilities]]
-version = "4.0.0-pre.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.minotari_chat_ffi]]
 version = "4.0.0-pre.0"
 criteria = "safe-to-deploy"
 

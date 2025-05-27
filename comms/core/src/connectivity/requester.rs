@@ -163,13 +163,13 @@ impl ConnectivityRequester {
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
     #[allow(clippy::let_with_type_underscore)]
-    pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
+    pub async fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
     ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
         peers
             .into_iter()
-            .map(|peer| self.dial_peer(peer))
+            .map(|peer| async move { self.dial_peer(peer).await })
             .collect::<FuturesUnordered<_>>()
     }
 

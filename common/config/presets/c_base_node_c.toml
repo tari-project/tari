@@ -16,7 +16,7 @@
 # The relative path to store persistent data (default = "data/base_node")
 #data_dir = "data/base_node"
 
-# The relative path to store the lmbd data (default = "db")
+# The relative path to store the lmdb blockchain data (default = "db")
 #lmdb_path = "db"
 
 # The maximum amount of VMs that RandomX will be use (default = 5)
@@ -141,7 +141,7 @@ blockchain_sync_config.rpc_deadline = 240
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# Path to the LMDB data files
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
 #datastore_path = "peer_db"
 
 # Name to use for the peer database

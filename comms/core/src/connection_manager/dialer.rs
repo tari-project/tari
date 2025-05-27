@@ -275,7 +275,7 @@ where
 
         let _ = self
             .peer_manager
-            .add_peer(dial_state.peer().clone())
+            .add_or_update_peer(dial_state.peer().clone())
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Could not update peer data: {}", e);

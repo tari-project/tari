@@ -65,7 +65,8 @@ use crate::{
 const LOG_TARGET: &str = "comms::connectivity::manager";
 // Maximum time allowed for deleting stale peers from database
 
-const STALE_PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(1500);
+const STALE_PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(500);
+
 // Maximum time allowed for refreshing the connection pool
 const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
 // Maximum time allowed to disconnect a single peer
@@ -466,12 +467,7 @@ impl ConnectivityManagerActor {
 
     async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
         let start = Instant::now();
-        match tokio::time::timeout(
-            STALE_PEER_DELETE_TIMEOUT,
-            self.peer_manager.delete_all_stale_peers(self.node_identity.node_id()),
-        )
-        .await
-        {
+        match tokio::time::timeout(STALE_PEER_DELETE_TIMEOUT, self.peer_manager.delete_all_stale_peers()).await {
             Ok(res) => match res {
                 Ok(deleted) => {
                     let len = deleted.len();
@@ -1112,7 +1108,6 @@ impl ConnectivityManagerActor {
             format_duration(duration),
             reason
         );
-
         self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
 
         #[cfg(feature = "metrics")]

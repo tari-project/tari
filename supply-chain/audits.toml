@@ -12,6 +12,11 @@ notes = """
 - No vulnerabilities or unexpected behaviors were identified, and it aligns with its advertised functionality.
 """
 
+[[audits.linux-raw-sys]]
+who = "hansieodendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+delta = "0.4.14 -> 0.9.4"
+
 [[audits.mintex]]
 who = "Hansie Odendaal <pluto@tari.com>"
 criteria = "safe-to-deploy"
@@ -25,11 +30,21 @@ Notes:
   limitation.
 """
 
+[[audits.rustix]]
+who = "Hansie Odendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+delta = "0.38.42 -> 1.0.7"
+
 [[audits.tari_core]]
 who = "Coinspect"
 criteria = "safe-to-deploy"
 violation = "<=0.52.0-pre.1"
 notes = "https://www.coinspect.com/blog/tari-security-audit/"
+
+[[audits.tempfile]]
+who = "Hansie Odendaal <pluto@tari.com>"
+criteria = "safe-to-deploy"
+delta = "3.14.0 -> 3.20.0"
 
 [[audits.thousands]]
 who = "Hansie Odendaal <pluto@tari.com>"
