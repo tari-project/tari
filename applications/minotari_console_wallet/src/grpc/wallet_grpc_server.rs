@@ -1097,8 +1097,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         });
 
         let req = request.into_inner();
-        let offset = req.offset as usize;
-        let limit = if req.limit > 0 { req.limit as usize } else { usize::MAX };
+        let offset = usize::try_from(req.offset).unwrap_or(0);
+        let limit = if req.limit > 0 {
+            usize::try_from(req.limit).unwrap_or(usize::MAX)
+        } else {
+            usize::MAX
+        };
         let transactions = completed_transactions
             .into_iter()
             .skip(offset)
