@@ -42,7 +42,11 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::{blocks::Block, transactions::aggregated_body::AggregateBody};
+use tari_core::{
+    blocks::Block,
+    borsh::SerializedSize,
+    transactions::{aggregated_body::AggregateBody, weight::TransactionWeight},
+};
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
@@ -731,6 +735,110 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
             e.message()
         ),
     }
+}
+
+#[then(expr = "I generate a block {word} with {int} coinbases from node {word} for wallet {word}")]
+async fn generate_block_with_many_coinbases(
+    world: &mut TariWorld,
+    block_name: String,
+    number_of_coinbases: u64,
+    node_name: String,
+    wallet_name: String,
+) {
+    let mut client = world.get_node_client(&node_name).await.unwrap();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
+
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+    };
+    let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
+    let miner_data = template_response.miner_data.unwrap();
+
+    let mut coinbases = Vec::with_capacity(usize::try_from(number_of_coinbases).unwrap());
+    let mut value = 0;
+    for i in 0..number_of_coinbases {
+        let share_value = if i == number_of_coinbases - 1 {
+            miner_data.reward - value
+        } else {
+            miner_data.reward / number_of_coinbases
+        };
+        coinbases.push(NewBlockCoinbase {
+            address: wallet_address.clone(),
+            value: share_value,
+            stealth_payment: true,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        });
+        value += share_value;
+    }
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases,
+    };
+
+    let template_response = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+    let new_block = template_response.block.clone().unwrap();
+
+    let block = Block::try_from(template_response.block.unwrap()).unwrap();
+    let coinbase_outputs = block
+        .body
+        .outputs()
+        .iter()
+        .filter(|o| o.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+    let outputs = block
+        .body
+        .outputs()
+        .iter()
+        .filter(|o| !o.is_coinbase())
+        .cloned()
+        .collect::<Vec<_>>();
+    let block_size = block.get_serialized_size().unwrap();
+
+    println!(
+        "Custom block: {}, size: {} bytes, coinbases: {}, kernels: {}, outputs: {}, inputs: {}, weight: {}",
+        block.header.height,
+        block_size,
+        coinbase_outputs.len(),
+        block.body.kernels().len(),
+        outputs.len(),
+        block.body.inputs().len(),
+        block.body.calculate_weight(&TransactionWeight::latest()).unwrap(),
+    );
+
+    assert_eq!(coinbase_outputs.len() as u64, number_of_coinbases);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
+    }
+
+    world.blocks.insert(block_name, block);
+}
+
+#[then(expr = "block {word} has serialized size at least {int} bytes")]
+async fn block_has_serialized_size_greater_than(world: &mut TariWorld, block: String, size: u64) {
+    let block = world.blocks.get(&block).unwrap();
+    assert!(
+        u64::try_from(block.get_serialized_size().unwrap()).unwrap() >= size,
+        "Block {} with weight {} has serialized size of {} which is not at least {}",
+        block.header.height,
+        block.body.calculate_weight(&TransactionWeight::latest()).unwrap(),
+        block.get_serialized_size().unwrap(),
+        size,
+    );
 }
 
 #[then(expr = "generate a block with 2 coinbases from node {word}")]
