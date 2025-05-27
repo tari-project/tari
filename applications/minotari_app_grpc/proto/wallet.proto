@@ -1050,6 +1050,8 @@ service Wallet {
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
   rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
+
+  rpc GetCompletedTransactionDetails(GetCompletedTransactionDetailsRequest) returns (GetCompletedTransactionDetailsResponse);
 }
 
 
@@ -1438,4 +1440,12 @@ message GetBlockHeightTransactionsRequest {
 message GetBlockHeightTransactionsResponse {
   // List of transactions mined at the specified block height
   repeated TransactionInfo transactions = 1;
+}
+
+message GetCompletedTransactionDetailsRequest {
+  uint64 tx_id = 1;
+}
+
+message GetCompletedTransactionDetailsResponse {
+  Transaction transaction = 1;
 }

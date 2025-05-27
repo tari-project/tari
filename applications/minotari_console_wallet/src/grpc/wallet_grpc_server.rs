@@ -56,6 +56,8 @@ use minotari_app_grpc::tari_rpc::{
     GetBlockHeightTransactionsRequest,
     GetBlockHeightTransactionsResponse,
     GetCompleteAddressResponse,
+    GetCompletedTransactionDetailsRequest,
+    GetCompletedTransactionDetailsResponse,
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
@@ -1056,6 +1058,33 @@ impl wallet_server::Wallet for WalletGrpcServer {
         trace!(target: LOG_TARGET, "'get_completed_transactions' completed in {:.2?}", start.elapsed());
 
         Ok(Response::new(receiver))
+    }
+
+    async fn get_completed_transaction_details(
+        &self,
+        request: Request<GetCompletedTransactionDetailsRequest>,
+    ) -> Result<Response<GetCompletedTransactionDetailsResponse>, Status> {
+        let start = std::time::Instant::now();
+        trace!(
+            target: LOG_TARGET,
+            "GetCompletedTransactionDetails: Incoming GRPC request"
+        );
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = request.into_inner().tx_id;
+        let tx = transaction_service
+            .get_completed_transaction(TxId::from(tx_id))
+            .await
+            .map_err(|err| {
+                Status::not_found(format!(
+                    "GetCompletedTransactionDetails: Error get_completed_transaction(tx_id: {:?}): {:?}",
+                    tx_id, err
+                ))
+            })?;
+
+        Ok(Response::new(GetCompletedTransactionDetailsResponse {
+            // parse to tari_rpc::Transaction
+            transaction: Some(tx.transaction.into()),
+        }))
     }
 
     async fn get_all_completed_transactions(
