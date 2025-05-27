@@ -259,12 +259,6 @@ impl TariAddress {
 
     /// helper function to convert emojis to u8
     fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
-        // The string must be the correct size, including the checksum
-        if !(emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
-            emoji.chars().count() == TARI_ADDRESS_INTERNAL_DUAL_SIZE)
-        {
-            return Err(TariAddressError::InvalidSize);
-        }
         if emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             SingleAddress::emoji_to_bytes(emoji)
         } else {
