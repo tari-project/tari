@@ -1097,12 +1097,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         });
 
         let req = request.into_inner();
-        let offset = req.offset.unwrap_or(0) as usize;
-        let limit = req.limit.map(|l| l as usize);
+        let offset = req.offset as usize;
+        let limit = if req.limit > 0 { req.limit as usize } else { usize::MAX };
         let transactions = completed_transactions
             .into_iter()
             .skip(offset)
-            .take(limit.unwrap_or(usize::MAX))
+            .take(limit)
             .map(|txn| TransactionInfo {
                 tx_id: txn.tx_id.into(),
                 source_address: txn.source_address.to_vec(),
