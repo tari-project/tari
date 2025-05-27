@@ -173,7 +173,7 @@ pub fn test_contacts_service() {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
                 assert_eq!(*val, DbKey::Contact(address.clone()))
-            }
+            },
             _ => panic!("There should be a specific error here"),
         }
         let result = runtime.block_on(contacts_service.remove_contact(address.clone()));
@@ -181,7 +181,7 @@ pub fn test_contacts_service() {
             Ok(_) => panic!("There should be an error here"),
             Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
                 assert_eq!(*val, DbKey::Contact(address))
-            }
+            },
             _ => panic!("There should be a specific error here"),
         }
 
@@ -209,7 +209,7 @@ pub fn test_contacts_service() {
         #[allow(clippy::match_wild_err_arm)]
         match liveness_event_stream.try_recv() {
             Ok(_) => panic!("Should not receive any event here"),
-            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Empty) => {},
             Err(_) => panic!("Should not receive any other type of error here"),
         };
     });
