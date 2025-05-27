@@ -491,6 +491,10 @@ criteria = "safe-to-deploy"
 version = "0.6.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.core-foundation]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.core2]]
 version = "0.4.0"
 criteria = "safe-to-deploy"
@@ -2137,6 +2141,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.socket2]]
 version = "0.5.9"
+criteria = "safe-to-deploy"
+
+[[exemptions.socket2]]
+version = "0.5.10"
 criteria = "safe-to-deploy"
 
 [[exemptions.spin]]
