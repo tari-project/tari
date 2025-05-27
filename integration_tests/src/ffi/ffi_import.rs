@@ -71,7 +71,6 @@ pub type EmojiSet = c_void;
 #[allow(dead_code)]
 pub type TariFeePerGramStats = c_void;
 pub type TariBaseNodeState = c_void;
-
 #[cfg_attr(windows, link(name = "minotari_wallet_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "minotari_wallet_ffi"))]
 #[allow(dead_code)]
