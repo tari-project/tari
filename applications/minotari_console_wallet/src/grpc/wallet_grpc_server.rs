@@ -817,7 +817,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let transfers_results = future::join_all(transfers).await;
         let mut results = Vec::with_capacity(transfers_results.len());
-        for (address, result) in transfers_results.into_iter() {
+        for (address, result) in transfers_results {
             match result {
                 Ok(tx_id) => {
                     let wallet_address = self
@@ -1029,6 +1029,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_completed_transactions(
         &self,
         request: Request<GetCompletedTransactionsRequest>,
@@ -1672,6 +1673,7 @@ fn simple_event(event: &str) -> TransactionEvent {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyManagerInterface>(
     tx: models::WalletTransaction,
     wallet_address: &TariAddress,
