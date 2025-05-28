@@ -64,6 +64,8 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error>;
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;
+
+    async fn transaction_query(&self, signature: models::Signature) -> Result<models::TxQueryResponse, Self::Error>;
 }
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient

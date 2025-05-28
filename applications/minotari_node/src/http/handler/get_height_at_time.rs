@@ -11,6 +11,8 @@ use tari_core::{
     chain_storage::BlockchainBackend,
 };
 
+use crate::http::handler::query_service_error_to_status_code;
+
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_height_at_time";
 
 #[derive(Deserialize)]
@@ -24,12 +26,9 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 ) -> Result<Json<u64>, StatusCode> {
     debug!(target: LOG_TARGET, "Received get_height_at_time request: {}", params.time);
 
-    let response = query_service.get_height_at_time(params.time).await.map_err(|error| {
-        error!(target: LOG_TARGET, "Error getting height at specific time: {:?}", error);
-        match error {
-            Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
-            Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    })?;
+    let response = query_service
+        .get_height_at_time(params.time)
+        .await
+        .map_err(query_service_error_to_status_code)?;
     Ok(Json(response))
 }

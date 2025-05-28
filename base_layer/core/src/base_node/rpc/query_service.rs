@@ -2,16 +2,23 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use log::trace;
+use tari_common_types::types;
+use tari_comms::protocol::rpc::{Response, RpcStatus};
+use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
     base_node::{
-        rpc::{models::TipInfoResponse, BaseNodeWalletQueryService},
+        rpc::{
+            models::{TipInfoResponse, TxLocation, TxQueryResponse},
+            BaseNodeWalletQueryService,
+        },
         state_machine_service::states::StateInfo,
         StateMachineHandle,
     },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
+    mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
@@ -22,20 +29,98 @@ pub enum Error {
     FailedToGetChainMetadata(#[from] ChainStorageError),
     #[error("Header not found at height: {height}")]
     HeaderNotFound { height: u64 },
+    #[error("Signature conversion error: {0}")]
+    SignatureConversion(ByteArrayError),
+    #[error("Mempool service error: {0}")]
+    MempoolService(#[from] MempoolServiceError),
 }
 
 pub struct Service<B> {
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
+    mempool: MempoolHandle,
 }
 
 impl<B: BlockchainBackend + 'static> Service<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, state_machine: StateMachineHandle) -> Self {
-        Self { db, state_machine }
+    pub fn new(db: AsyncBlockchainDb<B>, state_machine: StateMachineHandle, mempool: MempoolHandle) -> Self {
+        Self {
+            db,
+            state_machine,
+            mempool,
+        }
     }
 
     fn state_machine(&self) -> StateMachineHandle {
         self.state_machine.clone()
+    }
+
+    fn db(&self) -> &AsyncBlockchainDb<B> {
+        &self.db
+    }
+
+    fn mempool(&self) -> MempoolHandle {
+        self.mempool.clone()
+    }
+
+    async fn fetch_kernel(&self, signature: types::Signature) -> Result<TxQueryResponse, Error> {
+        let db = self.db();
+        let chain_metadata = db.get_chain_metadata().await?;
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+        match db.fetch_kernel_by_excess_sig(signature.clone()).await? {
+            None => (),
+            Some((_, block_hash)) => match db.fetch_header_by_block_hash(block_hash).await? {
+                None => (),
+                Some(header) => {
+                    let confirmations = chain_metadata.best_block_height().saturating_sub(header.height);
+                    let response = TxQueryResponse {
+                        location: TxLocation::Mined,
+                        best_block_hash: block_hash.to_vec(),
+                        confirmations,
+                        is_synced,
+                        best_block_height: chain_metadata.best_block_height(),
+                        mined_timestamp: header.timestamp.as_u64(),
+                    };
+                    return Ok(response);
+                },
+            },
+        };
+
+        // If not in a block then check the mempool
+        let mut mempool = self.mempool();
+        let mempool_response = match mempool.get_tx_state_by_excess_sig(signature.clone()).await? {
+            TxStorageResponse::UnconfirmedPool => TxQueryResponse {
+                location: TxLocation::InMempool,
+                best_block_hash: vec![],
+                confirmations: 0,
+                is_synced,
+                best_block_height: chain_metadata.best_block_height(),
+                mined_timestamp: 0,
+            },
+            TxStorageResponse::ReorgPool |
+            TxStorageResponse::NotStoredOrphan |
+            TxStorageResponse::NotStoredTimeLocked |
+            TxStorageResponse::NotStoredAlreadySpent |
+            TxStorageResponse::NotStoredConsensus |
+            TxStorageResponse::NotStored |
+            TxStorageResponse::NotStoredFeeTooLow |
+            TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
+                location: TxLocation::NotStored,
+                best_block_hash: vec![],
+                confirmations: 0,
+                is_synced,
+                best_block_height: chain_metadata.best_block_height(),
+                mined_timestamp: 0,
+            },
+        };
+
+        Ok(mempool_response)
     }
 }
 
@@ -128,5 +213,26 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         }
 
         Ok(0u64)
+    }
+
+    async fn transaction_query(
+        &self,
+        signature: crate::base_node::rpc::models::Signature,
+    ) -> Result<TxQueryResponse, Self::Error> {
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match status_watch.borrow().state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let signature = signature.try_into().map_err(Error::SignatureConversion)?;
+
+        let mut response = self.fetch_kernel(signature).await?;
+        response.is_synced = is_synced;
+
+        Ok(response)
     }
 }

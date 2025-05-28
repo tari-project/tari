@@ -12,28 +12,24 @@ use tari_core::{
     chain_storage::BlockchainBackend,
 };
 
+use crate::http::handler::query_service_error_to_status_code;
+
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
 
 #[derive(Deserialize)]
-pub struct QueryParams {
+pub struct GetHeaderByHeightQueryParams {
     pub height: u64,
 }
 
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
-    Query(params): Query<QueryParams>,
+    Query(params): Query<GetHeaderByHeightQueryParams>,
 ) -> Result<Json<BlockHeader>, StatusCode> {
     debug!(target: LOG_TARGET, "Received get_header_by_height request: {}", params.height);
 
     let response = query_service
         .get_header_by_height(params.height)
         .await
-        .map_err(|error| {
-            error!(target: LOG_TARGET, "Error getting header by height: {:?}", error);
-            match error {
-                Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
-                Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            }
-        })?;
+        .map_err(query_service_error_to_status_code)?;
     Ok(Json(response))
 }
