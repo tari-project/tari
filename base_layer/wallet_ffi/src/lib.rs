@@ -120,7 +120,7 @@ use tari_common::{
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
-    tari_address::{TariAddress, TariAddressError},
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
         ComAndPubSignature,
@@ -1975,7 +1975,7 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
             return ptr::null_mut();
         },
     };
-    match TariAddress::from_emoji_string(cstring) {
+    match TariAddress::from_emoji_string(&cstring) {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
