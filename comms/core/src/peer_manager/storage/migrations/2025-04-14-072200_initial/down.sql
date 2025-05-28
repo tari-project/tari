@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS multiaddresses;
+DROP TABLE IF EXISTS peers;

@@ -42,6 +42,7 @@ use tari_core::{
 };
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
+use url::Url;
 
 use crate::grpc_method::GrpcMethod;
 #[cfg(feature = "metrics")]
@@ -148,6 +149,39 @@ pub struct BaseNodeConfig {
     // Interval to check if the base node is still in sync with the network
     #[serde(with = "serializers::seconds")]
     pub tari_pulse_health_check: Duration,
+    /// Wallet HTTP service configuration
+    pub http_wallet_query_service: WalletHttpServiceConfig,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct WalletHttpServiceConfig {
+    /// Port that the local wallet query service will listen on.
+    pub port: u16,
+    /// The external address of the wallet query service.
+    /// This must be accessible (if set) from the internet to let other peers connect to that.
+    /// Also this address will be sent to peers when requesting for the query service URL (via RPC call).
+    pub external_address: Option<Url>,
+}
+
+impl Default for WalletHttpServiceConfig {
+    fn default() -> Self {
+        let port = wallet_http_service_default_port(Network::get_current());
+        Self {
+            port,
+            external_address: Some(Url::parse(format!("http://127.0.0.1:{port}").as_str()).unwrap()),
+        }
+    }
+}
+
+pub fn wallet_http_service_default_port(network: Network) -> u16 {
+    match network {
+        Network::MainNet => 9000,
+        Network::StageNet => 9001,
+        Network::NextNet => 9002,
+        Network::LocalNet => 9003,
+        Network::Igor => 9004,
+        Network::Esmeralda => 9005,
+    }
 }
 
 impl Default for BaseNodeConfig {
@@ -188,6 +222,7 @@ impl Default for BaseNodeConfig {
             report_grpc_error: false,
             tari_pulse_interval: Duration::from_secs(120),
             tari_pulse_health_check: Duration::from_secs(60 * 10),
+            http_wallet_query_service: Default::default(),
         }
     }
 }

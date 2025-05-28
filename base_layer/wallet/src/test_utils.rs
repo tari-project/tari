@@ -61,7 +61,7 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
 
 /// A test helper to create a temporary wallet service memory databases
 pub fn make_wallet_database_memory_connection() -> WalletDbConnection {
-    run_migration_and_create_sqlite_memory_connection(16).unwrap()
+    run_migration_and_create_sqlite_memory_connection().unwrap()
 }
 
 pub fn create_consensus_rules() -> ConsensusManager {

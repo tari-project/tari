@@ -149,7 +149,11 @@ pub(super) async fn setup<T: GreetingRpc>(
     spawn_inbound(inbound.into_incoming(), notif_tx.clone(), node_id);
 
     // Notify that a peer wants to speak the greeting RPC protocol
-    context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
 
     (inbound_control, outbound, server_hnd, node_identity, shutdown)
 }
@@ -499,7 +503,11 @@ async fn max_global_sessions() {
 
     let node_identity = build_node_identity(Default::default());
     // Notify that a peer wants to speak the greeting RPC protocol
-    context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
 
     spawn_inbound(inbound.into_incoming(), muxer.clone(), node_identity.node_id().clone());
 
@@ -548,7 +556,11 @@ async fn max_per_client_sessions() {
 
     let node_identity = build_node_identity(Default::default());
     // Notify that a peer wants to speak the greeting RPC protocol
-    context.peer_manager().add_peer(node_identity.to_peer()).await.unwrap();
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
     spawn_inbound(inbound.into_incoming(), muxer.clone(), node_identity.node_id().clone());
 
     let socket = outbound.get_yamux_control().open_stream().await.unwrap();

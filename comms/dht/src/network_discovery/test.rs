@@ -48,7 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
-    use crate::rpc::UnvalidatedPeerInfo;
+    use crate::{rpc::UnvalidatedPeerInfo, test_utils::create_good_standing_peer};
 
     async fn setup(
         mut config: DhtConfig,
@@ -67,7 +67,7 @@ mod state_machine {
 
         let peer_manager = build_peer_manager();
         for peer in initial_peers {
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
 
         let shutdown = Shutdown::new();
@@ -102,6 +102,8 @@ mod state_machine {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
+        // env_logger::builder().filter_level(log::LevelFilter::Debug).init();
+        // env_logger::init(); // Set `$env:RUST_LOG = "trace"`  //  > ./target/output.log 2>&1
         const NUM_PEERS: usize = 3;
         let config = DhtConfig {
             num_neighbouring_nodes: 4,
@@ -128,7 +130,10 @@ mod state_machine {
         let mut mock_server = MockRpcServer::new(service, node_identity.clone());
         let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         // Add the peer that we'll sync from
-        peer_manager.add_peer(peer_node_identity.to_peer()).await.unwrap();
+        peer_manager
+            .add_or_update_peer(create_good_standing_peer(&peer_node_identity))
+            .await
+            .unwrap();
         mock_server.serve();
 
         // Create a connection to the RPC mock and then make it available to the connectivity manager mock
@@ -207,9 +212,14 @@ mod discovery_ready {
     #[tokio::test]
     async fn it_begins_aggressive_discovery() {
         let (_, pm, _, mut ready, _) = setup(Default::default());
-        let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
-        for peer in peers {
-            pm.add_peer(peer.to_peer()).await.unwrap();
+        let node_identities = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
+        for identity in node_identities {
+            let mut peer = identity.to_peer();
+            let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+            for addr in &addresses {
+                peer.addresses.mark_last_seen_now(addr);
+            }
+            pm.add_or_update_peer(peer).await.unwrap();
         }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);

@@ -94,7 +94,7 @@ async fn run_stress_test(test_params: Params) {
 
     node1
         .peer_manager()
-        .add_peer(node2.node_identity().to_peer())
+        .add_or_update_peer(node2.node_identity().to_peer())
         .await
         .unwrap();
 

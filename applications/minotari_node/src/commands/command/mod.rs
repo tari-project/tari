@@ -69,7 +69,7 @@ use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_comms::{
-    peer_manager::{Peer, PeerManagerError, PeerQuery},
+    peer_manager::{Peer, PeerManagerError},
     protocol::rpc::RpcServerHandle,
     CommsNode,
     NodeIdentity,
@@ -318,9 +318,7 @@ impl HandleCommand<Command> for CommandContext {
 
 impl CommandContext {
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        let pm = self.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_banned());
-        pm.perform_query(query).await
+        self.comms.peer_manager().get_banned_peers().await
     }
 
     /// Function to process the get-headers command

@@ -145,6 +145,13 @@ impl MultiaddressesWithStats {
         self.addresses.iter_mut().find(|a| a.address() == address)
     }
 
+    #[cfg(test)]
+    pub fn reset_stats_to_default(&mut self, address: &Multiaddr) {
+        if let Some(addr) = self.find_address_mut(address) {
+            addr.reset_stats_to_default();
+        }
+    }
+
     /// The average connection latency of the provided net address will be updated to include the current measured
     /// latency sample.
     ///

@@ -135,7 +135,7 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddrRange, MultiaddrRangeList, IP4_TCP_TEST_ADDR_RANGE},
-    peer_manager::{NodeIdentity, PeerQuery},
+    peer_manager::NodeIdentity,
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
@@ -6372,15 +6372,14 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
     let mut connectivity = (*wallet).wallet.comms.connectivity();
     let peer_manager = (*wallet).wallet.comms.peer_manager();
 
-    #[allow(clippy::blocks_in_conditions)]
     match (*wallet).runtime.block_on(async move {
         let connections = connectivity.get_active_connections().await?;
-        let mut public_keys = Vec::with_capacity(connections.len());
-        for conn in connections {
-            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
-                public_keys.push(peer.public_key);
-            }
-        }
+        let node_ids = connections
+            .iter()
+            .map(|c| c.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let public_keys = peer_manager.get_peer_public_keys_by_node_ids(&node_ids).await?;
         Result::<_, WalletError>::Ok(public_keys)
     }) {
         Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
@@ -6888,7 +6887,7 @@ pub unsafe extern "C" fn wallet_create(
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -7130,8 +7129,13 @@ pub unsafe extern "C" fn wallet_create(
 
             // Lets set the base node peers
             let peer_manager = w.comms.peer_manager();
-            let query = PeerQuery::new().select_where(|p| p.is_seed());
-            let peers = runtime.block_on(peer_manager.perform_query(query)).unwrap_or_default();
+            let peers = match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+                Ok(peers) => peers,
+                Err(e) => {
+                    *error_out = LibWalletError::from(e).code;
+                    return ptr::null_mut();
+                },
+            };
 
             if !peers.is_empty() {
                 let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
@@ -7233,7 +7237,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(version)) => {
@@ -7274,7 +7278,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
     let sql_database_path = (*config)
         .datastore_path
         .join((*config).peer_database_name.clone())
-        .with_extension("sqlite3");
+        .with_extension("db");
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -8042,17 +8046,20 @@ pub unsafe extern "C" fn wallet_get_seed_peers(wallet: *mut TariWallet, error_ou
         return ptr::null_mut();
     }
     let peer_manager = (*wallet).wallet.comms.peer_manager();
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    #[allow(clippy::blocks_in_conditions)]
-    match (*wallet).runtime.block_on(async move {
-        let peers = peer_manager.perform_query(query).await?;
-        let mut public_keys = Vec::with_capacity(peers.len());
-        for peer in peers {
-            public_keys.push(peer.public_key);
-        }
-        Result::<_, WalletError>::Ok(public_keys)
-    }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+        Ok(peers) => {
+            let public_keys = peers.iter().map(|p| p.public_key.clone()).collect::<Vec<_>>();
+            Box::into_raw(Box::new(TariPublicKeys(public_keys)))
+        },
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -9968,22 +9975,20 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+            return false;
+        },
+    };
     let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_public_keys = if base_node_public_keys.is_null() {
         let peer_manager = (*wallet).wallet.comms.peer_manager();
-        let query = PeerQuery::new().select_where(|p| p.is_seed());
-        #[allow(clippy::blocks_in_conditions)]
-        match (*wallet).runtime.block_on(async move {
-            let peers = peer_manager.perform_query(query).await?;
-            let mut public_keys = Vec::with_capacity(peers.len());
-            for peer in peers {
-                public_keys.push(peer.public_key);
-            }
-            Result::<_, WalletError>::Ok(public_keys)
-        }) {
-            Ok(public_keys) => public_keys,
+        match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
+            Ok(peers) => peers.iter().map(|p| p.public_key.clone()).collect::<Vec<_>>(),
             Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::NullError(format!("{}", e))).code;
+                *error_out = LibWalletError::from(e).code;
                 return false;
             },
         }
@@ -10003,13 +10008,6 @@ pub unsafe extern "C" fn wallet_start_recovery(
         };
         recovery_task_builder.with_recovery_message(message_str);
     }
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return false;
-        },
-    };
     let mut recovery_task = match runtime.block_on(async {
         recovery_task_builder
             .with_peers(peer_public_keys)
@@ -11545,7 +11543,7 @@ mod test {
 
             let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
                 .join(db_name)
-                .with_extension("sqlite3");
+                .with_extension("db");
 
             let alice_network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
@@ -11677,7 +11675,7 @@ mod test {
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
             let original_path_str: *const c_char = CString::into_raw(original_path_cstring) as *const c_char;
 
-            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
+            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("db");
             let connection =
                 run_migration_and_create_sqlite_connection(sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend =

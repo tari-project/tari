@@ -24,7 +24,7 @@ use std::{cmp, convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
     PeerManager,
@@ -158,7 +158,15 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
         let peers = self
             .peer_manager
-            .closest_peers(&node_id, message.n as usize, &excluded, features)
+            .closest_n_active_peers(
+                &node_id,
+                message.n as usize,
+                &excluded,
+                features,
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
             .await
             .map_err(RpcError::from)?;
 

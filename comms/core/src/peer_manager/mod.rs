@@ -65,7 +65,7 @@
 //! let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 //! let peer_manager = PeerManager::new(peer_database).unwrap();
 //!
-//! peer_manager.add_peer(peer.clone());
+//! peer_manager.add_or_update_peer(peer.clone());
 //!
 //! let returned_peer = peer_manager.find_by_node_id(&node_id).unwrap();
 //! ```
@@ -94,26 +94,24 @@ mod peer_features;
 pub use peer_features::PeerFeatures;
 
 mod peer_id;
-pub(crate) use peer_id::PeerId;
+pub use peer_id::{generate_peer_id_as_i64, PeerId};
 
 mod manager;
+#[cfg(test)]
+pub use manager::create_test_peer;
 pub use manager::PeerManager;
 
-mod peer_query;
-pub use peer_query::{PeerQuery, PeerQuerySortBy};
-
-mod peer_storage;
-pub use peer_storage::PeerStorage;
+mod peer_storage_sql;
+pub use peer_storage_sql::{PeerStorageSql as PeerStorage, STALE_PEER_THRESHOLD_DURATION};
 
 mod peer_identity_claim;
 pub use peer_identity_claim::PeerIdentityClaim;
 
-mod migrations;
-
 mod or_not_found;
 pub use or_not_found::OrNotFound;
 
-mod wrapper;
-
 #[cfg(feature = "metrics")]
 mod metrics;
+
+mod storage;
+pub use storage::{database, ThisPeerIdentity};

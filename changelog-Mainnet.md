@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.0.0](https://github.com/tari-project/tari/compare/v3.0.2...v4.0.0) (2025-05-26)
+
+### Features
+
+* change consensus to be 33%,33%,33% pow ([9e121b0](https://github.com/tari-project/tari/commit/9e121b021d0c3149db45ab72428978a279d23240))
+
+### [3.0.2](https://github.com/tari-project/tari/compare/v3.0.1...v3.0.2) (2025-05-23)
+
+
+### Bug Fixes
+
+* return min results ([#7098](https://github.com/tari-project/tari/issues/7098)) ([d5ec945](https://github.com/tari-project/tari/commit/d5ec9459f884ecada424589b1552dfd5422f8aa5))
+
 ### [3.0.1](https://github.com/tari-project/tari/compare/v3.0.0...v3.0.1) (2025-05-23)
 
 

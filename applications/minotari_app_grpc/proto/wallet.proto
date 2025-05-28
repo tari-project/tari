@@ -1047,6 +1047,9 @@ service Wallet {
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
   rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
+
+  // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
+  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
 }
 
 
@@ -1415,6 +1418,15 @@ message ImportTransactionsRequest {
 
 message ImportTransactionsResponse {
     repeated uint64 tx_ids = 1;
+}
+
+message GetAllCompletedTransactionsRequest {
+  uint64 offset = 1;
+  uint64 limit = 2;
+}
+
+message GetAllCompletedTransactionsResponse {
+  repeated TransactionInfo transactions = 1;
 }
 
 // Request message for getting transactions at a specific block height

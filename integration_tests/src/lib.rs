@@ -25,8 +25,6 @@ use std::{convert::TryFrom, net::TcpListener, ops::Range, path::PathBuf, process
 use rand::Rng;
 
 pub mod base_node_process;
-pub mod chat_client;
-pub mod chat_ffi;
 pub mod ffi;
 pub mod merge_mining_proxy;
 pub mod miner;

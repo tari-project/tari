@@ -224,7 +224,7 @@ impl StressTestService {
         reply: oneshot::Sender<Result<(), Error>>,
     ) -> Result<(), Error> {
         let node_id = peer.node_id.clone();
-        self.comms_node.peer_manager().add_peer(peer).await?;
+        self.comms_node.peer_manager().add_or_update_peer(peer).await?;
         println!("Dialing peer `{}`...", node_id.short_str());
         let start = Instant::now();
         let conn = self.comms_node.connectivity().dial_peer(node_id).await?;

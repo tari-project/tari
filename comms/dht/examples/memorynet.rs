@@ -135,7 +135,7 @@ async fn main() {
     //         if n.node_identity().node_id() != ni.node_identity().node_id() {
     //             n.comms
     //                 .peer_manager()
-    //                 .add_peer(ni.node_identity().to_peer())
+    //                 .add_or_update_peer(ni.node_identity().to_peer())
     //                 .await
     //                 .unwrap();
     //         }
@@ -143,7 +143,7 @@ async fn main() {
     //     for ni in &wallets {
     //         n.comms
     //             .peer_manager()
-    //             .add_peer(ni.node_identity().to_peer())
+    //             .add_or_update_peer(ni.node_identity().to_peer())
     //             .await
     //             .unwrap();
     //     }

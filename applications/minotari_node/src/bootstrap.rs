@@ -69,7 +69,7 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::ApplicationConfig;
+use crate::{config::WalletHttpServiceConfig, http::create_base_node_wallet_http_server, ApplicationConfig};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -183,7 +183,15 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
+        let comms = Self::setup_rpc_services(
+            comms,
+            &handles,
+            self.db.into(),
+            &p2p_config,
+            &self.app_config.base_node.http_wallet_query_service,
+            self.interrupt_signal.clone(),
+        )
+        .await;
 
         let comms = if p2p_config.transport.transport_type == TransportType::Tor {
             let tor_id_path = base_node_config.tor_identity_file.clone();
@@ -230,11 +238,13 @@ where B: BlockchainBackend + 'static
         Ok(handles)
     }
 
-    fn setup_rpc_services(
+    async fn setup_rpc_services(
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
         p2p_config: &P2pConfig,
+        wallet_query_service_config: &WalletHttpServiceConfig,
+        shutdown_signal: ShutdownSignal,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -258,9 +268,29 @@ where B: BlockchainBackend + 'static
                 db.clone(),
                 handles.expect_handle::<MempoolHandle>(),
                 handles.expect_handle::<StateMachineHandle>(),
+                wallet_query_service_config.external_address.clone(),
             ));
 
         handles.register(rpc_server.get_handle());
+
+        // wallet http server
+        let wallet_http_server = create_base_node_wallet_http_server(
+            wallet_query_service_config.port,
+            db.clone(),
+            handles.expect_handle::<StateMachineHandle>(),
+            shutdown_signal.clone(),
+        );
+        match wallet_http_server.start::<B>().await {
+            Ok(_) => {
+                handles.register(wallet_http_server);
+            },
+            Err(error) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to start wallet http server: {:?}", error
+                );
+            },
+        }
 
         comms.add_protocol_extension(rpc_server)
     }

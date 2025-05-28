@@ -29,7 +29,8 @@ use crate::helpers::{
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_block_sync_happy_path() {
-    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    // env_logger::builder().filter_level(log::LevelFilter::Debug).init();
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`  //  > ./target/output.log 2>&1
 
     // Create the network with Alice node and Bob node
     let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =

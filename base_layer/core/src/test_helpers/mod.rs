@@ -23,20 +23,32 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use tari_common::configuration::Network;
+use tari_common_sqlite::connection::DbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_comms::PeerManager;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
+    types::CommsPublicKey,
+    PeerManager,
+};
 use tari_crypto::keys::SecretKey;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -196,24 +208,29 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
-pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-    let peer_database_name = {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(data_path)
-        .set_env_config(Default::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None, None).unwrap())
+fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
+pub fn create_peer_manager() -> Arc<PeerManager> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+    Arc::new(PeerManager::new(peers_db).unwrap())
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {

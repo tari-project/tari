@@ -98,6 +98,7 @@ dirs-next = "1.0.2"
 hickory-proto = { version = "0.25.2" }
 anyhow = "1.0.53"
 jmt = { version = "0.11.0", features = ["mocks"] }
+url = "2.5.4"
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }

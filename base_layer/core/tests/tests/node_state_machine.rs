@@ -317,7 +317,7 @@ async fn test_event_channel() {
 
     node.comms
         .peer_manager()
-        .add_peer(node_identity.to_peer())
+        .add_or_update_peer(node_identity.to_peer())
         .await
         .unwrap();
 

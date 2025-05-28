@@ -20,34 +20,65 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert, net::Ipv4Addr, path::Path, sync::Arc, time::Duration};
+use std::{
+    convert,
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use rand::rngs::OsRng;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId, ProtocolNotification, Protocols},
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
+    types::CommsPublicKey,
     CommsBuilder,
     CommsNode,
     NodeIdentity,
     Substream,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
 use tokio::sync::{broadcast, mpsc};
 
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
 
 static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/msg/1.0");
+
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
@@ -66,15 +97,14 @@ pub async fn create(
     ),
     Error,
 > {
-    let datastore = LMDBBuilder::new()
-        .set_path(database_path.to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle("peerdb").unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+    let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let this_node = if let Some(node) = node_identity.as_ref() {
+        node.to_peer()
+    } else {
+        create_test_peer()
+    };
+    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
 
     let mut protocols = Protocols::new();
     let (proto_notif_tx, proto_notif_rx) = mpsc::channel(1);
@@ -102,7 +132,7 @@ pub async fn create(
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
-        .with_peer_storage(peer_database, None)
+        .with_peer_storage(peer_database)
         .with_listener_liveness_max_sessions(10)
         .disable_connection_reaping();
 

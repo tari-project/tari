@@ -20,93 +20,60 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fs::File, time::Duration};
+use std::{fmt, time::Duration};
 
 use multiaddr::Multiaddr;
-use semver::Version;
-use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
-use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        migrations,
-        peer::{Peer, PeerFlags},
+        peer::Peer,
         peer_id::PeerId,
-        peer_storage::PeerStorage,
-        wrapper::KeyValueWrapper,
+        peer_storage_sql::PeerStorageSql,
         NodeDistance,
         NodeId,
         PeerFeatures,
         PeerManagerError,
-        PeerQuery,
+        ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
 
-/// The PeerManager consist of a routing table of previously discovered peers.
-/// It also provides functionality to add, find and delete peers.
+/// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
+/// WAL-enabled SQLite database access and provides an async interface to the rest of the code base.
+#[derive(Clone)]
 pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
-    peer_storage: RwLock<PeerStorage<CachedStore<PeerId, Peer, KeyValueWrapper<CommsDatabase>>>>,
-    _file_lock: Option<File>,
-    min_peer_version: Option<Version>,
+    peer_storage_sql: PeerStorageSql,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(
-        database: CommsDatabase,
-        file_lock: Option<File>,
-        min_peer_version: Option<String>,
-    ) -> Result<PeerManager, PeerManagerError> {
-        let storage = PeerStorage::new_indexed(CachedStore::new(KeyValueWrapper::new(database)))?;
-        let min_peer_version = match min_peer_version {
-            Some(v) => Some(Version::parse(&v).map_err(|_| PeerManagerError::InvalidVersionString)?),
-            None => None,
-        };
-        Ok(Self {
-            peer_storage: RwLock::new(storage),
-            _file_lock: file_lock,
-            min_peer_version,
-        })
+    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+        let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
+
+        Ok(Self { peer_storage_sql })
     }
 
-    /// Migrate the peer database, this only applies to the LMDB database
-    pub fn migrate_lmdb(database: &LMDBDatabase) -> Result<(), PeerManagerError> {
-        migrations::migrate(database).map_err(|err| PeerManagerError::MigrationError(err.to_string()))
+    /// Get this peer's identity
+    pub fn this_peer_identity(&self) -> ThisPeerIdentity {
+        self.peer_storage_sql.this_peer_identity()
     }
 
+    /// Get the number of peers in the PeerManager - any error will translate to a size of zero
     pub async fn count(&self) -> usize {
-        self.peer_storage.read().await.count()
+        self.peer_storage_sql.count()
     }
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
-        if !peer.is_seed() {
-            if let Some(version) = &self.min_peer_version {
-                let parts: Vec<&str> = peer.user_agent.split('/').collect();
-                if parts.is_empty() || peer.user_agent.is_empty() {
-                    return Err(PeerManagerError::InvalidVersionString);
-                }
-                let peer_version = Version::parse(parts.last().expect("we already checked its no empty"))
-                    .map_err(|_| PeerManagerError::InvalidVersionString)?;
-                if peer_version < *version {
-                    return Err(PeerManagerError::PeerVersionTooOld {
-                        min_version: version.to_string(),
-                        peer_version: peer_version.to_string(),
-                    });
-                }
-            }
-        }
-        let mut lock = self.peer_storage.write().await;
-        let peer_id = lock.add_peer(peer)?;
+    pub async fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
+        let peer_id = self.peer_storage_sql.add_or_update_peer(peer)?;
         #[cfg(feature = "metrics")]
         {
-            let count = lock.count();
+            let count = self.count().await;
             #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
         }
@@ -115,11 +82,10 @@ impl PeerManager {
 
     /// The peer with the specified public_key will be removed from the PeerManager
     pub async fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut lock = self.peer_storage.write().await;
-        lock.delete_peer(node_id)?;
+        self.peer_storage_sql.delete_peer(node_id)?;
         #[cfg(feature = "metrics")]
         {
-            let count = lock.count();
+            let count = self.count().await;
             #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
         }
@@ -127,53 +93,62 @@ impl PeerManager {
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn delete_all_stale_peers(&self, self_node_id: &NodeId) -> Result<Vec<NodeId>, PeerManagerError> {
-        let mut lock = self.peer_storage.write().await;
-        let deleted_peers = lock.delete_all_stale_peers(self_node_id)?;
+    pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+        let deleted_peers = self.peer_storage_sql.delete_all_stale_peers()?;
         Ok(deleted_peers)
     }
 
-    /// Performs the given [PeerQuery].
-    ///
-    /// [PeerQuery]: crate::peer_manager::PeerQuery
-    pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
-        let lock = self.peer_storage.read().await;
-        lock.perform_query(peer_query)
+    /// Get all peers based on a list of their node_ids
+    pub async fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.get_peers_by_node_ids(node_ids)
+    }
+
+    /// Get all peers based on a list of their node_ids
+    pub async fn get_peer_public_keys_by_node_ids(
+        &self,
+        node_ids: &[NodeId],
+    ) -> Result<Vec<CommsPublicKey>, PeerManagerError> {
+        self.peer_storage_sql.get_peer_public_keys_by_node_ids(node_ids)
+    }
+
+    /// Get all banned peers
+    pub async fn get_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.get_banned_peers()
     }
 
     /// Find the peer with the provided NodeID
     pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.find_by_node_id(node_id)
+        self.peer_storage_sql.get_peer_by_node_id(node_id)
     }
 
     /// gets all seed peers
     pub async fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.get_seed_peers()
+        self.peer_storage_sql.get_seed_peers()
     }
 
     /// Find the peer with the provided PublicKey
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.find_by_public_key(public_key)
+        self.peer_storage_sql.find_by_public_key(public_key)
     }
 
     /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
     pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.find_all_starts_with(partial)
+        self.peer_storage_sql.find_all_starts_with(partial)
     }
 
     /// Check if a peer exist using the specified public_key
-    pub async fn exists(&self, public_key: &CommsPublicKey) -> bool {
-        self.peer_storage.read().await.exists(public_key)
+    pub async fn exists(&self, public_key: &CommsPublicKey) -> Result<bool, PeerManagerError> {
+        self.peer_storage_sql.exists_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified node_id
-    pub async fn exists_node_id(&self, node_id: &NodeId) -> bool {
-        self.peer_storage.read().await.exists_node_id(node_id)
+    pub async fn exists_node_id(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        self.peer_storage_sql.exists_node_id(node_id)
     }
 
     /// Returns all peers
-    pub async fn all(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.all()
+    pub async fn all(&self, features: Option<PeerFeatures>) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.all(features)
     }
 
     /// Return "good" peers for syncing
@@ -188,10 +163,7 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .await
-            .discovery_syncing(n, excluded_peers, features)
+        self.peer_storage_sql.discovery_syncing(n, excluded_peers, features)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -199,61 +171,18 @@ impl PeerManager {
     pub async fn add_or_update_online_peer(
         &self,
         pubkey: &CommsPublicKey,
-        node_id: NodeId,
-        addresses: Vec<Multiaddr>,
-        peer_features: PeerFeatures,
+        node_id: &NodeId,
+        addresses: &[Multiaddr],
+        peer_features: &PeerFeatures,
         source: &PeerAddressSource,
     ) -> Result<Peer, PeerManagerError> {
-        match self.find_by_public_key(pubkey).await {
-            Ok(Some(mut peer)) => {
-                peer.addresses.update_addresses(&addresses, source);
-                peer.features = peer_features;
-                self.add_peer(peer.clone()).await?;
-                Ok(peer)
-            },
-            Ok(None) => {
-                self.add_peer(Peer::new(
-                    pubkey.clone(),
-                    node_id,
-                    MultiaddressesWithStats::from_addresses_with_source(addresses, source),
-                    PeerFlags::default(),
-                    peer_features,
-                    Default::default(),
-                    Default::default(),
-                ))
-                .await?;
-
-                self.find_by_public_key(pubkey)
-                    .await?
-                    .ok_or(PeerManagerError::PeerNotFoundError)
-            },
-            Err(err) => Err(err),
-        }
-    }
-
-    pub async fn update_peer_address_latency_and_last_seen(
-        &self,
-        pubkey: &CommsPublicKey,
-        address: &Multiaddr,
-        latency: Option<Duration>,
-    ) -> Result<(), PeerManagerError> {
-        match self.find_by_public_key(pubkey).await {
-            Ok(Some(mut peer)) => {
-                if let Some(val) = latency {
-                    peer.addresses.update_latency(address, val);
-                }
-                peer.addresses.mark_last_seen_now(address);
-                self.add_peer(peer.clone()).await?;
-                Ok(())
-            },
-            Ok(None) => Err(PeerManagerError::PeerNotFoundError),
-            Err(err) => Err(err),
-        }
+        self.peer_storage_sql
+            .add_or_update_online_peer(pubkey, node_id, addresses, peer_features, source)
     }
 
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        match self.peer_storage.read().await.direct_identity_node_id(node_id) {
+        match self.peer_storage_sql.direct_identity_node_id(node_id) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
@@ -265,7 +194,7 @@ impl PeerManager {
         &self,
         public_key: &CommsPublicKey,
     ) -> Result<Option<Peer>, PeerManagerError> {
-        match self.peer_storage.read().await.direct_identity_public_key(public_key) {
+        match self.peer_storage_sql.direct_identity_public_key(public_key) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
@@ -273,63 +202,68 @@ impl PeerManager {
     }
 
     /// Fetch all peers (except banned ones)
-    pub async fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage.read().await.flood_peers()
+    pub async fn get_not_banned_or_deleted_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.get_not_banned_or_deleted_peers()
     }
 
-    pub async fn for_each<F>(&self, f: F) -> Result<(), PeerManagerError>
-    where F: FnMut(Peer) -> IterationResult {
-        self.peer_storage.read().await.for_each(f)
-    }
-
-    /// Fetch n nearest neighbours. If features are supplied, the function will return the closest peers matching that
-    /// feature
-    pub async fn closest_peers(
+    /// Fetch n nearest active neighbours. If features are supplied, the function will return the closest peers matching
+    /// that feature
+    pub async fn closest_n_active_peers(
         &self,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        stale_peer_threshold: Option<Duration>,
+        exclude_if_all_address_failed: bool,
+        exclusion_distance: Option<NodeDistance>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .await
-            .closest_peers(node_id, n, excluded_peers, features)
+        self.peer_storage_sql.closest_n_active_peers(
+            region_node_id,
+            n,
+            excluded_peers,
+            features,
+            stale_peer_threshold,
+            exclude_if_all_address_failed,
+            exclusion_distance,
+        )
     }
 
-    /// Fetch n random peers
-    pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        // Send to a random set of peers of size n that are Communication Nodes
-        self.peer_storage.read().await.random_peers(n, excluded)
-    }
-
-    /// Check if a specific node_id is in the network region of the N nearest neighbours of the region specified by
-    /// region_node_id
-    pub async fn in_network_region(
+    /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
+    pub async fn closest_n_good_standing_peers(
         &self,
-        node_id: &NodeId,
-        region_node_id: &NodeId,
         n: usize,
-    ) -> Result<bool, PeerManagerError> {
-        self.peer_storage
-            .read()
-            .await
-            .in_network_region(node_id, region_node_id, n)
+        features: PeerFeatures,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.get_closest_n_good_standing_peers(n, features)
     }
 
+    /// Fetch n random peers that are Communication Nodes
+    pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.random_peers(n, excluded)
+    }
+
+    /// Calculate the region threshold for a given number of peers and features
     pub async fn calc_region_threshold(
         &self,
-        region_node_id: &NodeId,
         n: usize,
         features: PeerFeatures,
     ) -> Result<NodeDistance, PeerManagerError> {
-        let lock = self.peer_storage.read().await;
-        lock.calc_region_threshold(region_node_id, n, features)
+        self.peer_storage_sql.calc_region_threshold(n, features)
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
     pub async fn unban_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.unban_peer(node_id)
+        self.peer_storage_sql.unban_peer(node_id)
+    }
+
+    /// Unbans the peer if it is banned. This function is idempotent.
+    pub async fn unban_all_peers(&self) -> Result<usize, PeerManagerError> {
+        self.peer_storage_sql.unban_all_peers()
+    }
+
+    pub async fn reset_offline_non_wallet_peers(&self) -> Result<usize, PeerManagerError> {
+        self.peer_storage_sql.reset_offline_non_wallet_peers()
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -339,7 +273,7 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer(public_key, duration, reason)
+        self.peer_storage_sql.ban_peer(public_key, duration, reason)
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -349,35 +283,15 @@ impl PeerManager {
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage
-            .write()
-            .await
-            .ban_peer_by_node_id(node_id, duration, reason)
+        self.peer_storage_sql.ban_peer_by_node_id(node_id, duration, reason)
     }
 
+    /// Get the ban status of a peer
     pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
-        self.peer_storage.read().await.is_peer_banned(node_id)
+        self.peer_storage_sql.is_peer_banned(node_id)
     }
 
-    pub async fn update_each<F>(&self, mut f: F) -> Result<usize, PeerManagerError>
-    where F: FnMut(Peer) -> Option<Peer> {
-        let mut lock = self.peer_storage.write().await;
-        let mut peers_to_update = Vec::new();
-        lock.for_each(|peer| {
-            if let Some(peer) = (f)(peer) {
-                peers_to_update.push(peer);
-            }
-            IterationResult::Continue
-        })?;
-
-        let updated_count = peers_to_update.len();
-        for p in peers_to_update {
-            lock.add_peer(p)?;
-        }
-
-        Ok(updated_count)
-    }
-
+    /// Get the peer's features
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
         let peer = self
             .find_by_node_id(node_id)
@@ -386,6 +300,7 @@ impl PeerManager {
         Ok(peer.features)
     }
 
+    /// Get a peer's multiaddresses
     pub async fn get_peer_multi_addresses(
         &self,
         node_id: &NodeId,
@@ -397,6 +312,24 @@ impl PeerManager {
         Ok(peer.addresses)
     }
 
+    /// Get multiple peers' multiaddresses
+    pub async fn get_peers_multi_addresses(
+        &self,
+        node_ids: &[NodeId],
+    ) -> Result<Vec<(NodeId, MultiaddressesWithStats)>, PeerManagerError> {
+        if node_ids.is_empty() {
+            return Err(PeerManagerError::ProcessError(
+                "NodeId list cannot be empty".to_string(),
+            ));
+        }
+        let peers = self.get_peers_by_node_ids(node_ids).await?;
+        if peers.is_empty() {
+            return Err(PeerManagerError::PeerNotFoundError);
+        }
+        let results = peers.into_iter().map(|p| (p.node_id, p.addresses)).collect::<Vec<_>>();
+        Ok(results)
+    }
+
     /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
     /// It will return None if the value was empty and the old value if the value was updated
     pub async fn set_peer_metadata(
@@ -405,7 +338,7 @@ impl PeerManager {
         key: u8,
         data: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, PeerManagerError> {
-        self.peer_storage.write().await.set_peer_metadata(node_id, key, data)
+        self.peer_storage_sql.set_peer_metadata(node_id, key, data)
     }
 }
 
@@ -416,73 +349,92 @@ impl fmt::Debug for PeerManager {
 }
 
 #[cfg(test)]
-mod test {
+pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     use std::borrow::BorrowMut;
 
     use rand::{rngs::OsRng, Rng};
-    use tari_storage::HashmapDatabase;
+
+    use crate::peer_manager::PeerFlags;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let node_id = NodeId::from_key(&pk);
+    let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+    // Create 1 to 4 random addresses
+    for _i in 1..=rand::thread_rng().gen_range(1..4) {
+        let n = [
+            rand::thread_rng().gen_range(1..255),
+            rand::thread_rng().gen_range(1..255),
+            rand::thread_rng().gen_range(1..255),
+            rand::thread_rng().gen_range(1..255),
+            rand::thread_rng().gen_range(5000..9000),
+        ];
+        let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{}", n[0], n[1], n[2], n[3], n[4])
+            .parse::<Multiaddr>()
+            .unwrap();
+        net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+    }
+
+    let mut peer = Peer::new(
+        pk,
+        node_id,
+        net_addresses,
+        PeerFlags::default(),
+        features,
+        Default::default(),
+        Default::default(),
+    );
+    if ban_flag {
+        peer.ban_for(Duration::from_secs(1000), "".to_string());
+    }
+
+    let good_addresses = peer.addresses.borrow_mut();
+    let good_address = good_addresses.addresses()[0].address().clone();
+    good_addresses.mark_last_seen_now(&good_address);
+
+    peer
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_sqlite::connection::DbConnection;
 
     use super::*;
+    use crate::peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        STALE_PEER_THRESHOLD_DURATION,
+    };
 
-    fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
-        let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-        let node_id = NodeId::from_key(&pk);
-        let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
-
-        // Create 1 to 4 random addresses
-        for _i in 1..=rand::thread_rng().gen_range(1..4) {
-            let n = [
-                rand::thread_rng().gen_range(1..9),
-                rand::thread_rng().gen_range(1..9),
-                rand::thread_rng().gen_range(1..9),
-                rand::thread_rng().gen_range(1..9),
-            ];
-            let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3],)
-                .parse::<Multiaddr>()
-                .unwrap();
-            net_addresses.add_address(&net_address, &PeerAddressSource::Config);
-        }
-
-        let mut peer = Peer::new(
-            pk,
-            node_id,
-            net_addresses,
-            PeerFlags::default(),
-            features,
-            Default::default(),
-            Default::default(),
-        );
-        if ban_flag {
-            peer.ban_for(Duration::from_secs(1000), "".to_string());
-        }
-
-        let good_addresses = peer.addresses.borrow_mut();
-        let good_address = good_addresses.addresses()[0].address().clone();
-        good_addresses.mark_last_seen_now(&good_address);
-
-        peer
+    fn create_peer_manager() -> PeerManager {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+        PeerManager::new(peers_db).unwrap()
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn test_get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
+        let peer_manager = create_peer_manager();
         let mut test_peers = vec![create_test_peer(true, PeerFeatures::COMMUNICATION_NODE)];
         // Create 20 peers were the 1st and last one is bad
         assert!(peer_manager
-            .add_peer(test_peers[test_peers.len() - 1].clone())
+            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
             .await
             .is_ok());
         for _i in 0..18 {
             test_peers.push(create_test_peer(false, PeerFeatures::COMMUNICATION_NODE));
             assert!(peer_manager
-                .add_peer(test_peers[test_peers.len() - 1].clone())
+                .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
                 .await
                 .is_ok());
         }
         test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
         assert!(peer_manager
-            .add_peer(test_peers[test_peers.len() - 1].clone())
+            .add_or_update_peer(test_peers[test_peers.len() - 1].clone())
             .await
             .is_ok());
 
@@ -503,7 +455,7 @@ mod test {
             .is_none());
 
         // Test Flood
-        let selected_peers = peer_manager.flood_peers().await.unwrap();
+        let selected_peers = peer_manager.get_not_banned_or_deleted_peers().await.unwrap();
         assert_eq!(selected_peers.len(), 18);
         for peer_identity in &selected_peers {
             assert!(!peer_manager
@@ -516,7 +468,15 @@ mod test {
 
         // Test Closest - No exclusions
         let selected_peers = peer_manager
-            .closest_peers(&unmanaged_peer.node_id, 3, &[], None)
+            .closest_n_active_peers(
+                &unmanaged_peer.node_id,
+                3,
+                &[],
+                None,
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
             .await
             .unwrap();
         assert_eq!(selected_peers.len(), 3);
@@ -542,7 +502,15 @@ mod test {
         // Test Closest - With an exclusion
         let excluded_peers = vec![selected_peers[0].node_id.clone()];
         let selected_peers = peer_manager
-            .closest_peers(&unmanaged_peer.node_id, 3, &excluded_peers, None)
+            .closest_n_active_peers(
+                &unmanaged_peer.node_id,
+                3,
+                &excluded_peers,
+                None,
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
             .await
             .unwrap();
         assert_eq!(selected_peers.len(), 3);
@@ -577,15 +545,15 @@ mod test {
     async fn test_calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
+        let peer_manager = create_peer_manager();
+        let network_region_node_id = peer_manager.peer_storage_sql.this_peer_identity().node_id;
         let mut test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
             .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
             .collect::<Vec<_>>();
 
         for p in &test_peers {
-            peer_manager.add_peer(p.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(p.clone()).await.unwrap();
         }
 
         test_peers.sort_by(|a, b| {
@@ -595,7 +563,7 @@ mod test {
         });
 
         let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_NODE)
+            .calc_region_threshold(n, PeerFeatures::COMMUNICATION_NODE)
             .await
             .unwrap();
 
@@ -618,7 +586,7 @@ mod test {
         }
 
         let node_region_threshold = peer_manager
-            .calc_region_threshold(&network_region_node_id, n, PeerFeatures::COMMUNICATION_CLIENT)
+            .calc_region_threshold(n, PeerFeatures::COMMUNICATION_CLIENT)
             .await
             .unwrap();
 
@@ -645,29 +613,21 @@ mod test {
     async fn test_closest_peers() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
-        let network_region_node_id = create_test_peer(false, Default::default()).node_id;
+        let peer_manager = create_peer_manager();
+        let network_region_node_id = peer_manager.this_peer_identity().node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
             .chain((0..10).map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT)))
             .collect::<Vec<_>>();
 
         for p in &test_peers {
-            peer_manager.add_peer(p.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(p.clone()).await.unwrap();
         }
 
         for features in &[PeerFeatures::COMMUNICATION_NODE, PeerFeatures::COMMUNICATION_CLIENT] {
-            let node_threshold = peer_manager
-                .peer_storage
-                .read()
-                .await
-                .calc_region_threshold(&network_region_node_id, n, *features)
-                .unwrap();
+            let node_threshold = peer_manager.calc_region_threshold(n, *features).await.unwrap();
 
-            let closest = peer_manager
-                .closest_peers(&network_region_node_id, n, &[], Some(*features))
-                .await
-                .unwrap();
+            let closest = peer_manager.closest_n_good_standing_peers(n, *features).await.unwrap();
 
             assert!(closest
                 .iter()
@@ -677,22 +637,131 @@ mod test {
 
     #[tokio::test]
     async fn test_add_or_update_online_peer() {
-        let peer_manager = PeerManager::new(HashmapDatabase::new(), None, None).unwrap();
+        let peer_manager = create_peer_manager();
         let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
 
-        peer_manager.add_peer(peer.clone()).await.unwrap();
+        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
 
         let peer = peer_manager
             .add_or_update_online_peer(
                 &peer.public_key,
-                peer.node_id,
-                vec![],
-                peer.features,
+                &peer.node_id,
+                &[],
+                &peer.features,
                 &PeerAddressSource::Config,
             )
             .await
             .unwrap();
 
         assert!(!peer.is_offline());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn test_concurrent_add_or_update_and_get_closest_peers() {
+        let peer_manager = create_peer_manager();
+        let num_peers = 75;
+        let num_write_tasks = 20;
+        let num_read_tasks = 1500;
+        let n = 100;
+
+        // Spawn tasks to concurrently add peers and update their stats
+        let add_tasks: Vec<_> = (0..num_write_tasks)
+            .map(|_| {
+                let peer_manager = peer_manager.clone();
+                tokio::spawn(async move {
+                    let mut peers_to_update_last_seen = Vec::new();
+                    let mut peers_to_set_metadata = Vec::new();
+                    for i in 0..num_peers {
+                        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+                        if i % 7 == 0 {
+                            peers_to_update_last_seen.push(peer.clone());
+                        }
+                        if i % 11 == 0 {
+                            peers_to_set_metadata.push(peer.clone());
+                        }
+                        peers_to_update_last_seen.push(peer.clone());
+                        peer_manager.add_or_update_peer(peer).await.unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    for peer in &mut peers_to_update_last_seen {
+                        let addresses = peer.addresses.addresses().to_vec();
+                        peer.addresses.mark_last_seen_now(addresses[0].address());
+                        peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    for (key, peer) in peers_to_set_metadata.iter().enumerate() {
+                        peer_manager
+                            .set_peer_metadata(
+                                &peer.node_id,
+                                u8::try_from(key % usize::from(u8::MAX)).unwrap_or_default(),
+                                vec![1, 2, 3],
+                            )
+                            .await
+                            .unwrap();
+                        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    }
+                    Ok::<_, PeerManagerError>(())
+                    // println!("Added {} peers", num_peers);
+                })
+            })
+            .collect();
+
+        // Spawn tasks to concurrently fetch closest peers
+        let get_tasks: Vec<_> = (0..num_read_tasks)
+            .map(|_| {
+                let peer_manager = peer_manager.clone();
+                tokio::spawn(async move {
+                    let region_node_id = peer_manager.this_peer_identity().node_id;
+                    tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    let _closest_peers = peer_manager
+                        .closest_n_active_peers(
+                            &region_node_id,
+                            n,
+                            &[],
+                            Some(PeerFeatures::COMMUNICATION_NODE),
+                            None,
+                            false,
+                            None,
+                        )
+                        .await
+                        .unwrap();
+                    tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+                    let _total_peers = peer_manager.count().await;
+                    // println!("Total peers: {}, Closest peers: {}", _total_peers, _closest_peers.len());
+                    Ok::<_, PeerManagerError>(())
+                })
+            })
+            .collect();
+
+        // Wait for all tasks to complete
+        let all_tasks = add_tasks.into_iter().chain(get_tasks);
+
+        for (i, task) in all_tasks.enumerate() {
+            match task.await {
+                Ok(Ok(_)) => { /* success */ },
+                Ok(Err(e)) => panic!("Task {i} failed with PeerManagerError: {e:?}"),
+                Err(e) => panic!("Task {i} panicked: {e:?}"),
+            }
+        }
+
+        // Do one final read
+        tokio::time::sleep(Duration::from_micros(rand::random::<u64>() % 100)).await;
+        let region_node_id = peer_manager.this_peer_identity().node_id;
+        let closest_peers = peer_manager
+            .closest_n_active_peers(
+                &region_node_id,
+                n,
+                &[],
+                Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
+                false,
+                None,
+            )
+            .await
+            .unwrap();
+        let total_peers = peer_manager.count().await;
+        // println!("Total peers: {}, Closest peers: {}", total_peers, closest_peers.len());
+        assert_eq!(total_peers, num_peers * num_write_tasks);
+        assert_eq!(closest_peers.len(), n);
     }
 }

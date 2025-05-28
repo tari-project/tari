@@ -16,7 +16,7 @@
 # The relative path to store persistent data (default = "data/base_node")
 #data_dir = "data/base_node"
 
-# The relative path to store the lmbd data (default = "db")
+# The relative path to store the lmdb blockchain data (default = "db")
 #lmdb_path = "db"
 
 # The maximum amount of VMs that RandomX will be use (default = 5)
@@ -141,7 +141,7 @@ blockchain_sync_config.rpc_deadline = 240
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# Path to the LMDB data files
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
 #datastore_path = "peer_db"
 
 # Name to use for the peer database
@@ -335,3 +335,10 @@ excluded_dial_addresses = []
 # setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
 # peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
 #peer_validator_config.min_peer_version = ""
+
+# Wallet Query HTTP service details
+# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
+# This address must be accessible by the wallet (on a global scale over the internet).
+[base_node.http_wallet_query_service]
+port = 9000
+external_address = "http://127.0.0.1:9000"

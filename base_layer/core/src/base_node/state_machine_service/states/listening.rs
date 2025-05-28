@@ -191,9 +191,7 @@ impl Listening {
                         },
                         Ok(false) => {},
                         Err(e) => match e {
-                            PeerManagerError::DataInconsistency(_) |
-                            PeerManagerError::DatabaseError(_) |
-                            PeerManagerError::MigrationError(_) => {
+                            PeerManagerError::DataInconsistency(_) | PeerManagerError::MigrationError(_) => {
                                 return FatalError(format!("Error checking if peer is banned: {}", e));
                             },
                             _ => {
