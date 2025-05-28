@@ -80,7 +80,7 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerQuery},
+    peer_manager::Peer,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -2600,11 +2600,10 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let query = PeerQuery::new().select_where(|p| p.is_seed());
                     let peer_seeds = wallet
                         .comms
                         .peer_manager()
-                        .perform_query(query)
+                        .get_seed_peers()
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
@@ -2982,7 +2981,7 @@ fn write_utxos_to_csv_file(
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            if with_private_keys {utxo.spending_key.to_hex()} else { "*hidden*".to_string() },
+            if with_private_keys { utxo.spending_key.to_hex() } else { "*hidden*".to_string() },
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
@@ -2991,7 +2990,7 @@ fn write_utxos_to_csv_file(
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),
-            if with_private_keys {utxo.script_private_key.to_hex()} else { "*hidden*".to_string() },
+            if with_private_keys { utxo.script_private_key.to_hex() } else { "*hidden*".to_string() },
             utxo.sender_offset_public_key.to_hex(),
             utxo.metadata_signature.ephemeral_commitment().to_hex(),
             utxo.metadata_signature.ephemeral_pubkey().to_hex(),

@@ -19,7 +19,6 @@ group_user_map["dan"]="CjS77 stringhandler sdbondi"
 
 package_group_map["minotari_app_grpc"]="leads"
 package_group_map["minotari_app_utilities"]="leads"
-package_group_map["minotari_chat_ffi"]="leads"
 package_group_map["minotari_console_wallet"]="leads"
 package_group_map["minotari_merge_mining_proxy"]="leads"
 package_group_map["minotari_miner"]="leads"

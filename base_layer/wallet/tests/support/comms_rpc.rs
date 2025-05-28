@@ -50,6 +50,7 @@ use tari_core::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
@@ -850,6 +851,15 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         Ok(Response::new(
             acquire_lock!(self.state.get_mempool_fee_per_gram_stats).clone(),
         ))
+    }
+
+    async fn get_wallet_query_http_service_address(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus> {
+        Ok(Response::new(GetWalletQueryHttpServiceAddressResponse {
+            http_address: Default::default(),
+        }))
     }
 }
 

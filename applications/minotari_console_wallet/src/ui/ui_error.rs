@@ -26,7 +26,7 @@ use minotari_wallet::{
     transaction_service::error::TransactionServiceError,
 };
 use tari_common_types::tari_address::TariAddressError;
-use tari_comms::connectivity::ConnectivityError;
+use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -47,6 +47,8 @@ pub enum UiError {
     WalletError(#[from] WalletError),
     #[error(transparent)]
     WalletStorageError(#[from] WalletStorageError),
+    #[error(transparent)]
+    PeerManagerError(#[from] PeerManagerError),
     #[error("Could not parse Tari Address: `{0}`")]
     TariAddressParseError(#[from] TariAddressError),
     #[error("Could not convert string into Net Address")]

@@ -25,6 +25,7 @@ use tari_comms::{
     peer_manager::PeerManagerError,
     protocol::rpc::{RpcError, RpcStatus},
 };
+use tokio::task::JoinError;
 
 use crate::peer_validator::DhtPeerValidatorError;
 
@@ -50,6 +51,8 @@ pub enum NetworkDiscoveryError {
     DuplicatePeerReceived,
     #[error("Sync peer sent invalid peer data: {0}")]
     InvalidPeerDataReceived(anyhow::Error),
+    #[error("Tokio task join error: `{0}`")]
+    JoinError(#[from] JoinError),
 }
 
 // Custom PartialEq implementation that only compares the discriminant (variant type)

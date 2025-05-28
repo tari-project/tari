@@ -20,8 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use multiaddr::Multiaddr;
+use tari_comms::{
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+};
+
 mod greeting_service;
 mod helpers;
 mod rpc;
 mod rpc_stress;
 mod substream_stress;
+
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}

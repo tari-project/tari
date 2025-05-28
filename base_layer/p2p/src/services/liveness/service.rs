@@ -229,9 +229,12 @@ where
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
                 if let Some(address) = source_peer.last_address_used() {
-                    self.peer_manager
-                        .update_peer_address_latency_and_last_seen(&public_key, &address, maybe_latency)
-                        .await?;
+                    let mut peer_to_update = source_peer.clone();
+                    if let Some(val) = maybe_latency {
+                        peer_to_update.addresses.update_latency(&address, val);
+                    }
+                    peer_to_update.addresses.mark_last_seen_now(&address);
+                    self.peer_manager.add_or_update_peer(peer_to_update).await?;
                 }
             },
         }
@@ -421,12 +424,17 @@ mod test {
 
     use futures::stream;
     use rand::rngs::OsRng;
+    use tari_common_sqlite::connection::DbConnection;
     use tari_comms::{
         message::MessageTag,
         net_address::MultiaddressesWithStats,
-        peer_manager::{Peer, PeerFeatures, PeerFlags},
+        peer_manager::{
+            database::{PeerDatabaseSql, MIGRATIONS},
+            Peer,
+            PeerFeatures,
+            PeerFlags,
+        },
         test_utils::mocks::create_connectivity_mock,
-        types::CommsDatabase,
     };
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
@@ -435,8 +443,6 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use tari_test_utils::{paths::create_temporary_data_path, random};
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
@@ -444,26 +450,15 @@ mod test {
 
     use super::*;
     use crate::{
+        create_test_peer,
         proto::liveness::MetadataKey,
         services::liveness::{handle::LivenessHandle, state::Metadata},
     };
 
     pub fn build_peer_manager() -> Arc<PeerManager> {
-        let database_name = random::string(8);
-        let path = create_temporary_data_path();
-        let datastore = LMDBBuilder::new()
-            .set_path(path.to_str().unwrap())
-            .set_env_config(LMDBConfig::default())
-            .set_max_number_of_databases(1)
-            .add_database(&database_name, lmdb_zero::db::CREATE)
-            .build()
-            .unwrap();
-
-        let peer_database = datastore.get_handle(&database_name).unwrap();
-
-        PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None, None)
-            .map(Arc::new)
-            .unwrap()
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+        Arc::new(PeerManager::new(peers_db).unwrap())
     }
 
     #[tokio::test]

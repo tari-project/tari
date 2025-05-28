@@ -25,7 +25,7 @@ use std::{iter::repeat_with, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
     connectivity::ConnectivityEvent,
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
     test_utils::{
         count_string_occurrences,
         mocks::{create_connectivity_mock, create_dummy_peer_connection, ConnectivityManagerMockState},
@@ -41,7 +41,13 @@ use tokio::sync::broadcast;
 
 use crate::{
     connectivity::{DhtConnectivity, MetricsCollector},
-    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
+    test_utils::{
+        build_peer_manager,
+        create_dht_actor_mock,
+        create_good_standing_peer,
+        make_node_identity,
+        DhtMockState,
+    },
     DhtConfig,
 };
 
@@ -59,7 +65,7 @@ async fn setup(
 ) {
     let peer_manager = build_peer_manager();
     for peer in initial_peers {
-        peer_manager.add_peer(peer).await.unwrap();
+        peer_manager.add_or_update_peer(peer).await.unwrap();
     }
 
     let shutdown = Shutdown::new();
@@ -99,12 +105,22 @@ async fn initialize() {
         num_random_nodes: 2,
         ..Default::default()
     };
-    let peers = repeat_with(|| make_node_identity().to_peer()).take(10).collect();
+    let peers = repeat_with(|| create_good_standing_peer(&make_node_identity()))
+        .take(10)
+        .collect();
     let (dht_connectivity, _, connectivity, peer_manager, node_identity, _shutdown) =
         setup(config, make_node_identity(), peers).await;
     dht_connectivity.spawn();
     let neighbours = peer_manager
-        .closest_peers(node_identity.node_id(), 4, &[], Some(PeerFeatures::COMMUNICATION_NODE))
+        .closest_n_active_peers(
+            node_identity.node_id(),
+            4,
+            &[],
+            Some(PeerFeatures::COMMUNICATION_NODE),
+            Some(STALE_PEER_THRESHOLD_DURATION),
+            true,
+            None,
+        )
         .await
         .unwrap()
         .into_iter()
@@ -126,19 +142,36 @@ async fn initialize() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn added_neighbours() {
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"` // Pipe to `> .\target\output.txt 2>&1`
     let node_identity = make_node_identity();
     let mut node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
     let closer_peer = node_identities.remove(0);
-    let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
+    let mut peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
+    for peer in &mut peers {
+        let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+        for addr in &addresses {
+            peer.addresses.mark_last_seen_now(addr);
+        }
+    }
 
     let config = DhtConfig {
         num_neighbouring_nodes: 5,
         num_random_nodes: 0,
         ..Default::default()
     };
-    let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
+    let peer_node_ids = peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+    let (dht_connectivity, _, connectivity, peer_manager, _, _shutdown) = setup(config, node_identity, peers).await;
+
+    let added_peers = peer_manager.get_peers_by_node_ids(&peer_node_ids).await.unwrap();
+    assert!(added_peers
+        .iter()
+        .any(|p| peer_node_ids.iter().any(|node_id| node_id == &p.node_id)));
+    assert!(peer_node_ids
+        .iter()
+        .any(|p| peer_node_ids.iter().any(|node_id| node_id == p)));
+
     dht_connectivity.spawn();
 
     // Wait for calls to add peers
@@ -170,7 +203,10 @@ async fn replace_peer_when_peer_goes_offline() {
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
-    let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
+    let peers = node_identities
+        .iter()
+        .map(|ni| create_good_standing_peer(ni))
+        .collect::<Vec<_>>();
 
     let config = DhtConfig {
         num_neighbouring_nodes: 5,

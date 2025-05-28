@@ -41,6 +41,7 @@ use tonic::{
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tui::backend::CrosstermBackend;
+use url::Url;
 
 use crate::{
     automation::commands::command_runner,

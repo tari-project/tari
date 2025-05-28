@@ -1,5 +1,5 @@
 [workspace.package]
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -7,7 +7,6 @@ license = "BSD-3-Clause"
 
 [workspace]
 members = [
-    "base_layer/chat_ffi",
     "base_layer/core",
     "base_layer/common_types",
     "base_layer/contacts",
@@ -76,7 +75,7 @@ minotari_app_grpc = { path = "applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "applications/minotari_app_utilities" }
 minotari_wallet = { path = "base_layer/wallet" }
 minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client" }
-minotari_chat_ffi = { path = "base_layer/chat_ffi" }
+minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client" }
 minotari_console_wallet = { path = "applications/minotari_console_wallet" }
 minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy" }
 minotari_miner = { path = "applications/minotari_miner" }

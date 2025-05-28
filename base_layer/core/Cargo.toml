@@ -87,7 +87,7 @@ sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
-tokio = { version = "1.44", features = ["time", "sync", "macros"] }
+tokio = { version = "1.44", features = ["time", "sync", "macros", "net"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
@@ -98,6 +98,7 @@ dirs-next = "1.0.2"
 hickory-proto = { version = "0.25.2" }
 anyhow = "1.0.53"
 jmt = { version = "0.11.0", features = ["mocks"] }
+url = "2.5.4"
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::peer_manager::PeerFeatures;
+use tari_comms::peer_manager::{PeerFeatures, STALE_PEER_THRESHOLD_DURATION};
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},

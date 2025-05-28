@@ -49,6 +49,8 @@ use minotari_app_grpc::tari_rpc::{
     CreateTemplateRegistrationRequest,
     CreateTemplateRegistrationResponse,
     GetAddressResponse,
+    GetAllCompletedTransactionsRequest,
+    GetAllCompletedTransactionsResponse,
     GetBalanceRequest,
     GetBalanceResponse,
     GetBlockHeightTransactionsRequest,
@@ -1056,6 +1058,81 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    async fn get_all_completed_transactions(
+        &self,
+        request: Request<GetAllCompletedTransactionsRequest>,
+    ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
+        let start = std::time::Instant::now();
+        trace!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactions: Incoming GRPC request"
+        );
+        let mut transaction_service = self.get_transaction_service();
+
+        let mut completed_transactions = transaction_service
+            .get_completed_transactions(None, None, None)
+            .await
+            .map_err(|err| {
+                Status::not_found(format!(
+                    "GetAllCompletedTransactions: Error found for get_completed_transactions: {:?}",
+                    err
+                ))
+            })?;
+        completed_transactions.extend(
+            transaction_service
+                .get_cancelled_completed_transactions()
+                .await
+                .map_err(|err| {
+                    Status::not_found(format!(
+                        "GetAllCompletedTransactions: Error found for get_cancelled_completed_transactions: {:?}",
+                        err
+                    ))
+                })?,
+        );
+
+        completed_transactions.sort_by(|a, b| {
+            b.timestamp
+                .partial_cmp(&a.timestamp)
+                .expect("Should be able to compare timestamps")
+        });
+
+        let req = request.into_inner();
+        let offset = usize::try_from(req.offset).unwrap_or(0);
+        let limit = if req.limit > 0 {
+            usize::try_from(req.limit).unwrap_or(usize::MAX)
+        } else {
+            usize::MAX
+        };
+        let transactions = completed_transactions
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|txn| TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status.clone()) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
+                    .transaction
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+            })
+            .collect();
+
+        trace!(target: LOG_TARGET, "'GetAllCompletedTransactions' completed in {:.2?}", start.elapsed());
+        Ok(Response::new(GetAllCompletedTransactionsResponse { transactions }))
+    }
+
     async fn get_block_height_transactions(
         &self,
         request: Request<GetBlockHeightTransactionsRequest>,
@@ -1205,15 +1282,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        let mut peers = Vec::with_capacity(connected_peers.len());
-        for conn in connected_peers {
-            peers.push(
-                peer_manager
-                    .find_by_node_id(conn.peer_node_id())
-                    .await
-                    .map_err(|err| Status::internal(err.to_string()))?
-                    .ok_or_else(|| Status::not_found(format!("Peer '{}' not found", conn.peer_node_id())))?,
-            );
+        let node_ids = connected_peers
+            .iter()
+            .map(|c| c.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let peers = peer_manager
+            .get_peers_by_node_ids(&node_ids)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        if peers.len() != node_ids.len() {
+            let mut error_response = Vec::new();
+            node_ids.iter().for_each(|node_id| {
+                if !peers.iter().any(|p| p.node_id == *node_id) {
+                    warn!(target: LOG_TARGET, "Peer '{}' not found", node_id);
+                    error_response.push(format!("'{}'", node_id));
+                }
+            });
+            if !error_response.is_empty() {
+                return Err(Status::not_found(format!(
+                    "Peer(s) not found: {}",
+                    error_response.join(", ")
+                )));
+            }
         }
 
         let resp = tari_rpc::ListConnectedPeersResponse {

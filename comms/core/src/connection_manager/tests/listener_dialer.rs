@@ -37,6 +37,7 @@ use crate::{
         dialer::{Dialer, DialerRequest},
         listener::PeerListener,
         manager::ConnectionManagerEvent,
+        tests::create_test_peer,
         ConnectionManagerConfig,
         ConnectionManagerError,
     },
@@ -48,12 +49,11 @@ use crate::{
     transports::MemoryTransport,
     Minimized,
 };
-
 #[tokio::test]
 async fn listen() -> Result<(), Box<dyn Error>> {
     let (event_tx, _) = mpsc::channel(1);
     let mut shutdown = Shutdown::new();
-    let peer_manager = build_peer_manager();
+    let peer_manager = build_peer_manager(&create_test_peer())?;
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config = NoiseConfig::new(node_identity.clone());
     let listener = PeerListener::new(
@@ -89,7 +89,7 @@ async fn smoke() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -108,7 +108,7 @@ async fn smoke() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
@@ -147,22 +147,43 @@ async fn smoke() {
     }
 
     // Read PeerConnected events - we don't know which connection is which
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn1) = event_rx.recv().await.unwrap());
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn2) = event_rx.recv().await.unwrap());
+    let mut conn1 = None;
+    let mut conn2 = None;
+    let mut new_inbound_substream = None;
 
-    // Next event should be a NewInboundSubstream has been received
-    let listen_event = event_rx.recv().await.unwrap();
-    {
-        unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) = listen_event);
-        assert_eq!(&node_id, node_identity2.node_id());
-        assert_eq!(proto, expected_proto);
-
-        let mut buf = [0u8; 5];
-        in_stream.read_exact(&mut buf).await.unwrap();
-        assert_eq!(buf, *b"HELLO");
+    while conn1.is_none() || conn2.is_none() || new_inbound_substream.is_none() {
+        let event = event_rx.recv().await.unwrap();
+        match event {
+            ConnectionManagerEvent::PeerConnected(conn) => {
+                if conn1.is_none() {
+                    conn1 = Some(conn);
+                } else {
+                    conn2 = Some(conn);
+                }
+            },
+            ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) => {
+                new_inbound_substream = Some((node_id, proto, in_stream));
+            },
+            _ => panic!("Unexpected event: {:?}", event),
+        }
     }
 
+    // Ensure all expected events were received
+    let mut conn1 = conn1.expect("Expected conn1 to be set");
+    let _conn2 = conn2.expect("Expected conn2 to be set");
+    let (node_id, proto, mut in_stream) = new_inbound_substream.expect("Expected NewInboundSubstream event");
+
+    // Validate the NewInboundSubstream event
+    assert_eq!(&node_id, node_identity2.node_id());
+    assert_eq!(proto, expected_proto);
+
+    let mut buf = [0u8; 5];
+    in_stream.read_exact(&mut buf).await.unwrap();
+    assert_eq!(buf, *b"HELLO");
+
+    // Disconnect conn1
     conn1.disconnect(Minimized::No).await.unwrap();
+    // conn2.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();
 
@@ -192,7 +213,7 @@ async fn banned() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -212,11 +233,11 @@ async fn banned() {
     // The listener has banned the dialer peer
     let mut peer = node_identity2.to_peer();
     peer.ban_for(Duration::from_secs(60 * 60), "".to_string());
-    peer_manager1.add_peer(peer).await.unwrap();
+    peer_manager1.add_or_update_peer(peer).await.unwrap();
 
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
@@ -266,7 +287,7 @@ async fn excluded_yes() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -285,7 +306,7 @@ async fn excluded_yes() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let connection_manager_config = ConnectionManagerConfig {
         excluded_dial_addresses: vec![address.to_string().parse().unwrap()],
         ..Default::default()
@@ -335,7 +356,7 @@ async fn excluded_no() {
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
     let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
-    let peer_manager1 = build_peer_manager();
+    let peer_manager1 = build_peer_manager(&node_identity1.to_peer()).unwrap();
     let mut listener = PeerListener::new(
         Default::default(),
         "/memory/0".parse().unwrap(),
@@ -354,7 +375,7 @@ async fn excluded_no() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config2 = NoiseConfig::new(node_identity2.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
-    let peer_manager2 = build_peer_manager();
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
     let connection_manager_config = ConnectionManagerConfig {
         excluded_dial_addresses: vec![],
         ..Default::default()

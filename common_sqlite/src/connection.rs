@@ -22,7 +22,11 @@
 
 use std::{
     convert::TryFrom,
+    env::temp_dir,
+    fs,
+    iter,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock, RwLockWriteGuard},
     time::Duration,
 };
 
@@ -32,6 +36,7 @@ use diesel::{
 };
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -40,7 +45,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "common_sqlite::connection";
-const SQLITE_POOL_SIZE: usize = 16;
 
 /// Describes how to connect to the database (currently, SQLite).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -101,25 +105,58 @@ impl TryFrom<String> for DbConnectionUrl {
     }
 }
 
-/// A SQLite database connection
+lazy_static::lazy_static! {
+    static ref DB_WRITE_LOCK: Arc<RwLock<()>> = Arc::new(RwLock::new(()));
+}
+
+/// An SQLite database connection using the Diesel ORM with its r2d2 connection pool and SQLite WAL backend.
+/// --------------------------------------------------------------------------------------------------------------------
+/// Notes on SQLite’s Concurrency Limitations (causes of intermittent “Database is Locked” errors)
+///
+/// SQLite allows only one writer at a time, even in WAL mode. Under high concurrency (e.g. many threads doing writes),
+/// collisions are inevitable – one transaction holds an exclusive write lock while others must wait. If a write lock
+/// cannot be acquired within the busy_timeout, SQLite returns a SQLITE_BUSY (“database is locked”) error. In WAL mode,
+/// readers don’t block writers and vice versa, but still only one writer can commit at any given moment. This
+/// single-writer bottleneck means that bursts of simultaneous writes can lead to contention. If a transaction takes too
+/// long (holding the lock), queued writers may time out (even with a 60s timeout). In short, heavy write concurrency
+/// can exceed SQLite’s design limits, causing intermittent “database is locked” errors during high load.
+///
+/// “Busy Timeout” Not Always Honored – Deferred Write Pitfall: Even with WAL + a busy timeout, you can still get
+/// immediate lock errors in certain cases. A known scenario involves deferred transactions upgrading to writes, often
+/// called the “write-after-read” pattern. By default, BEGIN in SQLite is deferred – the transaction starts as read-only
+/// if the first statement is a SELECT. If you later issue a write in that same transaction, SQLite will try to upgrade
+/// it to a write transaction.
+///
+/// Mitigations and Best Practices for Write Concurrency with SQLite
+/// - Use WAL Mode and Busy Timeout
+/// - Start Write Transactions in IMMEDIATE Mode (`SqliteConnection::immediate_transaction(...)`)
+/// - Keep Transactions Short and Optimize Write Duration
+/// - Limit Write Concurrency & Pool Sizing
+/// - Handle and Retry Busy Errors Gracefully
+/// -
+/// --------------------------------------------------------------------------------------------------------------------
 #[derive(Clone)]
 pub struct DbConnection {
     pool: SqliteConnectionPool,
 }
 
 impl DbConnection {
-    /// Connect to an ephemeral database in memory
-    pub fn connect_memory(name: String) -> Result<Self, StorageError> {
-        Self::connect_url(&DbConnectionUrl::MemoryShared(name))
-    }
-
-    /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl).
-    pub fn connect_url(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
+    /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl), optionally using the given pool size to
+    /// override the default setting of 1.
+    /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
+    pub fn connect_url(db_url: &DbConnectionUrl, sqlite_pool_size: Option<usize>) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
+
+        // Ensure the path exists
+        if let DbConnectionUrl::File(ref path) = db_url {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
 
         let mut pool = SqliteConnectionPool::new(
             db_url.to_url_string(),
-            SQLITE_POOL_SIZE,
+            sqlite_pool_size.unwrap_or(1),
             true,
             true,
             Duration::from_secs(60),
@@ -129,12 +166,48 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
-    /// Connect and migrate the database, once complete, a handle to the migrated database is returned.
-    pub fn connect_and_migrate(db_url: &DbConnectionUrl, migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
-        let conn = Self::connect_url(db_url)?;
+    fn acquire_migration_write_lock() -> Result<RwLockWriteGuard<'static, ()>, StorageError> {
+        match DB_WRITE_LOCK.write() {
+            Ok(value) => Ok(value),
+            Err(err) => Err(StorageError::DatabaseMigrationLockError(format!(
+                "Failed to acquire write lock for database migration: {}",
+                err
+            ))),
+        }
+    }
+
+    /// Connect and migrate the database, once complete, then return a handle to the migrated database.
+    pub fn connect_and_migrate(
+        db_url: &DbConnectionUrl,
+        migrations: EmbeddedMigrations,
+        sqlite_pool_size: Option<usize>,
+    ) -> Result<Self, StorageError> {
+        let _lock = Self::acquire_migration_write_lock()?;
+        let conn = Self::connect_url(db_url, sqlite_pool_size)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
+    }
+
+    fn temp_db_dir() -> PathBuf {
+        temp_dir().join("tari-temp")
+    }
+
+    /// Connect and migrate the database in a temporary location, then return a handle to the migrated database.
+    pub fn connect_temp_file_and_migrate(migrations: EmbeddedMigrations) -> Result<Self, StorageError> {
+        fn prefixed_string(prefix: &str, len: usize) -> String {
+            let mut rng = thread_rng();
+            let rand_str = iter::repeat(())
+                .map(|_| rng.sample(Alphanumeric) as char)
+                .take(len)
+                .collect::<String>();
+            format!("{}{}", prefix, rand_str)
+        }
+
+        let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
+        fs::create_dir_all(&path)?;
+        let db_url = DbConnectionUrl::File(path.join("my_temp.db"));
+        DbConnection::connect_and_migrate(&db_url, migrations, Some(10))
     }
 
     fn new(pool: SqliteConnectionPool) -> Self {
@@ -157,6 +230,34 @@ impl DbConnection {
 
         Ok(result.join("\r\n"))
     }
+
+    #[cfg(test)]
+    pub(crate) fn db_path(&self) -> PathBuf {
+        self.pool.db_path()
+    }
+}
+
+impl Drop for DbConnection {
+    fn drop(&mut self) {
+        let path = self.pool.db_path();
+
+        if path.exists() {
+            if let Some(parent) = path.parent() {
+                if parent.starts_with(DbConnection::temp_db_dir()) {
+                    debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
+                    // Explicitly cleanup and drop the connection pool to ensure all connections are released
+                    let pool_state = self.pool.cleanup();
+                    debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {:?}", pool_state);
+                    debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
+                    if let Err(e) = fs::remove_dir_all(parent) {
+                        error!(target: LOG_TARGET, "Failed to clean up temp dir: {}", e);
+                    } else {
+                        debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl PooledDbConnection for DbConnection {
@@ -172,7 +273,6 @@ impl PooledDbConnection for DbConnection {
 mod test {
     use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
     use diesel_migrations::embed_migrations;
-    use tari_test_utils::random;
 
     use super::*;
 
@@ -180,23 +280,18 @@ mod test {
     async fn connect_and_migrate() {
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
 
-        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        let output = conn.migrate(MIGRATIONS).unwrap();
-        assert!(output.starts_with("Running migration"));
-    }
-
-    #[tokio::test]
-    async fn memory_connections() {
-        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
-
-        let id = random::string(8);
-        let conn = DbConnection::connect_memory(id.clone()).unwrap();
-        conn.migrate(MIGRATIONS).unwrap();
-        let conn = DbConnection::connect_memory(id).unwrap();
-        let mut conn = conn.get_pooled_connection().unwrap();
+        let db_conn = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let path = db_conn.db_path();
+        let mut pool_conn = db_conn.get_pooled_connection().unwrap();
         let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
-            .get_result(&mut conn)
+            .get_result(&mut pool_conn)
             .unwrap();
         assert_eq!(count, 0);
+
+        // Test temporary file cleanup
+        assert!(path.exists());
+        drop(pool_conn);
+        drop(db_conn);
+        assert!(!path.exists());
     }
 }

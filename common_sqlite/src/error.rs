@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::num::TryFromIntError;
+use std::{io::Error, num::TryFromIntError};
 
 use diesel::r2d2;
-use tari_utilities::message_format::MessageFormatError;
+use tari_utilities::{hex::HexError, message_format::MessageFormatError};
 use thiserror::Error;
 use tokio::task;
 
@@ -31,20 +31,12 @@ use tokio::task;
 pub enum SqliteStorageError {
     #[error("Poolsize is too big")]
     PoolSize(#[from] TryFromIntError),
-    #[error("Operation not supported")]
-    OperationNotSupported,
-    #[error("Conversion error: `{0}`")]
-    ConversionError(String),
     #[error("Database error: `{0}`")]
     R2d2Error(#[from] r2d2::Error),
     #[error("Database error: `{0}`")]
     DieselR2d2Error(String),
     #[error("Database error: `{0}`")]
     DieselConnectionError(#[from] diesel::ConnectionError),
-    #[error("Database error: `{0}`")]
-    DatabaseMigrationError(String),
-    #[error("Database error: `{0}`")]
-    BlockingTaskSpawnError(String),
 }
 
 #[derive(Debug, Error)]
@@ -55,18 +47,34 @@ pub enum StorageError {
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
     DatabaseMigrationFailed(String),
-    #[error("ResultError: {0}")]
-    ResultError(#[from] diesel::result::Error),
+    #[error("Diesel result error: {0}")]
+    DieselResultError(#[from] diesel::result::Error),
     #[error("MessageFormatError: {0}")]
     MessageFormatError(String),
     #[error("Unexpected result: {0}")]
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]
     DieselR2d2Error(#[from] SqliteStorageError),
+    #[error("Hex conversion error: `{0}`")]
+    HexError(String),
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("TryFromInt conversion error: `{0}`")]
+    TryFromIntError(#[from] TryFromIntError),
+    #[error("IO error: `{0}`")]
+    IoError(#[from] Error),
+    #[error("Database migration lock error: {0}")]
+    DatabaseMigrationLockError(String),
 }
 
 impl From<MessageFormatError> for StorageError {
     fn from(value: MessageFormatError) -> Self {
         StorageError::MessageFormatError(value.to_string())
+    }
+}
+
+impl From<HexError> for StorageError {
+    fn from(value: HexError) -> Self {
+        StorageError::HexError(value.to_string())
     }
 }

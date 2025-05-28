@@ -313,10 +313,13 @@ checksum = "021e862c184ae977658b36c4500f7feac3221ca5da43e3f25bd04ab6c79a29b5"
 dependencies = [
  "axum-core 0.5.2",
  "bytes 1.9.0",
+ "form_urlencoded",
  "futures-util",
  "http 1.2.0",
  "http-body 1.0.1",
  "http-body-util",
+ "hyper 1.5.1",
+ "hyper-util",
  "itoa",
  "matchit 0.8.4",
  "memchr",
@@ -325,10 +328,15 @@ dependencies = [
  "pin-project-lite",
  "rustversion",
  "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "serde_urlencoded",
  "sync_wrapper 1.0.2",
+ "tokio",
  "tower 0.5.2",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -368,6 +376,7 @@ dependencies = [
  "sync_wrapper 1.0.2",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -4049,7 +4058,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "argon2 0.4.1",
  "base64 0.13.1",
@@ -4078,7 +4087,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "clap 3.2.25",
  "dialoguer 0.10.4",
@@ -4099,33 +4108,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "minotari_chat_ffi"
-version = "3.0.2-pre.0"
-dependencies = [
- "cbindgen",
- "chrono",
- "libc",
- "libsqlite3-sys",
- "log",
- "log4rs",
- "minotari_app_utilities",
- "openssl",
- "rand 0.8.5",
- "tari_chat_client",
- "tari_common",
- "tari_common_types",
- "tari_contacts",
- "tari_crypto",
- "tari_p2p",
- "tari_shutdown",
- "tari_utilities",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "minotari_console_wallet"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "blake2",
  "chrono",
@@ -4183,14 +4167,14 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "bs58 0.5.1",
 ]
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "3.0.2-pre.0"
+version = "4.0.0-pre.0"
 dependencies = [
  "borsh",
  "dialoguer 0.11.0",
@@ -4211,7 +4195,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4255,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "3.0.2-pre.0"
+version = "4.0.0-pre.0"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -4290,7 +4274,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mining_helper_ffi"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -4309,10 +4293,11 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum 0.8.4",
  "bincode",
  "borsh",
  "chrono",
@@ -4324,6 +4309,7 @@ dependencies = [
  "dhat",
  "either",
  "futures 0.3.31",
+ "http 0.2.12",
  "log",
  "log4rs",
  "minotari_app_grpc",
@@ -4352,6 +4338,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "tonic 0.13.1",
+ "url",
 ]
 
 [[package]]
@@ -4364,7 +4351,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "argon2 0.4.1",
  "async-trait",
@@ -4415,7 +4402,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -6533,6 +6520,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_path_to_error"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59fab13f937fa393d08645bf3a84bdfe86e296747b506ada67bb15f10f218b2a"
+dependencies = [
+ "itoa",
+ "serde",
+]
+
+[[package]]
 name = "serde_repr"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7138,35 +7135,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_chat_client"
-version = "3.0.2-pre.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "config",
- "diesel",
- "lmdb-zero",
- "log",
- "minotari_app_utilities",
- "rand 0.8.5",
- "serde",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_max_size",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "tari_common"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7192,13 +7162,15 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "diesel",
  "diesel_migrations",
+ "lazy_static",
  "log",
+ "rand 0.8.5",
  "serde",
- "tari_test_utils",
+ "serde_json",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -7206,7 +7178,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "base64 0.21.7",
  "bitflags 2.6.0",
@@ -7232,7 +7204,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7243,10 +7215,11 @@ dependencies = [
  "cidr",
  "data-encoding",
  "derivative",
+ "diesel",
+ "diesel_migrations",
  "digest 0.10.7",
  "env_logger 0.7.1",
  "futures 0.3.31",
- "lmdb-zero",
  "log",
  "multiaddr",
  "nom",
@@ -7254,13 +7227,13 @@ dependencies = [
  "pin-project 1.1.7",
  "prost 0.13.4",
  "rand 0.8.5",
- "semver",
  "serde",
  "serde_derive",
  "serde_json",
  "sha3",
  "snow",
  "tari_common",
+ "tari_common_sqlite",
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_metrics",
@@ -7282,7 +7255,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "bitflags 2.6.0",
@@ -7312,7 +7285,6 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7325,7 +7297,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "3.0.2-pre.0"
+version = "4.0.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "proc-macro2",
@@ -7340,7 +7312,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "chrono",
  "diesel",
@@ -7374,7 +7346,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7449,6 +7421,7 @@ dependencies = [
  "tokio",
  "toml 0.5.11",
  "tracing",
+ "url",
  "zeroize",
 ]
 
@@ -7477,11 +7450,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 
 [[package]]
 name = "tari_hashing"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "blake2",
  "borsh",
@@ -7496,7 +7469,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "config",
  "csv",
  "cucumber",
  "futures 0.3.31",
@@ -7505,7 +7477,6 @@ dependencies = [
  "log",
  "minotari_app_grpc",
  "minotari_app_utilities",
- "minotari_chat_ffi",
  "minotari_console_wallet",
  "minotari_merge_mining_proxy",
  "minotari_miner",
@@ -7517,13 +7488,11 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "serde_json",
- "tari_chat_client",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_p2p",
@@ -7539,7 +7508,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "argon2 0.4.1",
  "async-trait",
@@ -7574,7 +7543,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "derivative",
  "libtor",
@@ -7587,7 +7556,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "borsh",
  "serde",
@@ -7597,7 +7566,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "futures 0.3.31",
@@ -7612,7 +7581,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "bincode",
  "blake2",
@@ -7630,16 +7599,14 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
  "config",
- "fs2",
  "futures 0.3.31",
  "hickory-proto",
  "hickory-resolver",
- "lmdb-zero",
  "log",
  "pgp",
  "prost 0.13.4",
@@ -7653,7 +7620,6 @@ dependencies = [
  "tari_comms_dht",
  "tari_service_framework",
  "tari_shutdown",
- "tari_storage",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7666,7 +7632,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "blake2",
  "borsh",
@@ -7684,7 +7650,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7701,7 +7667,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "futures 0.3.31",
  "tokio",
@@ -7709,7 +7675,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "3.0.2-pre.0"
+version = "3.0.0-pre.2"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -7722,7 +7688,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "3.0.2-pre.0"
+version = "4.0.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "futures-test",
@@ -8474,6 +8440,7 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]

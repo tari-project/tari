@@ -125,7 +125,7 @@ impl Dht {
             event_publisher,
         };
 
-        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS)
+        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS, Some(16))
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
@@ -417,7 +417,7 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::unbounded_channel();
@@ -470,7 +470,7 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::unbounded_channel();
@@ -524,7 +524,7 @@ mod test {
         let peer_manager = build_peer_manager();
         let shutdown = Shutdown::new();
 
-        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
 
         let (connectivity, _) = create_connectivity_mock();
         let (oms_requester, oms_mock) = create_outbound_service_mock();

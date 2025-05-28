@@ -109,6 +109,7 @@ async fn setup() -> (
         base_node.blockchain_db.clone().into(),
         base_node.mempool_handle.clone(),
         base_node.state_machine_handle.clone(),
+        None,
     );
     let (req_tx, _) = reply_channel::unbounded();
     let (block_tx, _) = reply_channel::unbounded();

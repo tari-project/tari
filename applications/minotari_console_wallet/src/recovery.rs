@@ -119,7 +119,7 @@ pub async fn wallet_recovery(
         );
         peer_public_keys.push(peer.public_key.clone());
         peer_manager
-            .add_peer(peer)
+            .add_or_update_peer(peer)
             .await
             .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
     }
@@ -128,7 +128,8 @@ pub async fn wallet_recovery(
         .with_peers(peer_public_keys)
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
-        .build_with_wallet(wallet, shutdown_signal).await.map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+        .build_with_wallet(wallet, shutdown_signal).await
+        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
 
     let mut event_stream = recovery_task.get_event_receiver();
 

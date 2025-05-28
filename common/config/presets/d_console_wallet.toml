@@ -1,4 +1,3 @@
-
 ########################################################################################################################
 #                                                                                                                      #
 #                      Wallet Configuration Options (WalletConfig)                                                     #
@@ -102,6 +101,7 @@
 #The defaul offset for scanning from the birthday, it will start at the birthday - the offset
 #birthday_offset = 2
 
+
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
 broadcast_monitoring_timeout = 180
@@ -180,7 +180,7 @@ event_channel_size = 3500
 # - a "bridge" between TOR and TCP-only nodes
 #auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# Path to the LMDB data files
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
 #datastore_path = "peer_db"
 
 # Name to use for the peer database

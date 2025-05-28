@@ -23,26 +23,24 @@
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
-use tari_comms::{peer_manager::PeerFeatures, types::CommsDatabase, CommsBuilder, NodeIdentity, UnspawnedCommsNode};
-use tari_shutdown::ShutdownSignal;
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
+use tari_common_sqlite::connection::DbConnection;
+use tari_comms::{
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        PeerFeatures,
+    },
+    types::CommsDatabase,
+    CommsBuilder,
+    NodeIdentity,
+    UnspawnedCommsNode,
 };
-use tari_test_utils::{paths::create_temporary_data_path, random};
+use tari_shutdown::ShutdownSignal;
+
+use crate::tests::create_test_peer;
 
 pub fn create_peer_storage() -> CommsDatabase {
-    let database_name = random::string(8);
-    let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-    LMDBWrapper::new(Arc::new(peer_database))
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {
@@ -56,7 +54,7 @@ pub fn create_comms(signal: ShutdownSignal) -> UnspawnedCommsNode {
         .allow_test_addresses()
         .with_listener_address("/ip4/127.0.0.1/tcp/0".parse().unwrap())
         .with_node_identity(node_identity)
-        .with_peer_storage(create_peer_storage(), None)
+        .with_peer_storage(create_peer_storage())
         .with_shutdown_signal(signal)
         .build()
         .unwrap()
