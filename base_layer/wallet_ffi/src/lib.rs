@@ -1974,8 +1974,7 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
         .unwrap();
     match TariAddress::from_emoji_string(cstring) {
         Ok(address) => Box::into_raw(Box::new(address)),
-        Err(e) => {
-            dbg!(e);
+        Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
             ptr::null_mut()
         },
