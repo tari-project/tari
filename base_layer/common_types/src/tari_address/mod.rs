@@ -918,7 +918,7 @@ mod test {
             Err(TariAddressError::InvalidSize)
         );
         // This emoji string is too long to be a valid emoji ID
-        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
+        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
@@ -989,14 +989,14 @@ mod test {
         // This emoji string contains an invalid utf8 character
         let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
                             🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
-                            🦊| 🦊 | 🦊| 🦊 | 🦊";
+                            🦊| 🦊 | 🦊| 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊";
         assert_eq!(
             TariAddress::from_base58(emoji_string),
             Err(TariAddressError::InvalidCharacter)
         );
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
-            Err(TariAddressError::InvalidSize)
+            Err(TariAddressError::InvalidEmoji)
         );
         assert_eq!(
             TariAddress::from_str(emoji_string),
