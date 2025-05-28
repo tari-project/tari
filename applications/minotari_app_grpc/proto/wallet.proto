@@ -1110,9 +1110,9 @@ message PaymentRecipient {
   uint64 fee_per_gram = 3;
   enum PaymentType {
     // Default Mimblewimble-style transaction.
-    STANDARD_MIMBLEWIMBLE = 0;
+    STANDARD_MIMBLEWIMBLE = 0 [deprecated = true] ;
     // One-sided transaction (receiver not required to participate).
-    ONE_SIDED = 1;
+    ONE_SIDED = 1 [deprecated = true] ;
     // One-sided stealth address (adds privacy by hiding destination).
     ONE_SIDED_TO_STEALTH_ADDRESS = 2;
   }
