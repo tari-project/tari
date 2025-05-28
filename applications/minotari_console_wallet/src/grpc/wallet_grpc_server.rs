@@ -704,7 +704,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             let payment_id = if !raw_payment_id.is_empty() {
-                PaymentId::from_bytes(&raw_payment_id)
+                PaymentId::open(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
