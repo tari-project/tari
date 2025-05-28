@@ -4372,6 +4372,7 @@ dependencies = [
  "log",
  "prost 0.13.4",
  "rand 0.8.5",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.10.8",
@@ -6467,6 +6468,9 @@ name = "semver"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "serde"

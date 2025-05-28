@@ -177,11 +177,31 @@ pub enum CliCommands {
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
+    PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
+    SignOneSidedTransaction(SignOneSidedTransactionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct DiscoverPeerArgs {
     pub dest_public_key: UniPublicKey,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareOneSidedTransactionForSigningArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
 }
 
 #[derive(Debug, Args, Clone)]

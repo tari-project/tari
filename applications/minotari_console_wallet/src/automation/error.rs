@@ -23,6 +23,7 @@
 use std::{
     io,
     num::{ParseFloatError, ParseIntError},
+    path::PathBuf,
 };
 
 use log::*;
@@ -35,8 +36,7 @@ use minotari_wallet::{
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
 use tari_core::transactions::{
-    tari_amount::MicroMinotariError,
-    transaction_components::TransactionError,
+    tari_amount::MicroMinotariError, transaction_components::TransactionError,
     transaction_key_manager::error::KeyManagerServiceError,
 };
 use tari_crypto::signatures::SchnorrSignatureError;
@@ -98,6 +98,10 @@ pub enum CommandError {
     FailedSignature(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Failed to write to file {file_path} - {err}.")]
+    FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Failed to read file {file_path} - {err}.")]
+    FileReadError { file_path: PathBuf, err: io::Error },
 }
 
 impl From<SchnorrSignatureError> for CommandError {

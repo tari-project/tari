@@ -124,6 +124,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
+        offline_signing::{LockOneSidedTransactionResult, OfflineSigning, TransactionResult},
         protocols::{
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -659,6 +660,49 @@ where
                 )
                 .await?;
                 return Ok(());
+            },
+            TransactionServiceRequest::LockOneSidedTransaction {
+                destination,
+                amount,
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                payment_id,
+            } => {
+                let dest_pubkey = destination.public_spend_key().clone();
+                let mut offline_signing = OfflineSigning::new(
+                    self.resources.clone(),
+                    self.consensus_manager.clone(),
+                    self.event_publisher.clone(),
+                    self.last_seen_tip_height,
+                );
+                offline_signing
+                    .lock_one_sided_transaction(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        Some(push_pubkey_script(&dest_pubkey)),
+                        payment_id,
+                    )
+                    .await
+                    .and_then(|result| result.to_string())
+                    .map(TransactionServiceResponse::OneSidedTransactionLocked)
+            },
+            TransactionServiceRequest::SignOneSidedTransaction { request } => {
+                let lock_request = LockOneSidedTransactionResult::from_string(&request)?;
+                let offline_signing = OfflineSigning::new(
+                    self.resources.clone(),
+                    self.consensus_manager.clone(),
+                    self.event_publisher.clone(),
+                    self.last_seen_tip_height,
+                );
+                offline_signing
+                    .sign_locked_transaction(lock_request)
+                    .await
+                    .and_then(|result| result.to_string())
+                    .map(TransactionServiceResponse::SignedSidedTransaction)
             },
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,

@@ -175,12 +175,12 @@ fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
     (
         matches!(
             command,
-            CliCommands::PreMineSpendGetOutputStatus |
-                CliCommands::PreMineStart(_) |
-                CliCommands::PreMineEncumber(_) |
-                CliCommands::PreMineStartParty(_) |
-                CliCommands::PreMineSigs(_) |
-                CliCommands::PreMineSpendBackupUtxo(_)
+            CliCommands::PreMineSpendGetOutputStatus
+                | CliCommands::PreMineStart(_)
+                | CliCommands::PreMineEncumber(_)
+                | CliCommands::PreMineStartParty(_)
+                | CliCommands::PreMineSigs(_)
+                | CliCommands::PreMineSpendBackupUtxo(_)
         ),
         matches!(command, CliCommands::PreMineSpendTx(_)),
     )
@@ -622,6 +622,7 @@ mod test {
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
+                CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true
@@ -652,21 +653,21 @@ mod test {
             }
         }
         assert!(
-            get_balance &&
-                send_tari &&
-                burn_tari &&
-                pre_mine_spend_get_output_status &&
-                pre_mine_spend_session_info &&
-                pre_mine_spend_encumber_aggregate_utxo &&
-                pre_mine_spend_aggregate_transaction &&
-                pre_mine_spend_party_details &&
-                pre_mine_spend_input_output_sigs &&
-                make_it_rain &&
-                coin_split &&
-                discover_peer &&
-                whois &&
-                export_tx &&
-                import_tx
+            get_balance
+                && send_tari
+                && burn_tari
+                && pre_mine_spend_get_output_status
+                && pre_mine_spend_session_info
+                && pre_mine_spend_encumber_aggregate_utxo
+                && pre_mine_spend_aggregate_transaction
+                && pre_mine_spend_party_details
+                && pre_mine_spend_input_output_sigs
+                && make_it_rain
+                && coin_split
+                && discover_peer
+                && whois
+                && export_tx
+                && import_tx
         );
     }
 }

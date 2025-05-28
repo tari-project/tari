@@ -32,23 +32,16 @@ use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::proto::protocol as proto,
+        transaction_key_manager::TransactionKeyManagerInterface, transaction_protocol::proto::protocol as proto,
         CryptoFactories,
     },
 };
 use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::utils::map_decode,
+    comms_connector::SubscriptionFactory, domain_message::DomainMessage, services::utils::map_decode,
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
+    async_trait, reply_channel, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext,
 };
 use tokio::sync::broadcast;
 
@@ -69,6 +62,7 @@ use crate::{
 pub mod config;
 pub mod error;
 pub mod handle;
+mod offline_signing;
 pub mod protocols;
 pub mod service;
 pub mod storage;

@@ -157,6 +157,17 @@ pub enum TransactionServiceRequest {
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
     },
+    LockOneSidedTransaction {
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    },
+    SignOneSidedTransaction {
+        request: String,
+    },
     SendOneSidedTransaction {
         destination: TariAddress,
         amount: MicroMinotari,
@@ -346,6 +357,17 @@ impl fmt::Display for TransactionServiceRequest {
                 payment_id,
                 ..
             } => write!(f, "Registering VN ({}, {})", validator_node_public_key, payment_id),
+            Self::LockOneSidedTransaction {
+                destination,
+                amount,
+                payment_id,
+                ..
+            } => write!(
+                f,
+                "LockOneSidedTransaction (to {}, {}, {})",
+                destination, amount, payment_id
+            ),
+            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {})", request,),
             Self::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -456,6 +478,8 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
+    OneSidedTransactionLocked(String),
+    SignedSidedTransaction(String),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -735,6 +759,43 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn lock_one_sided_transaction(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    ) -> Result<String, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::LockOneSidedTransaction {
+                destination,
+                amount,
+                selection_criteria,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+                payment_id,
+            })
+            .await??
+        {
+            TransactionServiceResponse::OneSidedTransactionLocked(result) => Ok(result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn sign_one_sided_transaction(&mut self, request: String) -> Result<String, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SignOneSidedTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::SignedSidedTransaction(result) => Ok(result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

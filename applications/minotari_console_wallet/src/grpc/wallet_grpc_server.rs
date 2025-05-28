@@ -36,6 +36,8 @@ use minotari_app_grpc::tari_rpc::{
     self,
     payment_recipient::PaymentType,
     wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
     CheckConnectivityResponse,
     ClaimHtlcRefundRequest,
     ClaimHtlcRefundResponse,
@@ -77,6 +79,8 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -727,6 +731,74 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(ClaimHtlcRefundResponse {
             results: Some(response),
         }))
+    }
+
+    async fn lock_one_sided_transaction(
+        &self,
+        request: Request<LockOneSidedTransactionRequest>,
+    ) -> Result<Response<LockOneSidedTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let recipient = message.recipient.ok_or(Status::invalid_argument("Missing recipient"))?;
+        let address = TariAddress::from_str(&recipient.address)
+            .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
+
+        let payment_id = if !recipient.raw_payment_id.is_empty() {
+            PaymentId::from_bytes(&recipient.raw_payment_id)
+        } else if let Some(user_pay_id) = recipient.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ));
+                },
+            };
+            PaymentId::Open {
+                user_data: bytes,
+                tx_type: TxType::PaymentToOther,
+            }
+        } else {
+            PaymentId::Empty
+        };
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .lock_one_sided_transaction(
+                address.clone(),
+                recipient.amount.into(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                recipient.fee_per_gram.into(),
+                payment_id,
+            )
+            .await
+        {
+            Ok(result) => LockOneSidedTransactionResponse {
+                is_success: false,
+                lock_details: result,
+                failure_message: Default::default(),
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to lock transaction for address `{}`: {}", address, err
+                );
+                LockOneSidedTransactionResponse {
+                    is_success: false,
+                    lock_details: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
     }
 
     #[allow(clippy::too_many_lines)]

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, path::PathBuf};
+
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -200,6 +202,10 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Could not read file {file_path} - {err}.")]
+    FileReadError { file_path: PathBuf, err: io::Error },
+    #[error("Failed to write to file {file_path} - {err}.")]
+    FileWriteError { file_path: PathBuf, err: io::Error },
 }
 
 impl From<RangeProofError> for TransactionServiceError {

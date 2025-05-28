@@ -2837,6 +2837,53 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ListTxs error! {}", e),
                 }
             },
+            PrepareOneSidedTransactionForSigning(args) => {
+                let destination = args.destination.clone();
+                let payment_id =
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .lock_one_sided_transaction(
+                        destination,
+                        args.amount,
+                        UtxoSelectionCriteria::default(),
+                        OutputFeatures::default(),
+                        config.fee_per_gram * uT,
+                        payment_id,
+                    )
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(output) => {
+                        fs::write(&args.output_file, output).map_err(|err| CommandError::FileWriteError {
+                            file_path: args.output_file,
+                            err,
+                        })?;
+                    },
+                    Err(e) => eprintln!("PrepareOneSidedTransactionForSigning error! {}", e),
+                }
+            },
+            SignOneSidedTransaction(args) => {
+                let request = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file,
+                    err,
+                })?;
+
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .sign_one_sided_transaction(request)
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(output) => {
+                        fs::write(&args.output_file, output).map_err(|err| CommandError::FileWriteError {
+                            file_path: args.output_file,
+                            err,
+                        })?;
+                    },
+                    Err(e) => eprintln!("SignOneSidedTransaction error! {}", e),
+                }
+            },
         }
     }
     if unban_peer_manager_peers {
