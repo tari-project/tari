@@ -1151,6 +1151,7 @@ message TransferResult {
   uint64 transaction_id = 2;
   bool is_success = 3;
   string failure_message = 4;
+  TransactionInfo transaction_info = 5;
 }
 
 message ClaimShaAtomicSwapRequest{
@@ -1194,6 +1195,8 @@ message TransactionInfo {
   bytes raw_payment_id = 12;
   uint64 mined_in_block_height = 13;
   bytes user_payment_id = 14;
+  repeated bytes input_commitments = 15;
+  repeated bytes output_commitments = 16;
 }
 
 enum TransactionDirection {
