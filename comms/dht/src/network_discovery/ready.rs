@@ -103,6 +103,7 @@ impl DiscoveryReady {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn process(&mut self, current_num_rounds: usize) -> Result<StateEvent, NetworkDiscoveryError> {
         let num_peers = self.context.peer_manager.count().await;
         debug!(

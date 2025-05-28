@@ -37,7 +37,7 @@ use tari_core::{
             TxSubmissionResponse,
         },
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
-        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+        state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
         sync::rpc::BaseNodeSyncRpcService,
     },
     blocks::ChainBlock,

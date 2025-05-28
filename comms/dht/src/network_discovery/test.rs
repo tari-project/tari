@@ -170,14 +170,17 @@ mod state_machine {
 
 mod discovery_ready {
     use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
+    use tokio::sync::RwLock;
 
     use super::*;
-    use crate::network_discovery::{
-        ready::DiscoveryReady,
-        state_machine::{NetworkDiscoveryContext, StateEvent},
-        DhtNetworkDiscoveryRoundInfo,
+    use crate::{
+        network_discovery::{
+            ready::DiscoveryReady,
+            state_machine::{NetworkDiscoveryContext, StateEvent},
+            DhtNetworkDiscoveryRoundInfo,
+        },
+        BootstrapMethod,
     };
-
     fn setup(
         config: NetworkDiscoveryConfig,
     ) -> (
@@ -203,6 +206,8 @@ mod discovery_ready {
             all_attempted_peers: Default::default(),
             event_tx,
             last_round: Default::default(),
+            bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
+            bootstrap_started_at: Arc::new(RwLock::new(None)),
         };
 
         let ready = DiscoveryReady::new(context.clone());
@@ -251,6 +256,7 @@ mod discovery_ready {
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
                 sync_peers: vec![],
+                ..Default::default()
             })
             .await;
         let state_event = ready.next_event().await;

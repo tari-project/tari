@@ -124,6 +124,7 @@ impl SeedStrap {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn discover_peers_via_seeds(
         &mut self,
         round_info: &mut DhtNetworkDiscoveryRoundInfo,
@@ -148,7 +149,7 @@ impl SeedStrap {
         let mut total_peers_added_this_round = 0;
         let mut total_duplicates_this_round = 0;
         let mut attempted_seed_contacts = 0;
-        let mut successful_seed_contacts = 0;
+        let mut successful_seed_contacts = 0usize;
 
         let num_seeds_to_try = cmp::min(
             seed_peers_available.len(),
@@ -458,9 +459,7 @@ impl SeedStrap {
                 if round_info.num_succeeded > 0 {
                     round_info.num_succeeded -= 1;
                 }
-                if successful_seed_contacts > 0 {
-                    successful_seed_contacts -= 1;
-                }
+                successful_seed_contacts = successful_seed_contacts.saturating_sub(1);
             }
 
             info!(

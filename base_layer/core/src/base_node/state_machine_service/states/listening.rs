@@ -209,7 +209,10 @@ impl Listening {
 
             info!(target: LOG_TARGET, "[BN SM LISTENING] Processed {} missed DHT events. Bootstrap complete: {}", events_processed, shared.is_primary_bootstrap_complete);
 
-            if !shared.is_primary_bootstrap_complete {
+            if shared.is_primary_bootstrap_complete {
+                current_listening_info.bootstrap_phase = None;
+                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
+            } else {
                 // Default to round 0 until first DhtEvent updates it
                 current_listening_info.bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo {
                     current_round: 0,
@@ -219,10 +222,7 @@ impl Listening {
                         .num_initial_sync_rounds_seed_bootstrap(),
                 });
                 info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap not complete - setting UI to show bootstrap phase 0/{}", shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap());
-            } else {
-                current_listening_info.bootstrap_phase = None;
-                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
-            }
+            };
 
             // Ensure other fields are also current
             current_listening_info.synced = self.is_synced;
@@ -265,11 +265,10 @@ impl Listening {
                                     }
 
                                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
-                                    if !configured_sync_peers.is_empty() {
-                                        if !configured_sync_peers.contains(peer_metadata.node_id()) {
-                                            continue;
-                                        }
+                                    if !configured_sync_peers.is_empty() && !configured_sync_peers.contains(peer_metadata.node_id()) {
+                                         continue;
                                     };
+
                                     let local_metadata = match shared.db.get_chain_metadata().await {
                                         Ok(m) => m,
                                         Err(e) => {
@@ -279,7 +278,7 @@ impl Listening {
                                     let mut sync_mode = determine_sync_mode(
                                         shared.config.blocks_behind_before_considered_lagging,
                                         &local_metadata,
-                                        &peer_metadata,
+                                        peer_metadata,
                                     );
                                     if let SyncStatus::BehindButNotYetLagging {
                                         local,
@@ -300,10 +299,11 @@ impl Listening {
                                                 sync_peers: sync_peers.clone(),
                                             };
                                         }
-                                    } else {
-                                        if sync_mode == SyncStatus::UpToDate {
+                                    } else if sync_mode == SyncStatus::UpToDate {
                                             time_since_better_block = None;
-                                        }
+
+                                    } else {
+                                        // here for clippy
                                     }
                                     if !self.is_synced && sync_mode.is_up_to_date() {
                                         ahead_of_peers_counter += 1;

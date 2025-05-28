@@ -325,7 +325,7 @@ impl DhtNetworkDiscovery {
         // Remember if current state is SeedStrap for error handling
         let was_seed_strap = current_state.is_seed_strap();
 
-        let new_state = match (current_state, next_event) {
+        match (current_state, next_event) {
             (State::Initializing, StateEvent::Initialized) => {
                 self.context.mark_bootstrap_started().await;
                 self.context.set_bootstrap_method(BootstrapMethod::SeedStrap).await;
@@ -400,9 +400,7 @@ impl DhtNetworkDiscovery {
                 );
                 state
             },
-        };
-
-        new_state
+        }
     }
 
     #[inline]
@@ -429,7 +427,11 @@ impl DhtNetworkDiscovery {
         loop {
             let shutdown_signal = self.shutdown_signal.clone();
 
-            let next_event = if !bootstrap_completed {
+            let next_event = if bootstrap_completed {
+                let fut = self.get_next_event(&mut state);
+                futures::pin_mut!(fut);
+                or_shutdown(shutdown_signal, fut).await
+            } else {
                 // Create a separate context to avoid borrow issues
                 let context_clone = self.context.clone();
                 let bootstrap_timeout_duration = self.config().network_discovery.bootstrap_timeout;
@@ -446,10 +448,6 @@ impl DhtNetworkDiscovery {
                         StateEvent::Ready
                     }
                 }
-            } else {
-                let fut = self.get_next_event(&mut state);
-                futures::pin_mut!(fut);
-                or_shutdown(shutdown_signal, fut).await
             };
 
             // Check if bootstrap completed with this event
@@ -498,17 +496,11 @@ impl Display for DiscoveryParams {
 }
 
 // Add this enum to describe the current discovery phase
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DiscoveryPhase {
     SeedStrap,
+    #[default]
     General, // For regular, ongoing discovery after initial bootstrap
-}
-
-// Add a default, perhaps General is suitable for most cases or when phase is not specific.
-impl Default for DiscoveryPhase {
-    fn default() -> Self {
-        DiscoveryPhase::General
-    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

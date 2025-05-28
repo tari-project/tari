@@ -37,7 +37,7 @@ use tari_common_types::{
 };
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+    base_node::state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
