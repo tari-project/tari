@@ -1968,10 +1968,13 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
         return ptr::null_mut();
     }
 
-    let cstring = CStr::from_ptr(emoji)
-        .to_str()
-        .map_err(|_| TariAddressError::InvalidEmoji)
-        .unwrap();
+    let cstring = match CStr::from_ptr(emoji).to_str() {
+        Ok(v) => v.to_owned(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
+            return ptr::null_mut();
+        },
+    };
     match TariAddress::from_emoji_string(cstring) {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(_) => {
