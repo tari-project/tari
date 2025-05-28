@@ -78,7 +78,6 @@ use minotari_app_grpc::tari_rpc::{
     ImportUtxosRequest,
     ImportUtxosResponse,
     OutputFeatures as OutputFeaturesRpc,
-    RangeProof,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -1069,6 +1068,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_completed_transaction_details(
         &self,
         request: Request<GetCompletedTransactionDetailsRequest>,
@@ -1090,92 +1090,95 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 ))
             })?;
 
-        Ok(Response::new(GetCompletedTransactionDetailsResponse {
-            transaction: Some(Transaction {
-                offset: tx.transaction.offset.to_vec(),
-                body: Some(AggregateBody {
-                    inputs: tx
-                        .transaction
-                        .body
-                        .inputs()
-                        .iter()
-                        .map(|input| TransactionInput {
-                            features: None, // Default empty features
-                            commitment: input
-                                .commitment()
-                                .map(|commitment| commitment.to_vec())
-                                .unwrap_or_default(),
-                            script: input.script().map(|script| script.to_bytes()).unwrap_or_default(),
-                            input_data: input.input_data.to_bytes(),
-                            hash: Vec::new(), // Default empty hash
-                            script_signature: Some(ComAndPubSignature {
-                                ephemeral_commitment: input.script_signature.ephemeral_commitment().as_bytes().to_vec(),
-                                ephemeral_pubkey: input.script_signature.ephemeral_pubkey().as_bytes().to_vec(),
-                                u_a: input.script_signature.u_a().as_bytes().to_vec(),
-                                u_x: input.script_signature.u_x().as_bytes().to_vec(),
-                                u_y: input.script_signature.u_y().as_bytes().to_vec(),
-                            }),
-                            covenant: Vec::new(),       // Default empty covenant
-                            encrypted_data: Vec::new(), // Default empty encrypted data
-                            metadata_signature: None,   // Default no metadata signature
-                            output_hash: input.output_hash().to_vec(),
-                            sender_offset_public_key: Vec::new(), // Default empty sender offset public key
-                            version: 0,                           // Default version
-                            minimum_value_promise: 0,             // Default minimum value promise
-                            rangeproof_hash: Vec::new(),          // Default empty rangeproof hash
-                        })
-                        .collect(),
-                    outputs: tx
-                        .transaction
-                        .body
-                        .outputs()
-                        .iter()
-                        .map(|output| TransactionOutput {
-                            features: Some(OutputFeaturesRpc {
-                                version: output.features.version as u32,
-                                output_type: output.features.output_type as u32,
-                                maturity: output.features.maturity,
-                                coinbase_extra: output.features.coinbase_extra.to_vec(),
-                                sidechain_feature: None, // Default empty covenant
-                                range_proof_type: output.features.range_proof_type as u32,
-                            }),
-                            commitment: output.commitment.as_bytes().to_vec(),
-                            range_proof: None, // Default empty range proof
-                            hash: output.hash().to_vec(),
-                            script: output.script.to_bytes(),
-                            sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
-                            covenant: Vec::new(),       // Default empty covenant
-                            encrypted_data: Vec::new(), // Default empty encrypted data
-                            metadata_signature: None,   // Default no metadata signature
-                            version: 0,                 // Default version
-                            minimum_value_promise: 0,   // Default minimum value promise
-                        })
-                        .collect(),
-                    kernels: tx
-                        .transaction
-                        .body
-                        .kernels()
-                        .iter()
-                        .map(|kernel| TransactionKernel {
-                            features: kernel.features.bits() as u32,
-                            fee: kernel.fee.into(),
-                            lock_height: kernel.lock_height,
-                            excess: kernel.excess.as_bytes().to_vec(),
-                            excess_sig: Some(SignatureRpc {
-                                public_nonce: kernel.excess_sig.get_compressed_public_nonce().as_bytes().to_vec(),
-                                signature: kernel.excess_sig.get_signature().as_bytes().to_vec(),
-                            }),
-                            hash: kernel.hash().to_vec(),
-                            version: kernel.version as u32,
-                            burn_commitment: kernel
-                                .burn_commitment
-                                .as_ref()
-                                .map_or(Vec::new(), |c| c.as_bytes().to_vec()),
-                        })
-                        .collect(),
-                }),
-                script_offset: tx.transaction.script_offset.to_vec(),
+        let transaction = Transaction {
+            offset: tx.transaction.offset.to_vec(),
+            body: Some(AggregateBody {
+                inputs: tx
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|input| TransactionInput {
+                        features: None, // Default empty features
+                        commitment: input
+                            .commitment()
+                            .map(|commitment| commitment.to_vec())
+                            .unwrap_or_default(),
+                        script: input.script().map(|script| script.to_bytes()).unwrap_or_default(),
+                        input_data: input.input_data.to_bytes(),
+                        hash: Vec::new(), // Default empty hash
+                        script_signature: Some(ComAndPubSignature {
+                            ephemeral_commitment: input.script_signature.ephemeral_commitment().as_bytes().to_vec(),
+                            ephemeral_pubkey: input.script_signature.ephemeral_pubkey().as_bytes().to_vec(),
+                            u_a: input.script_signature.u_a().as_bytes().to_vec(),
+                            u_x: input.script_signature.u_x().as_bytes().to_vec(),
+                            u_y: input.script_signature.u_y().as_bytes().to_vec(),
+                        }),
+                        covenant: Vec::new(),       // Default empty covenant
+                        encrypted_data: Vec::new(), // Default empty encrypted data
+                        metadata_signature: None,   // Default no metadata signature
+                        output_hash: input.output_hash().to_vec(),
+                        sender_offset_public_key: Vec::new(), // Default empty sender offset public key
+                        version: 0,                           // Default version
+                        minimum_value_promise: 0,             // Default minimum value promise
+                        rangeproof_hash: Vec::new(),          // Default empty rangeproof hash
+                    })
+                    .collect(),
+                outputs: tx
+                    .transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|output| TransactionOutput {
+                        features: Some(OutputFeaturesRpc {
+                            version: output.features.version as u32,
+                            output_type: output.features.output_type as u32,
+                            maturity: output.features.maturity,
+                            coinbase_extra: output.features.coinbase_extra.to_vec(),
+                            sidechain_feature: None, // Default empty covenant
+                            range_proof_type: output.features.range_proof_type as u32,
+                        }),
+                        commitment: output.commitment.as_bytes().to_vec(),
+                        range_proof: None, // Default empty range proof
+                        hash: output.hash().to_vec(),
+                        script: output.script.to_bytes(),
+                        sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
+                        covenant: Vec::new(),       // Default empty covenant
+                        encrypted_data: Vec::new(), // Default empty encrypted data
+                        metadata_signature: None,   // Default no metadata signature
+                        version: 0,                 // Default version
+                        minimum_value_promise: 0,   // Default minimum value promise
+                    })
+                    .collect(),
+                kernels: tx
+                    .transaction
+                    .body
+                    .kernels()
+                    .iter()
+                    .map(|kernel| TransactionKernel {
+                        features: u32::from(kernel.features.bits()),
+                        fee: kernel.fee.into(),
+                        lock_height: kernel.lock_height,
+                        excess: kernel.excess.as_bytes().to_vec(),
+                        excess_sig: Some(SignatureRpc {
+                            public_nonce: kernel.excess_sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                            signature: kernel.excess_sig.get_signature().as_bytes().to_vec(),
+                        }),
+                        hash: kernel.hash().to_vec(),
+                        version: kernel.version as u32,
+                        burn_commitment: kernel
+                            .burn_commitment
+                            .as_ref()
+                            .map_or(Vec::new(), |c| c.as_bytes().to_vec()),
+                    })
+                    .collect(),
             }),
+            script_offset: tx.transaction.script_offset.to_vec(),
+        };
+        trace!(target: LOG_TARGET, "'GetAllCompletedTransactions' completed in {:.2?}", start.elapsed());
+
+        Ok(Response::new(GetCompletedTransactionDetailsResponse {
+            transaction: Some(transaction),
         }))
     }
 
