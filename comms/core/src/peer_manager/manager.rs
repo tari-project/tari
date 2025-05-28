@@ -23,6 +23,7 @@
 use std::{fmt, time::Duration};
 
 use multiaddr::Multiaddr;
+use tari_utilities::hex::Hex;
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -80,9 +81,9 @@ impl PeerManager {
         Ok(peer_id)
     }
 
-    /// The peer with the specified public_key will be removed from the PeerManager
-    pub async fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage_sql.delete_peer(node_id)?;
+    /// The peer with the specified node id will be soft deleted (marked as deleted)
+    pub async fn soft_delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_storage_sql.soft_delete_peer(node_id)?;
         #[cfg(feature = "metrics")]
         {
             let count = self.count().await;
@@ -93,8 +94,8 @@ impl PeerManager {
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let deleted_peers = self.peer_storage_sql.delete_all_stale_peers()?;
+    pub async fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+        let deleted_peers = self.peer_storage_sql.hard_delete_all_stale_peers()?;
         Ok(deleted_peers)
     }
 
@@ -184,7 +185,7 @@ impl PeerManager {
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage_sql.direct_identity_node_id(node_id) {
             Ok(peer) => Ok(Some(peer)),
-            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(PeerManagerError::PeerNotFoundError(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
         }
     }
@@ -196,7 +197,7 @@ impl PeerManager {
     ) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage_sql.direct_identity_public_key(public_key) {
             Ok(peer) => Ok(Some(peer)),
-            Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(PeerManagerError::PeerNotFoundError(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
         }
     }
@@ -296,7 +297,7 @@ impl PeerManager {
         let peer = self
             .find_by_node_id(node_id)
             .await?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
         Ok(peer.features)
     }
 
@@ -308,7 +309,7 @@ impl PeerManager {
         let peer = self
             .find_by_node_id(node_id)
             .await?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
         Ok(peer.addresses)
     }
 
@@ -324,7 +325,9 @@ impl PeerManager {
         }
         let peers = self.get_peers_by_node_ids(node_ids).await?;
         if peers.is_empty() {
-            return Err(PeerManagerError::PeerNotFoundError);
+            return Err(PeerManagerError::PeerNotFoundError(
+                node_ids.iter().map(|id| id.to_hex()).collect(),
+            ));
         }
         let results = peers.into_iter().map(|p| (p.node_id, p.addresses)).collect::<Vec<_>>();
         Ok(results)

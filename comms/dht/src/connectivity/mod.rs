@@ -866,28 +866,30 @@ impl DhtConnectivity {
         if !self.config.excluded_dial_addresses.is_empty() {
             let mut neighbours = Vec::with_capacity(self.neighbours.len());
             for peer in &self.neighbours {
-                let addresses = self.peer_manager.get_peer_multi_addresses(peer).await?;
-                if !addresses.iter().all(|addr| {
-                    self.config
-                        .excluded_dial_addresses
-                        .iter()
-                        .any(|v| v.contains(addr.address()))
-                }) {
-                    neighbours.push(peer.clone());
+                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await {
+                    if !addresses.iter().all(|addr| {
+                        self.config
+                            .excluded_dial_addresses
+                            .iter()
+                            .any(|v| v.contains(addr.address()))
+                    }) {
+                        neighbours.push(peer.clone());
+                    }
                 }
             }
             self.neighbours = neighbours;
 
             let mut random_pool = Vec::with_capacity(self.random_pool.len());
             for peer in &self.random_pool {
-                let addresses = self.peer_manager.get_peer_multi_addresses(peer).await?;
-                if !addresses.iter().all(|addr| {
-                    self.config
-                        .excluded_dial_addresses
-                        .iter()
-                        .any(|v| v.contains(addr.address()))
-                }) {
-                    random_pool.push(peer.clone());
+                if let Ok(addresses) = self.peer_manager.get_peer_multi_addresses(peer).await {
+                    if !addresses.iter().all(|addr| {
+                        self.config
+                            .excluded_dial_addresses
+                            .iter()
+                            .any(|v| v.contains(addr.address()))
+                    }) {
+                        random_pool.push(peer.clone());
+                    }
                 }
             }
             self.random_pool = random_pool;

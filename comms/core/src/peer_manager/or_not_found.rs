@@ -20,20 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::PeerManagerError;
+use tari_utilities::hex::Hex;
+
+use crate::peer_manager::{NodeId, PeerManagerError};
 
 /// Extension trait for Result<Option<T>, PeerManagerError>.
 pub trait OrNotFound {
     type Value;
     type Error;
-    fn or_not_found(self) -> Result<Self::Value, Self::Error>;
+    fn or_not_found(self, node_id: &NodeId) -> Result<Self::Value, Self::Error>;
 }
 
 impl<T> OrNotFound for Result<Option<T>, PeerManagerError> {
     type Error = PeerManagerError;
     type Value = T;
 
-    fn or_not_found(self) -> Result<Self::Value, Self::Error> {
-        self.and_then(|val| val.ok_or(PeerManagerError::PeerNotFoundError))
+    fn or_not_found(self, node_id: &NodeId) -> Result<Self::Value, Self::Error> {
+        self.and_then(|val| val.ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()])))
     }
 }

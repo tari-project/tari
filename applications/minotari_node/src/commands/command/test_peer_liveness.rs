@@ -86,7 +86,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         let address_clone = args.address.clone();
 
         // Remove the peer from the peer manager (not the peer db)
-        let _res = peer_manager.delete_peer(&node_id).await;
+        let _res = peer_manager.soft_delete_peer(&node_id).await;
 
         // Create a new peer with the given address, if the peer exists, this will merge the given address
         let peer = Peer::new(

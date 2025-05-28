@@ -34,7 +34,7 @@ use crate::peer_manager::NodeId;
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
     #[error("The requested peer does not exist")]
-    PeerNotFoundError,
+    PeerNotFoundError(Vec<String>),
     #[error("DB Data inconsistency: {0}")]
     DataInconsistency(String),
     #[error("The peer has been banned")]
@@ -78,13 +78,6 @@ impl From<JoinError> for PeerManagerError {
 impl From<StorageError> for PeerManagerError {
     fn from(err: StorageError) -> Self {
         PeerManagerError::StorageError(err.to_string())
-    }
-}
-
-impl PeerManagerError {
-    /// Returns true if this error indicates that the peer is not found, otherwise false
-    pub fn is_peer_not_found(&self) -> bool {
-        matches!(self, PeerManagerError::PeerNotFoundError)
     }
 }
 

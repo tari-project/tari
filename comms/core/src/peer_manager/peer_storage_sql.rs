@@ -24,6 +24,7 @@ use std::{cmp::min, time::Duration};
 
 use log::*;
 use multiaddr::Multiaddr;
+use tari_utilities::hex::Hex;
 
 use crate::{
     net_address::PeerAddressSource,
@@ -99,9 +100,9 @@ impl PeerStorageSql {
             .add_or_update_online_peer(pubkey, node_id, addresses, peer_features, source)?)
     }
 
-    /// The peer with the specified public_key will be removed from the PeerManager
-    pub fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_db.set_deleted_at(node_id)?;
+    /// The peer with the specified node id will be soft deleted (marked as deleted)
+    pub fn soft_delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_db.soft_delete_peer(node_id)?;
         Ok(())
     }
 
@@ -159,7 +160,7 @@ impl PeerStorageSql {
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         let peer = self
             .get_peer_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
 
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
@@ -172,7 +173,10 @@ impl PeerStorageSql {
     pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         let peer = self
             .find_by_public_key(public_key)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![NodeId::from_public_key(
+                public_key,
+            )
+            .to_hex()]))?;
 
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
@@ -244,10 +248,10 @@ impl PeerStorageSql {
     }
 
     /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub fn delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+    pub fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
         Ok(self
             .peer_db
-            .delete_all_stale_peers(STALE_PEER_THRESHOLD_DURATION, MAX_NEIGHBOUR_WALLET_PEER_COUNT)?)
+            .hard_delete_all_stale_peers(STALE_PEER_THRESHOLD_DURATION, MAX_NEIGHBOUR_WALLET_PEER_COUNT)?)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
@@ -330,7 +334,10 @@ impl PeerStorageSql {
         let node_id = NodeId::from_key(public_key);
         self.peer_db
             .set_banned(&node_id, duration, reason)?
-            .ok_or(PeerManagerError::PeerNotFoundError)
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![NodeId::from_public_key(
+                public_key,
+            )
+            .to_hex()]))
     }
 
     /// Ban the peer for the given duration
@@ -342,13 +349,13 @@ impl PeerStorageSql {
     ) -> Result<NodeId, PeerManagerError> {
         self.peer_db
             .set_banned(node_id, duration, reason)?
-            .ok_or(PeerManagerError::PeerNotFoundError)
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))
     }
 
     pub fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         let peer = self
             .get_peer_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
+            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
         Ok(peer.is_banned())
     }
 
@@ -597,7 +604,7 @@ mod test {
         peer_storage.find_by_public_key(&peer3.public_key).unwrap().unwrap();
 
         // Test delete of border case peer
-        assert!(peer_storage.delete_peer(&peer3.node_id).is_ok());
+        assert!(peer_storage.soft_delete_peer(&peer3.node_id).is_ok());
 
         // It is a logical delete, so there should still be 3 peers in the db
         assert_eq!(peer_storage.peer_db.size(), 3);

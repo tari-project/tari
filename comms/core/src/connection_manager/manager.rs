@@ -25,6 +25,7 @@ use std::{fmt, sync::Arc};
 use log::*;
 use multiaddr::Multiaddr;
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_utilities::hex::Hex;
 use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -510,7 +511,7 @@ where
                 warn!(target: LOG_TARGET, "Peer not found for dial");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(
-                        PeerManagerError::PeerNotFoundError,
+                        PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]),
                     )));
                 }
             },

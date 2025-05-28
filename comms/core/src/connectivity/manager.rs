@@ -467,7 +467,12 @@ impl ConnectivityManagerActor {
 
     async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
         let start = Instant::now();
-        match tokio::time::timeout(STALE_PEER_DELETE_TIMEOUT, self.peer_manager.delete_all_stale_peers()).await {
+        match tokio::time::timeout(
+            STALE_PEER_DELETE_TIMEOUT,
+            self.peer_manager.hard_delete_all_stale_peers(),
+        )
+        .await
+        {
             Ok(res) => match res {
                 Ok(deleted) => {
                     let len = deleted.len();
@@ -713,7 +718,7 @@ impl ConnectivityManagerActor {
                             .map(|d| format!("{}s ago", d.as_secs()))
                             .unwrap_or_else(|| "Never".to_string()),
                     );
-                    self.peer_manager.delete_peer(node_id).await?;
+                    self.peer_manager.soft_delete_peer(node_id).await?;
                 }
             }
         }
@@ -1108,7 +1113,7 @@ impl ConnectivityManagerActor {
             format_duration(duration),
             reason
         );
-        self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
+        let ban_result = self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await;
 
         #[cfg(feature = "metrics")]
         super::metrics::banned_peers_counter().inc();
@@ -1123,6 +1128,7 @@ impl ConnectivityManagerActor {
                 "Disconnected banned peer {}. The peer connection status is {}", node_id, status
             );
         }
+        ban_result?;
         Ok(())
     }
 

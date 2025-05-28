@@ -400,7 +400,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
         let peer = peer_validator.validate_peer(new_peer, maybe_existing_peer)?;
         self.peer_manager.add_or_update_peer(peer).await?;
-        let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
+        let origin_peer = self
+            .peer_manager
+            .find_by_node_id(&node_id)
+            .await
+            .or_not_found(&node_id)?;
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
