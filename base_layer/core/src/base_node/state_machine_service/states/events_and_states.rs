@@ -262,8 +262,7 @@ impl StateInfo {
                 if let Some(bootstrap_info) = info.bootstrap_phase {
                     format!(
                         "Bootstrapping via seeds (Round {}/{})",
-                        bootstrap_info.current_round,
-                        bootstrap_info.total_rounds
+                        bootstrap_info.current_round, bootstrap_info.total_rounds
                     )
                 } else if info.is_synced() {
                     "Listening".to_string()

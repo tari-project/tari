@@ -32,7 +32,13 @@ use tari_comms::{
 };
 
 use super::{
-    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent, DiscoveryPhase},
+    state_machine::{
+        DhtNetworkDiscoveryRoundInfo,
+        DiscoveryParams,
+        DiscoveryPhase,
+        NetworkDiscoveryContext,
+        StateEvent,
+    },
     NetworkDiscoveryError,
 };
 use crate::{

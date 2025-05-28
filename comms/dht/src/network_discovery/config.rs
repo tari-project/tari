@@ -62,17 +62,17 @@ pub struct NetworkDiscoveryConfig {
     #[serde(default)]
     #[serde(with = "serializers::optional_seconds")]
     pub initial_peer_sync_delay: Option<Duration>,
-    
+
     /// The minimum number of peers to attempt to sync with during each seed peer sync operation.
     /// If this many peers are successfully added to the peer DB (across all seed peers attempted
     /// in one round), the current seed_strap round will end early, provided that
     /// `min_successful_seed_contacts_for_early_exit` is also met.
-    /// Set to 0 to disable this early exit condition (it will always try up to `max_seed_peer_sync_count` 
+    /// Set to 0 to disable this early exit condition (it will always try up to `max_seed_peer_sync_count`
     /// seed peers unless an error occurs or `max_peers_to_sync_per_round` is hit repeatedly).
     /// Default: 15
     #[serde(default)]
     pub seed_peer_min_initial_sync_peers_needed: usize,
-    
+
     /// The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
     /// before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.
     /// Default: 5

@@ -58,9 +58,9 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BootstrapMethod {
-    None,           // No bootstrap needed
-    SeedStrap,      // Traditional seed bootstrap
-    ExistingPeers,  // Skipped due to sufficient existing peers
+    None,          // No bootstrap needed
+    SeedStrap,     // Traditional seed bootstrap
+    ExistingPeers, // Skipped due to sufficient existing peers
 }
 
 impl Display for BootstrapMethod {
@@ -197,13 +197,13 @@ impl NetworkDiscoveryContext {
     /// Set the bootstrap method and notify the base node
     pub(super) async fn set_bootstrap_method(&self, method: BootstrapMethod) {
         *self.bootstrap_method.write().await = method.clone();
-        
+
         info!(
             target: LOG_TARGET,
             "[DHT BOOTSTRAP] Bootstrap method determined: {}",
             method
         );
-        
+
         // Publish event to inform base node of bootstrap method
         self.publish_event(DhtEvent::BootstrapMethodDetermined(method));
     }
@@ -217,14 +217,14 @@ impl NetworkDiscoveryContext {
     pub(super) async fn complete_bootstrap(&self, method: BootstrapMethod) {
         let started_at = *self.bootstrap_started_at.read().await;
         let duration = started_at.map(|start| start.elapsed());
-        
+
         info!(
             target: LOG_TARGET,
             "[DHT BOOTSTRAP] Bootstrap completed via {} in {:?}",
             method,
             duration.unwrap_or_default()
         );
-        
+
         self.publish_event(DhtEvent::PrimaryBootstrapComplete);
     }
 
@@ -236,7 +236,7 @@ impl NetworkDiscoveryContext {
             DhtEvent::BootstrapMethodDetermined(_) => "BootstrapMethodDetermined",
             _ => "Other",
         };
-        
+
         match self.event_tx.send(Arc::new(event)) {
             Ok(_) => {
                 info!(
@@ -254,7 +254,7 @@ impl NetworkDiscoveryContext {
                     e,
                     num_receivers
                 );
-            }
+            },
         }
     }
 
@@ -321,10 +321,10 @@ impl DhtNetworkDiscovery {
             target: LOG_TARGET,
             "Transition triggered from current state `{}` by event `{}`", current_state, next_event
         );
-        
+
         // Remember if current state is SeedStrap for error handling
         let was_seed_strap = current_state.is_seed_strap();
-        
+
         let new_state = match (current_state, next_event) {
             (State::Initializing, StateEvent::Initialized) => {
                 self.context.mark_bootstrap_started().await;
@@ -351,7 +351,7 @@ impl DhtNetworkDiscovery {
                     );
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
-                
+
                 // SeedStrap completed successfully, mark bootstrap complete
                 self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                 self.context.increment_num_rounds();
@@ -373,19 +373,15 @@ impl DhtNetworkDiscovery {
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
             },
-            (State::Ready(_), StateEvent::OnConnectMode) => {
-                State::OnConnect(OnConnect::new(self.context.clone()))
-            },
-            (State::OnConnect(_), StateEvent::Ready) => {
-                State::Ready(DiscoveryReady::new(self.context.clone()))
-            },
+            (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
+            (State::OnConnect(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_state, StateEvent::Errored(err)) => {
                 error!(
                     target: LOG_TARGET,
                     "Network discovery errored: {}. Waiting for {:.0?}", err, config.on_failure_idle_period
                 );
-                
+
                 // If we're in SeedStrap and get an error, still mark bootstrap complete to prevent UI stuck state
                 if was_seed_strap {
                     warn!(
@@ -394,7 +390,7 @@ impl DhtNetworkDiscovery {
                     );
                     self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                 }
-                
+
                 State::Waiting(config.on_failure_idle_period.into())
             },
             (state, event) => {
@@ -405,7 +401,7 @@ impl DhtNetworkDiscovery {
                 state
             },
         };
-        
+
         new_state
     }
 
@@ -426,21 +422,21 @@ impl DhtNetworkDiscovery {
             );
             return;
         }
-        
+
         let mut state = State::Initializing;
         let mut bootstrap_completed = false;
 
         loop {
             let shutdown_signal = self.shutdown_signal.clone();
-            
+
             let next_event = if !bootstrap_completed {
                 // Create a separate context to avoid borrow issues
                 let context_clone = self.context.clone();
                 let bootstrap_timeout_duration = self.config().network_discovery.bootstrap_timeout;
-                
+
                 let fut = self.get_next_event(&mut state);
                 futures::pin_mut!(fut);
-                
+
                 tokio::select! {
                     event = or_shutdown(shutdown_signal, fut) => event,
                     _ = tokio::time::sleep(bootstrap_timeout_duration) => {
@@ -455,7 +451,7 @@ impl DhtNetworkDiscovery {
                 futures::pin_mut!(fut);
                 or_shutdown(shutdown_signal, fut).await
             };
-            
+
             // Check if bootstrap completed with this event
             if matches!(next_event, StateEvent::DiscoveryComplete(_)) && state.is_seed_strap() {
                 bootstrap_completed = true;
@@ -463,7 +459,7 @@ impl DhtNetworkDiscovery {
             if matches!(next_event, StateEvent::InitialPeersSufficient) {
                 bootstrap_completed = true;
             }
-            
+
             state = self.transition(state, next_event).await;
             if state.is_shutdown() {
                 break;
@@ -510,7 +506,9 @@ pub enum DiscoveryPhase {
 
 // Add a default, perhaps General is suitable for most cases or when phase is not specific.
 impl Default for DiscoveryPhase {
-    fn default() -> Self { DiscoveryPhase::General }
+    fn default() -> Self {
+        DiscoveryPhase::General
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -521,8 +519,8 @@ pub struct DhtNetworkDiscoveryRoundInfo {
     pub sync_peers: Vec<NodeId>,
     // New fields:
     pub phase: DiscoveryPhase,
-    pub round_number: Option<usize>,      // Current round/iteration number if applicable
-    pub total_rounds: Option<usize>,    // Total rounds/iterations planned for this phase, if applicable
+    pub round_number: Option<usize>, // Current round/iteration number if applicable
+    pub total_rounds: Option<usize>, // Total rounds/iterations planned for this phase, if applicable
 }
 
 impl DhtNetworkDiscoveryRoundInfo {

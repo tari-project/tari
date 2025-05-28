@@ -23,8 +23,8 @@
 use std::ops::Deref;
 
 use log::*;
-use tokio::sync::broadcast;
 use tari_comms_dht::event::DhtEvent;
+use tokio::sync::broadcast;
 
 use crate::{
     base_node::{
@@ -44,13 +44,16 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 pub struct Starting;
 
 impl Starting {
-    pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent {
         info!(target: LOG_TARGET, "Starting node.");
 
         // Check for DHT bootstrap completion first
         info!(target: LOG_TARGET, "[BN STARTING] Checking DHT bootstrap status before proceeding");
         let mut dht_events = shared.dht_event_stream.resubscribe();
-        
+
         // Check for any recent DHT bootstrap events
         let mut bootstrap_events_found = 0;
         loop {
@@ -71,7 +74,7 @@ impl Starting {
                             info!(target: LOG_TARGET, "[BN STARTING] Found DHT PrimaryBootstrapComplete event - marking primary bootstrap complete");
                             shared.set_primary_bootstrap_complete(true);
                         },
-                        _ => {}
+                        _ => {},
                     }
                 },
                 Err(broadcast::error::TryRecvError::Empty) => {
@@ -85,10 +88,10 @@ impl Starting {
                 Err(broadcast::error::TryRecvError::Closed) => {
                     warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream closed during startup check");
                     break;
-                }
+                },
             }
         }
-        
+
         info!(target: LOG_TARGET, "[BN STARTING] Processed {} DHT bootstrap events. Primary bootstrap complete: {}", bootstrap_events_found, shared.is_primary_bootstrap_complete);
 
         let mut network_silence_count = 0;

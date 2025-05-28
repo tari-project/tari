@@ -23,8 +23,7 @@
 use std::time::Duration;
 
 use log::*;
-use tari_comms::connectivity::ConnectivityError;
-use tari_comms::peer_manager::{PeerQuery, PeerFeatures};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerFeatures};
 
 use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
 
@@ -63,12 +62,12 @@ impl<'a> Initializing<'a> {
         }
 
         // Get detailed peer count breakdown - query all peers
-        let all_peers = match self.context.peer_manager.perform_query(PeerQuery::new()).await {
+        let all_peers = match self.context.peer_manager.all(None).await {
             Ok(peers) => peers,
             Err(e) => {
                 error!(target: LOG_TARGET, "Failed to query peer database: {}. Proceeding to bootstrap anyway.", e);
                 vec![] // If DB query fails, assume no peers and proceed to bootstrap
-            }
+            },
         };
 
         let mut total_peers = 0;
@@ -82,7 +81,7 @@ impl<'a> Initializing<'a> {
 
         for peer in &all_peers {
             total_peers += 1;
-            
+
             if peer.is_seed() {
                 seed_peers += 1;
             } else if peer.is_banned() {
@@ -101,7 +100,7 @@ impl<'a> Initializing<'a> {
         }
 
         let min_peers_for_bootstrap_skip = self.context.config.network_discovery.min_desired_peers;
-        
+
         info!(
             target: LOG_TARGET,
             "BOOTSTRAP DECISION: Peer DB analysis - Total: {}, Seeds: {}, Banned: {}, Deleted: {}, Offline: {}, Failed addresses: {}, Non-comm nodes: {}, Suitable: {} (min required: {})",

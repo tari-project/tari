@@ -30,7 +30,7 @@ use tokio::sync::broadcast;
 use crate::{
     event::DhtEvent,
     network_discovery::{
-        state_machine::{NetworkDiscoveryContext, StateEvent, DiscoveryPhase},
+        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
     },

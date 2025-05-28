@@ -54,11 +54,14 @@ async fn select_peers_for_discovery_round(
             );
             context
                 .peer_manager
-                .closest_peers(
+                .closest_n_active_peers(
                     context.node_identity.node_id(),
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
                     Some(PeerFeatures::COMMUNICATION_NODE),
+                    Some(STALE_PEER_THRESHOLD_DURATION),
+                    true,
+                    None,
                 )
                 .await?
         },
@@ -90,7 +93,7 @@ impl DiscoveryReady {
 
     pub async fn next_event(&mut self) -> StateEvent {
         self.last_discovery = self.context.last_round().await;
-        
+
         // Get current number of rounds before processing
         let current_num_rounds = self.context.num_rounds();
 
@@ -119,7 +122,7 @@ impl DiscoveryReady {
                 num_peers,
                 min_desired_peers
             );
-            
+
             if current_num_rounds >= self.config().network_discovery.idle_after_num_rounds {
                 warn!(
                     target: LOG_TARGET,
@@ -133,13 +136,14 @@ impl DiscoveryReady {
 
             let excluded_peers = self.context.all_attempted_peers.read().await.clone();
             // Use helper to get peers
-            let peers_for_discovery = select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
+            let peers_for_discovery =
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
 
             if peers_for_discovery.is_empty() {
                 debug!(target: LOG_TARGET, "No peers available to attempt discovery (num_peers < min_desired_peers path). Idling.");
                 return Ok(StateEvent::Idle);
             }
-            
+
             return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
                 num_peers_to_request: self.config().network_discovery.max_peers_to_sync_per_round,
                 peers: peers_for_discovery,
@@ -154,9 +158,10 @@ impl DiscoveryReady {
                 "First active round (current_num_rounds = 0) and num_peers ({}) >= min_desired_peers ({}). Forcing DHT discovery.",
                 num_peers, min_desired_peers
             );
-            
+
             let excluded_peers = self.context.all_attempted_peers.read().await.clone();
-            let peers_for_discovery = select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
+            let peers_for_discovery =
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
 
             if peers_for_discovery.is_empty() {
                 debug!(
@@ -166,7 +171,7 @@ impl DiscoveryReady {
                 self.context.reset_num_rounds();
                 return Ok(StateEvent::Idle);
             }
-            
+
             return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
                 num_peers_to_request: self.config().network_discovery.max_peers_to_sync_per_round,
                 peers: peers_for_discovery,
@@ -218,7 +223,7 @@ impl DiscoveryReady {
 
             // If we have performed enough rounds...
             if current_num_rounds >= self.config().network_discovery.idle_after_num_rounds {
-                 debug!(
+                debug!(
                     target: LOG_TARGET,
                     "Sufficient number of discovery rounds ({}) completed ({}/{}). Idling.",
                     current_num_rounds, current_num_rounds, self.config().network_discovery.idle_after_num_rounds
@@ -228,8 +233,11 @@ impl DiscoveryReady {
             }
         }
         // Fallthrough: continue discovery if:
-        // - last_round_info_option is None (but current_num_rounds > 0 - should not happen if SeedStrap always sets last_round_info, this path is more for re-entry from Idle/OnConnect where last_round might be old/cleared) OR
-        // - last_round_info_option showed new peers or failed (and the new SeedStrap success condition above wasn't met), AND
+        // - last_round_info_option is None (but current_num_rounds > 0 - should not happen if SeedStrap always sets
+        //   last_round_info, this path is more for re-entry from Idle/OnConnect where last_round might be old/cleared)
+        //   OR
+        // - last_round_info_option showed new peers or failed (and the new SeedStrap success condition above wasn't
+        //   met), AND
         // - idle_after_num_rounds not yet reached.
         let excluded_peers = self.context.all_attempted_peers.read().await.clone();
         let last_round_info_exists = last_round_info_option.is_some();
@@ -239,15 +247,20 @@ impl DiscoveryReady {
             current_num_rounds, last_round_info_exists
         );
 
-        let peers_for_discovery =
-            select_peers_for_discovery_round(&self.context, last_round_info_option.as_ref(), &excluded_peers, self.config()).await?;
-        
+        let peers_for_discovery = select_peers_for_discovery_round(
+            &self.context,
+            last_round_info_option.as_ref(),
+            &excluded_peers,
+            self.config(),
+        )
+        .await?;
+
         if peers_for_discovery.is_empty() {
             debug!(target: LOG_TARGET, "No peers available to attempt discovery (after all checks in 'Ready' state). Idling. num_rounds = {}", current_num_rounds);
             self.context.reset_num_rounds();
             return Ok(StateEvent::Idle);
         }
-        
+
         Ok(StateEvent::BeginDiscovery(DiscoveryParams {
             num_peers_to_request: self.config().network_discovery.max_peers_to_sync_per_round,
             peers: peers_for_discovery,

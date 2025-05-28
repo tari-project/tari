@@ -26,8 +26,8 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{connectivity::ConnectivityRequester};
-use tari_comms_dht::event::{DhtEventReceiver};
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -294,16 +294,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             self.is_primary_bootstrap_complete,
             self.info.short_desc()
         );
-        
+
         self.is_primary_bootstrap_complete = complete;
-        
+
         if let StateInfo::Listening(mut info) = self.info.clone() {
             let had_bootstrap_phase = info.bootstrap_phase.is_some();
             if complete {
                 info.bootstrap_phase = None;
             }
             self.set_state_info(StateInfo::Listening(info));
-            
+
             info!(
                 target: LOG_TARGET,
                 "[BN SM UPDATE] Updated Listening state. Removed bootstrap_phase: {}. Console should now show 'Listening'",

@@ -30,9 +30,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms_dht::event::DhtEvent;
-use tari_comms_dht::DiscoveryPhase;
-use crate::base_node::state_machine_service::states::events_and_states;
+use tari_comms_dht::{event::DhtEvent, DiscoveryPhase};
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -41,6 +39,7 @@ use crate::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
             states::{
+                events_and_states,
                 BlockSync,
                 DecideNextSync,
                 HeaderSyncState,
@@ -145,7 +144,7 @@ impl Listening {
         network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-        
+
         if network_silence {
             self.set_synced_response(shared);
             warn!(
@@ -169,7 +168,7 @@ impl Listening {
             // Check for any missed DHT events first (to handle timing issues)
             let mut dht_events_check = shared.dht_event_stream.resubscribe();
             info!(target: LOG_TARGET, "[BN SM LISTENING] Checking for any missed DHT bootstrap events before setting up UI state");
-            
+
             // Try to receive any recent DHT events that might have been published before we started listening
             let mut events_processed = 0;
             loop {
@@ -190,7 +189,7 @@ impl Listening {
                                 info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed PrimaryBootstrapComplete event - marking bootstrap complete");
                                 shared.set_primary_bootstrap_complete(true);
                             },
-                            _ => {}
+                            _ => {},
                         }
                     },
                     Err(broadcast::error::TryRecvError::Empty) => {
@@ -204,30 +203,33 @@ impl Listening {
                     Err(broadcast::error::TryRecvError::Closed) => {
                         warn!(target: LOG_TARGET, "[BN SM LISTENING] DHT event stream closed during startup check");
                         break;
-                    }
+                    },
                 }
             }
-            
+
             info!(target: LOG_TARGET, "[BN SM LISTENING] Processed {} missed DHT events. Bootstrap complete: {}", events_processed, shared.is_primary_bootstrap_complete);
 
             if !shared.is_primary_bootstrap_complete {
                 // Default to round 0 until first DhtEvent updates it
                 current_listening_info.bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo {
                     current_round: 0,
-                    total_rounds: shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap(),
+                    total_rounds: shared
+                        .config
+                        .blockchain_sync_config
+                        .num_initial_sync_rounds_seed_bootstrap(),
                 });
                 info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap not complete - setting UI to show bootstrap phase 0/{}", shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap());
             } else {
                 current_listening_info.bootstrap_phase = None;
                 info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
             }
-            
+
             // Ensure other fields are also current
             current_listening_info.synced = self.is_synced;
             current_listening_info.initial_delay_connected_count = self.initial_delay_count;
             shared.set_state_info(StateInfo::Listening(current_listening_info));
         }
-        
+
         let mut chain_metadata_events = shared.metadata_event_stream.resubscribe();
         let mut dht_events = shared.dht_event_stream.resubscribe();
         let mut time_since_better_block = None;
@@ -261,7 +263,7 @@ impl Listening {
                                         }
                                         continue; // Skip sync decision logic while bootstrapping
                                     }
-                                    
+
                                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                                     if !configured_sync_peers.is_empty() {
                                         if !configured_sync_peers.contains(peer_metadata.node_id()) {
@@ -420,7 +422,7 @@ impl Listening {
                                         }
                                     }
                                 },
-                                
+
                                 DhtEvent::PrimaryBootstrapComplete => {
                                     info!(
                                         target: LOG_TARGET,
@@ -448,7 +450,6 @@ impl Listening {
             }
         }
     }
-
 }
 
 impl From<Waiting> for Listening {

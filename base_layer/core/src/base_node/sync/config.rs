@@ -58,7 +58,8 @@ pub struct BlockchainSyncConfig {
 
 fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
     // This should ideally match or be related to DhtConfig.network_discovery.max_seed_peer_sync_count
-    // For now, a sensible default. This will be overridden by DhtEvent if DhtNetworkDiscoveryRoundInfo provides total_rounds.
+    // For now, a sensible default. This will be overridden by DhtEvent if DhtNetworkDiscoveryRoundInfo provides
+    // total_rounds.
     5
 }
 
