@@ -1,12 +1,13 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use log::trace;
+use log::{debug, trace};
 use tari_common_types::types;
 use tari_comms::protocol::rpc::{Response, RpcStatus};
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
+use crate::base_node::rpc::models::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
 use crate::{
     base_node::{
         rpc::{
@@ -88,7 +89,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                         mined_timestamp: header.timestamp.as_u64(),
                     };
                     return Ok(response);
-                },
+                }
             },
         };
 
@@ -234,5 +235,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         response.is_synced = is_synced;
 
         Ok(response)
+    }
+
+    async fn sync_utxos_by_block(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponse, Self::Error> {
+        todo!()
     }
 }

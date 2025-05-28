@@ -3,6 +3,8 @@
 
 mod get_tip_info;
 mod transaction_query;
+mod sync_utxos_by_block;
 
 pub use get_tip_info::*;
+pub use sync_utxos_by_block::*;
 pub use transaction_query::*;
