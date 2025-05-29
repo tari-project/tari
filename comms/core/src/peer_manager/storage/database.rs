@@ -745,7 +745,7 @@ impl PeerDatabaseSql {
     }
 
     /// Set the deleted_at timestamp for a peer
-    pub fn set_deleted_at(&self, node_id: &NodeId) -> Result<Option<NodeId>, StorageError> {
+    pub fn soft_delete_peer(&self, node_id: &NodeId) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
@@ -1495,7 +1495,7 @@ impl PeerDatabaseSql {
     ///     - all its addresses have either failed or not been seen for more than the threshold number of days.
     ///   - Wallets that are considered neighbours are not stale, except if they were deleted.
     #[allow(clippy::too_many_lines)]
-    pub fn delete_all_stale_peers(
+    pub fn hard_delete_all_stale_peers(
         &self,
         stale_peer_threshold: Duration,
         neighbours_count: usize,
@@ -1514,44 +1514,33 @@ impl PeerDatabaseSql {
                 node_id: String,
             }
 
-            let stale_nodes_hex = diesel::sql_query(r#"
-                -- Deleted node peers: always considered stale (excluding SEEDs)
-                SELECT peers.node_id
-                FROM peers
-                WHERE peers.features = ?
-                    AND peers.flags != ?
-                    AND peers.deleted_at IS NOT NULL
-
-                UNION
-
-                -- Active peers with only stale or failed addresses (excluding SEEDs)
-                SELECT peers.node_id
-                FROM peers
-                INNER JOIN multi_addresses ON multi_addresses.peer_id = peers.peer_id
-                WHERE peers.features = ?
-                  AND peers.flags != ?
-                  AND peers.deleted_at IS NULL
-                GROUP BY peers.node_id
-                HAVING
-                    -- All associated addresses are either failed or stale (not recently seen)
-                    SUM(
-                        CASE
-                            WHEN multi_addresses.last_failed_reason IS NULL
-                              AND (
-                                multi_addresses.last_seen IS NULL
-                                OR multi_addresses.last_seen >= ?
-                              )
-                            THEN 1 ELSE 0
-                        END
-                    ) = 0
-
-            "#)
-                .bind::<sql_types::Integer, _>(PeerFeatures::COMMUNICATION_NODE.to_i32())  // for WHERE
-                .bind::<sql_types::Integer, _>(PeerFlags::SEED.to_i32())                   // for WHERE
-                .bind::<sql_types::Integer, _>(PeerFeatures::COMMUNICATION_NODE.to_i32())  // for second WHERE
-                .bind::<sql_types::Integer, _>(PeerFlags::SEED.to_i32())                   // for second WHERE
-                .bind::<sql_types::Timestamp, _>(stale_threshold)                          // for HAVING
-                .load::<NodeIdRow>(conn)?;
+            let stale_nodes_hex = diesel::sql_query(
+                r#"
+            -- Peers with only stale or failed addresses (excluding SEEDs and ignoring deleted_at)
+            SELECT peers.node_id
+            FROM peers
+            INNER JOIN multi_addresses ON multi_addresses.peer_id = peers.peer_id
+            WHERE peers.features = ?
+              AND peers.flags != ?
+            GROUP BY peers.node_id
+            HAVING
+                -- All associated addresses are either failed or stale (not recently seen)
+                SUM(
+                    CASE
+                        WHEN multi_addresses.last_failed_reason IS NULL
+                          AND (
+                            multi_addresses.last_seen IS NULL
+                            OR multi_addresses.last_seen >= ?
+                          )
+                        THEN 1 ELSE 0
+                    END
+                ) = 0
+            "#,
+            )
+            .bind::<sql_types::Integer, _>(PeerFeatures::COMMUNICATION_NODE.to_i32())
+            .bind::<sql_types::Integer, _>(PeerFlags::SEED.to_i32())
+            .bind::<sql_types::Timestamp, _>(stale_threshold)
+            .load::<NodeIdRow>(conn)?;
 
             let stale_nodes_hex: Vec<String> = stale_nodes_hex.into_iter().map(|row| row.node_id).collect();
 
@@ -1587,7 +1576,7 @@ impl PeerDatabaseSql {
                 .bind::<sql_types::Timestamp, _>(stale_threshold)                          // for HAVING
                 .load::<NodeIdRow>(conn)?;
 
-            let mut stale_wallets_hex: Vec<String> = stale_wallets_hex.into_iter().map(|row| row.node_id).collect();
+            let mut stale_wallets_hex: Vec<String> = stale_wallets_hex.iter().map(|row| row.node_id.clone()).collect();
             let mut stale_wallets = stale_wallets_hex
                 .iter()
                 .flat_map(|id| NodeId::from_hex(id).ok())
@@ -1603,7 +1592,11 @@ impl PeerDatabaseSql {
             stale_wallets_hex.retain(|id| !neighbour_wallets_hex.contains(id));
 
             // Step 4: Delete stale nodes and wallets
-            let stale_peers = stale_nodes_hex.into_iter().chain(stale_wallets_hex).collect::<Vec<_>>();
+            let stale_peers = stale_nodes_hex
+                .iter()
+                .chain(stale_wallets_hex.iter())
+                .cloned()
+                .collect::<Vec<_>>();
             diesel::delete(
                 multi_addresses::table.filter(
                     multi_addresses::peer_id.eq_any(
@@ -1637,12 +1630,31 @@ impl PeerDatabaseSql {
             )
             .execute(conn)?;
             diesel::delete(peers::table.filter(peers::node_id.eq_any(surplus_wallets_hex.clone()))).execute(conn)?;
-            let stale_peers = stale_peers.into_iter().chain(surplus_wallets_hex).collect::<Vec<_>>();
+            let stale_peers = stale_peers.iter().chain(surplus_wallets_hex.iter()).collect::<Vec<_>>();
 
             // Step 5: Return all deleted node_ids
+            for (i, node) in stale_nodes_hex.iter().enumerate() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Deleted stale peer with node_id: {} - {}", i + 1, node
+                );
+            }
+            for (i, wallet) in stale_wallets_hex.iter().enumerate() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Deleted stale wallet with node_id: {} - {}", i + 1, wallet
+                );
+            }
+            for (i, wallet) in surplus_wallets_hex.iter().enumerate() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Deleted stale wallet with node_id: {} - {}", stale_wallets_hex.len() +  i + 1, wallet
+                );
+            }
+
             Ok(stale_peers
                 .into_iter()
-                .filter_map(|node_id| NodeId::from_hex(&node_id).ok())
+                .filter_map(|node_id| NodeId::from_hex(node_id).ok())
                 .collect::<Vec<_>>())
         })
     }
@@ -2294,11 +2306,11 @@ mod tests {
         }
 
         // Test 'set_deleted_at'
-        peers_db.set_deleted_at(&node_peers[1].node_id).unwrap();
+        peers_db.soft_delete_peer(&node_peers[1].node_id).unwrap();
         let deleted_peer = peers_db.get_peer_by_node_id(&node_peers[1].node_id).unwrap().unwrap();
         assert!(deleted_peer.deleted_at.is_some());
 
-        peers_db.set_deleted_at(&wallet_peers[1].node_id).unwrap();
+        peers_db.soft_delete_peer(&wallet_peers[1].node_id).unwrap();
         let deleted_peer = peers_db.get_peer_by_node_id(&wallet_peers[1].node_id).unwrap().unwrap();
         assert!(deleted_peer.deleted_at.is_some());
 
@@ -2698,7 +2710,7 @@ mod tests {
             node_peers[7].node_id.clone(),
         ];
         original_deleted_nodes.iter().for_each(|node_id| {
-            peers_db.set_deleted_at(node_id).unwrap();
+            peers_db.soft_delete_peer(node_id).unwrap();
         });
         let original_deleted_wallets = vec![
             wallet_peers[1].node_id.clone(),
@@ -2706,7 +2718,7 @@ mod tests {
             wallet_peers[7].node_id.clone(),
         ];
         original_deleted_wallets.iter().for_each(|node_id| {
-            peers_db.set_deleted_at(node_id).unwrap();
+            peers_db.soft_delete_peer(node_id).unwrap();
         });
 
         // Set banned - node and wallet peers (5, 6, 7)
@@ -2798,12 +2810,13 @@ mod tests {
         nodes_inactive.retain(|p| !seed_peers_ids.contains(p));
         nodes_inactive.retain(|p| !nodes_banned.contains(p));
         //   - deleted nodes
-        let nodes_deleted = nodes_from_db
+        let mut nodes_deleted = nodes_from_db
             .iter()
             .filter(|p| p.deleted_at.is_some())
             .map(|p| p.node_id.clone())
             .collect::<Vec<_>>();
         assert!(nodes_deleted.iter().all(|p| original_deleted_nodes.contains(p)));
+        nodes_deleted.retain(|p| nodes_failed.contains(p));
         //    - never seen before nodes
         let mut nodes_never_seen = nodes_from_db
             .iter()
@@ -2857,9 +2870,9 @@ mod tests {
         // - perform test
         const NEIGHBOUR_COUNT: usize = 17;
         let stale_peers_deleted = peers_db
-            .delete_all_stale_peers(Duration::from_secs(60), NEIGHBOUR_COUNT)
+            .hard_delete_all_stale_peers(Duration::from_secs(60), NEIGHBOUR_COUNT)
             .unwrap();
-        assert_eq!(stale_peers_deleted.len(), 21);
+        assert_eq!(stale_peers_deleted.len(), 19);
 
         // - verify nodes
         //   - seed peers (0, 8, 16, 24)
@@ -2869,16 +2882,16 @@ mod tests {
         //   - inactive node peers (8, 9)
         //   - never seen node peers (14, 15, 16, 17, 18, 19, 20, 21)
         let remaining = peers_db.get_all_peers(None).unwrap();
-        assert_eq!(remaining.len(), 39);
+        assert_eq!(remaining.len(), 41);
         let mut remaining_nodes = peers_db.get_all_peers(Some(PeerFeatures::COMMUNICATION_NODE)).unwrap();
         remaining_nodes.sort_by_key(|p| p.node_id.distance(&peers_db.this_peer_identity.node_id));
         let remaining_nodes_ids = remaining_nodes.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
-        assert_eq!(remaining_nodes.len(), 22);
+        assert_eq!(remaining_nodes.len(), 24);
         // - verify all seeds are still present
         assert!(seed_peers_ids.iter().all(|p| remaining_nodes_ids.contains(p)));
-        // - verify all banned nodes (that were not delted) are still present
+        // - verify all banned nodes (that were not deleted) are still present
         assert!(nodes_banned.iter().all(|p| remaining_nodes_ids.contains(p)));
-        // - verify deleted nodes are removed
+        // - verify deleted nodes are removed only if all addresses failed
         assert!(!remaining_nodes_ids.iter().any(|p| nodes_deleted.contains(p)));
         // - verify failed nodes are removed
         assert!(!remaining_nodes_ids.iter().any(|p| nodes_failed.contains(p)));
@@ -2966,6 +2979,60 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_get_duplicate_addresses_allowed() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create new node peers
+        let mut node_peers = Vec::with_capacity(5);
+        for _i in 0..5 {
+            let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            node_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+
+        // Create a new peer with duplicate addresses
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let duplicate_address = node_peers[0]
+            .addresses
+            .addresses()
+            .iter()
+            .map(|v| v.address())
+            .cloned()
+            .collect::<Vec<_>>();
+        for address in &duplicate_address {
+            peer.addresses.add_address(address, &PeerAddressSource::Config)
+        }
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        // Verify the new peer has the duplicate address
+        let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let peer_addresses = peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .map(|v| v.address())
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(duplicate_address.iter().any(|v| peer_addresses.contains(v)));
+
+        // Verify original peer still has the address
+        let original_peer_from_db = peers_db.get_peer_by_node_id(&node_peers[0].node_id).unwrap().unwrap();
+        let original_peer_addresses = original_peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .map(|v| v.address())
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(duplicate_address.iter().any(|v| original_peer_addresses.contains(v)));
     }
 
     #[test]

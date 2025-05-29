@@ -54,3 +54,22 @@ pub enum NetworkDiscoveryError {
     #[error("Tokio task join error: `{0}`")]
     JoinError(#[from] JoinError),
 }
+
+// Custom PartialEq implementation that only compares the discriminant (variant type)
+impl PartialEq for NetworkDiscoveryError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::RpcError(_), Self::RpcError(_)) |
+                (Self::RpcStatus(_), Self::RpcStatus(_)) |
+                (Self::PeerManagerError(_), Self::PeerManagerError(_)) |
+                (Self::ConnectivityError(_), Self::ConnectivityError(_)) |
+                (Self::NoSyncPeers, Self::NoSyncPeers) |
+                (Self::PeerValidationError(_), Self::PeerValidationError(_)) |
+                (Self::EmptyPeerMessageReceived, Self::EmptyPeerMessageReceived) |
+                (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
+                (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
+                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_))
+        )
+    }
+}

@@ -23,6 +23,7 @@
 use std::ops::Deref;
 
 use log::*;
+use tari_comms_dht::event::DhtEvent;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -43,30 +44,109 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 pub struct Starting;
 
 impl Starting {
-    pub async fn next_event<B: BlockchainBackend>(&mut self, shared: &mut BaseNodeStateMachine<B>) -> StateEvent {
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent {
         info!(target: LOG_TARGET, "Starting node.");
+
+        // Check for DHT bootstrap completion first
+        info!(target: LOG_TARGET, "[BN STARTING] Checking DHT bootstrap status before proceeding");
+        let mut dht_events = shared.dht_event_stream.resubscribe();
+
+        // Check for any recent DHT bootstrap events
+        let mut bootstrap_events_found = 0;
+        loop {
+            match dht_events.try_recv() {
+                Ok(event_arc) => {
+                    bootstrap_events_found += 1;
+                    let event = event_arc.deref();
+                    match event {
+                        DhtEvent::BootstrapMethodDetermined(method) => {
+                            let method_str = format!("{}", method);
+                            info!(target: LOG_TARGET, "[BN STARTING] Found DHT BootstrapMethodDetermined event: {}", method_str);
+                            if method_str == "ExistingPeers" {
+                                info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
+                                shared.set_primary_bootstrap_complete(true);
+                            }
+                        },
+                        DhtEvent::PrimaryBootstrapComplete => {
+                            info!(target: LOG_TARGET, "[BN STARTING] Found DHT PrimaryBootstrapComplete event - marking primary bootstrap complete");
+                            shared.set_primary_bootstrap_complete(true);
+                        },
+                        _ => {},
+                    }
+                },
+                Err(broadcast::error::TryRecvError::Empty) => {
+                    // No more events to process
+                    break;
+                },
+                Err(broadcast::error::TryRecvError::Lagged(n)) => {
+                    warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream lagged by {} events during startup", n);
+                    // Continue processing in case there are still events available
+                },
+                Err(broadcast::error::TryRecvError::Closed) => {
+                    warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream closed during startup check");
+                    break;
+                },
+            }
+        }
+
+        info!(target: LOG_TARGET, "[BN STARTING] Processed {} DHT bootstrap events. Primary bootstrap complete: {}", bootstrap_events_found, shared.is_primary_bootstrap_complete);
 
         let mut network_silence_count = 0;
         loop {
-            let metadata_event = shared.metadata_event_stream.recv().await;
-            match metadata_event.as_ref().map(|v| v.deref()) {
-                Ok(ChainMetadataEvent::NetworkSilence) => {
-                    network_silence_count += 1;
-                    debug!("NetworkSilence event received ({})", network_silence_count);
-                    if network_silence_count >= 3 {
-                        return StateEvent::Initialized(true);
+            tokio::select! {
+                metadata_result = shared.metadata_event_stream.recv() => {
+                    match metadata_result.as_ref().map(|v| v.deref()) {
+                        Ok(ChainMetadataEvent::NetworkSilence) => {
+                            network_silence_count += 1;
+                            debug!(target: LOG_TARGET, "NetworkSilence event received ({})", network_silence_count);
+                            if network_silence_count >= 3 {
+                                return StateEvent::Initialized(true);
+                            }
+                        },
+                        Ok(ChainMetadataEvent::PeerChainMetadataReceived(_)) => {
+                            return StateEvent::Initialized(false);
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "Metadata event subscriber closed");
+                            break;
+                        },
                     }
                 },
-                Ok(ChainMetadataEvent::PeerChainMetadataReceived(_)) => {
-                    return StateEvent::Initialized(false);
-                },
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
-                },
-                Err(broadcast::error::RecvError::Closed) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber closed");
-                    break;
-                },
+                dht_result = dht_events.recv() => {
+                    match dht_result {
+                        Ok(event_arc) => {
+                            let event = event_arc.deref();
+                            match event {
+                                DhtEvent::BootstrapMethodDetermined(method) => {
+                                    let method_str = format!("{}", method);
+                                    info!(target: LOG_TARGET, "[BN STARTING] Received live DHT BootstrapMethodDetermined event: {}", method_str);
+                                    if method_str == "ExistingPeers" {
+                                        info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
+                                        shared.set_primary_bootstrap_complete(true);
+                                    }
+                                },
+                                DhtEvent::PrimaryBootstrapComplete => {
+                                    info!(target: LOG_TARGET, "[BN STARTING] Received live DHT PrimaryBootstrapComplete event - marking primary bootstrap complete");
+                                    shared.set_primary_bootstrap_complete(true);
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event subscriber lagged by {} item(s)", n);
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "DHT event subscriber closed");
+                            // Continue with metadata events only
+                        },
+                    }
+                }
             }
         }
 

@@ -87,7 +87,7 @@ where
                     let source_peer = peer_manager
                         .find_by_node_id(&source_peer)
                         .await
-                        .or_not_found()
+                        .or_not_found(&source_peer)
                         .map(Arc::new)?;
 
                     let inbound_msg =

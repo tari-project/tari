@@ -28,7 +28,7 @@ use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::Messaging
 use tari_core::{
     base_node::{
         comms_interface::BlockEvent,
-        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+        state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{ChainBlock, NewBlock},
     chain_storage::BlockchainDatabaseConfig,

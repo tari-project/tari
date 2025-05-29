@@ -25,6 +25,7 @@ use std::{convert::TryFrom, iter, sync::Arc};
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
 use rand::{rngs::OsRng, RngCore};
+use serial_test::serial;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
@@ -92,7 +93,19 @@ use crate::{
 };
 
 #[tokio::test]
+#[serial]
 async fn test_monero_blocks() {
+    let network = Network::Esmeralda;
+    if std::env::var("TARI_NETWORK").is_err() {
+        std::env::set_var("TARI_NETWORK", network.as_key_str());
+    }
+    if Network::get_current_or_user_setting_or_default() != network {
+        let _ = Network::set_current(network);
+    }
+    let current_network = Network::get_current_or_user_setting_or_default();
+    if current_network != network {
+        panic!("could not set network");
+    }
     // Create temporary test folder
     let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";

@@ -32,7 +32,13 @@ use tari_comms::{
 };
 
 use super::{
-    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
+    state_machine::{
+        DhtNetworkDiscoveryRoundInfo,
+        DiscoveryParams,
+        DiscoveryPhase,
+        NetworkDiscoveryContext,
+        StateEvent,
+    },
     NetworkDiscoveryError,
 };
 use crate::{
@@ -76,6 +82,11 @@ impl Discovering {
         self.neighbourhood_threshold = self
             .calc_region_threshold(self.config().num_neighbouring_nodes, PeerFeatures::COMMUNICATION_NODE)
             .await?;
+
+        // Set discovery phase and rounds information
+        self.stats.phase = DiscoveryPhase::General;
+        self.stats.round_number = Some(self.context.num_rounds());
+        self.stats.total_rounds = None; // No fixed total for general discovery
 
         Ok(())
     }
@@ -266,7 +277,7 @@ impl Discovering {
                     NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
                         self.ban_peer(peer, OffenceSeverity::Low, &err).await;
                     },
-                    // Other errors
+                    // Other errors - no banning needed
                     NetworkDiscoveryError::RpcStatus(_) |
                     NetworkDiscoveryError::NoSyncPeers |
                     NetworkDiscoveryError::PeerManagerError(_) |

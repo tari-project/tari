@@ -120,7 +120,6 @@ impl MempoolStorage {
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
-                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
                     Ok(TxStorageResponse::NotStoredOrphan)
                 }
             },
@@ -128,10 +127,7 @@ impl MempoolStorage {
                 warn!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
-            Err(ValidationError::MaturityError) => {
-                warn!(target: LOG_TARGET, "Validation failed due to maturity error");
-                Ok(TxStorageResponse::NotStoredTimeLocked)
-            },
+            Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
                 Ok(TxStorageResponse::NotStoredConsensus)

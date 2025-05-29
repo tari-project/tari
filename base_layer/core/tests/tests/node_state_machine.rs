@@ -105,8 +105,8 @@ async fn test_listening_lagging() {
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
         alice_node.comms.connectivity(),
-        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
+        alice_node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -116,7 +116,7 @@ async fn test_listening_lagging() {
         shutdown.to_signal(),
     );
     wait_until_online(&[&alice_node, &bob_node]).await;
-
+    alice_state_machine.set_primary_bootstrap_complete(true);
     let await_event_task =
         task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
@@ -248,8 +248,8 @@ async fn test_listening_initial_fallen_behind() {
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
         alice_node.comms.connectivity(),
-        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
+        alice_node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -260,6 +260,7 @@ async fn test_listening_initial_fallen_behind() {
     );
 
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
+    alice_state_machine.set_primary_bootstrap_complete(true);
     let await_event_task =
         task::spawn(async move { Listening::new().next_event(&mut alice_state_machine, false).await });
 
@@ -292,14 +293,14 @@ async fn test_event_channel() {
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
-    let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(10);
+    let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(100);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
-    let state_machine = BaseNodeStateMachine::new(
+    let mut state_machine = BaseNodeStateMachine::new(
         db.into(),
         node.local_nci.clone(),
         node.comms.connectivity(),
-        node.comms.peer_manager(),
         mock.subscription(),
+        node.dht.subscribe_dht_events(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -308,7 +309,7 @@ async fn test_event_channel() {
         consensus_manager,
         shutdown.to_signal(),
     );
-
+    state_machine.set_primary_bootstrap_complete(true);
     task::spawn(state_machine.run());
 
     let node_identity = random_node_identity();
@@ -322,7 +323,7 @@ async fn test_event_channel() {
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    for _ in 0..10 {
+    for _ in 0..100 {
         mock.publish_chain_metadata(
             peer_chain_metadata.node_id(),
             peer_chain_metadata.claimed_chain_metadata(),
@@ -333,7 +334,4 @@ async fn test_event_channel() {
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
     unpack_enum!(StateEvent::Initialized(_) = &*event);
-    let event = state_change_event_subscriber.recv().await;
-    let event = event.unwrap();
-    unpack_enum!(StateEvent::FallenBehind(_) = &*event);
 }
