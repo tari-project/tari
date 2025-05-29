@@ -272,7 +272,8 @@ impl Dht {
             .layer(ForwardLayer::new(
                 self.dht_requester(),
                 self.outbound_requester(),
-                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
+                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) &&
+                    self.config.enable_forwarding,
             ))
             .layer(inbound::DhtHandlerLayer::new(
                 self.config.clone(),
