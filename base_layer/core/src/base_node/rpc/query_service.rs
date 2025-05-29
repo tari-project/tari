@@ -1,17 +1,24 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use log::{debug, trace};
-use tari_common_types::types;
-use tari_comms::protocol::rpc::{Response, RpcStatus};
-use tari_utilities::{ByteArray, ByteArrayError};
+use log::{debug, info, trace};
+use serde_valid::{validation, Validate};
+use tari_common_types::{types, types::FixedHashSizeError};
+use tari_comms::protocol::rpc::{Response, RpcStatus, RpcStatusResultExt};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
 
-use crate::base_node::rpc::models::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse};
 use crate::{
     base_node::{
         rpc::{
-            models::{TipInfoResponse, TxLocation, TxQueryResponse},
+            models::{
+                SyncUtxoBlockResponse,
+                SyncUtxosByBlockRequest,
+                SyncUtxosByBlockResponse,
+                TipInfoResponse,
+                TxLocation,
+                TxQueryResponse,
+            },
             BaseNodeWalletQueryService,
         },
         state_machine_service::states::StateInfo,
@@ -20,6 +27,8 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
+    proto,
+    transactions::transaction_components::TransactionOutput,
 };
 
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
@@ -34,6 +43,16 @@ pub enum Error {
     SignatureConversion(ByteArrayError),
     #[error("Mempool service error: {0}")]
     MempoolService(#[from] MempoolServiceError),
+    #[error("Serde validation error: {0}")]
+    SerdeValidation(#[from] validation::Errors),
+    #[error("Hash conversion error: {0}")]
+    HashConversion(#[from] FixedHashSizeError),
+    #[error("Start header hash not found")]
+    StartHeaderHashNotFound,
+    #[error("End header hash not found")]
+    EndHeaderHashNotFound,
+    #[error("Start header height {start_height} cannot be greater than the end header height {end_height}")]
+    HeaderHeightMismatch { start_height: u64, end_height: u64 },
 }
 
 pub struct Service<B> {
@@ -89,7 +108,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                         mined_timestamp: header.timestamp.as_u64(),
                     };
                     return Ok(response);
-                }
+                },
             },
         };
 
@@ -122,6 +141,107 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         };
 
         Ok(mempool_response)
+    }
+
+    async fn fetch_utxos(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponse, Error> {
+        // validate and fetch inputs
+        request.validate()?;
+
+        let hash = request.start_header_hash.clone().try_into()?;
+
+        let start_header = self
+            .db()
+            .fetch_header_by_block_hash(hash)
+            .await?
+            .ok_or_else(|| Error::StartHeaderHashNotFound)?;
+
+        let hash = request.end_header_hash.clone().try_into()?;
+
+        let end_header = self
+            .db
+            .fetch_header_by_block_hash(hash)
+            .await?
+            .ok_or_else(|| Error::EndHeaderHashNotFound)?;
+
+        // pagination
+        let start_header_height = start_header.height + (request.page * request.limit);
+        let start_header = self
+            .db
+            .fetch_header(start_header_height)
+            .await?
+            .ok_or_else(|| Error::HeaderNotFound {
+                height: start_header_height,
+            })?;
+
+        if start_header.height > end_header.height {
+            return Err(Error::HeaderHeightMismatch {
+                start_height: start_header.height,
+                end_height: end_header.height,
+            });
+        }
+
+        // fetch utxos
+        let mut utxos = vec![];
+        let mut current_header = start_header;
+        let mut fetched_utxos = 0;
+        loop {
+            let current_header_hash = current_header.hash();
+
+            trace!(
+                target: LOG_TARGET,
+                "current header = {} ({})",
+                current_header.height,
+                current_header_hash.to_hex()
+            );
+
+            let outputs_with_statuses = self
+                .db
+                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
+                .await?;
+
+            let outputs = outputs_with_statuses
+                .into_iter()
+                .map(|(output, _spent)| output)
+                .collect::<Vec<TransactionOutput>>();
+
+            for output_chunk in outputs.chunks(2000) {
+                let output_block_response = SyncUtxoBlockResponse {
+                    outputs: output_chunk.to_vec(),
+                    height: current_header.height,
+                    header_hash: current_header_hash.to_vec(),
+                    mined_timestamp: current_header.timestamp.as_u64(),
+                };
+                utxos.push(output_block_response);
+            }
+            if outputs.is_empty() {
+                // if its empty, we need to send an empty vec of outputs.
+                let utxo_block_response = SyncUtxoBlockResponse {
+                    outputs: Vec::new(),
+                    height: current_header.height,
+                    header_hash: current_header_hash.to_vec(),
+                    mined_timestamp: current_header.timestamp.as_u64(),
+                };
+                utxos.push(utxo_block_response);
+            }
+
+            fetched_utxos += 1;
+
+            if current_header.height >= end_header.height || fetched_utxos >= request.limit {
+                break;
+            }
+
+            current_header =
+                self.db
+                    .fetch_header(current_header.height + 1)
+                    .await?
+                    .ok_or_else(|| Error::HeaderNotFound {
+                        height: current_header.height + 1,
+                    })?;
+        }
+
+        let has_next_page = (end_header.height - current_header.height) > 0;
+
+        Ok(SyncUtxosByBlockResponse { utxos, has_next_page })
     }
 }
 
@@ -237,7 +357,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         Ok(response)
     }
 
-    async fn sync_utxos_by_block(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponse, Self::Error> {
-        todo!()
+    async fn sync_utxos_by_block(
+        &self,
+        request: SyncUtxosByBlockRequest,
+    ) -> Result<SyncUtxosByBlockResponse, Self::Error> {
+        self.fetch_utxos(request).await
     }
 }

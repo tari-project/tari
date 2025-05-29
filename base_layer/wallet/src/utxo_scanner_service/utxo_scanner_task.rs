@@ -350,7 +350,7 @@ where
 
             let (num_recovered, num_scanned, amount) = self
                 .scan_utxos(
-                    peer_client.rpc_client(),
+                    &mut peer_client,
                     next_block_to_scan.header_hash,
                     tip_header_hash,
                     tip_header.height,
@@ -489,7 +489,7 @@ where
     #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
-        client: &mut RpcClientLease<BaseNodeWalletRpcClient>,
+        peer_client: &mut PeerClient<http::Client>,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
@@ -501,13 +501,11 @@ where
         let mut total_amount = MicroMinotari::from(0);
         let mut total_scanned = 0;
 
-        let request = SyncUtxosByBlockRequest {
-            start_header_hash: start_header_hash.to_vec(),
-            end_header_hash: end_header_hash.to_vec(),
-        };
-
         let start = Instant::now();
-        let mut utxo_stream = client.sync_utxos_by_block(request).await?;
+        let mut utxo_stream = peer_client
+            .base_node_wallet_client
+            .sync_utxos_by_block(start_header_hash.to_vec(), end_header_hash.to_vec())
+            .await?;
         trace!(
             target: LOG_TARGET,
             "bulletproof rewind profile - UTXO stream request time {} ms",

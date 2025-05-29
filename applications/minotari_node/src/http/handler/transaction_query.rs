@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use axum::{extract::Query, http::StatusCode, Extension, Json};
 use log::{debug, error};
-use serde::de::Visitor;
-use serde::{Deserialize, Deserializer};
+use serde::{de::Visitor, Deserialize, Deserializer};
 use tari_core::{
     base_node::rpc::{
         models,
@@ -19,7 +18,7 @@ use tari_core::{
 };
 use tari_utilities::hex;
 
-use crate::http::handler::query_service_error_to_status_code;
+use crate::http::handler::{query_service_error_to_status_code, util::from_hex};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::transaction_query";
 
@@ -29,14 +28,6 @@ pub struct TransactionQueryQueryParams {
     pub public_nonce: Vec<u8>,
     #[serde(deserialize_with = "from_hex")]
     pub signature: Vec<u8>,
-}
-
-fn from_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    hex::from_hex(s).map_err(serde::de::Error::custom)
 }
 
 impl From<TransactionQueryQueryParams> for models::Signature {

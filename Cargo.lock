@@ -4404,9 +4404,12 @@ name = "minotari_node_wallet_client"
 version = "3.0.0-pre.2"
 dependencies = [
  "async-trait",
+ "log",
  "reqwest 0.12.17",
  "tari_core",
+ "tari_utilities",
  "thiserror 1.0.69",
+ "tokio",
  "url",
 ]
 
@@ -8146,9 +8149,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.44.2"
+version = "1.45.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48"
+checksum = "75ef51a33ef1da925cea3e4eb122833cb377c61439ca401b770f54902b806779"
 dependencies = [
  "backtrace",
  "bytes 1.9.0",
