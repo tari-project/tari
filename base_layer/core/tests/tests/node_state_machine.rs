@@ -334,5 +334,4 @@ async fn test_event_channel() {
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
     unpack_enum!(StateEvent::Initialized(_) = &*event);
-    let event = state_change_event_subscriber.recv().await;
 }

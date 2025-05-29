@@ -258,20 +258,18 @@ impl Listening {
                                     if !shared.is_primary_bootstrap_complete {
                                         // Still bootstrapping, update initial_delay_connected_count for "Waiting for peer data" if bootstrap_phase becomes None *prematurely*
                                         if let StateInfo::Listening(mut li) = shared.info.clone() {
-                                            if !li.bootstrap_phase.is_none() { // If bootstrap phase is gone BUT primary_bootstrap_complete is false
+                                            if li.bootstrap_phase.is_none() { // If bootstrap phase is gone BUT primary_bootstrap_complete is false
                                                 initial_sync_counter += 1;
                                                 self.initial_delay_count = initial_sync_counter;
                                                 li.initial_delay_connected_count = self.initial_delay_count;
                                                 shared.set_state_info(StateInfo::Listening(li));
                                             }
                                         }
-                                        dbg!("Skipping sync decision logic while bootstrapping");
                                         continue; // Skip sync decision logic while bootstrapping
                                     }
 
                                     let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                                     if !configured_sync_peers.is_empty() && !configured_sync_peers.contains(peer_metadata.node_id()) {
-                                        dbg!("Skipping peer metadata from non-configured sync peer: {}", peer_metadata.node_id());
                                          continue;
                                     };
 
