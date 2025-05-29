@@ -3012,6 +3012,7 @@ mod tests {
         }
         peers_db.add_or_update_peer(peer.clone()).unwrap();
 
+        // Verify the new peer has the duplicate address
         let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
         let peer_addresses = peer_from_db
             .addresses
@@ -3021,6 +3022,17 @@ mod tests {
             .cloned()
             .collect::<Vec<_>>();
         assert!(duplicate_address.iter().any(|v| peer_addresses.contains(v)));
+
+        // Verify original peer still has the address
+        let original_peer_from_db = peers_db.get_peer_by_node_id(&node_peers[0].node_id).unwrap().unwrap();
+        let original_peer_addresses = original_peer_from_db
+            .addresses
+            .addresses()
+            .iter()
+            .map(|v| v.address())
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(duplicate_address.iter().any(|v| original_peer_addresses.contains(v)));
     }
 
     #[test]
