@@ -23,7 +23,6 @@
 use std::{fmt, time::Duration};
 
 use multiaddr::Multiaddr;
-use tari_utilities::hex::Hex;
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -185,7 +184,7 @@ impl PeerManager {
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage_sql.direct_identity_node_id(node_id) {
             Ok(peer) => Ok(Some(peer)),
-            Err(PeerManagerError::PeerNotFoundError(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(PeerManagerError::PeerNotFound(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
         }
     }
@@ -197,7 +196,7 @@ impl PeerManager {
     ) -> Result<Option<Peer>, PeerManagerError> {
         match self.peer_storage_sql.direct_identity_public_key(public_key) {
             Ok(peer) => Ok(Some(peer)),
-            Err(PeerManagerError::PeerNotFoundError(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
+            Err(PeerManagerError::PeerNotFound(_)) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
         }
     }
@@ -297,7 +296,7 @@ impl PeerManager {
         let peer = self
             .find_by_node_id(node_id)
             .await?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
+            .ok_or(PeerManagerError::peer_not_found(node_id))?;
         Ok(peer.features)
     }
 
@@ -309,7 +308,7 @@ impl PeerManager {
         let peer = self
             .find_by_node_id(node_id)
             .await?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
+            .ok_or(PeerManagerError::peer_not_found(node_id))?;
         Ok(peer.addresses)
     }
 
@@ -325,9 +324,7 @@ impl PeerManager {
         }
         let peers = self.get_peers_by_node_ids(node_ids).await?;
         if peers.is_empty() {
-            return Err(PeerManagerError::PeerNotFoundError(
-                node_ids.iter().map(|id| id.to_hex()).collect(),
-            ));
+            return Err(PeerManagerError::peers_not_found(node_ids));
         }
         let results = peers.into_iter().map(|p| (p.node_id, p.addresses)).collect::<Vec<_>>();
         Ok(results)

@@ -24,7 +24,6 @@ use std::{cmp::min, time::Duration};
 
 use log::*;
 use multiaddr::Multiaddr;
-use tari_utilities::hex::Hex;
 
 use crate::{
     net_address::PeerAddressSource,
@@ -160,7 +159,7 @@ impl PeerStorageSql {
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
         let peer = self
             .get_peer_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
+            .ok_or(PeerManagerError::peer_not_found(node_id))?;
 
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
@@ -173,10 +172,7 @@ impl PeerStorageSql {
     pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         let peer = self
             .find_by_public_key(public_key)?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![NodeId::from_public_key(
-                public_key,
-            )
-            .to_hex()]))?;
+            .ok_or(PeerManagerError::peer_not_found(&NodeId::from_public_key(public_key)))?;
 
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
@@ -334,10 +330,7 @@ impl PeerStorageSql {
         let node_id = NodeId::from_key(public_key);
         self.peer_db
             .set_banned(&node_id, duration, reason)?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![NodeId::from_public_key(
-                public_key,
-            )
-            .to_hex()]))
+            .ok_or(PeerManagerError::peer_not_found(&NodeId::from_public_key(public_key)))
     }
 
     /// Ban the peer for the given duration
@@ -349,13 +342,13 @@ impl PeerStorageSql {
     ) -> Result<NodeId, PeerManagerError> {
         self.peer_db
             .set_banned(node_id, duration, reason)?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))
+            .ok_or(PeerManagerError::peer_not_found(node_id))
     }
 
     pub fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
         let peer = self
             .get_peer_by_node_id(node_id)?
-            .ok_or(PeerManagerError::PeerNotFoundError(vec![node_id.to_hex()]))?;
+            .ok_or(PeerManagerError::peer_not_found(node_id))?;
         Ok(peer.is_banned())
     }
 
