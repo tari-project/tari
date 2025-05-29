@@ -21,12 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     time::{Duration, Instant},
 };
 
 use chrono::{DateTime, Utc};
-use futures::StreamExt;
 use log::*;
 use minotari_node_wallet_client::{http, BaseNodeWalletClient};
 use tari_common_types::{
@@ -45,7 +44,6 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
@@ -72,30 +70,6 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
-
-/// A temporary local struct that holds both clients to work with wallet service in base node.
-/// Will be deleted once RPC calls are fully removed.
-struct PeerClient<S> {
-    pub base_node_wallet_client: S,
-    pub rpc_client: RpcClientLease<BaseNodeWalletRpcClient>,
-}
-
-impl<S: BaseNodeWalletClient> PeerClient<S> {
-    pub fn new(base_node_wallet_client: S, rpc_client: RpcClientLease<BaseNodeWalletRpcClient>) -> Self {
-        Self {
-            base_node_wallet_client,
-            rpc_client,
-        }
-    }
-
-    pub fn rpc_client(&mut self) -> &mut RpcClientLease<BaseNodeWalletRpcClient> {
-        &mut self.rpc_client
-    }
-
-    pub fn http_client(&self) -> &S {
-        &self.base_node_wallet_client
-    }
-}
 
 pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
@@ -269,13 +243,14 @@ where
 
         // get wallet service query client
         let wallet_service_client = self.base_node_wallet_service_client(&mut client).await?;
-        let mut peer_client = PeerClient::new(wallet_service_client, client);
 
         let timer = Instant::now();
         loop {
-            let tip_header = self.get_chain_tip_header(&mut peer_client).await?;
+            let tip_header = self.get_chain_tip_header(&wallet_service_client).await?;
             let tip_header_hash = tip_header.hash();
-            let last_scanned_block = self.get_last_scanned_block(&mut peer_client, tip_header.height).await?;
+            let last_scanned_block = self
+                .get_last_scanned_block(&wallet_service_client, tip_header.height)
+                .await?;
 
             let next_block_to_scan = if let Some(last_scanned_block) = last_scanned_block {
                 // If we have scanned to the tip and are told to start beyond the tip we are done
@@ -294,8 +269,7 @@ where
                     ));
                 }
 
-                let next_header = peer_client
-                    .http_client()
+                let next_header = wallet_service_client
                     .get_header_by_height(last_scanned_block.height + 1)
                     .await?;
                 let next_header_hash = next_header.hash();
@@ -313,11 +287,11 @@ where
                 self.resources.db.clear_scanned_blocks()?;
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
                     Some(WalletType::ProvidedKeys(wallet)) => {
-                        self.get_scanning_start_header_height_hash(&mut peer_client, wallet.birthday)
+                        self.get_scanning_start_header_height_hash(&wallet_service_client, wallet.birthday)
                             .await?
                     },
                     _ => {
-                        self.get_scanning_start_header_height_hash(&mut peer_client, None)
+                        self.get_scanning_start_header_height_hash(&wallet_service_client, None)
                             .await?
                     },
                 };
@@ -350,7 +324,7 @@ where
 
             let (num_recovered, num_scanned, amount) = self
                 .scan_utxos(
-                    &mut peer_client,
+                    &wallet_service_client,
                     next_block_to_scan.header_hash,
                     tip_header_hash,
                     tip_header.height,
@@ -384,20 +358,17 @@ where
         Ok(RpcClientLease::new(client))
     }
 
-    async fn get_chain_tip_header(
-        &self,
-        peer_client: &mut PeerClient<http::Client>,
-    ) -> Result<BlockHeader, UtxoScannerError> {
-        let tip_info = peer_client.http_client().get_tip_info().await?;
+    async fn get_chain_tip_header(&self, client: &http::Client) -> Result<BlockHeader, UtxoScannerError> {
+        let tip_info = client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = peer_client.http_client().get_header_by_height(chain_height).await?;
+        let end_header = client.get_header_by_height(chain_height).await?;
 
         Ok(end_header)
     }
 
     async fn get_last_scanned_block(
         &self,
-        peer_client: &mut PeerClient<http::Client>,
+        client: &http::Client,
         current_tip_height: u64,
     ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
@@ -428,7 +399,7 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = peer_client.http_client().get_header_by_height(sb.height).await.ok();
+                let header = client.get_header_by_height(sb.height).await.ok();
                 match header {
                     Some(header) => {
                         let header_hash = header.hash();
@@ -489,7 +460,7 @@ where
     #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
-        peer_client: &mut PeerClient<http::Client>,
+        client: &http::Client,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
@@ -502,8 +473,7 @@ where
         let mut total_scanned = 0;
 
         let start = Instant::now();
-        let mut utxo_stream = peer_client
-            .base_node_wallet_client
+        let mut utxo_stream = client
             .sync_utxos_by_block(start_header_hash.to_vec(), end_header_hash.to_vec())
             .await?;
         trace!(
@@ -517,7 +487,7 @@ where
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = {
             let start = Instant::now();
-            let utxo_stream_next = utxo_stream.next().await;
+            let utxo_stream_next = utxo_stream.recv().await;
             utxo_next_await_profiling.push(start.elapsed());
             utxo_stream_next
         } {
@@ -527,58 +497,56 @@ where
             }
 
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
-            let current_height = response.height;
-            let current_header_hash = response.header_hash;
-            let mined_timestamp =
-                DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0).unwrap_or(DateTime::<Utc>::MIN_UTC);
-            let outputs = response
-                .outputs
-                .into_iter()
-                .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
-                .collect::<Result<Vec<_>, _>>()?;
-            total_scanned += outputs.len();
+            for response in response.utxos {
+                let current_height = response.height;
+                let current_header_hash = response.header_hash;
+                let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
+                    .unwrap_or(DateTime::<Utc>::MIN_UTC);
+                let outputs = response.outputs;
+                total_scanned += outputs.len();
 
-            let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs).await?;
-            scan_for_outputs_profiling.push(start.elapsed());
+                let start = Instant::now();
+                let found_outputs = self.scan_for_outputs(outputs).await?;
+                scan_for_outputs_profiling.push(start.elapsed());
 
-            let (mut count, mut amount) = self
-                .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
-                .await?;
-            let block_hash = current_header_hash.try_into()?;
-            if let Some(scanned_block) = prev_scanned_block {
-                if block_hash == scanned_block.header_hash {
-                    count += scanned_block.num_outputs.unwrap_or(0);
-                    amount += scanned_block.amount.unwrap_or_else(|| 0.into())
-                } else {
-                    self.resources.db.save_scanned_block(scanned_block)?;
-                    self.resources.db.clear_scanned_blocks_before_height(
-                        current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                        true,
-                    )?;
+                let (mut count, mut amount) = self
+                    .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
+                    .await?;
+                let block_hash = current_header_hash.try_into()?;
+                if let Some(scanned_block) = prev_scanned_block {
+                    if block_hash == scanned_block.header_hash {
+                        count += scanned_block.num_outputs.unwrap_or(0);
+                        amount += scanned_block.amount.unwrap_or_else(|| 0.into())
+                    } else {
+                        self.resources.db.save_scanned_block(scanned_block)?;
+                        self.resources.db.clear_scanned_blocks_before_height(
+                            current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                            true,
+                        )?;
 
-                    if current_height % PROGRESS_REPORT_INTERVAL == 0 {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
-                        );
-                        self.publish_event(UtxoScannerEvent::Progress {
-                            current_height,
-                            tip_height,
-                        });
+                        if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                            );
+                            self.publish_event(UtxoScannerEvent::Progress {
+                                current_height,
+                                tip_height,
+                            });
+                        }
+
+                        num_recovered = num_recovered.saturating_add(count);
+                        total_amount += amount;
                     }
-
-                    num_recovered = num_recovered.saturating_add(count);
-                    total_amount += amount;
                 }
+                prev_scanned_block = Some(ScannedBlock {
+                    header_hash: block_hash,
+                    height: current_height,
+                    num_outputs: Some(count),
+                    amount: Some(amount),
+                    timestamp: Utc::now().naive_utc(),
+                });
             }
-            prev_scanned_block = Some(ScannedBlock {
-                header_hash: block_hash,
-                height: current_height,
-                num_outputs: Some(count),
-                amount: Some(amount),
-                timestamp: Utc::now().naive_utc(),
-            });
         }
         // We need to update the last one
         if let Some(scanned_block) = prev_scanned_block {
@@ -784,7 +752,7 @@ where
 
     async fn get_scanning_start_header_height_hash(
         &self,
-        peer_client: &mut PeerClient<http::Client>,
+        client: &http::Client,
         option_birthday: Option<u16>,
     ) -> Result<HeightHash, UtxoScannerError> {
         let birthday = match option_birthday {
@@ -792,8 +760,7 @@ where
             None => self.resources.db.get_wallet_birthday()?,
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
-        let block_height_birthday = peer_client
-            .http_client()
+        let block_height_birthday = client
             .get_height_at_time(epoch_time_birthday)
             .await
             .unwrap_or_else(|e| {
@@ -803,18 +770,14 @@ where
         // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let block_height_scanning_start = peer_client
-            .http_client()
+        let block_height_scanning_start = client
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        let header = peer_client
-            .http_client()
-            .get_header_by_height(block_height_scanning_start)
-            .await?;
+        let header = client.get_header_by_height(block_height_scanning_start).await?;
         let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,

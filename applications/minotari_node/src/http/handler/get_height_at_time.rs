@@ -4,14 +4,14 @@
 use std::sync::Arc;
 
 use axum::{extract::Query, http::StatusCode, Extension, Json};
-use log::{debug, error};
+use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{query_service, query_service::Error, BaseNodeWalletQueryService},
+    base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 
-use crate::http::handler::query_service_error_to_status_code;
+use crate::http::handler::{error_handler_with_message, ErrorResponse};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_height_at_time";
 
@@ -23,12 +23,12 @@ pub struct QueryParams {
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<QueryParams>,
-) -> Result<Json<u64>, StatusCode> {
+) -> Result<Json<u64>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received get_height_at_time request: {}", params.time);
 
     let response = query_service
         .get_height_at_time(params.time)
         .await
-        .map_err(query_service_error_to_status_code)?;
+        .map_err(error_handler_with_message)?;
     Ok(Json(response))
 }

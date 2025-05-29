@@ -1,10 +1,9 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use log::{debug, info, trace};
+use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
-use tari_comms::protocol::rpc::{Response, RpcStatus, RpcStatusResultExt};
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
 
@@ -27,7 +26,6 @@ use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
-    proto,
     transactions::transaction_components::TransactionOutput,
 };
 

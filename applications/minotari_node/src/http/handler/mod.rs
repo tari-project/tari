@@ -1,7 +1,8 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use axum::http::StatusCode;
+use axum::{http::StatusCode, Json};
+use serde::{Deserialize, Serialize};
 use tari_core::base_node::rpc::{query_service, query_service::Error};
 
 pub mod get_header_by_height;
@@ -23,5 +24,24 @@ pub fn query_service_error_to_status_code(error: query_service::Error) -> Status
         Error::StartHeaderHashNotFound => StatusCode::NOT_FOUND,
         Error::EndHeaderHashNotFound => StatusCode::NOT_FOUND,
         Error::HeaderHeightMismatch { .. } => StatusCode::BAD_REQUEST,
+    }
+}
+
+pub fn error_handler_with_message(error: Error) -> (StatusCode, Json<ErrorResponse>) {
+    let error_str = error.to_string();
+    (
+        query_service_error_to_status_code(error),
+        Json(ErrorResponse::new(error_str)),
+    )
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ErrorResponse {
+    error: String,
+}
+
+impl ErrorResponse {
+    pub fn new(error: String) -> Self {
+        Self { error }
     }
 }

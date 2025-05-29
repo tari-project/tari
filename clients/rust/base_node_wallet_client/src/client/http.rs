@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use async_trait::async_trait;
 use log::error;
-use reqwest::{Error, Response};
 use tari_core::{
-    base_node::rpc::models::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse, TipInfoResponse},
+    base_node::rpc::models::{SyncUtxosByBlockResponse, TipInfoResponse},
     blocks::BlockHeader,
 };
 use tari_utilities::hex::Hex;

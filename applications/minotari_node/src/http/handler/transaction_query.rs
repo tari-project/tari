@@ -1,24 +1,17 @@
-use std::fmt::Formatter;
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
+
 use std::sync::Arc;
 
 use axum::{extract::Query, http::StatusCode, Extension, Json};
-use log::{debug, error};
-use serde::{de::Visitor, Deserialize, Deserializer};
+use log::debug;
+use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{
-        models,
-        models::TxQueryResponse,
-        query_service,
-        query_service::Error,
-        BaseNodeWalletQueryService,
-    },
+    base_node::rpc::{models, models::TxQueryResponse, query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
-use tari_utilities::hex;
 
-use crate::http::handler::{query_service_error_to_status_code, util::from_hex};
+use crate::http::handler::{error_handler_with_message, util::from_hex, ErrorResponse};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::transaction_query";
 
@@ -42,14 +35,14 @@ impl From<TransactionQueryQueryParams> for models::Signature {
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<TransactionQueryQueryParams>,
-) -> Result<Json<TxQueryResponse>, StatusCode> {
+) -> Result<Json<TxQueryResponse>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received transaction_query request: {params:?}");
     let request = params.into();
 
     let response = query_service
         .transaction_query(request)
         .await
-        .map_err(query_service_error_to_status_code)?;
+        .map_err(error_handler_with_message)?;
 
     Ok(Json(response))
 }
