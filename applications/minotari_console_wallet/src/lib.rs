@@ -40,7 +40,6 @@ pub use cli::{
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
-    ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
@@ -110,6 +109,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         spend_key: None,
         birthday: None,
         libtor_data_dir: None,
+        skip_recovery: false,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -260,9 +260,14 @@ pub fn run_wallet_with_cli(
             *command,
         ),
 
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
-        },
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(
+            handle,
+            &base_node_config,
+            &config.wallet,
+            wallet_mode,
+            wallet.clone(),
+            cli.skip_recovery,
+        ),
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
             "Invalid wallet mode - are you trying too many command options at once?",

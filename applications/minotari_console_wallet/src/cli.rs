@@ -104,6 +104,9 @@ pub struct Cli {
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
+    /// Skip wallet recovery
+    #[clap(long)]
+    pub skip_recovery: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
