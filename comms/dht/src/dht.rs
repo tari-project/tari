@@ -533,6 +533,7 @@ mod test {
         // Send all outbound requests to the mock
         let dht = Dht::builder()
             .with_outbound_sender(oms_requester.get_mpsc_sender())
+            .with_config(DhtConfig::default_local_test())
             .build(
                 Arc::clone(&node_identity),
                 peer_manager,

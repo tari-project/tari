@@ -143,6 +143,7 @@ impl DhtConfig {
                 ..Default::default()
             },
             excluded_dial_addresses: vec![].into(),
+            enable_forwarding: true,
             ..Default::default()
         }
     }
