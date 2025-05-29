@@ -1,14 +1,10 @@
-use chrono::Utc;
-use std::{fs, path::PathBuf, sync::Arc};
-
-use futures::stream::FuturesUnordered;
 use log::*;
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::TxId,
     wallet_types::WalletType,
 };
 use tari_core::{
@@ -27,16 +23,13 @@ use tari_core::{
     },
 };
 use tari_script::{push_pubkey_script, TariScript};
-use tokio::task::JoinHandle;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::UtxoSelectionCriteria,
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionEventSender},
-        storage::{database::TransactionBackend, models::CompletedTransaction},
-        tasks::send_finalized_transaction::send_finalized_transaction_message,
+        storage::database::TransactionBackend,
     },
 };
 
@@ -54,19 +47,6 @@ pub trait HasVersion {
 }
 
 pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
-    fn from_file(file_path: PathBuf) -> Result<Self, TransactionServiceError> {
-        let file_content =
-            fs::read_to_string(&file_path).map_err(|err| TransactionServiceError::FileReadError { file_path, err })?;
-        Self::from_string(&file_content)
-    }
-
-    fn to_file(&self, file_path: PathBuf) -> Result<(), TransactionServiceError> {
-        let serialized_content = self.to_string()?;
-        fs::write(&file_path, serialized_content)
-            .map_err(|err| TransactionServiceError::FileWriteError { file_path, err })?;
-        Ok(())
-    }
-
     fn from_string(s: &str) -> Result<Self, TransactionServiceError> {
         let deserialized_obj: Self =
             serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
@@ -91,17 +71,17 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LockOneSidedTransactionResult {
-    version: Version,
-    dest_address: TariAddress,
-    amount: MicroMinotari,
-    output_features: OutputFeatures,
-    fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
-    tx_id: TxId,
-    stp: SenderTransactionProtocol,
-    script: TariScript,
-    use_stealth_address: bool,
-    tip_height: u64,
+    pub version: Version,
+    pub dest_address: TariAddress,
+    pub amount: MicroMinotari,
+    pub output_features: OutputFeatures,
+    pub fee_per_gram: MicroMinotari,
+    pub payment_id: PaymentId,
+    pub tx_id: TxId,
+    pub stp: SenderTransactionProtocol,
+    pub script: TariScript,
+    pub use_stealth_address: bool,
+    pub tip_height: u64,
 }
 
 impl TransactionResult for LockOneSidedTransactionResult {}
@@ -114,9 +94,9 @@ impl HasVersion for LockOneSidedTransactionResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedOneSidedTransactionResult {
-    version: Version,
-    request: LockOneSidedTransactionResult,
-    stp: SenderTransactionProtocol,
+    pub version: Version,
+    pub request: LockOneSidedTransactionResult,
+    pub stp: SenderTransactionProtocol,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
@@ -130,7 +110,6 @@ impl HasVersion for SignedOneSidedTransactionResult {
 pub struct OfflineSigning<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     consensus_manager: ConsensusManager,
-    event_publisher: TransactionEventSender,
     last_seen_tip_height: Option<u64>,
 }
 
@@ -144,13 +123,11 @@ where
     pub fn new(
         resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         consensus_manager: ConsensusManager,
-        event_publisher: TransactionEventSender,
         last_seen_tip_height: Option<u64>,
     ) -> Self {
         OfflineSigning {
             resources,
             consensus_manager,
-            event_publisher,
             last_seen_tip_height,
         }
     }
@@ -417,69 +394,5 @@ where
             request,
             stp,
         })
-    }
-
-    pub async fn submit_signed_one_sided_transaction(
-        &mut self,
-        request: SignedOneSidedTransactionResult,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
-        >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = request.request.tx_id;
-        let stp = request.stp;
-        let dest_address = request.request.dest_address;
-        let amount = request.request.amount;
-        let payment_id = request.request.payment_id;
-
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
-
-        // Broadcast one-sided transaction
-        let tx = stp
-            .get_transaction()
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let fee = stp
-            .get_fee_amount()
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        // TODO:
-        /*
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new(
-                tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                dest_address.clone(),
-                amount,
-                fee,
-                tx.clone(),
-                TransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                payment_id,
-            )?,
-        )
-        .await?;
-        */
-
-        tokio::spawn(send_finalized_transaction_message(
-            tx_id,
-            tx.clone(),
-            dest_address.comms_public_key().clone(),
-            self.resources.outbound_message_service.clone(),
-            self.resources.config.direct_send_timeout,
-            self.resources.config.transaction_routing_mechanism,
-        ));
-
-        Ok(tx_id)
     }
 }

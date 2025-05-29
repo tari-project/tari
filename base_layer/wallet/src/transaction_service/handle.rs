@@ -168,6 +168,9 @@ pub enum TransactionServiceRequest {
     SignOneSidedTransaction {
         request: String,
     },
+    BroadcastSignedTransaction {
+        request: String,
+    },
     SendOneSidedTransaction {
         destination: TariAddress,
         amount: MicroMinotari,
@@ -368,6 +371,9 @@ impl fmt::Display for TransactionServiceRequest {
                 destination, amount, payment_id
             ),
             Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {})", request,),
+            Self::BroadcastSignedTransaction { request } => {
+                write!(f, "BroadcastSignedTransaction (request {})", request,)
+            },
             Self::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -796,6 +802,17 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::SignedSidedTransaction(result) => Ok(result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn broadcast_signed_transaction(&mut self, request: String) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::BroadcastSignedTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

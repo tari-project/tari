@@ -2884,6 +2884,28 @@ pub async fn command_runner(
                     Err(e) => eprintln!("SignOneSidedTransaction error! {}", e),
                 }
             },
+            BroadcastSignedOneSidedTransaction(args) => {
+                let request = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file,
+                    err,
+                })?;
+
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .broadcast_signed_transaction(request)
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(tx_id) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "broadcast-signed-one-sided-transaction concluded with tx_id {}", tx_id
+                        );
+                        println!("Transaction ID: {}", tx_id);
+                    },
+                    Err(e) => eprintln!("BroadcastSignedOneSidedTransaction error! {}", e),
+                }
+            },
         }
     }
     if unban_peer_manager_peers {

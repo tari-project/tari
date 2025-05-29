@@ -103,6 +103,7 @@ use tokio::{
     task::JoinHandle,
 };
 
+use super::offline_signing::SignedOneSidedTransactionResult;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -673,7 +674,6 @@ where
                 let mut offline_signing = OfflineSigning::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
-                    self.event_publisher.clone(),
                     self.last_seen_tip_height,
                 );
                 offline_signing
@@ -695,7 +695,6 @@ where
                 let offline_signing = OfflineSigning::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
-                    self.event_publisher.clone(),
                     self.last_seen_tip_height,
                 );
                 offline_signing
@@ -703,6 +702,12 @@ where
                     .await
                     .and_then(|result| result.to_string())
                     .map(TransactionServiceResponse::SignedSidedTransaction)
+            },
+            TransactionServiceRequest::BroadcastSignedTransaction { request } => {
+                let signed_request = SignedOneSidedTransactionResult::from_string(&request)?;
+                self.submit_signed_one_sided_transaction(signed_request, transaction_broadcast_join_handles)
+                    .await
+                    .map(TransactionServiceResponse::TransactionSent)
             },
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
@@ -4137,6 +4142,67 @@ where
         let transactions = self.db.get_transaction_with_payref(&payref)?;
 
         Ok(transactions)
+    }
+
+    async fn submit_signed_one_sided_transaction(
+        &mut self,
+        request: SignedOneSidedTransactionResult,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = request.request.tx_id;
+        let stp = request.stp;
+        let dest_address = request.request.dest_address;
+        let amount = request.request.amount;
+        let payment_id = request.request.payment_id;
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                dest_address.clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                payment_id,
+            )?,
+        )
+        .await?;
+
+        tokio::spawn(send_finalized_transaction_message(
+            tx_id,
+            tx.clone(),
+            dest_address.comms_public_key().clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
+        ));
+
+        Ok(tx_id)
     }
 }
 

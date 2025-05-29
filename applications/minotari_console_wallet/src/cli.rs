@@ -179,6 +179,7 @@ pub enum CliCommands {
     ListTx,
     PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
     SignOneSidedTransaction(SignOneSidedTransactionArgs),
+    BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -202,6 +203,12 @@ pub struct SignOneSidedTransactionArgs {
     pub input_file: PathBuf,
     #[clap(short, long)]
     pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct BroadcastSignedOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
 }
 
 #[derive(Debug, Args, Clone)]
