@@ -33,7 +33,7 @@ use crate::peer_manager::NodeId;
 /// Error type for [PeerManager](super::PeerManager).
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
-    #[error("The requested peer does not exist")]
+    #[error("The requested peer does not exist: {0}")]
     PeerNotFoundError(Vec<String>),
     #[error("DB Data inconsistency: {0}")]
     DataInconsistency(String),
