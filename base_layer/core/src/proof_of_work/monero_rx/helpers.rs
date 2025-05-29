@@ -140,7 +140,7 @@ pub fn verify_header(
     let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx_extra);
     let extra_field = extra_field.unwrap_or_else(|ex_field| {
-        warn!(target: LOG_TARGET, "Error deserializing, Monero extra field");
+        trace!(target: LOG_TARGET, "Error deserializing, Monero extra field");
         ex_field
     });
     debug!(target: LOG_TARGET, "Extra field: {:?}", extra_field);

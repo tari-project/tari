@@ -38,12 +38,6 @@ pub struct DhtRpcServiceMock {
     pub get_peers: RpcMockMethodState<GetPeersRequest, Vec<GetPeersResponse>>,
 }
 
-impl DhtRpcServiceMock {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
 #[tari_comms::async_trait]
 impl DhtRpcService for DhtRpcServiceMock {
     async fn get_closer_peers(
