@@ -77,6 +77,7 @@ pub fn block_fees(block: &HistoricalBlock) -> u64 {
     let body = &block.block().body;
     body.kernels()
         .iter()
+        .filter(|k| !k.is_coinbase())
         .map(|k| k.fee.into())
         .collect::<Vec<u64>>()
         .iter()

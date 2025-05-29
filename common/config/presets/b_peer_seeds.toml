@@ -50,7 +50,14 @@ dns_seeds = ["seeds.stagenet.tari.com"]
 # (Default: peer_seeds = [])
 dns_seeds = ["seeds.esmeralda.tari.com"]
 # Custom specified peer seed nodes (Default: peer_seeds = [])
-#peer_seeds = ["a062ae2345b0db0df9fb1504b99511e23d98f8513f9b5503efcc6dad8eca7e47::/ip4/54.77.66.39/tcp/18189"]
+peer_seeds = [
+    "8a24a7fb8ff2f1183c02ac52d488a13cc1104f970cc9a6fb3dd5f17ea1d85212::/ip6/2a05:d018:1b3d:f00:eb56:6954:8531:3582/tcp/18189",
+    "8a24a7fb8ff2f1183c02ac52d488a13cc1104f970cc9a6fb3dd5f17ea1d85212::/onion3/4a5vimdolvhhn6v55vjvoxgvfehqh7zwpdhi6touut3cvxtkg6a5jqqd:18141",
+    "84f96417df602c11fbe34871b89b542925cafeca1aa7d97e263c425502c27165::/ip6/2a05:d018:1b3d:f00:93e2:188:105d:e5f1/tcp/18189",
+    "84f96417df602c11fbe34871b89b542925cafeca1aa7d97e263c425502c27165::/onion3/vzzzo4e5vjhoz3u35cz5wkijfxahwxwt723af2b4lcd6wuxvlpg5awid:18141",
+    "8a24a7fb8ff2f1183c02ac52d488a13cc1104f970cc9a6fb3dd5f17ea1d85212::/ip4/3.248.103.200/tcp/18189",
+    "84f96417df602c11fbe34871b89b542925cafeca1aa7d97e263c425502c27165::/ip4/52.30.9.0/tcp/18189",
+]
 
 [igor.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.

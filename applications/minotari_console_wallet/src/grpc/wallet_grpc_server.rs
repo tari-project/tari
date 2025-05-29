@@ -121,6 +121,8 @@ use tari_core::{
             SideChainFeature,
             UnblindedOutput,
         },
+        transaction_key_manager::TransactionKeyManagerInterface,
+        transaction_protocol::recipient::RecipientState,
     },
 };
 use tari_script::script;
@@ -593,17 +595,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     )
                     .await
                 {
-                    Ok(()) => TransferResult {
-                        address: Default::default(),
-                        transaction_id: tx_id.as_u64(),
-                        is_success: true,
-                        failure_message: Default::default(),
+                    Ok(()) => {
+                        let wallet_address = self
+                            .wallet
+                            .get_wallet_one_sided_address()
+                            .await
+                            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                        let wallet_tx = self
+                            .get_transaction_service()
+                            .get_any_transaction(tx_id)
+                            .await
+                            .map_err(|e| Status::internal(format!("{:?}", e)))?
+                            .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
+                        let final_tx = convert_wallet_transaction_into_transaction_info(
+                            wallet_tx,
+                            &wallet_address,
+                            &self.wallet.key_manager_service,
+                        )
+                        .await;
+                        TransferResult {
+                            address: Default::default(),
+                            transaction_id: tx_id.as_u64(),
+                            is_success: true,
+                            failure_message: Default::default(),
+                            transaction_info: Some(final_tx),
+                        }
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
                         transaction_id: Default::default(),
                         is_success: false,
                         failure_message: e.to_string(),
+                        transaction_info: None,
                     },
                 }
             },
@@ -614,6 +637,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),
+                    transaction_info: None,
                 }
             },
         };
@@ -648,17 +672,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     )
                     .await
                 {
-                    Ok(()) => TransferResult {
-                        address: Default::default(),
-                        transaction_id: tx_id.as_u64(),
-                        is_success: true,
-                        failure_message: Default::default(),
+                    Ok(()) => {
+                        let wallet_address = self
+                            .wallet
+                            .get_wallet_one_sided_address()
+                            .await
+                            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                        let wallet_tx = self
+                            .get_transaction_service()
+                            .get_any_transaction(tx_id)
+                            .await
+                            .map_err(|e| Status::internal(format!("{:?}", e)))?
+                            .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
+                        let final_tx = convert_wallet_transaction_into_transaction_info(
+                            wallet_tx,
+                            &wallet_address,
+                            &self.wallet.key_manager_service,
+                        )
+                        .await;
+                        TransferResult {
+                            address: Default::default(),
+                            transaction_id: tx_id.as_u64(),
+                            is_success: true,
+                            failure_message: Default::default(),
+                            transaction_info: Some(final_tx),
+                        }
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
                         transaction_id: Default::default(),
                         is_success: false,
                         failure_message: e.to_string(),
+                        transaction_info: None,
                     },
                 }
             },
@@ -669,6 +714,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     transaction_id: Default::default(),
                     is_success: false,
                     failure_message: e.to_string(),
+                    transaction_info: None,
                 }
             },
         };
@@ -704,7 +750,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             let payment_id = if !raw_payment_id.is_empty() {
-                PaymentId::from_bytes(&raw_payment_id)
+                PaymentId::open(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -770,30 +816,50 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
 
         let transfers_results = future::join_all(transfers).await;
-
-        let results = transfers_results
-            .into_iter()
-            .map(|(address, result)| match result {
-                Ok(tx_id) => TransferResult {
-                    address,
-                    transaction_id: tx_id.into(),
-                    is_success: true,
-                    failure_message: Default::default(),
+        let mut results = Vec::with_capacity(transfers_results.len());
+        for (address, result) in transfers_results {
+            match result {
+                Ok(tx_id) => {
+                    let wallet_address = self
+                        .wallet
+                        .get_wallet_one_sided_address()
+                        .await
+                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                    let wallet_tx = self
+                        .get_transaction_service()
+                        .get_any_transaction(tx_id)
+                        .await
+                        .map_err(|e| Status::internal(format!("{:?}", e)))?
+                        .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(
+                        wallet_tx,
+                        &wallet_address,
+                        &self.wallet.key_manager_service,
+                    )
+                    .await;
+                    results.push(TransferResult {
+                        address,
+                        transaction_id: tx_id.into(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                        transaction_info: Some(final_tx),
+                    });
                 },
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
                         "Failed to send transaction for address `{}`: {}", address, err
                     );
-                    TransferResult {
+                    results.push(TransferResult {
                         address,
                         transaction_id: Default::default(),
                         is_success: false,
                         failure_message: err.to_string(),
-                    }
+                        transaction_info: None,
+                    });
                 },
-            })
-            .collect();
+            }
+        }
 
         Ok(Response::new(TransferResponse { results }))
     }
@@ -865,7 +931,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             }
         });
 
-        let transactions = future::try_join_all(queries)
+        let all_transactions = future::try_join_all(queries)
             .await
             .map(|tx| tx.into_iter())
             .map_err(|err| Status::unknown(err.to_string()))?;
@@ -874,12 +940,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        let transactions = transactions
-            .map(|(tx_id, tx)| match tx {
-                Some(tx) => convert_wallet_transaction_into_transaction_info(tx, &wallet_address),
+        let mut transactions = Vec::new();
+        for (tx_id, tx) in all_transactions {
+            transactions.push(match tx {
+                Some(tx) => {
+                    convert_wallet_transaction_into_transaction_info(
+                        tx,
+                        &wallet_address,
+                        &self.wallet.key_manager_service,
+                    )
+                    .await
+                },
                 None => TransactionInfo::not_found(tx_id),
-            })
-            .collect();
+            });
+        }
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
     }
@@ -955,6 +1029,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_completed_transactions(
         &self,
         request: Request<GetCompletedTransactionsRequest>,
@@ -1008,6 +1083,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
             for (i, txn) in transactions.iter().enumerate() {
+                let output_commitments = txn
+                    .transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
@@ -1028,6 +1123,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         raw_payment_id: txn.payment_id.to_bytes(),
                         user_payment_id: txn.payment_id.user_data_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
+                        output_commitments,
+                        input_commitments,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1107,25 +1204,49 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .skip(offset)
             .take(limit)
-            .map(|txn| TransactionInfo {
-                tx_id: txn.tx_id.into(),
-                source_address: txn.source_address.to_vec(),
-                dest_address: txn.destination_address.to_vec(),
-                status: TransactionStatus::from(txn.status.clone()) as i32,
-                amount: txn.amount.into(),
-                is_cancelled: txn.cancelled.is_some(),
-                direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                fee: txn.fee.into(),
-                timestamp: txn.timestamp.timestamp() as u64,
-                excess_sig: txn
+            .map(|txn| {
+                let output_commitments = txn
                     .transaction
-                    .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
-                    .get_signature()
-                    .to_vec(),
-                raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
-                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
+                TransactionInfo {
+                    tx_id: txn.tx_id.into(),
+                    source_address: txn.source_address.to_vec(),
+                    dest_address: txn.destination_address.to_vec(),
+                    status: TransactionStatus::from(txn.status.clone()) as i32,
+                    amount: txn.amount.into(),
+                    is_cancelled: txn.cancelled.is_some(),
+                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                    fee: txn.fee.into(),
+                    timestamp: txn.timestamp.timestamp() as u64,
+                    excess_sig: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .unwrap_or(&Signature::default())
+                        .get_signature()
+                        .to_vec(),
+                    raw_payment_id: txn.payment_id.to_bytes(),
+                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    output_commitments,
+                    input_commitments,
+                }
             })
             .collect();
 
@@ -1164,25 +1285,49 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let transactions = transactions
             .iter()
-            .map(|txn| TransactionInfo {
-                tx_id: txn.tx_id.into(),
-                source_address: txn.source_address.to_vec(),
-                dest_address: txn.destination_address.to_vec(),
-                status: TransactionStatus::from(txn.status.clone()) as i32,
-                amount: txn.amount.into(),
-                is_cancelled: txn.cancelled.is_some(),
-                direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                fee: txn.fee.into(),
-                timestamp: txn.timestamp.timestamp() as u64,
-                excess_sig: txn
+            .map(|txn| {
+                let output_commitments = txn
                     .transaction
-                    .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
-                    .get_signature()
-                    .to_vec(),
-                raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
-                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
+                TransactionInfo {
+                    tx_id: txn.tx_id.into(),
+                    source_address: txn.source_address.to_vec(),
+                    dest_address: txn.destination_address.to_vec(),
+                    status: TransactionStatus::from(txn.status.clone()) as i32,
+                    amount: txn.amount.into(),
+                    is_cancelled: txn.cancelled.is_some(),
+                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                    fee: txn.fee.into(),
+                    timestamp: txn.timestamp.timestamp() as u64,
+                    excess_sig: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .unwrap_or(&Signature::default())
+                        .get_signature()
+                        .to_vec(),
+                    raw_payment_id: txn.payment_id.to_bytes(),
+                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    output_commitments,
+                    input_commitments,
+                }
             })
             .collect();
 
@@ -1528,60 +1673,112 @@ fn simple_event(event: &str) -> TransactionEvent {
     }
 }
 
-fn convert_wallet_transaction_into_transaction_info(
+#[allow(clippy::too_many_lines)]
+async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyManagerInterface>(
     tx: models::WalletTransaction,
     wallet_address: &TariAddress,
+    key_manager: &KM,
 ) -> TransactionInfo {
     use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
-        PendingInbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_vec(),
-            dest_address: wallet_address.to_vec(),
-            status: TransactionStatus::from(tx.status) as i32,
-            amount: tx.amount.into(),
-            is_cancelled: tx.cancelled,
-            direction: TransactionDirection::Inbound as i32,
-            fee: 0,
-            excess_sig: Default::default(),
-            timestamp: tx.timestamp.timestamp() as u64,
-            raw_payment_id: tx.payment_id.to_bytes(),
-            user_payment_id: tx.payment_id.user_data_as_bytes(),
-            mined_in_block_height: 0,
+        PendingInbound(tx) => {
+            let output_commitments = match tx.receiver_protocol.state {
+                RecipientState::Finalized(data) => vec![data.output.commitment.as_bytes().to_vec()],
+                _ => vec![],
+            };
+            TransactionInfo {
+                tx_id: tx.tx_id.into(),
+                source_address: tx.source_address.to_vec(),
+                dest_address: wallet_address.to_vec(),
+                status: TransactionStatus::from(tx.status) as i32,
+                amount: tx.amount.into(),
+                is_cancelled: tx.cancelled,
+                direction: TransactionDirection::Inbound as i32,
+                fee: 0,
+                excess_sig: Default::default(),
+                timestamp: tx.timestamp.timestamp() as u64,
+                raw_payment_id: tx.payment_id.to_bytes(),
+                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                mined_in_block_height: 0,
+                output_commitments,
+                input_commitments: vec![],
+            }
         },
-        PendingOutbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id.into(),
-            source_address: wallet_address.to_vec(),
-            dest_address: tx.destination_address.to_vec(),
-            status: TransactionStatus::from(tx.status) as i32,
-            amount: tx.amount.into(),
-            is_cancelled: tx.cancelled,
-            direction: TransactionDirection::Outbound as i32,
-            fee: tx.fee.into(),
-            excess_sig: Default::default(),
-            timestamp: tx.timestamp.timestamp() as u64,
-            raw_payment_id: tx.payment_id.to_bytes(),
-            user_payment_id: tx.payment_id.user_data_as_bytes(),
-            mined_in_block_height: 0,
+        PendingOutbound(tx) => {
+            let output_commitments = match tx.sender_protocol.get_output_commitments(key_manager).await {
+                Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to get output commitments: {}", e);
+                    vec![]
+                },
+            };
+            let input_commitments = match tx.sender_protocol.get_input_commitments(key_manager).await {
+                Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to get output commitments: {}", e);
+                    vec![]
+                },
+            };
+            TransactionInfo {
+                tx_id: tx.tx_id.into(),
+                source_address: wallet_address.to_vec(),
+                dest_address: tx.destination_address.to_vec(),
+                status: TransactionStatus::from(tx.status) as i32,
+                amount: tx.amount.into(),
+                is_cancelled: tx.cancelled,
+                direction: TransactionDirection::Outbound as i32,
+                fee: tx.fee.into(),
+                excess_sig: Default::default(),
+                timestamp: tx.timestamp.timestamp() as u64,
+                raw_payment_id: tx.payment_id.to_bytes(),
+                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                mined_in_block_height: 0,
+                output_commitments,
+                input_commitments,
+            }
         },
-        Completed(tx) => TransactionInfo {
-            tx_id: tx.tx_id.into(),
-            source_address: tx.source_address.to_vec(),
-            dest_address: tx.destination_address.to_vec(),
-            status: TransactionStatus::from(tx.status) as i32,
-            amount: tx.amount.into(),
-            is_cancelled: tx.cancelled.is_some(),
-            direction: TransactionDirection::from(tx.direction) as i32,
-            fee: tx.fee.into(),
-            timestamp: tx.timestamp.timestamp() as u64,
-            excess_sig: tx
+        Completed(tx) => {
+            let output_commitments = tx
                 .transaction
-                .first_kernel_excess_sig()
-                .map(|s| s.get_signature().to_vec())
-                .unwrap_or_default(),
-            raw_payment_id: tx.payment_id.to_bytes(),
-            user_payment_id: tx.payment_id.user_data_as_bytes(),
-            mined_in_block_height: tx.mined_height.unwrap_or(0),
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments = tx
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        vec![]
+                    },
+                })
+                .collect();
+            TransactionInfo {
+                tx_id: tx.tx_id.into(),
+                source_address: tx.source_address.to_vec(),
+                dest_address: tx.destination_address.to_vec(),
+                status: TransactionStatus::from(tx.status) as i32,
+                amount: tx.amount.into(),
+                is_cancelled: tx.cancelled.is_some(),
+                direction: TransactionDirection::from(tx.direction) as i32,
+                fee: tx.fee.into(),
+                timestamp: tx.timestamp.timestamp() as u64,
+                excess_sig: tx
+                    .transaction
+                    .first_kernel_excess_sig()
+                    .map(|s| s.get_signature().to_vec())
+                    .unwrap_or_default(),
+                raw_payment_id: tx.payment_id.to_bytes(),
+                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                mined_in_block_height: tx.mined_height.unwrap_or(0),
+                output_commitments,
+                input_commitments,
+            }
         },
     }
 }

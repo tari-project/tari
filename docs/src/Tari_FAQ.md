@@ -84,23 +84,9 @@ Users can refer to the following: [https://tari.substack.com/p/tari-tokenomics](
 Tari has a tail emission of 1% per year after initial supply.
 
 ### Does Tari have a token allocation plan?
-The total initial supply of Tari (XTM) is 21 billion tokens, with the following allocation:
-**Initial Supply Distribution (21 billion XTM)**
-- 70% to Miners (14.7 billion XTM): The majority of tokens will be distributed through mining, with rewards split 50/50 between merge mining (RandomX algorithm) and standalone mining (SHA3x algorithm).
-- 30% Pre-mine (6.3 billion XTM): This portion is further divided into:
-    - 5% Community (1.05 billion XTM): For incentive programs to encourage and reward community engagement
-    - 9% Protocol Infrastructure and Grants (1.89 billion XTM): To support development of tooling necessary for operating the Tari network
-    - 4% Contributors (0.84 billion XTM): For people who contributed to the development of the Tari network
-    - 12% Participants (2.52 billion XTM): For early supporters who helped make Tari a reality
+There will be a total supply of 21 billion XTM emitted gradually using an exponential decay function over approximately 27.8 years. Once annual emissions decline to 1% of total supply, a perpetual 1% tail emission will continue indefinitely, ensuring ongoing miner compensation and network security. Of this total supply, 6.3 billion XTM (30%) will be pre-mined, subject to significant lockups and vesting schedules. These pre-mined tokens will support protocol infrastructure, community incentives, grants, and long-term alignment with contributors. After the pre-mine distribution, all newly emitted tokens (100%) will go exclusively to miners who secure the Tari network.
 
-**Unlock Schedule**
-- Community Tokens: Unlock monthly for 12 months, beginning 6 months after mainnet launch
-- Protocol Infrastructure and Grants: 40% (756 million tokens) available at launch for protocol liquidity, with the remainder unlocking monthly for 4 years, beginning 6 months after launch
-- Contributor Tokens: Unlock monthly for 5 years, beginning 12 months after mainnet launch
-- Participant Tokens: Unlock monthly for 2 years, beginning 12 months after mainnet launch
-
-**Long-term Supply**
-After the initial distribution, there will be a tail emission of 1% per year to ensure miners continue to receive compensation for securing the network.
+You can read more about Tari's tokenomics here: https://tari.com/tokenomics
 
 ## Installation and Operational Requirements
 ### What are the current networks for Tari?
@@ -148,8 +134,9 @@ The Tari protocol addresses for the bootstrap nodes are:
 Tari is a proof-of-work, merge-mined blockchain focused on privacy and digital asset support.
 
 ### What consensus model does Tari use?
-Tari uses a Proof-of-Work (PoW) model for consensus and security, and is merge-mined with Monero. Tari uses two algorithms for this purpose:
-- RandomX: This is the same CPU-optimized algorithm used by Monero. It is merge-mined with Monero, meaning miners can mine both networks at once using the same work.
+Tari uses a Proof-of-Work (PoW) model for consensus and security, and is merge-mined with Monero. Tari uses three algorithms for this purpose:
+- Merge-mined RandomX: This is the same CPU-optimized algorithm used by Monero. It is merge-mined with Monero, meaning miners can mine both networks at once using the same work.
+- Tari-only RandomX: Similar to the above, but it is not merge-mined, instead focused specifically on mining Tari.
 - Sha3x: A custom algorithm based on SHA-3 (specifically SHA3-256), optimized for GPU mining. It's designed to provide algorithmic diversity and broaden miner participation.
 
 The primary aim is to increase the cost of 51% attacks, ensuring mining decentralization and resilience against hardware centralization.
@@ -212,7 +199,7 @@ The entire block reward (block subsidy + transaction fees) is assigned to the mi
 Yes, Tari transactions can be signed offline.
 
 ### How is the Tari blockchain secured?
-Tari relies on the Nakamoto Consensus and dual mining algorithms, with approximately 50% of block rewards derived from merged-mining monero via RandomX and the other 50% from Sha3x mining.
+Tari relies on the Nakamoto Consensus and a multi-algorithm mining approach. The hash rate is now distributed among three mining methods: approximately 33% from merged-mining Monero via RandomX, 33% from Tari-only RandomX mining, and 33% from Sha3x mining. This enhancement allows for increased mining diversity and security, supporting both merged-miners and those mining Tari directly.
 
 ### What is the block reward emission schedule in Tari?
 The Tari emission schedule is designed to distribute new Tari through block rewards using an exponentially decaying model, followed by a tail emission phase. Initially, block rewards start at a high value and decay gradually over time based on a decay factor. For example, the starting block reward is approximately 12.92 Minotari (12,923,971 µT), and it decreases over time as the decay factor is applied. This approach ensures a predictable reduction in rewards, similar to Monero's emission model, without abrupt halving events.

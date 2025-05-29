@@ -98,6 +98,9 @@ impl fmt::Display for TariAddressFeatures {
         if self.contains(TariAddressFeatures::ONE_SIDED) {
             write!(f, "One-sided,")?;
         }
+        if self.contains(TariAddressFeatures::PAYMENT_ID) {
+            write!(f, "Payment-id,")?;
+        }
         Ok(())
     }
 }
@@ -259,12 +262,6 @@ impl TariAddress {
 
     /// helper function to convert emojis to u8
     fn emoji_to_bytes(emoji: &str) -> Result<Vec<u8>, TariAddressError> {
-        // The string must be the correct size, including the checksum
-        if !(emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE ||
-            emoji.chars().count() == TARI_ADDRESS_INTERNAL_DUAL_SIZE)
-        {
-            return Err(TariAddressError::InvalidSize);
-        }
         if emoji.chars().count() == TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
             SingleAddress::emoji_to_bytes(emoji)
         } else {
@@ -924,7 +921,7 @@ mod test {
             Err(TariAddressError::InvalidSize)
         );
         // This emoji string is too long to be a valid emoji ID
-        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
+        let emoji_string = "🍗🌊🦂🍎🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🐛🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮🔱🍟🚦🦆👃🐛🎼🛵🔮💋👙💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠💦🍷👠🦀🐺🛵🔮💋👙💦🍷👠🦀🐺🍪🚀🎮🎩👅🐔🐉🍍🥑💔📌🚧🐊💄🎥🎓🚗🎳🐛🚿💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒💉🌴🧢🐵🎩👾👽🎃🤡👍🔮👒👽🎵👀🚨😷🎒👂👶🍄🏰🚑🌸🍁👂🎒";
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
             Err(TariAddressError::InvalidSize)
@@ -995,14 +992,14 @@ mod test {
         // This emoji string contains an invalid utf8 character
         let emoji_string = "🦊 | 🦊 | 🦊 | 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
                             🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊| 🦊 | \
-                            🦊| 🦊 | 🦊| 🦊 | 🦊";
+                            🦊| 🦊 | 🦊| 🦊 | 🦊 | 🦊| 🦊 | 🦊| 🦊 | 🦊";
         assert_eq!(
             TariAddress::from_base58(emoji_string),
             Err(TariAddressError::InvalidCharacter)
         );
         assert_eq!(
             TariAddress::from_emoji_string(emoji_string),
-            Err(TariAddressError::InvalidSize)
+            Err(TariAddressError::InvalidEmoji)
         );
         assert_eq!(
             TariAddress::from_str(emoji_string),

@@ -120,7 +120,7 @@ use tari_common::{
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
-    tari_address::{TariAddress, TariAddressError},
+    tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
         ComAndPubSignature,
@@ -1968,11 +1968,14 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
         return ptr::null_mut();
     }
 
-    match CStr::from_ptr(emoji)
-        .to_str()
-        .map_err(|_| TariAddressError::InvalidEmoji)
-        .and_then(TariAddress::from_emoji_string)
-    {
+    let cstring = match CStr::from_ptr(emoji).to_str() {
+        Ok(v) => v.to_owned(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
+            return ptr::null_mut();
+        },
+    };
+    match TariAddress::from_emoji_string(&cstring) {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(_) => {
             *error_out = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
@@ -10921,6 +10924,23 @@ mod test {
                 LibWalletError::from(InterfaceError::NullError("bytes_ptr".to_string())).code
             );
             byte_vector_destroy(bytes_ptr);
+        }
+    }
+
+    #[test]
+    fn test_emoji_string() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let emoji_string = "🐢🐋🏦💤🐣👣📱🚜🍍🍉🎺🥊📖🔦😷👾🐺🐬👗🔱🌻💍🎢🎪🛵🐋🐊👞🥝🐍🌸📷🔧🎭🐮⏰🍇💯🐛🌴💨🔌🍪📟🎲🐝🤢🎉🔑🌵🚒🐙😍🐝🍑🐜👂🧩⏰🎀🚀🍵👑💐🎮🎮🎣🎒🍬🍳🍸🍷🍶🍯🍵🥄🍭🥐💣";
+
+            let _tari_address = TariAddress::from_emoji_string(emoji_string).unwrap();
+
+            let cstring = CString::new(emoji_string).unwrap();
+            let cstring_ptr: *const c_char = CString::into_raw(cstring) as *const c_char;
+
+            let _result = emoji_id_to_tari_address(cstring_ptr, error_ptr);
+            assert_eq!(*error_ptr, 0, "No error expected");
         }
     }
 
