@@ -146,7 +146,6 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
 
         if network_silence {
-            dbg!("silence");
             self.set_synced_response(shared);
             warn!(
                 target: LOG_TARGET,
@@ -190,9 +189,7 @@ impl Listening {
                                 info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed PrimaryBootstrapComplete event - marking bootstrap complete");
                                 shared.set_primary_bootstrap_complete(true);
                             },
-                            _ => {
-                                dbg!("here?");
-                            },
+                            _ => {},
                         }
                     },
                     Err(broadcast::error::TryRecvError::Empty) => {
@@ -216,7 +213,6 @@ impl Listening {
                 current_listening_info.bootstrap_phase = None;
                 info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
             } else {
-                dbg!("hello?");
                 // Default to round 0 until first DhtEvent updates it
                 current_listening_info.bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo {
                     current_round: 0,
