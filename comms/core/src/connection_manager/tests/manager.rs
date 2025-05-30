@@ -78,7 +78,7 @@ async fn connect_to_nonexistent_peer() {
     rt_handle.spawn(connection_manager.run());
 
     let err = requester.dial_peer(NodeId::default()).await.unwrap_err();
-    unpack_enum!(ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError) = err);
+    unpack_enum!(ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFound(_)) = err);
 
     shutdown.trigger();
 }

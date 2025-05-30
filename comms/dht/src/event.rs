@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use tokio::sync::broadcast;
 
-use crate::network_discovery::DhtNetworkDiscoveryRoundInfo;
+use crate::network_discovery::{state_machine::BootstrapMethod, DhtNetworkDiscoveryRoundInfo};
 
 pub type DhtEventSender = broadcast::Sender<Arc<DhtEvent>>;
 pub type DhtEventReceiver = broadcast::Receiver<Arc<DhtEvent>>;
@@ -38,4 +38,10 @@ pub enum DhtEvent {
 
     /// Emitted by the NetworkDiscovery actor once a round of peer syncing has completed.
     NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo),
+
+    /// Emitted by NetworkDiscovery when primary bootstrap (e.g. via seeds) is complete.
+    PrimaryBootstrapComplete,
+
+    /// Emitted by NetworkDiscovery when the bootstrap method has been determined.
+    BootstrapMethodDetermined(BootstrapMethod),
 }

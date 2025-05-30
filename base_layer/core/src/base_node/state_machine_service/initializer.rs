@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms_dht::Dht;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -104,17 +103,17 @@ where B: BlockchainBackend + 'static
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let sync_validators =
                 SyncValidators::full_consensus(rules.clone(), factories, bypass_range_proof_verification);
 
+            let dht = handles.expect_handle::<Dht>(); // Get Dht handle
             let node = BaseNodeStateMachine::new(
                 db,
                 node_local_interface,
                 connectivity,
-                peer_manager,
                 chain_metadata_service.get_event_stream(),
+                dht.subscribe_dht_events(), // Pass DhtEventReceiver
                 config,
                 sync_validators,
                 status_event_sender,
@@ -123,7 +122,6 @@ where B: BlockchainBackend + 'static
                 rules,
                 handles.get_shutdown_signal(),
             );
-
             node.run().await;
             info!(target: LOG_TARGET, "Base Node State Machine Service has shut down");
         });

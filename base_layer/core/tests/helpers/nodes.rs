@@ -86,6 +86,7 @@ pub struct NodeInterfaces {
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
+    pub dht: Dht,
     pub comms: CommsNode,
     pub mock_base_node_state_machine: MockBaseNodeStateMachine,
     pub state_machine_handle: StateMachineHandle,
@@ -404,7 +405,7 @@ async fn setup_base_node_services(
     let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
     let liveness_handle = handles.expect_handle::<LivenessHandle>();
     let state_machine_handle = handles.expect_handle::<StateMachineHandle>();
-
+    let dht_handle = handles.expect_handle::<Dht>();
     NodeInterfaces {
         node_identity,
         outbound_nci,
@@ -418,6 +419,7 @@ async fn setup_base_node_services(
         chain_metadata_handle,
         liveness_handle,
         comms,
+        dht: dht_handle,
         messaging_events,
         mock_base_node_state_machine: mock_state_machine,
         shutdown,

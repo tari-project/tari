@@ -510,7 +510,7 @@ where
                 warn!(target: LOG_TARGET, "Peer not found for dial");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(
-                        PeerManagerError::PeerNotFoundError,
+                        PeerManagerError::peer_not_found(&node_id),
                     )));
                 }
             },

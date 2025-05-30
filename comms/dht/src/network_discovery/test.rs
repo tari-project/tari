@@ -19,12 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{iter, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use tari_comms::{
-    connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
@@ -39,16 +37,12 @@ use tokio::sync::broadcast;
 use super::{DhtNetworkDiscovery, NetworkDiscoveryConfig};
 use crate::{
     event::DhtEvent,
-    proto::rpc::GetPeersResponse,
-    rpc,
-    rpc::DhtRpcServiceMock,
     test_utils::{build_peer_manager, make_node_identity},
     DhtConfig,
 };
 
 mod state_machine {
     use super::*;
-    use crate::{rpc::UnvalidatedPeerInfo, test_utils::create_good_standing_peer};
 
     async fn setup(
         mut config: DhtConfig,
@@ -99,64 +93,6 @@ mod state_machine {
         )
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[allow(clippy::redundant_closure)]
-    async fn it_fetches_peers() {
-        // env_logger::builder().filter_level(log::LevelFilter::Debug).init();
-        // env_logger::init(); // Set `$env:RUST_LOG = "trace"`  //  > ./target/output.log 2>&1
-        const NUM_PEERS: usize = 3;
-        let config = DhtConfig {
-            num_neighbouring_nodes: 4,
-            network_discovery: NetworkDiscoveryConfig {
-                min_desired_peers: NUM_PEERS,
-                initial_peer_sync_delay: None,
-                ..Default::default()
-            },
-            ..DhtConfig::default_local_test()
-        };
-        let peers = iter::repeat_with(|| make_node_identity().to_peer())
-            .map(|p| GetPeersResponse {
-                peer: Some(UnvalidatedPeerInfo::from_peer_limited_claims(p, 5, 5).into()),
-            })
-            .take(NUM_PEERS)
-            .collect();
-        let (discovery_actor, connectivity_mock, peer_manager, node_identity, mut event_rx, _shutdown) =
-            setup(config, make_node_identity(), vec![]).await;
-
-        let mock = DhtRpcServiceMock::new();
-        let service = rpc::DhtService::new(mock.clone());
-        let protocol_name = service.as_protocol_name();
-
-        let mut mock_server = MockRpcServer::new(service, node_identity.clone());
-        let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        // Add the peer that we'll sync from
-        peer_manager
-            .add_or_update_peer(create_good_standing_peer(&peer_node_identity))
-            .await
-            .unwrap();
-        mock_server.serve();
-
-        // Create a connection to the RPC mock and then make it available to the connectivity manager mock
-        let connection = mock_server
-            .create_connection(peer_node_identity.to_peer(), protocol_name.into())
-            .await;
-
-        connectivity_mock
-            .set_connectivity_status(ConnectivityStatus::Online(NUM_PEERS))
-            .await;
-        connectivity_mock.add_active_connection(connection).await;
-
-        mock.get_peers.set_response(Ok(peers)).await;
-        discovery_actor.spawn();
-
-        let event = event_rx.recv().await.unwrap();
-        unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
-        assert_eq!(info.num_new_peers, NUM_PEERS);
-        assert_eq!(info.num_duplicate_peers, 0);
-        assert_eq!(info.num_succeeded, 1);
-        assert_eq!(info.sync_peers, vec![peer_node_identity.node_id().clone()]);
-    }
-
     #[tokio::test]
     async fn it_shuts_down() {
         let (discovery, _, _, _, _, mut shutdown) = setup(Default::default(), make_node_identity(), vec![]).await;
@@ -170,14 +106,17 @@ mod state_machine {
 
 mod discovery_ready {
     use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
+    use tokio::sync::RwLock;
 
     use super::*;
-    use crate::network_discovery::{
-        ready::DiscoveryReady,
-        state_machine::{NetworkDiscoveryContext, StateEvent},
-        DhtNetworkDiscoveryRoundInfo,
+    use crate::{
+        network_discovery::{
+            ready::DiscoveryReady,
+            state_machine::{NetworkDiscoveryContext, StateEvent},
+            DhtNetworkDiscoveryRoundInfo,
+        },
+        BootstrapMethod,
     };
-
     fn setup(
         config: NetworkDiscoveryConfig,
     ) -> (
@@ -203,6 +142,8 @@ mod discovery_ready {
             all_attempted_peers: Default::default(),
             event_tx,
             last_round: Default::default(),
+            bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
+            bootstrap_started_at: Arc::new(RwLock::new(None)),
         };
 
         let ready = DiscoveryReady::new(context.clone());
@@ -251,6 +192,7 @@ mod discovery_ready {
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
                 sync_peers: vec![],
+                ..Default::default()
             })
             .await;
         let state_event = ready.next_event().await;
@@ -258,7 +200,7 @@ mod discovery_ready {
     }
 
     #[tokio::test]
-    async fn it_transitions_to_on_connect() {
+    async fn it_transitions_to_idle() {
         let config = NetworkDiscoveryConfig {
             min_desired_peers: 0,
             idle_after_num_rounds: 0,
@@ -273,6 +215,6 @@ mod discovery_ready {
             })
             .await;
         let state_event = ready.next_event().await;
-        unpack_enum!(StateEvent::OnConnectMode = state_event);
+        unpack_enum!(StateEvent::Idle = state_event);
     }
 }

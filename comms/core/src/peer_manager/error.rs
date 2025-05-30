@@ -22,9 +22,11 @@
 
 // use std::sync::PoisonError;
 
+use std::fmt;
+
 use multiaddr::Multiaddr;
 use tari_common_sqlite::error::StorageError;
-use tari_utilities::hex::HexError;
+use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -33,8 +35,8 @@ use crate::peer_manager::NodeId;
 /// Error type for [PeerManager](super::PeerManager).
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
-    #[error("The requested peer does not exist")]
-    PeerNotFoundError,
+    #[error("The requested peer does not exist: {0}")]
+    PeerNotFound(DisplayVec),
     #[error("DB Data inconsistency: {0}")]
     DataInconsistency(String),
     #[error("The peer has been banned")]
@@ -68,7 +70,6 @@ pub enum PeerManagerError {
     #[error("Process error: `{0}`")]
     ProcessError(String),
 }
-
 impl From<JoinError> for PeerManagerError {
     fn from(err: JoinError) -> Self {
         PeerManagerError::JoinError(err.to_string())
@@ -81,13 +82,6 @@ impl From<StorageError> for PeerManagerError {
     }
 }
 
-impl PeerManagerError {
-    /// Returns true if this error indicates that the peer is not found, otherwise false
-    pub fn is_peer_not_found(&self) -> bool {
-        matches!(self, PeerManagerError::PeerNotFoundError)
-    }
-}
-
 impl From<HexError> for PeerManagerError {
     fn from(value: HexError) -> Self {
         PeerManagerError::HexError(value.to_string())
@@ -97,5 +91,57 @@ impl From<HexError> for PeerManagerError {
 impl From<std::io::Error> for PeerManagerError {
     fn from(value: std::io::Error) -> Self {
         PeerManagerError::StorageError(value.to_string())
+    }
+}
+
+/// Display helper struct for a vector of strings.
+#[derive(Debug, Error, Clone)]
+pub struct DisplayVec(Vec<NodeId>);
+
+impl fmt::Display for DisplayVec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{}]",
+            self.0.iter().map(|v| v.to_hex()).collect::<Vec<_>>().join(", ")
+        )
+    }
+}
+
+impl PeerManagerError {
+    pub fn peer_not_found(peer: &NodeId) -> Self {
+        PeerManagerError::PeerNotFound(DisplayVec(vec![peer.clone()]))
+    }
+
+    pub fn peers_not_found<T>(peers: T) -> Self
+    where T: AsRef<[NodeId]> {
+        PeerManagerError::PeerNotFound(DisplayVec(peers.as_ref().to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_peer_not_found() {
+        let peers = [
+            NodeId::from_hex("abb1556d806c2ff042f433ca0a").unwrap(),
+            NodeId::from_hex("ba9ab662a6d974c5a607562326").unwrap(),
+            NodeId::from_hex("97676095b1901327bdc36e8cb6").unwrap(),
+        ];
+
+        let error = PeerManagerError::peers_not_found(&peers);
+        assert_eq!(
+            error.to_string(),
+            "The requested peer does not exist: [abb1556d806c2ff042f433ca0a, ba9ab662a6d974c5a607562326, \
+             97676095b1901327bdc36e8cb6]"
+        );
+
+        let error = PeerManagerError::peer_not_found(&peers[0]);
+        assert_eq!(
+            error.to_string(),
+            "The requested peer does not exist: [abb1556d806c2ff042f433ca0a]"
+        );
     }
 }

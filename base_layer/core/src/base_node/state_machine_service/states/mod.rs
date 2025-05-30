@@ -56,7 +56,7 @@
 //! Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 //! required, and then shutdown.
 
-mod events_and_states;
+pub mod events_and_states;
 pub use events_and_states::{BaseNodeState, BlockSyncInfo, StateEvent, StateInfo, StatusInfo, SyncStatus};
 
 mod block_sync;

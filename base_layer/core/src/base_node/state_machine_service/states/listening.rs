@@ -30,7 +30,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::PeerManagerError;
+use tari_comms_dht::{event::DhtEvent, DiscoveryPhase};
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -39,6 +39,7 @@ use crate::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
             states::{
+                events_and_states,
                 BlockSync,
                 DecideNextSync,
                 HeaderSyncState,
@@ -128,7 +129,7 @@ impl Listening {
         if !self.is_synced {
             self.is_synced = true;
             self.initial_delay_count = 0;
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                 true,
                 0,
                 shared.config.initial_sync_peer_count,
@@ -143,6 +144,7 @@ impl Listening {
         network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
+
         if network_silence {
             self.set_synced_response(shared);
             warn!(
@@ -151,199 +153,302 @@ impl Listening {
                 network in general is slow to respond to pings"
             );
         } else {
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                self.is_synced,
-                self.initial_delay_count,
-                shared.config.initial_sync_peer_count,
-            )));
+            // Update ListeningInfo based on current bootstrap state
+            let mut current_listening_info = match shared.info.clone() {
+                StateInfo::Listening(li) => li,
+                // If not in listening state, but entering it, create a fresh one.
+                _ => events_and_states::ListeningInfo {
+                    synced: self.is_synced,
+                    initial_delay_connected_count: self.initial_delay_count,
+                    initial_sync_peer_wait_count: shared.config.initial_sync_peer_count,
+                    bootstrap_phase: None,
+                },
+            };
+
+            // Check for any missed DHT events first (to handle timing issues)
+            let mut dht_events_check = shared.dht_event_stream.resubscribe();
+            info!(target: LOG_TARGET, "[BN SM LISTENING] Checking for any missed DHT bootstrap events before setting up UI state");
+
+            // Try to receive any recent DHT events that might have been published before we started listening
+            let mut events_processed = 0;
+            loop {
+                match dht_events_check.try_recv() {
+                    Ok(event_arc) => {
+                        events_processed += 1;
+                        let event = event_arc.deref();
+                        match event {
+                            DhtEvent::BootstrapMethodDetermined(method) => {
+                                let method_str = format!("{}", method);
+                                info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed BootstrapMethodDetermined event: {}", method_str);
+                                if method_str == "ExistingPeers" {
+                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Processing missed ExistingPeers event - marking bootstrap complete");
+                                    shared.set_primary_bootstrap_complete(true);
+                                }
+                            },
+                            DhtEvent::PrimaryBootstrapComplete => {
+                                info!(target: LOG_TARGET, "[BN SM LISTENING] Found missed PrimaryBootstrapComplete event - marking bootstrap complete");
+                                shared.set_primary_bootstrap_complete(true);
+                            },
+                            _ => {},
+                        }
+                    },
+                    Err(broadcast::error::TryRecvError::Empty) => {
+                        // No more events to process
+                        break;
+                    },
+                    Err(broadcast::error::TryRecvError::Lagged(n)) => {
+                        warn!(target: LOG_TARGET, "[BN SM LISTENING] DHT event stream lagged by {} events during startup check", n);
+                        // Continue processing in case there are still events available
+                    },
+                    Err(broadcast::error::TryRecvError::Closed) => {
+                        warn!(target: LOG_TARGET, "[BN SM LISTENING] DHT event stream closed during startup check");
+                        break;
+                    },
+                }
+            }
+
+            info!(target: LOG_TARGET, "[BN SM LISTENING] Processed {} missed DHT events. Bootstrap complete: {}", events_processed, shared.is_primary_bootstrap_complete);
+
+            if shared.is_primary_bootstrap_complete {
+                current_listening_info.bootstrap_phase = None;
+                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap already complete - UI will show Listening state");
+            } else {
+                // Default to round 0 until first DhtEvent updates it
+                current_listening_info.bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo {
+                    current_round: 0,
+                    total_rounds: shared
+                        .config
+                        .blockchain_sync_config
+                        .num_initial_sync_rounds_seed_bootstrap(),
+                });
+                info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap not complete - setting UI to show bootstrap phase 0/{}", shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap());
+            };
+
+            // Ensure other fields are also current
+            current_listening_info.synced = self.is_synced;
+            current_listening_info.initial_delay_connected_count = self.initial_delay_count;
+            shared.set_state_info(StateInfo::Listening(current_listening_info));
         }
+
+        let mut chain_metadata_events = shared.metadata_event_stream.resubscribe();
+        let mut dht_events = shared.dht_event_stream.resubscribe();
         let mut time_since_better_block = None;
-        let mut initial_sync_counter = 0;
+        let mut initial_sync_counter = 0; // This seems to track number of peers heard from for initial sync decision.
         let mut ahead_of_peers_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
         loop {
-            let metadata_event = shared.metadata_event_stream.recv().await;
-            match metadata_event.as_ref().map(|v| v.deref()) {
-                Ok(ChainMetadataEvent::NetworkSilence) => {
-                    self.set_synced_response(shared);
-                    debug!("NetworkSilence event received");
-                },
-                Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
-                    // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
-                    // updated info
-                    if !self.is_synced {
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
-                            self.is_synced,
-                            self.initial_delay_count,
-                            shared.config.initial_sync_peer_count,
-                        )));
-                    }
-                    // We already ban the peer based on some previous logic, but this message was already in the
-                    // pipeline before the ban went into effect.
-                    match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
-                        Ok(true) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Ignoring chain metadata from banned peer {}",
-                                peer_metadata.node_id()
-                            );
-                            continue;
-                        },
-                        Ok(false) => {},
-                        Err(e) => match e {
-                            PeerManagerError::DataInconsistency(_) | PeerManagerError::MigrationError(_) => {
-                                return FatalError(format!("Error checking if peer is banned: {}", e));
-                            },
-                            _ => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Ignoring chain metadata from peer {} due to error: {}",
-                                    peer_metadata.node_id(), e
-                                );
-                                continue;
-                            },
-                        },
-                    }
+            tokio::select! {
+                result = chain_metadata_events.recv() => {
+                    match result {
+                        Ok(metadata_event_arc) => {
+                            let metadata_event = metadata_event_arc.deref();
+                            match metadata_event {
+                                ChainMetadataEvent::NetworkSilence => {
+                                    // Only consider this if not actively bootstrapping via seeds
+                                    if shared.is_primary_bootstrap_complete {
+                                        self.set_synced_response(shared);
+                                        debug!("NetworkSilence event received");
+                                    }
+                                },
+                                ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata) => {
+                                    if !shared.is_primary_bootstrap_complete {
+                                        // Still bootstrapping, update initial_delay_connected_count for "Waiting for peer data" if bootstrap_phase becomes None *prematurely*
+                                        if let StateInfo::Listening(mut li) = shared.info.clone() {
+                                            if li.bootstrap_phase.is_none() { // If bootstrap phase is gone BUT primary_bootstrap_complete is false
+                                                initial_sync_counter += 1;
+                                                self.initial_delay_count = initial_sync_counter;
+                                                li.initial_delay_connected_count = self.initial_delay_count;
+                                                shared.set_state_info(StateInfo::Listening(li));
+                                            }
+                                        }
+                                        continue; // Skip sync decision logic while bootstrapping
+                                    }
 
-                    let peer_data = PeerMetadata {
-                        metadata: peer_metadata.claimed_chain_metadata().clone(),
-                        last_updated: EpochTime::now(),
-                    };
-                    // If this fails, its not the end of the world, we just want to keep record of the stats of
-                    // the peer
-                    let _old_data = shared
-                        .peer_manager
-                        .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
-                        .await;
+                                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
+                                    if !configured_sync_peers.is_empty() && !configured_sync_peers.contains(peer_metadata.node_id()) {
+                                         continue;
+                                    };
 
-                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
-                    if !configured_sync_peers.is_empty() {
-                        // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
-                        // we're out of sync
-                        if !configured_sync_peers.contains(peer_metadata.node_id()) {
-                            continue;
-                        }
-                    };
+                                    let local_metadata = match shared.db.get_chain_metadata().await {
+                                        Ok(m) => m,
+                                        Err(e) => {
+                                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                                        },
+                                    };
+                                    let mut sync_mode = determine_sync_mode(
+                                        shared.config.blocks_behind_before_considered_lagging,
+                                        &local_metadata,
+                                        peer_metadata,
+                                    );
+                                    if let SyncStatus::BehindButNotYetLagging {
+                                        local,
+                                        network,
+                                        sync_peers,
+                                    } = &sync_mode
+                                    {
+                                        if time_since_better_block.is_none() {
+                                            time_since_better_block = Some(Instant::now());
+                                        }
+                                        if time_since_better_block
+                                            .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
+                                            .unwrap_or(false)
+                                        {
+                                            sync_mode = SyncStatus::Lagging {
+                                                local: local.clone(),
+                                                network: network.clone(),
+                                                sync_peers: sync_peers.clone(),
+                                            };
+                                        }
+                                    } else if sync_mode == SyncStatus::UpToDate {
+                                            time_since_better_block = None;
 
-                    let local_metadata = match shared.db.get_chain_metadata().await {
-                        Ok(m) => m,
-                        Err(e) => {
-                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
-                        },
-                    };
-
-                    let mut sync_mode = determine_sync_mode(
-                        shared.config.blocks_behind_before_considered_lagging,
-                        &local_metadata,
-                        peer_metadata,
-                    );
-
-                    // Generally we will receive a block via incoming blocks, but something might have
-                    // happened that we have not synced to them, e.g. our network could have been down.
-                    // If we know about a stronger chain, but haven't synced to it, because we didn't get
-                    // the blocks propagated to us, or we have a high `blocks_before_considered_lagging`
-                    // then we will wait at least `time_before_considered_lagging` before we try to sync
-                    // to that new chain. If you want to sync to a new chain immediately, then you can
-                    // set this value to 1 second or lower.
-                    if let SyncStatus::BehindButNotYetLagging {
-                        local,
-                        network,
-                        sync_peers,
-                    } = &sync_mode
-                    {
-                        if time_since_better_block.is_none() {
-                            time_since_better_block = Some(Instant::now());
-                        }
-                        if time_since_better_block
-                            .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
-                            .unwrap()
-                        // unwrap is safe because time_since_better_block is set right above
-                        {
-                            sync_mode = SyncStatus::Lagging {
-                                local: local.clone(),
-                                network: network.clone(),
-                                sync_peers: sync_peers.clone(),
-                            };
-                        }
-                    } else {
-                        // We might have gotten up to date via propagation outside of this state, so reset the timer
-                        if sync_mode == SyncStatus::UpToDate {
-                            time_since_better_block = None;
-                        }
-                    }
-
-                    if !self.is_synced && sync_mode.is_up_to_date() {
-                        ahead_of_peers_counter += 1;
-                        if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
-                            self.set_synced_response(shared);
-                            info!(target: LOG_TARGET, "Initial sync achieved");
-                        } else {
-                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
-                            self.set_synced_response(shared);
-                        }
-                    }
-
-                    // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
-                    // immediately return fallen behind with the peer that has a higher pow than us
-                    if sync_mode.is_lagging() && self.is_synced {
-                        return StateEvent::FallenBehind(sync_mode);
-                    }
-                    // if we are lagging and not yet reached initial sync, we delay a bit till we get
-                    // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
-                    // peer to sync from in the next stages
-                    if let SyncStatus::Lagging {
-                        local,
-                        network,
-                        sync_peers,
-                    } = sync_mode
-                    {
-                        initial_sync_counter += 1;
-                        self.initial_delay_count = initial_sync_counter;
-                        for peer in sync_peers {
-                            let mut found = false;
-                            // lets search the list to ensure we only have unique peers in the list with the latest
-                            // up-to-date information
-                            for initial_peer in &mut initial_sync_peer_list {
-                                // we compare the two peers via the comparison operator on syncpeer
-                                if *initial_peer == peer {
-                                    found = true;
-                                    // if the peer is already in the list, we replace all the information about the peer
-                                    // with the newest up-to-date information
-                                    *initial_peer = peer.clone();
-                                    break;
-                                }
+                                    } else {
+                                        // here for clippy
+                                    }
+                                    if !self.is_synced && sync_mode.is_up_to_date() {
+                                        ahead_of_peers_counter += 1;
+                                        if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
+                                            self.set_synced_response(shared);
+                                            info!(target: LOG_TARGET, "Initial sync achieved");
+                                        } else {
+                                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                                            // This call to set_synced_response if is_synced is false might clear the bootstrap_phase too early.
+                                            // Ensure set_synced_response only clears bootstrap_phase if bootstrap is truly done.
+                                            if shared.is_primary_bootstrap_complete {
+                                               self.set_synced_response(shared);
+                                            }
+                                        }
+                                    }
+                                    if sync_mode.is_lagging() && self.is_synced && shared.is_primary_bootstrap_complete {
+                                        return StateEvent::FallenBehind(sync_mode);
+                                    }
+                                    if let SyncStatus::Lagging {
+                                        local,
+                                        network,
+                                        sync_peers,
+                                    } = sync_mode
+                                    {
+                                        if shared.is_primary_bootstrap_complete { // Only try to sync if not bootstrapping with seeds
+                                            initial_sync_counter += 1;
+                                            self.initial_delay_count = initial_sync_counter;
+                                             // update the display of "waiting for peer data X/Y"
+                                            if let StateInfo::Listening(mut li) = shared.info.clone(){
+                                                 if li.bootstrap_phase.is_none() {
+                                                    li.initial_delay_connected_count = self.initial_delay_count;
+                                                    shared.set_state_info(StateInfo::Listening(li));
+                                                 }
+                                            }
+                                            for peer in sync_peers {
+                                                let mut found = false;
+                                                for initial_peer in &mut initial_sync_peer_list {
+                                                    if *initial_peer == peer {
+                                                        found = true;
+                                                        *initial_peer = peer.clone();
+                                                        break;
+                                                    }
+                                                }
+                                                if !found {
+                                                    initial_sync_peer_list.push(peer.clone());
+                                                }
+                                            }
+                                            if initial_sync_counter >= shared.config.initial_sync_peer_count {
+                                                return StateEvent::FallenBehind(SyncStatus::Lagging {
+                                                    local,
+                                                    network,
+                                                    sync_peers: initial_sync_peer_list,
+                                                });
+                                            }
+                                        }
+                                    }
+                                },
                             }
-                            if !found {
-                                initial_sync_peer_list.push(peer.clone());
-                            }
-                        }
-                        // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
-                        // peers
-                        if initial_sync_counter >= shared.config.initial_sync_peer_count {
-                            // lets return now that we have enough peers to chose from
-                            return StateEvent::FallenBehind(SyncStatus::Lagging {
-                                local,
-                                network,
-                                sync_peers: initial_sync_peer_list,
-                            });
-                        }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "Chain metadata event stream closed");
+                            return StateEvent::UserQuit;
+                        },
                     }
                 },
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
-                },
-                Err(broadcast::error::RecvError::Closed) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber closed");
-                    break;
+                result = dht_events.recv() => {
+                    match result {
+                        Ok(dht_event_arc) => {
+                            let dht_event = dht_event_arc.deref();
+                            match dht_event {
+                                DhtEvent::BootstrapMethodDetermined(method) => {
+                                    let method_str = format!("{}", method);
+                                    info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method determined by DHT: {}", method_str);
+                                    if method_str == "ExistingPeers" {
+                                        info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap method is ExistingPeers. Marking primary bootstrap as complete.");
+                                        shared.set_primary_bootstrap_complete(true);
+
+                                        // Explicitly clear UI state here as well
+                                        if let StateInfo::Listening(mut li) = shared.info.clone() {
+                                            if li.bootstrap_phase.is_some() {
+                                                li.bootstrap_phase = None;
+                                                shared.set_state_info(StateInfo::Listening(li));
+                                                info!(
+                                                    target: LOG_TARGET,
+                                                    "[BN SM LISTENING] Bootstrap (ExistingPeers) determined. UI bootstrap_phase cleared explicitly."
+                                                );
+                                            }
+                                        }
+                                    }
+                                },
+                                DhtEvent::NetworkDiscoveryPeersAdded(round_info) => {
+                                    if round_info.phase == DiscoveryPhase::SeedStrap && !shared.is_primary_bootstrap_complete {
+                                        if let StateInfo::Listening(mut li) = shared.info.clone() {
+                                            let total_rounds = round_info.total_rounds.unwrap_or(1).max(1);
+                                            let current_round = round_info.round_number.unwrap_or(0).min(total_rounds);
+                                            let new_bootstrap_phase = Some(events_and_states::BootstrapPhaseInfo { current_round, total_rounds });
+                                            if li.bootstrap_phase != new_bootstrap_phase {
+                                                li.bootstrap_phase = new_bootstrap_phase;
+                                                shared.set_state_info(StateInfo::Listening(li));
+                                            }
+
+                                            // If this event is the final report from SeedStrap (i.e. current_round >= total_rounds)
+                                            // and some seed peers were successfully synced from, ensure primary bootstrap is marked complete.
+                                            // This acts as a robust way to ensure completion if the PrimaryBootstrapComplete event was missed.
+                                            if current_round >= total_rounds && round_info.num_succeeded > 0 {
+                                                info!(
+                                                    target: LOG_TARGET,
+                                                    "SeedStrap phase reporting as complete via NetworkDiscoveryPeersAdded (round {}/{}, {} successful syncs). Marking primary bootstrap complete.",
+                                                    current_round, total_rounds, round_info.num_succeeded
+                                                );
+                                                shared.set_primary_bootstrap_complete(true);
+                                            }
+                                        }
+                                    }
+                                },
+
+                                DhtEvent::PrimaryBootstrapComplete => {
+                                    info!(
+                                        target: LOG_TARGET,
+                                        "[BN SM LISTENING] Received DhtEvent::PrimaryBootstrapComplete. Current is_primary_bootstrap_complete = {}",
+                                        shared.is_primary_bootstrap_complete
+                                    );
+                                    shared.set_primary_bootstrap_complete(true);
+                                    info!(
+                                        target: LOG_TARGET,
+                                        "[BN SM LISTENING] Called set_primary_bootstrap_complete(true). UI should now show 'Listening' instead of 'Bootstrapping'"
+                                    );
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "DHT event subscriber lagged by {} item(s)", n);
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "DHT event stream closed");
+                            return StateEvent::UserQuit;
+                        },
+                    }
                 },
             }
         }
-
-        debug!(
-            target: LOG_TARGET,
-            "Event listener is complete because liveness metadata and timeout streams were closed"
-        );
-        StateEvent::UserQuit
     }
 }
 

@@ -30,7 +30,7 @@ use tokio::sync::broadcast;
 use crate::{
     event::DhtEvent,
     network_discovery::{
-        state_machine::{NetworkDiscoveryContext, StateEvent},
+        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
     },
@@ -177,6 +177,9 @@ impl OnConnect {
                     num_duplicate_peers: 0,
                     num_succeeded: num_added,
                     sync_peers: vec![conn.peer_node_id().clone()],
+                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
+                    round_number: None,             // Not tracking specific rounds for on_connect mode
+                    total_rounds: None,             // Not tracking total rounds for on_connect mode
                 }));
         }
 
