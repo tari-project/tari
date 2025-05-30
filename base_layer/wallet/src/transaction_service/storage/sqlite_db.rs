@@ -1045,6 +1045,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
+
+        let mut mismatched_tx =
+            CompletedTransactionSql::fetch_transactions_with_mismatched_mined_status(false, &mut conn)?
+                .into_iter()
+                .map(|ct: CompletedTransactionSql| {
+                    CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+                })
+                .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        coinbases.append(&mut mismatched_tx);
         Ok(coinbases)
     }
 
@@ -1817,6 +1826,31 @@ impl CompletedTransactionSql {
         Ok(query
             .filter(completed_transactions::status.eq(status as i32))
             .filter(completed_transactions::mined_height.ge(block_height))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
+    pub fn fetch_transactions_with_mismatched_mined_status(
+        cancelled: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        let mut query = completed_transactions::table.into_boxed();
+        query = if cancelled {
+            query.filter(completed_transactions::cancelled.is_not_null())
+        } else {
+            query.filter(completed_transactions::cancelled.is_null())
+        };
+
+        Ok(query
+            .filter(
+                completed_transactions::status
+                    // Filter out imported or scanned transactions
+                    .eq(TransactionStatus::Imported as i32)
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedConfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
+            )
+            .filter(completed_transactions::mined_height.eq::<Option<i64>>(None))
             .load::<CompletedTransactionSql>(conn)?)
     }
 
