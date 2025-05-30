@@ -16,6 +16,7 @@ tari_common_types = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
+    "base_node",
 ] }
 tari_libtor = { workspace = true, optional = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
@@ -70,6 +71,8 @@ tari_metrics = { workspace = true, optional = true, features = ["server"] }
 url = { version = "2.5.4", features = ["default", "serde"] }
 axum = { version = "0.8.4", features = ["default", "http2"] }
 http = "0.2.12"
+utoipa = "5.3.1"
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
 
 [features]
 default = ["libtor"]

@@ -14,6 +14,13 @@ use crate::http::handler::{error_handler_with_message, ErrorResponse};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_tip_info";
 
+#[utoipa::path(
+    get,
+    path = "/get_tip_info",
+    responses(
+        (status = 200, description = "Tip info returned successfully", body = TipInfoResponse)
+    ),
+)]
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
 ) -> Result<Json<TipInfoResponse>, (StatusCode, Json<ErrorResponse>)> {

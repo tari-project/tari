@@ -100,6 +100,7 @@ anyhow = "1.0.53"
 jmt = { version = "0.11.0", features = ["mocks"] }
 url = "2.5.4"
 serde_valid = "1.0.5"
+utoipa = "5.3.1"
 
 
 [dev-dependencies]

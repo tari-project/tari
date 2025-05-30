@@ -21,6 +21,14 @@ pub struct GetHeaderByHeightQueryParams {
     pub height: u64,
 }
 
+#[utoipa::path(
+    get,
+    path = "/get_header_by_height",
+    params((name = "height", parameter_type = Type::Integer)),
+    responses(
+        (status = 200, description = "Block header returned successfully", body = BlockHeader)
+    ),
+)]
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<GetHeaderByHeightQueryParams>,

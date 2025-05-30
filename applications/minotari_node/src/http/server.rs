@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::sync::Arc;
+use utoipa_swagger_ui::SwaggerUi;
 
+use crate::http::handler;
+use crate::http::handler::__path_get_header_by_height;
+use crate::http::handler::__path_get_tip_info;
 use axum::{routing::get, Extension, Router};
 use log::{error, info};
 use tari_core::{base_node::rpc::BaseNodeWalletQueryService, chain_storage::BlockchainBackend};
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{io, net::TcpListener};
-
-use crate::http::handler;
+use utoipa::OpenApi;
 
 const LOG_TARGET: &str = "c::bn::rpc::http::server";
 
@@ -19,6 +22,10 @@ pub enum Error {
     #[error("I/O error: {0}")]
     IO(#[from] io::Error),
 }
+
+#[derive(OpenApi)]
+#[openapi(paths(get_tip_info, get_header_by_height))]
+pub struct ApiDoc;
 
 pub struct Server<S> {
     port: u16,
@@ -44,6 +51,10 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
             .route("/transaction_query", get(handler::transaction_query::handle::<B>))
             .route("/sync_utxos_by_block", get(handler::sync_utxos_by_block::handle::<B>))
+            .merge(
+                SwaggerUi::new("/swagger-ui")
+                    .url("/openapi.json", handler::openapi::ApiDoc::openapi())
+            )
             .layer(Extension(self.query_service.clone()));
         let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 

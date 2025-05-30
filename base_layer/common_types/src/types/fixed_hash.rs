@@ -25,6 +25,7 @@ use std::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
 };
+use utoipa::ToSchema;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::{consts::U32, generic_array};
@@ -51,6 +52,7 @@ pub struct FixedHashSizeError;
     Serialize,
     BorshSerialize,
     BorshDeserialize,
+    ToSchema,
 )]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
@@ -133,7 +135,9 @@ impl AsRef<[u8]> for FixedHash {
 
 impl Hex for FixedHash {
     fn from_hex(hex: &str) -> Result<Self, HexError>
-    where Self: Sized {
+    where
+        Self: Sized,
+    {
         let hash = <[u8; FixedHash::byte_size()] as Hex>::from_hex(hex)?;
         Ok(Self(hash))
     }
