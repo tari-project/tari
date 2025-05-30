@@ -59,7 +59,7 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::ChainStorageError,
-    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
+    consensus::{ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -2364,13 +2364,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .clone()
                     .into_iter()
                     .map(|height| {
-                        let circulating_supply = consensus_manager.emission_schedule().supply_at_block(height).into();
-                        let spendable_supply = consensus_manager.block_rewards_spendable_at_height(height)?.into();
+                        let mined_rewards = consensus_manager.block_rewards_mined_at_height(height)?.into();
+                        let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height)?.into();
+                        let spendable_pre_mine = consensus_manager.pre_mine_spendable_at_height(height)?.into();
+                        let total_spendable = consensus_manager.total_tokens_spendable_at_height(height)?.into();
 
                         Ok(tari_rpc::ValueAtHeightResponse {
                             height,
-                            circulating_supply,
-                            spendable_supply,
+                            mined_rewards,
+                            spendable_rewards,
+                            spendable_pre_mine,
+                            total_spendable,
                         })
                     })
                     .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();
