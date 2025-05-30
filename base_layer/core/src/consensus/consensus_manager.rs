@@ -28,7 +28,6 @@ use thiserror::Error;
 use crate::{
     blocks::pre_mine::pre_mine_spendable_at_height,
     consensus::{
-        consensus_constants::MAINNET_PRE_MINE_VALUE,
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         NetworkConsensus,
