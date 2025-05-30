@@ -1220,6 +1220,10 @@ criteria = "safe-to-deploy"
 version = "0.1.12"
 criteria = "safe-to-deploy"
 
+[[exemptions.hyper-util]]
+version = "0.1.13"
+criteria = "safe-to-deploy"
+
 [[exemptions.ics23]]
 version = "0.12.0"
 criteria = "safe-to-deploy"
@@ -1322,6 +1326,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ipnet]]
 version = "2.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.iri-string]]
+version = "0.7.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.is-terminal]]
@@ -1852,6 +1860,10 @@ criteria = "safe-to-deploy"
 version = "0.5.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.paste]]
+version = "1.0.15"
+criteria = "safe-to-deploy"
+
 [[exemptions.path-clean]]
 version = "0.1.0"
 criteria = "safe-to-deploy"
@@ -2088,6 +2100,14 @@ criteria = "safe-to-deploy"
 version = "1.0.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.proc-macro-error-attr2]]
+version = "2.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.proc-macro-error2]]
+version = "2.0.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.proc-macro2]]
 version = "1.0.95"
 criteria = "safe-to-deploy"
@@ -2242,6 +2262,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.reqwest]]
 version = "0.12.15"
+criteria = "safe-to-deploy"
+
+[[exemptions.reqwest]]
+version = "0.12.17"
 criteria = "safe-to-deploy"
 
 [[exemptions.resolv-conf]]
@@ -2454,6 +2478,18 @@ criteria = "safe-to-deploy"
 
 [[exemptions.serde_urlencoded]]
 version = "0.7.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_valid]]
+version = "1.0.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_valid_derive]]
+version = "1.0.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_valid_literal]]
+version = "1.0.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.serde_yaml]]
@@ -3006,6 +3042,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tower]]
 version = "0.5.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.tower-http]]
+version = "0.6.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.tower-layer]]
