@@ -236,7 +236,7 @@ impl ConsensusManager {
         } else {
             emission_schedule
                 .supply_at_block(height.saturating_sub(last_effective_tranche.maturity))
-                .saturating_sub(MAINNET_PRE_MINE_VALUE)
+                .saturating_sub(self.consensus_constants(height).pre_mine_value())
         };
 
         Ok(matured_rewards_at_height)
