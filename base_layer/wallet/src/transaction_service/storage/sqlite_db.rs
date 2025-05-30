@@ -1830,7 +1830,7 @@ impl CompletedTransactionSql {
     }
 
     /// Fetches completed transactions that have a mismatched mined status.
-    /// 
+    ///
     /// This method finds transactions that have been marked as confirmed or unconfirmed
     /// but are missing their mined height information, indicating a mismatch between
     /// the transaction status and mining data.
