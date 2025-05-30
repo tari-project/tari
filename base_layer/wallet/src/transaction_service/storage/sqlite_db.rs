@@ -1829,6 +1829,18 @@ impl CompletedTransactionSql {
             .load::<CompletedTransactionSql>(conn)?)
     }
 
+    /// Fetches completed transactions that have a mismatched mined status.
+    /// 
+    /// This method finds transactions that have been marked as confirmed or unconfirmed
+    /// but are missing their mined height information, indicating a mismatch between
+    /// the transaction status and mining data.
+    ///
+    /// # Arguments
+    /// * `cancelled` - Whether to fetch cancelled (true) or non-cancelled (false) transactions
+    /// * `conn` - Database connection
+    ///
+    /// # Returns
+    /// Vector of transactions with mismatched mined status
     pub fn fetch_transactions_with_mismatched_mined_status(
         cancelled: bool,
         conn: &mut SqliteConnection,
@@ -1843,7 +1855,7 @@ impl CompletedTransactionSql {
         Ok(query
             .filter(
                 completed_transactions::status
-                    // Filter out imported or scanned transactions
+                    // Include transactions with confirmed/unconfirmed statuses that may have mismatched mined data
                     .eq(TransactionStatus::Imported as i32)
                     .or(completed_transactions::status.eq(TransactionStatus::OneSidedUnconfirmed as i32))
                     .or(completed_transactions::status.eq(TransactionStatus::OneSidedConfirmed as i32))
