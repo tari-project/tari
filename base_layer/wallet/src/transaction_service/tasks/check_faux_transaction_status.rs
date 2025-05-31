@@ -26,11 +26,14 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::FixedHash;
+use tari_crypto::tari_utilities::ByteArray;
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
+        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
@@ -38,15 +41,21 @@ use crate::{
         },
     },
 };
+use tari_core::{
+    proto::base_node as base_node_proto,
+    transactions::transaction_components::Transaction,
+};
+use tari_common_types::types::Signature;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
 #[allow(clippy::too_many_lines)]
-pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>(
+pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend, TWalletConnectivity: WalletConnectivityInterface>(
     mut output_manager: OutputManagerHandle,
     db: TransactionDatabase<TBackend>,
     event_publisher: TransactionEventSender,
     tip_height: u64,
+    connectivity: TWalletConnectivity,
 ) {
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
@@ -103,6 +112,23 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     };
     all_detected_transactions.append(&mut confirmed_dectected);
 
+    // Also include ALL completed transactions to check for empty kernel signatures
+    let mut all_completed = match db.get_completed_transactions(None, None, None) {
+        Ok(txs) => txs,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Problem retrieving completed transactions for kernel signature check: {}", e
+            );
+            return;
+        },
+    };
+    all_detected_transactions.append(&mut all_completed);
+
+    // Remove duplicates based on tx_id
+    all_detected_transactions.sort_by(|a, b| a.tx_id.as_u64().cmp(&b.tx_id.as_u64()));
+    all_detected_transactions.dedup_by(|a, b| a.tx_id == b.tx_id);
+
     debug!(
         target: LOG_TARGET,
         "Checking {} detected transaction statuses",
@@ -158,6 +184,39 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
             trace!(target: LOG_TARGET, "{}", log_msg);
         }
 
+        // Fix kernel signatures for confirmed transactions that have missing kernel signatures
+        if must_be_confirmed {
+            if tx.transaction.first_kernel_excess_sig().is_none() {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction {} has no kernel signatures. Attempting to fetch correct signatures from base node.",
+                    tx.tx_id
+                );
+                
+                // Attempt to fix the missing kernel signatures by fetching from base node
+                let transactions_to_fix = vec![tx.clone()];
+                if let Err(e) = fetch_and_update_kernel_signatures(connectivity.clone(), db.clone(), transactions_to_fix).await {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to update kernel signatures for transaction {}: {}",
+                        tx.tx_id, e
+                    );
+                } else {
+                    info!(
+                        target: LOG_TARGET,
+                        "Successfully attempted kernel signature migration for transaction {}",
+                        tx.tx_id
+                    );
+                }
+            } else {
+                trace!(
+                    target: LOG_TARGET,
+                    "Transaction {} has kernel signatures present",
+                    tx.tx_id
+                );
+            }
+        }
+
         let result = db.set_transaction_mined_height(
             tx.tx_id,
             mined_height,
@@ -200,4 +259,210 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
             }
         }
     }
+}
+
+/// Fetch kernel signatures from the base node and update transactions that have empty signatures
+async fn fetch_and_update_kernel_signatures<TBackend: 'static + TransactionBackend, TWalletConnectivity: WalletConnectivityInterface>(
+    mut connectivity: TWalletConnectivity,
+    db: TransactionDatabase<TBackend>,
+    transactions: Vec<CompletedTransaction>,
+) -> Result<(), TransactionServiceError> {
+    let mut base_node_client = match connectivity.obtain_base_node_wallet_rpc_client().await {
+        Some(client) => client,
+        None => {
+            return Err(TransactionServiceError::ServiceError(
+                "Could not connect to base node wallet RPC client".to_string(),
+            ));
+        },
+    };
+
+    // Collect unique block heights for transactions that have mined_in_block
+    let mut height_to_txs: std::collections::HashMap<u64, Vec<&CompletedTransaction>> = std::collections::HashMap::new();
+    
+    for tx in &transactions {
+        if let (Some(_), Some(height)) = (&tx.mined_in_block, tx.mined_height) {
+            height_to_txs.entry(height).or_insert_with(Vec::new).push(tx);
+        }
+    }
+
+    if height_to_txs.is_empty() {
+        info!(
+            target: LOG_TARGET,
+            "No transactions with mined height found for kernel signature migration"
+        );
+        return Ok(());
+    }
+
+    let heights: Vec<u64> = height_to_txs.keys().cloned().collect();
+    debug!(
+        target: LOG_TARGET,
+        "Fetching {} blocks for kernel signature migration: {:?}",
+        heights.len(),
+        heights
+    );
+
+    // Fetch blocks using GetBlocks RPC
+    let request = base_node_proto::GetBlocksRequest { heights };
+    
+    let response = match base_node_client.get_blocks(request).await {
+        Ok(response) => response,
+        Err(e) => {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to fetch blocks for kernel signature migration: {}",
+                e
+            );
+            return Err(TransactionServiceError::ServiceError(format!(
+                "Failed to fetch blocks: {}",
+                e
+            )));
+        }
+    };
+
+    let mut updated_count = 0;
+
+    // Process each block in the response
+    for historical_block in response.blocks {
+        let block_height = historical_block.block.as_ref()
+            .and_then(|b| b.header.as_ref())
+            .map(|h| h.height)
+            .unwrap_or(0);
+
+        // Get transactions for this block height
+        let txs_for_height = match height_to_txs.get(&block_height) {
+            Some(txs) => txs,
+            None => continue,
+        };
+
+        let empty_kernels = Vec::new();
+        let block_kernels = historical_block.block.as_ref()
+            .and_then(|b| b.body.as_ref())
+            .map(|b| &b.kernels)
+            .unwrap_or(&empty_kernels);
+
+        debug!(
+            target: LOG_TARGET,
+            "Processing block at height {} with {} kernels for {} transactions",
+            block_height,
+            block_kernels.len(),
+            txs_for_height.len()
+        );
+
+        // Process each transaction for this block
+        for tx in txs_for_height {
+            let mut transaction_updated = false;
+            let mut updated_kernels = Vec::new();
+            
+            for (kernel_index, wallet_kernel) in tx.transaction.body.kernels().iter().enumerate() {
+                let wallet_excess = &wallet_kernel.excess;
+                
+                // Find matching kernel in block by excess commitment
+                let matching_block_kernel = block_kernels.iter().find(|block_kernel| {
+                    block_kernel.excess.as_ref().map_or(false, |e| e.data.as_slice() == wallet_excess.as_bytes())
+                });
+                
+                if let Some(block_kernel) = matching_block_kernel {
+                    // Compare signatures
+                    let wallet_sig = &wallet_kernel.excess_sig;
+                    let block_sig = block_kernel.excess_sig.as_ref();
+                    
+                    if let Some(block_sig) = block_sig {
+                        // Convert proto signature to internal format
+                        if let Ok(block_signature) = Signature::try_from((*block_sig).clone()) {
+                            if wallet_sig != &block_signature {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Found matching kernel for transaction {} kernel {}: updating signature",
+                                    tx.tx_id,
+                                    kernel_index
+                                );
+                                
+                                // Create updated kernel with correct signature
+                                let mut updated_kernel = wallet_kernel.clone();
+                                updated_kernel.excess_sig = block_signature;
+                                updated_kernels.push(updated_kernel);
+                                transaction_updated = true;
+                            } else {
+                                // Kernel signature is already correct
+                                updated_kernels.push(wallet_kernel.clone());
+                            }
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to convert block kernel signature for transaction {} kernel {}",
+                                tx.tx_id,
+                                kernel_index
+                            );
+                            updated_kernels.push(wallet_kernel.clone());
+                        }
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Block kernel has no signature for transaction {} kernel {}",
+                            tx.tx_id,
+                            kernel_index
+                        );
+                        updated_kernels.push(wallet_kernel.clone());
+                    }
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not find matching kernel in block at height {} for transaction {} kernel {}",
+                        block_height,
+                        tx.tx_id,
+                        kernel_index
+                    );
+                    // Keep the original kernel if no match found
+                    updated_kernels.push(wallet_kernel.clone());
+                }
+            }
+            
+            // Update the transaction if any kernels were modified
+            if transaction_updated {
+                // Create a new transaction with updated kernels
+                let updated_transaction = Transaction::new(
+                    tx.transaction.body.inputs().clone(),
+                    tx.transaction.body.outputs().clone(),
+                    updated_kernels,
+                    tx.transaction.offset.clone(),
+                    tx.transaction.script_offset.clone(),
+                );
+                
+                let mut updated_tx = (*tx).clone();
+                updated_tx.transaction = updated_transaction;
+                
+                // Save the updated transaction to the database
+                if let Err(e) = db.update_completed_transaction(tx.tx_id, updated_tx.clone()) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to update transaction {} with correct kernel signatures: {}",
+                        tx.tx_id,
+                        e
+                    );
+                } else {
+                    updated_count += 1;
+                    info!(
+                        target: LOG_TARGET,
+                        "Successfully updated transaction {} with correct kernel signatures",
+                        tx.tx_id
+                    );
+                }
+            }
+        }
+    }
+    
+    if updated_count > 0 {
+        info!(
+            target: LOG_TARGET,
+            "Kernel signature migration completed: {} transactions updated with correct signatures",
+            updated_count
+        );
+    } else {
+        info!(
+            target: LOG_TARGET,
+            "Kernel signature migration completed: no transactions needed updating"
+        );
+    }
+    
+    Ok(())
 }

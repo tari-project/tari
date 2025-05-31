@@ -85,6 +85,7 @@ use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_utilities::hex::Hex;
 use tari_p2p::domain_message::DomainMessage;
 use tari_script::{
     push_pubkey_script,
@@ -396,6 +397,9 @@ where
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
+        
+        // Diagnostic logging: dump all transaction kernel signatures
+        self.log_all_transaction_signatures().await;
         loop {
             tokio::select! {
                 event = output_manager_event_stream.recv() => {
@@ -1119,6 +1123,7 @@ where
                 db,
                 event_publisher,
                 tip_height,
+                self.resources.connectivity.clone(),
             ));
         }
     }
@@ -3888,6 +3893,52 @@ where
         &self.resources.connectivity
     }
 
+    /// Diagnostic function to log all transaction kernel signatures at startup
+    async fn log_all_transaction_signatures(&self) {
+        info!(target: LOG_TARGET, "Starting diagnostic dump of all transaction kernel signatures");
+        
+        // Get all completed transactions
+        let all_transactions = match self.db.get_completed_transactions(None, None, None) {
+            Ok(txs) => txs,
+            Err(e) => {
+                error!(target: LOG_TARGET, "Failed to retrieve completed transactions for diagnostic: {}", e);
+                return;
+            }
+        };
+        
+        info!(target: LOG_TARGET, "Diagnostic: Found {} total completed transactions", all_transactions.len());
+        
+        for tx in all_transactions {
+            if let Some(kernel_sig) = tx.transaction.first_kernel_excess_sig() {
+                let sig_hex = kernel_sig.get_signature().to_hex();
+                let nonce_hex = kernel_sig.get_compressed_public_nonce().to_hex();
+                
+                // Check for various forms of empty/default signatures
+                let is_empty_sig = sig_hex.is_empty() || 
+                    sig_hex == "0000000000000000000000000000000000000000000000000000000000000000" ||
+                    sig_hex.chars().all(|c| c == '0');
+                    
+                let is_empty_nonce = nonce_hex.is_empty() ||
+                    nonce_hex == "0000000000000000000000000000000000000000000000000000000000000000" ||
+                    nonce_hex.chars().all(|c| c == '0');
+                
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction {}: sig_hex={}, nonce_hex={}, is_empty_sig={}, is_empty_nonce={}",
+                    tx.tx_id, sig_hex, nonce_hex, is_empty_sig, is_empty_nonce
+                );
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Transaction {} has no kernel signatures",
+                    tx.tx_id
+                );
+            }
+        }
+        
+        info!(target: LOG_TARGET, "Diagnostic dump of transaction kernel signatures completed");
+    }
+
     fn verify_send(
         &self,
         address: &TariAddress,
@@ -3911,6 +3962,8 @@ where
         }
         Ok(())
     }
+
+
 }
 
 /// This struct is a collection of the common resources that a protocol in the service requires.

@@ -23,6 +23,8 @@ use crate::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            GetBlocksRequest,
+            GetBlocksResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
             GetWalletQueryHttpServiceAddressResponse,
@@ -706,5 +708,46 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .map(|url| url.to_string())
                 .unwrap_or_default(),
         }))
+    }
+
+    async fn get_blocks(
+        &self,
+        request: Request<GetBlocksRequest>,
+    ) -> Result<Response<GetBlocksResponse>, RpcStatus> {
+        let message = request.into_message();
+        let heights = message.heights;
+        
+        if heights.is_empty() {
+            return Ok(Response::new(GetBlocksResponse { blocks: vec![] }));
+        }
+        
+        const MAX_BLOCKS_PER_REQUEST: usize = 100;
+        if heights.len() > MAX_BLOCKS_PER_REQUEST {
+            return Err(RpcStatus::bad_request(&format!(
+                "Too many blocks requested. Max: {}", 
+                MAX_BLOCKS_PER_REQUEST
+            )));
+        }
+        
+        let db = self.db();
+        let mut blocks = Vec::with_capacity(heights.len());
+        
+        for height in heights {
+            match db.fetch_block(height, true).await {
+                Ok(block) => {
+                    match proto::core::HistoricalBlock::try_from(block) {
+                        Ok(proto_block) => blocks.push(proto_block),
+                        Err(err) => {
+                            debug!(target: LOG_TARGET, "Failed to convert block at height {}: {}", height, err);
+                        }
+                    }
+                },
+                Err(err) => {
+                    debug!(target: LOG_TARGET, "Failed to fetch block at height {}: {}", height, err);
+                }
+            }
+        }
+        
+        Ok(Response::new(GetBlocksResponse { blocks }))
     }
 }

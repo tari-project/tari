@@ -29,6 +29,8 @@ use crate::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            GetBlocksRequest,
+            GetBlocksResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
             GetWalletQueryHttpServiceAddressResponse,
@@ -131,6 +133,12 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<()>,
     ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus>;
+
+    #[rpc(method = 14)]
+    async fn get_blocks(
+        &self,
+        request: Request<GetBlocksRequest>,
+    ) -> Result<Response<GetBlocksResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

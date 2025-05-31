@@ -545,6 +545,8 @@ impl AppState {
         }
     }
 
+
+
     pub fn get_connected_peers(&self) -> &Vec<Peer> {
         &self.cached_data.connected_peers
     }
@@ -1169,16 +1171,33 @@ impl AppStateInner {
         self.data.new_notification_count = 0;
         self.updated = true;
     }
+
+    pub async fn get_transaction_kernel_id(&self, tx_id: TxId) -> Option<String> {
+        let mut tx_service = self.wallet.transaction_service.clone();
+        if let Ok(Some(tx)) = tx_service.get_any_transaction(tx_id).await {
+            let completed_tx = tx.into();
+            if let Ok(tx_info) = CompletedTransactionInfo::from_completed_transaction(
+                completed_tx,
+                &self.get_transaction_weight()
+            ) {
+                if !tx_info.kernel_id.is_empty() {
+                    return Some(tx_info.kernel_id);
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Clone)]
 pub struct CompletedTransactionInfo {
     pub tx_id: TxId,
+    pub kernel_id: String,
     pub source_address: TariAddress,
     pub destination_address: TariAddress,
     pub amount: MicroMinotari,
     pub fee: MicroMinotari,
-    pub excess_signature: String,
+
     pub maturity: u64,
     pub status: TransactionStatus,
     pub timestamp: NaiveDateTime,
@@ -1199,17 +1218,11 @@ impl CompletedTransactionInfo {
         tx: CompletedTransaction,
         transaction_weighting: &TransactionWeight,
     ) -> Result<Self, TransactionError> {
-        let excess_signature = format!(
-            "{},{}",
-            tx.transaction
-                .first_kernel_excess_sig()
-                .map(|s| s.get_signature().to_hex())
-                .unwrap_or_default(),
-            tx.transaction
-                .first_kernel_excess_sig()
-                .map(|s| s.get_compressed_public_nonce().to_hex())
-                .unwrap_or_default()
-        );
+        let kernel_id = tx.transaction
+            .first_kernel_excess_sig()
+            .map(|s| s.get_signature().to_hex())
+            .unwrap_or_default();
+
         let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
@@ -1228,11 +1241,12 @@ impl CompletedTransactionInfo {
 
         Ok(Self {
             tx_id: tx.tx_id,
+            kernel_id,
             source_address: tx.source_address.clone(),
             destination_address: tx.destination_address.clone(),
             amount: tx.amount,
             fee: tx.fee,
-            excess_signature,
+
             maturity: tx
                 .transaction
                 .body

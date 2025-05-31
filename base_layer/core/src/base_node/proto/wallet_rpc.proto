@@ -7,6 +7,7 @@ import "google/protobuf/wrappers.proto";
 import "chain_metadata.proto";
 import "types.proto";
 import "transaction.proto";
+import "block.proto";
 
 package tari.base_node;
 
@@ -107,4 +108,12 @@ message UtxoQueryResponse {
 message TipInfoResponse {
   ChainMetadata metadata = 1;
   bool is_synced = 2;
+}
+
+message GetBlocksRequest {
+  repeated uint64 heights = 1;
+}
+
+message GetBlocksResponse {
+  repeated tari.core.HistoricalBlock blocks = 1;
 }

@@ -101,10 +101,10 @@ impl TransactionsTab {
             .copied()
             .collect();
 
-        let mut column0_items = Vec::new();
-        let mut column1_items = Vec::new();
-        let mut column2_items = Vec::new();
-        let mut column3_items = Vec::new();
+        let mut column0_items: Vec<ListItem> = Vec::new();
+        let mut column1_items: Vec<ListItem> = Vec::new();
+        let mut column2_items: Vec<ListItem> = Vec::new();
+        let mut column3_items: Vec<ListItem> = Vec::new();
 
         for t in windowed_view {
             let text_color = text_colors
@@ -205,10 +205,11 @@ impl TransactionsTab {
         let base_node_state = app_state.get_base_node_state();
         let chain_height = base_node_state.chain_metadata.as_ref().map(|cm| cm.best_block_height());
 
-        let mut column0_items = Vec::new();
-        let mut column1_items = Vec::new();
-        let mut column2_items = Vec::new();
-        let mut column3_items = Vec::new();
+        let mut column0_items: Vec<ListItem> = Vec::new();
+        let mut column1_items: Vec<ListItem> = Vec::new();
+        let mut column2_items: Vec<ListItem> = Vec::new();
+        let mut column3_items: Vec<ListItem> = Vec::new();
+        let mut column4_items: Vec<ListItem> = Vec::new();
 
         for tx in windowed_view {
             let cancelled = tx.cancelled.is_some();
@@ -302,16 +303,31 @@ impl TransactionsTab {
                 status_display,
                 Style::default().fg(text_color),
             )));
+
+            // Add kernel ID column (truncated to 12 characters for display)
+            let kernel_display = if tx.kernel_id.is_empty() {
+                "N/A".to_string()
+            } else {
+                format!(
+                    "{}...",
+                    tx.kernel_id.chars().take(12).collect::<String>()
+                )
+            };
+            column4_items.push(ListItem::new(Span::styled(
+                kernel_display,
+                Style::default().fg(text_color),
+            )));
         }
 
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
-            .add_column(Some("Source/Destination Address"), Some(95), column0_items)
+            .add_column(Some("Source/Destination Address"), Some(75), column0_items)
             .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Mined At (Local)"), Some(20), column2_items)
-            .add_column(Some("Status"), None, column3_items);
+            .add_column(Some("Status"), Some(15), column3_items)
+            .add_column(Some("Kernel ID"), None, column4_items);
 
         column_list.render(f, area, &mut completed_list_state);
     }
@@ -335,7 +351,7 @@ impl TransactionsTab {
         let constraints = [Constraint::Length(1); 13];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
-        let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
+        let kernel_id_label = Span::styled("Kernel ID:", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
@@ -350,7 +366,7 @@ impl TransactionsTab {
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(excess_sig).wrap(trim);
+        let paragraph = Paragraph::new(kernel_id_label).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
@@ -382,7 +398,11 @@ impl TransactionsTab {
         if let Some(tx) = self.detailed_transaction.as_ref() {
             let constraints = [Constraint::Length(1); 13];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
-            let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
+            let kernel_id_display = if tx.kernel_id.is_empty() {
+                Span::styled("N/A", Style::default().fg(Color::DarkGray))
+            } else {
+                Span::styled(format!("{}", tx.kernel_id), Style::default().fg(Color::White))
+            };
 
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
                 if let Some(PaymentId::TransactionInfo { fee, .. }) = tx.payment_id.clone() {
@@ -514,7 +534,7 @@ impl TransactionsTab {
 
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(excess_sig).wrap(trim);
+            let paragraph = Paragraph::new(kernel_id_display).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);

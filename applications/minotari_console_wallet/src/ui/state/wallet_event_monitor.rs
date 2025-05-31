@@ -104,8 +104,9 @@ impl WalletEventMonitor {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     notifier.transaction_received(tx_id);
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
                                     self.add_notification(
-                                        format!("Finalized Transaction Received - TxId: {}", tx_id)
+                                        format!("Finalized Transaction Received - {}", identifier)
                                     ).await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
@@ -114,11 +115,12 @@ impl WalletEventMonitor {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
                                     self.add_notification(
                                         format!(
-                                            "Transaction Mined Unconfirmed with {} confirmations - TxId: {}",
+                                            "Transaction Mined Unconfirmed with {} confirmations - {}",
                                             num_confirmations,
-                                            tx_id
+                                            identifier
                                         )
                                     ).await;
                                 },
@@ -128,7 +130,8 @@ impl WalletEventMonitor {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     notifier.transaction_mined(tx_id);
-                                    self.add_notification(format!("Transaction Confirmed - TxId: {}", tx_id)).await;
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
+                                    self.add_notification(format!("Transaction Confirmed - {}", identifier)).await;
                                 },
                                 TransactionEvent::TransactionCancelled(tx_id, _) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
@@ -138,20 +141,23 @@ impl WalletEventMonitor {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
-                                    self.add_notification(format!("Transaction Received - TxId: {}", tx_id)).await;
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
+                                    self.add_notification(format!("Transaction Received - {}", identifier)).await;
                                 },
                                 TransactionEvent::ReceivedTransactionReply(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
                                     self.add_notification(
-                                        format!("Transaction Reply Received - TxId: {}", tx_id)
+                                        format!("Transaction Reply Received - {}", identifier)
                                     ).await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
                                     self.add_notification(
-                                        format!("Transaction Broadcast to Mempool - TxId: {}", tx_id)
+                                        format!("Transaction Broadcast to Mempool - {}", identifier)
                                     ).await;
                                 },
                                 TransactionEvent::TransactionCompletedImmediately(tx_id) => {
@@ -171,8 +177,9 @@ impl WalletEventMonitor {
                                 TransactionEvent::TransactionImported(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
+                                    let identifier = self.get_transaction_identifier(tx_id).await;
                                     self.add_notification(
-                                        format!("Transaction Imported - TxId: {}", tx_id)
+                                        format!("Transaction Imported - {}", identifier)
                                     ).await;
                                 },
                                 // Only the above variants trigger state refresh
@@ -395,6 +402,15 @@ impl WalletEventMonitor {
 
         if let Err(e) = inner.refresh_contacts_state().await {
             warn!(target: LOG_TARGET, "Error refresh contacts state: {}", e);
+        }
+    }
+
+    async fn get_transaction_identifier(&self, tx_id: TxId) -> String {
+        let inner = self.app_state_inner.read().await;
+        if let Some(kernel_id) = inner.get_transaction_kernel_id(tx_id).await {
+            format!("Kernel ID: {}", kernel_id)
+        } else {
+            format!("TxId: {}", tx_id)
         }
     }
 }
