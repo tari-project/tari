@@ -113,6 +113,18 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
 impl grpc::TransactionInfo {
     pub fn not_found(tx_id: TxId) -> Self {
         Self {
+            internal_dbid: tx_id.into(),
+            kernel_id: String::new(), // Empty for not found transactions
+            status: grpc::TransactionStatus::NotFound as i32,
+            ..Default::default()
+        }
+    }
+}
+
+// Deprecated conversion for backwards compatibility
+impl grpc::TransactionInfoDeprecated {
+    pub fn not_found(tx_id: TxId) -> Self {
+        Self {
             tx_id: tx_id.into(),
             status: grpc::TransactionStatus::NotFound as i32,
             ..Default::default()

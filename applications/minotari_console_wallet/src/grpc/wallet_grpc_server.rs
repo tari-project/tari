@@ -541,7 +541,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     output.hash().to_hex()
                 );
                 SendShaAtomicSwapResponse {
-                    transaction_id: tx_id.as_u64(),
+                    internal_dbid: tx_id.as_u64(),
+                    kernel_id: String::new(), // Will be populated when transaction is completed
                     pre_image: pre_image.to_hex(),
                     output_hash: output.hash().to_hex(),
                     is_success: true,
@@ -554,7 +555,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     "Failed to send Sha - XTR atomic swap for address `{}`: {}", address, e
                 );
                 SendShaAtomicSwapResponse {
-                    transaction_id: Default::default(),
+                    internal_dbid: Default::default(),
+                    kernel_id: String::new(),
                     pre_image: "".to_string(),
                     output_hash: "".to_string(),
                     is_success: false,
@@ -615,7 +617,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .await;
                         TransferResult {
                             address: Default::default(),
-                            transaction_id: tx_id.as_u64(),
+                            internal_dbid: tx_id.as_u64(),
+                            kernel_id: String::new(), // Will be populated when transaction is completed
                             is_success: true,
                             failure_message: Default::default(),
                             transaction_info: Some(final_tx),
@@ -623,7 +626,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
-                        transaction_id: Default::default(),
+                        internal_dbid: Default::default(),
+                        kernel_id: String::new(),
                         is_success: false,
                         failure_message: e.to_string(),
                         transaction_info: None,
@@ -634,7 +638,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 warn!(target: LOG_TARGET, "Failed to claim SHA - XTR atomic swap: {}", e);
                 TransferResult {
                     address: Default::default(),
-                    transaction_id: Default::default(),
+                    internal_dbid: Default::default(),
+                    kernel_id: String::new(),
                     is_success: false,
                     failure_message: e.to_string(),
                     transaction_info: None,
@@ -692,7 +697,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .await;
                         TransferResult {
                             address: Default::default(),
-                            transaction_id: tx_id.as_u64(),
+                            internal_dbid: tx_id.as_u64(),
+                            kernel_id: String::new(), // Will be populated when transaction is completed
                             is_success: true,
                             failure_message: Default::default(),
                             transaction_info: Some(final_tx),
@@ -700,7 +706,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     },
                     Err(e) => TransferResult {
                         address: Default::default(),
-                        transaction_id: Default::default(),
+                        internal_dbid: Default::default(),
+                        kernel_id: String::new(),
                         is_success: false,
                         failure_message: e.to_string(),
                         transaction_info: None,
@@ -711,7 +718,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 warn!(target: LOG_TARGET, "Failed to claim HTLC refund transaction: {}", e);
                 TransferResult {
                     address: Default::default(),
-                    transaction_id: Default::default(),
+                    internal_dbid: Default::default(),
+                    kernel_id: String::new(),
                     is_success: false,
                     failure_message: e.to_string(),
                     transaction_info: None,
@@ -839,7 +847,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .await;
                     results.push(TransferResult {
                         address,
-                        transaction_id: tx_id.into(),
+                        internal_dbid: tx_id.into(),
+                        kernel_id: String::new(), // Will be populated when transaction is completed
                         is_success: true,
                         failure_message: Default::default(),
                         transaction_info: Some(final_tx),
@@ -852,7 +861,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     );
                     results.push(TransferResult {
                         address,
-                        transaction_id: Default::default(),
+                        internal_dbid: Default::default(),
+                        kernel_id: String::new(),
                         is_success: false,
                         failure_message: err.to_string(),
                         transaction_info: None,
@@ -892,7 +902,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Ok((tx_id, proof)) => {
                 debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
                 CreateBurnTransactionResponse {
-                    transaction_id: tx_id.as_u64(),
+                    internal_dbid: tx_id.as_u64(),
+                    kernel_id: String::new(), // Will be populated when transaction is completed
                     is_success: true,
                     failure_message: Default::default(),
                     commitment: proof.commitment.to_vec(),
@@ -920,7 +931,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<GetTransactionInfoResponse>, Status> {
         let message = request.into_inner();
 
-        let queries = message.transaction_ids.into_iter().map(|tx_id| {
+        let queries = message.internal_dbids.into_iter().map(|tx_id| {
             let tx_id = tx_id.into();
             let mut transaction_service = self.get_transaction_service();
             async move {
@@ -1105,7 +1116,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .collect();
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
-                        tx_id: txn.tx_id.into(),
+                        internal_dbid: txn.tx_id.into(),
+                        kernel_id: txn
+                            .transaction
+                            .first_kernel_excess_sig()
+                            .map(|s| s.get_signature().to_hex())
+                            .unwrap_or_default(),
                         source_address: txn.source_address.to_vec(),
                         dest_address: txn.destination_address.to_vec(),
                         status: TransactionStatus::from(txn.status.clone()) as i32,
@@ -1226,7 +1242,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 TransactionInfo {
-                    tx_id: txn.tx_id.into(),
+                    internal_dbid: txn.tx_id.into(),
+                    kernel_id: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .map(|s| s.get_signature().to_hex())
+                        .unwrap_or_default(),
                     source_address: txn.source_address.to_vec(),
                     dest_address: txn.destination_address.to_vec(),
                     status: TransactionStatus::from(txn.status.clone()) as i32,
@@ -1307,7 +1328,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 TransactionInfo {
-                    tx_id: txn.tx_id.into(),
+                    internal_dbid: txn.tx_id.into(),
+                    kernel_id: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .map(|s| s.get_signature().to_hex())
+                        .unwrap_or_default(),
                     source_address: txn.source_address.to_vec(),
                     dest_address: txn.destination_address.to_vec(),
                     status: TransactionStatus::from(txn.status.clone()) as i32,
@@ -1353,7 +1379,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
-        Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
+        Ok(Response::new(CoinSplitResponse { 
+            internal_dbid: tx_id.into(),
+            kernel_id: String::new(), // Will be populated when transaction is completed
+        }))
     }
 
     async fn import_utxos(
@@ -1386,7 +1415,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             );
         }
 
-        Ok(Response::new(ImportUtxosResponse { tx_ids }))
+        Ok(Response::new(ImportUtxosResponse { internal_dbids: tx_ids }))
     }
 
     async fn get_network_status(
@@ -1547,7 +1576,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateTemplateRegistrationResponse {
-            tx_id: tx_id.as_u64(),
+            internal_dbid: tx_id.as_u64(),
+            kernel_id: String::new(), // Will be populated when transaction is completed
             template_address: template_address.to_vec(),
         }))
     }
@@ -1583,14 +1613,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok(tx) => RegisterValidatorNodeResponse {
-                transaction_id: tx.as_u64(),
+                internal_dbid: tx.as_u64(),
+                kernel_id: String::new(), // Will be populated when transaction is completed
                 is_success: true,
                 failure_message: Default::default(),
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "Transaction service error: {}", e);
                 RegisterValidatorNodeResponse {
-                    transaction_id: Default::default(),
+                    internal_dbid: Default::default(),
+                    kernel_id: String::new(),
                     is_success: false,
                     failure_message: e.to_string(),
                 }
@@ -1618,7 +1650,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => eprintln!("Could not import tx {}", e),
             };
         }
-        Ok(Response::new(ImportTransactionsResponse { tx_ids }))
+        Ok(Response::new(ImportTransactionsResponse { internal_dbids: tx_ids }))
     }
 }
 
@@ -1687,7 +1719,8 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 _ => vec![],
             };
             TransactionInfo {
-                tx_id: tx.tx_id.into(),
+                internal_dbid: tx.tx_id.into(),
+                kernel_id: String::new(), // No kernel for pending inbound
                 source_address: tx.source_address.to_vec(),
                 dest_address: wallet_address.to_vec(),
                 status: TransactionStatus::from(tx.status) as i32,
@@ -1720,7 +1753,8 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 },
             };
             TransactionInfo {
-                tx_id: tx.tx_id.into(),
+                internal_dbid: tx.tx_id.into(),
+                kernel_id: String::new(), // No kernel for pending outbound
                 source_address: wallet_address.to_vec(),
                 dest_address: tx.destination_address.to_vec(),
                 status: TransactionStatus::from(tx.status) as i32,
@@ -1759,7 +1793,12 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 })
                 .collect();
             TransactionInfo {
-                tx_id: tx.tx_id.into(),
+                internal_dbid: tx.tx_id.into(),
+                kernel_id: tx
+                    .transaction
+                    .first_kernel_excess_sig()
+                    .map(|s| s.get_signature().to_hex())
+                    .unwrap_or_default(),
                 source_address: tx.source_address.to_vec(),
                 dest_address: tx.destination_address.to_vec(),
                 status: TransactionStatus::from(tx.status) as i32,

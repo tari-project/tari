@@ -1129,29 +1129,32 @@ message TransferResponse {
 }
 
 message SendShaAtomicSwapResponse {
-  uint64 transaction_id = 1;
-  string pre_image = 2;
-  string output_hash = 3;
-  bool is_success = 4;
-  string failure_message = 5;
+  uint64 internal_dbid = 1;       // Replaces transaction_id
+  string kernel_id = 2;            // Hex-encoded excess signature
+  string pre_image = 3;
+  string output_hash = 4;
+  bool is_success = 5;
+  string failure_message = 6;
 }
 
 message CreateBurnTransactionResponse{
-  uint64 transaction_id = 1;
-  bool is_success = 2;
-  string failure_message = 3;
-  bytes commitment = 4;
-  CommitmentSignature ownership_proof = 5;
-  bytes range_proof = 6;
-  bytes reciprocal_claim_public_key = 7;
+  uint64 internal_dbid = 1;       // Replaces transaction_id
+  string kernel_id = 2;            // Hex-encoded excess signature
+  bool is_success = 3;
+  string failure_message = 4;
+  bytes commitment = 5;
+  CommitmentSignature ownership_proof = 6;
+  bytes range_proof = 7;
+  bytes reciprocal_claim_public_key = 8;
 }
 
 message TransferResult {
   string address = 1;
-  uint64 transaction_id = 2;
-  bool is_success = 3;
-  string failure_message = 4;
-  TransactionInfo transaction_info = 5;
+  uint64 internal_dbid = 2;        // Replaces transaction_id
+  string kernel_id = 3;            // Hex-encoded excess signature
+  bool is_success = 4;
+  string failure_message = 5;
+  TransactionInfo transaction_info = 6;
 }
 
 message ClaimShaAtomicSwapRequest{
@@ -1174,7 +1177,7 @@ message ClaimHtlcRefundResponse {
 }
 
 message GetTransactionInfoRequest {
-  repeated uint64 transaction_ids = 1;
+  repeated uint64 internal_dbids = 1;  // Replaces transaction_ids
 }
 
 message GetTransactionInfoResponse {
@@ -1182,16 +1185,17 @@ message GetTransactionInfoResponse {
 }
 
 message TransactionInfo {
-  uint64 tx_id = 1;
-  bytes source_address = 2;
-  bytes dest_address = 3;
-  TransactionStatus status = 4;
-  TransactionDirection direction = 5;
-  uint64 amount = 6;
-  uint64 fee = 7;
-  bool is_cancelled = 8;
-  bytes excess_sig = 9;
-  uint64 timestamp = 10;
+  uint64 internal_dbid = 1;  // Replaces tx_id
+  string kernel_id = 2;       // Hex-encoded excess signature
+  bytes source_address = 3;
+  bytes dest_address = 4;
+  TransactionStatus status = 5;
+  TransactionDirection direction = 6;
+  uint64 amount = 7;
+  uint64 fee = 8;
+  bool is_cancelled = 9;
+  bytes excess_sig = 10;      // Keep for internal use
+  uint64 timestamp = 11;
   bytes raw_payment_id = 12;
   uint64 mined_in_block_height = 13;
   bytes user_payment_id = 14;
@@ -1306,8 +1310,10 @@ message CoinSplitRequest {
 
 // Response message containing the transaction ID of the coin split.
 message CoinSplitResponse {
-  // The unique ID of the transaction created.
-  uint64 tx_id = 1;
+  // The unique internal database ID of the transaction created.
+  uint64 internal_dbid = 1;       // Replaces tx_id
+  // Hex-encoded excess signature (kernel ID)
+  string kernel_id = 2;
 }
 
 // Request message for importing UTXOs into the wallet.
@@ -1321,8 +1327,8 @@ message ImportUtxosRequest {
 
 // Response message containing transaction IDs for the imported outputs.
 message ImportUtxosResponse {
-  // Transaction IDs corresponding to the imported UTXOs.
-  repeated uint64 tx_ids = 1;
+  // Internal database IDs corresponding to the imported UTXOs.
+  repeated uint64 internal_dbids = 1;  // Replaces tx_ids
 }
 
 message CreateTemplateRegistrationRequest {
@@ -1331,8 +1337,9 @@ message CreateTemplateRegistrationRequest {
 }
 
 message CreateTemplateRegistrationResponse {
-  uint64 tx_id = 1;
-  bytes template_address = 2;
+  uint64 internal_dbid = 1;       // Replaces tx_id
+  string kernel_id = 2;            // Hex-encoded excess signature
+  bytes template_address = 3;
 }
 
 // Request message for the CancelTransaction RPC.
@@ -1410,9 +1417,10 @@ message RegisterValidatorNodeRequest {
 }
 
 message RegisterValidatorNodeResponse {
-  uint64 transaction_id = 1;
-  bool is_success = 2;
-  string failure_message = 3;
+  uint64 internal_dbid = 1;       // Replaces transaction_id
+  string kernel_id = 2;            // Hex-encoded excess signature
+  bool is_success = 3;
+  string failure_message = 4;
 }
 
 message ImportTransactionsRequest {
@@ -1420,7 +1428,7 @@ message ImportTransactionsRequest {
 }
 
 message ImportTransactionsResponse {
-    repeated uint64 tx_ids = 1;
+    repeated uint64 internal_dbids = 1;  // Replaces tx_ids
 }
 
 message GetAllCompletedTransactionsRequest {
@@ -1441,4 +1449,157 @@ message GetBlockHeightTransactionsRequest {
 message GetBlockHeightTransactionsResponse {
   // List of transactions mined at the specified block height
   repeated TransactionInfo transactions = 1;
+}
+
+// DEPRECATED: Legacy gRPC interface for backwards compatibility with existing exchanges.
+// New integrations should use the main Wallet service above.
+service WalletDeprecated {
+  rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+  rpc GetState (GetStateRequest) returns (GetStateResponse);
+  rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
+  rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
+  rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+  rpc GetAddress (Empty) returns (GetAddressResponse);
+  rpc GetPaymentIdAddress (GetPaymentIdAddressRequest) returns (GetCompleteAddressResponse);
+  rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
+  rpc Transfer (TransferRequest)  returns (TransferResponseDeprecated);
+  rpc GetTransactionInfo (GetTransactionInfoRequestDeprecated) returns (GetTransactionInfoResponseDeprecated);
+  rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponseDeprecated);
+  rpc GetBlockHeightTransactions (GetBlockHeightTransactionsRequest) returns (GetBlockHeightTransactionsResponseDeprecated);
+  rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
+  rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponseDeprecated);
+  rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponseDeprecated);
+  rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
+  rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+  rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+  rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+  rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
+  rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponseDeprecated);
+  rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponseDeprecated);
+  rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponseDeprecated);
+  rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponseDeprecated);
+  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponseDeprecated);
+  rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+  rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponseDeprecated);
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponseDeprecated);
+  rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponseDeprecated);
+  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponseDeprecated);
+}
+
+// DEPRECATED MESSAGE TYPES - For backwards compatibility only
+// These maintain the old field names (tx_id, transaction_id) for existing exchanges
+
+message TransactionInfoDeprecated {
+  uint64 tx_id = 1;                    // Keep old field name
+  bytes source_address = 2;
+  bytes dest_address = 3;
+  TransactionStatus status = 4;
+  TransactionDirection direction = 5;
+  uint64 amount = 6;
+  uint64 fee = 7;
+  bool is_cancelled = 8;
+  bytes excess_sig = 9;
+  uint64 timestamp = 10;
+  bytes raw_payment_id = 12;
+  uint64 mined_in_block_height = 13;
+  bytes user_payment_id = 14;
+  repeated bytes input_commitments = 15;
+  repeated bytes output_commitments = 16;
+}
+
+message GetTransactionInfoRequestDeprecated {
+  repeated uint64 transaction_ids = 1;
+}
+
+message GetTransactionInfoResponseDeprecated {
+  repeated TransactionInfoDeprecated transactions = 1;
+}
+
+message TransferResultDeprecated {
+  string address = 1;
+  uint64 transaction_id = 2;           // Keep old field name
+  bool is_success = 3;
+  string failure_message = 4;
+  TransactionInfoDeprecated transaction_info = 5;
+}
+
+message TransferResponseDeprecated {
+  repeated TransferResultDeprecated results = 1;
+}
+
+message GetCompletedTransactionsResponseDeprecated {
+  TransactionInfoDeprecated transaction = 1;
+}
+
+message GetBlockHeightTransactionsResponseDeprecated {
+  repeated TransactionInfoDeprecated transactions = 1;
+}
+
+message CoinSplitResponseDeprecated {
+  uint64 tx_id = 1;                    // Keep old field name
+}
+
+message ImportUtxosResponseDeprecated {
+  repeated uint64 tx_ids = 1;          // Keep old field name
+}
+
+message SendShaAtomicSwapResponseDeprecated {
+  uint64 transaction_id = 1;           // Keep old field name
+  string pre_image = 2;
+  string output_hash = 3;
+  bool is_success = 4;
+  string failure_message = 5;
+}
+
+message CreateBurnTransactionResponseDeprecated {
+  uint64 transaction_id = 1;           // Keep old field name
+  bool is_success = 2;
+  string failure_message = 3;
+  bytes commitment = 4;
+  CommitmentSignature ownership_proof = 5;
+  bytes range_proof = 6;
+  bytes reciprocal_claim_public_key = 7;
+}
+
+message ClaimShaAtomicSwapResponseDeprecated {
+  TransferResultDeprecated results = 1;
+}
+
+message ClaimHtlcRefundResponseDeprecated {
+  TransferResultDeprecated results = 1;
+}
+
+message CreateTemplateRegistrationResponseDeprecated {
+  uint64 tx_id = 1;                    // Keep old field name
+  bytes template_address = 2;
+}
+
+message TransactionEventDeprecated {
+  string event = 1;
+  string tx_id = 2;                    // Keep old field name
+  bytes source_address = 3;
+  bytes dest_address = 4;
+  string status = 5;
+  string direction = 6;
+  uint64 amount = 7;
+  bytes payment_id = 9;
+}
+
+message TransactionEventResponseDeprecated {
+  TransactionEventDeprecated transaction = 1;
+}
+
+message RegisterValidatorNodeResponseDeprecated {
+  uint64 transaction_id = 1;           // Keep old field name
+  bool is_success = 2;
+  string failure_message = 3;
+}
+
+message ImportTransactionsResponseDeprecated {
+  repeated uint64 tx_ids = 1;          // Keep old field name
+}
+
+message GetAllCompletedTransactionsResponseDeprecated {
+  repeated TransactionInfoDeprecated transactions = 1;
 }

@@ -15,7 +15,7 @@ tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_contacts = { workspace = true }
-tari_core = { workspace = true, default-features = false, features = ["transactions", "mempool_proto", "base_node_proto"] }
+tari_core = { workspace = true, default-features = false, features = ["transactions", "mempool_proto", "base_node_proto", "base_node"] }
 tari_crypto = { workspace = true }
 tari_key_manager = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
