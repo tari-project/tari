@@ -23,6 +23,7 @@
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod payment_reference;
 
 mod input_selection;
 pub use input_selection::{UtxoSelectionCriteria, UtxoSelectionFilter, UtxoSelectionOrdering};

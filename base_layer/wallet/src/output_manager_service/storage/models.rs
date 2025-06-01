@@ -22,8 +22,10 @@
 
 use std::{cmp::Ordering, convert::TryFrom};
 
+use blake2::Blake2b;
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
+use digest::{consts::U32, FixedOutput};
 use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedCommitment, HashOutput},
@@ -31,11 +33,16 @@ use tari_common_types::{
 use tari_core::transactions::{
     transaction_components::{encrypted_data::PaymentId, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
 };
+use tari_crypto::hashing::DomainSeparatedHasher;
+use tari_hashing::PaymentReferenceHashDomain;
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
+    payment_reference::{PaymentDetails, PaymentDirection, PayRefStatus},
     storage::{OutputSource, OutputStatus},
 };
 
@@ -86,6 +93,92 @@ impl DbWalletOutput {
             spent_in_tx_id,
             payment_id,
         })
+    }
+
+    /// Generate a Payment Reference (PayRef) for this output if it has been mined
+    /// PayRef = Blake2b_256(block_hash || commitment)
+    pub fn generate_payment_reference(&self) -> Option<[u8; 32]> {
+        if let Some(block_hash) = &self.mined_in_block {
+            let mut hasher = DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
+            hasher.update(block_hash.as_slice());
+            hasher.update(self.commitment.as_bytes());
+            let mut output = [0u8; 32];
+            hasher.finalize_into_reset(digest::generic_array::GenericArray::from_mut_slice(&mut output));
+            Some(output)
+        } else {
+            None
+        }
+    }
+
+    /// Get the PayRef status based on confirmation requirements
+    pub fn get_payment_reference_status(&self, current_tip_height: u64, required_confirmations: u64) -> PayRefStatus {
+        if let Some(mined_height) = self.mined_height {
+            let confirmations = current_tip_height.saturating_sub(mined_height) + 1;
+            
+            if confirmations >= required_confirmations {
+                if let Some(payref) = self.generate_payment_reference() {
+                    PayRefStatus::Available(payref, confirmations)
+                } else {
+                    PayRefStatus::InvalidOutput
+                }
+            } else {
+                let blocks_remaining = required_confirmations.saturating_sub(confirmations);
+                PayRefStatus::Pending(confirmations, blocks_remaining)
+            }
+        } else {
+            PayRefStatus::NotMined
+        }
+    }
+
+    /// Check if this output's PayRef matches the given reference
+    pub fn matches_payment_reference(&self, payref: &[u8; 32]) -> bool {
+        if let Some(generated_payref) = self.generate_payment_reference() {
+            generated_payref == *payref
+        } else {
+            false
+        }
+    }
+
+    /// Get payment details for this output if it has a valid PayRef
+    pub fn get_payment_details(&self, current_tip_height: u64, required_confirmations: u64) -> Option<PaymentDetails> {
+        match self.get_payment_reference_status(current_tip_height, required_confirmations) {
+            PayRefStatus::Available(payref, confirmations) => Some(PaymentDetails {
+                payment_reference: payref,
+                commitment: self.commitment.clone(),
+                amount: self.wallet_output.value,
+                block_height: self.mined_height?,
+                block_hash: self.mined_in_block.clone()?,
+                mined_timestamp: self.mined_timestamp,
+                direction: self.infer_direction(),
+                status: self.status,
+                confirmations,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Infer the direction of this output based on its source
+    fn infer_direction(&self) -> PaymentDirection {
+        match self.source {
+            OutputSource::Coinbase => PaymentDirection::Received,
+            OutputSource::OneSided => PaymentDirection::Received,
+            OutputSource::StealthOneSided => PaymentDirection::Received,
+            OutputSource::HtlcRefund => PaymentDirection::Received,
+            OutputSource::AtomicSwap => PaymentDirection::Received,
+            OutputSource::Standard => {
+                // For standard outputs, we need to determine based on other factors
+                // This is a simplification - in practice we'd check transaction details
+                if self.received_in_tx_id.is_some() {
+                    PaymentDirection::Received
+                } else {
+                    PaymentDirection::Sent
+                }
+            },
+            OutputSource::NonStandardScript => PaymentDirection::Received,
+            OutputSource::Burn => PaymentDirection::Sent,
+            OutputSource::ValidatorNodeRegistration => PaymentDirection::Sent,
+            OutputSource::CodeTemplateRegistration => PaymentDirection::Sent,
+        }
     }
 }
 

@@ -157,6 +157,11 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    // PayRef operations
+    FindPaymentByReference([u8; 32]),
+    GetAvailablePaymentReferences,
+    GetPaymentReferenceConfig,
+    SetPaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -286,6 +291,10 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", hex::encode(payref)),
+            GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
+            GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
+            SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
         }
     }
 }
