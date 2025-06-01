@@ -51,6 +51,8 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
     GetAllCompletedTransactionsResponse,
+    GetAvailablePaymentReferencesRequest,
+    GetAvailablePaymentReferencesResponse,
     GetBalanceRequest,
     GetBalanceResponse,
     GetBlockHeightTransactionsRequest,
@@ -61,6 +63,8 @@ use minotari_app_grpc::tari_rpc::{
     GetConnectivityRequest,
     GetIdentityRequest,
     GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
     GetPaymentIdAddressRequest,
     GetStateRequest,
     GetStateResponse,
@@ -73,6 +77,9 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    PaymentDetails,
+    PaymentDirection,
+    PayRefStatus,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -1619,6 +1626,157 @@ impl wallet_server::Wallet for WalletGrpcServer {
             };
         }
         Ok(Response::new(ImportTransactionsResponse { tx_ids }))
+    }
+
+    async fn get_payment_by_reference(
+        &self,
+        request: Request<GetPaymentByReferenceRequest>,
+    ) -> Result<Response<GetPaymentByReferenceResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_payment_by_reference: Looking up PayRef: {}",
+            message.payment_reference.to_hex()
+        );
+
+        if message.payment_reference.len() != 32 {
+            return Err(Status::invalid_argument(
+                "payment_reference must be exactly 32 bytes".to_string(),
+            ));
+        }
+
+        let payment_ref = message.payment_reference.try_into().map_err(|_| {
+            Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string())
+        })?;
+
+        let mut output_service = self.get_output_manager_service();
+        
+        match output_service.find_payment_by_reference(payment_ref).await {
+            Ok(Some(payment_details)) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "get_payment_by_reference: Found payment details for PayRef: {}",
+                    payment_ref.to_hex()
+                );
+                
+                let direction = match payment_details.direction {
+                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
+                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
+                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
+                };
+                
+                // Calculate status based on confirmations since PaymentDetails doesn't have a status field
+                let status = if payment_details.has_sufficient_confirmations(5) {
+                    1 // PAYREF_STATUS_AVAILABLE
+                } else if payment_details.confirmations > 0 {
+                    2 // PAYREF_STATUS_PENDING
+                } else {
+                    3 // PAYREF_STATUS_NOT_MINED
+                };
+                
+                let grpc_payment_details = PaymentDetails {
+                    payment_reference: payment_details.payment_reference.to_vec(),
+                    tx_id: 0, // PaymentDetails from wallet doesn't have tx_id - would need to be added
+                    amount: payment_details.amount.into(),
+                    direction,
+                    status,
+                    mined_height: payment_details.block_height,
+                    confirmations: payment_details.confirmations,
+                    message: String::new(), // PaymentDetails from wallet doesn't have message field
+                };
+                
+                Ok(Response::new(GetPaymentByReferenceResponse {
+                    payment_details: Some(grpc_payment_details),
+                }))
+            },
+            Ok(None) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "get_payment_by_reference: PayRef not found: {}",
+                    payment_ref.to_hex()
+                );
+                Err(Status::not_found("Payment reference not found".to_string()))
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_payment_by_reference: Error looking up PayRef {}: {}",
+                    payment_ref.to_hex(),
+                    e
+                );
+                Err(Status::internal(format!("Error looking up payment reference: {}", e)))
+            },
+        }
+    }
+
+    async fn get_available_payment_references(
+        &self,
+        request: Request<GetAvailablePaymentReferencesRequest>,
+    ) -> Result<Response<GetAvailablePaymentReferencesResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_available_payment_references: direction filter: {:?}, limit: {}, offset: {}",
+            message.direction, message.limit, message.offset
+        );
+
+        let mut output_service = self.get_output_manager_service();
+        
+        match output_service.get_available_payment_references().await {
+            Ok(payment_records) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "get_available_payment_references: Found {} available payment references",
+                    payment_records.len()
+                );
+                
+                let payment_references: Vec<PaymentDetails> = payment_records
+                    .into_iter()
+                    .map(|payment_record| {
+                        let direction = match payment_record.direction {
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
+                        };
+                        
+                        // Calculate status based on confirmations (PaymentRecord doesn't have status field)
+                        // Assuming 5 confirmations required for "available" status
+                        let status = if payment_record.confirmations >= 5 {
+                            1 // PAYREF_STATUS_AVAILABLE
+                        } else if payment_record.confirmations > 0 {
+                            2 // PAYREF_STATUS_PENDING
+                        } else {
+                            3 // PAYREF_STATUS_NOT_MINED
+                        };
+                        
+                        PaymentDetails {
+                            payment_reference: payment_record.payment_reference.to_vec(),
+                            tx_id: 0, // PaymentRecord doesn't have tx_id field
+                            amount: payment_record.amount.into(),
+                            direction,
+                            status,
+                            mined_height: payment_record.block_height,
+                            confirmations: payment_record.confirmations,
+                            message: String::new(), // PaymentRecord doesn't have message field
+                        }
+                    })
+                    .collect();
+                
+                let total_count = payment_references.len() as u64;
+                Ok(Response::new(GetAvailablePaymentReferencesResponse {
+                    payment_references,
+                    total_count,
+                }))
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_available_payment_references: Error retrieving available payment references: {}",
+                    e
+                );
+                Err(Status::internal(format!("Error retrieving available payment references: {}", e)))
+            },
+        }
     }
 }
 

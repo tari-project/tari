@@ -1050,6 +1050,103 @@ service Wallet {
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
   rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
+
+  // Gets payment details by payment reference (PayRef)
+  //
+  // The `GetPaymentByReference` call retrieves payment information using a 32-byte payment reference hash.
+  // PayRefs are generated as Blake2b_256(block_hash || commitment) and provide a stable way to look up
+  // payments even after outputs are spent.
+  //
+  // ### Request Parameters:
+  //
+  // - `payment_reference` (required):
+  //   - **Type**: `bytes` (32 bytes)
+  //   - **Description**: The payment reference hash to look up
+  //   - **Restrictions**: Must be exactly 32 bytes representing a valid PayRef
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const payref = Buffer.from('a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890', 'hex');
+  // const request = { payment_reference: payref };
+  // client.getPaymentByReference(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log('Payment found:', response.payment_details);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "payment_details": {
+  //     "payment_reference": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+  //     "tx_id": 12345,
+  //     "amount": 1000000,
+  //     "direction": "PAYMENT_DIRECTION_INBOUND",
+  //     "status": "PAYREF_STATUS_AVAILABLE",
+  //     "mined_height": 150000,
+  //     "confirmations": 10
+  //   }
+  // }
+  // ```
+  rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
+
+  // Gets all available payment references with optional filtering
+  //
+  // The `GetAvailablePaymentReferences` call retrieves all payment references that are available
+  // (have sufficient confirmations), optionally filtered by direction and with pagination support.
+  //
+  // ### Request Parameters:
+  //
+  // - `direction` (optional):
+  //   - **Type**: `PaymentDirection`
+  //   - **Description**: Filter by payment direction (inbound/outbound)
+  //   - **Restrictions**: If not specified, returns payments in both directions
+  //
+  // - `offset` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: Number of records to skip for pagination
+  //   - **Default**: 0
+  //
+  // - `limit` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: Maximum number of records to return
+  //   - **Default**: 100, **Maximum**: 1000
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   direction: 'PAYMENT_DIRECTION_INBOUND',
+  //   offset: 0,
+  //   limit: 50
+  // };
+  // client.getAvailablePaymentReferences(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log('Available payments:', response.payment_references);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "payment_references": [
+  //     {
+  //       "payment_reference": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+  //       "tx_id": 12345,
+  //       "amount": 1000000,
+  //       "direction": "PAYMENT_DIRECTION_INBOUND",
+  //       "status": "PAYREF_STATUS_AVAILABLE",
+  //       "mined_height": 150000,
+  //       "confirmations": 10
+  //     }
+  //   ],
+  //   "total_count": 156
+  // }
+  // ```
+  rpc GetAvailablePaymentReferences(GetAvailablePaymentReferencesRequest) returns (GetAvailablePaymentReferencesResponse);
 }
 
 
@@ -1441,4 +1538,78 @@ message GetBlockHeightTransactionsRequest {
 message GetBlockHeightTransactionsResponse {
   // List of transactions mined at the specified block height
   repeated TransactionInfo transactions = 1;
+}
+
+// PayRef (Payment Reference) related messages and enums
+
+// Request message for getting payment details by payment reference
+message GetPaymentByReferenceRequest {
+  // The 32-byte payment reference hash to look up
+  bytes payment_reference = 1;
+}
+
+// Response message containing payment details for a payment reference
+message GetPaymentByReferenceResponse {
+  // The payment details if found
+  PaymentDetails payment_details = 1;
+}
+
+// Request message for getting available payment references with optional filtering
+message GetAvailablePaymentReferencesRequest {
+  // Optional filter by payment direction
+  PaymentDirection direction = 1;
+  // Number of records to skip for pagination (default: 0)
+  uint64 offset = 2;
+  // Maximum number of records to return (default: 100, max: 1000)
+  uint64 limit = 3;
+}
+
+// Response message containing a list of available payment references
+message GetAvailablePaymentReferencesResponse {
+  // List of available payment references
+  repeated PaymentDetails payment_references = 1;
+  // Total count of available payment references (for pagination)
+  uint64 total_count = 2;
+}
+
+// Payment details structure containing all relevant information about a payment
+message PaymentDetails {
+  // The 32-byte payment reference hash
+  bytes payment_reference = 1;
+  // The transaction ID associated with this payment
+  uint64 tx_id = 2;
+  // The amount of the payment in microTari
+  uint64 amount = 3;
+  // The direction of the payment (inbound/outbound)
+  PaymentDirection direction = 4;
+  // The current status of the payment reference
+  PayRefStatus status = 5;
+  // The block height where this payment was mined (0 if not mined)
+  uint64 mined_height = 6;
+  // Number of confirmations for this payment
+  uint64 confirmations = 7;
+  // Optional message or note associated with the payment
+  string message = 8;
+}
+
+// Enum for payment direction
+enum PaymentDirection {
+  // Unknown or unspecified direction
+  PAYMENT_DIRECTION_UNKNOWN = 0;
+  // Payment received by this wallet
+  PAYMENT_DIRECTION_INBOUND = 1;
+  // Payment sent from this wallet
+  PAYMENT_DIRECTION_OUTBOUND = 2;
+}
+
+// Enum for PayRef status indicating availability
+enum PayRefStatus {
+  // Unknown or unspecified status
+  PAYREF_STATUS_UNKNOWN = 0;
+  // PayRef is available (has sufficient confirmations)
+  PAYREF_STATUS_AVAILABLE = 1;
+  // PayRef is pending (waiting for more confirmations)
+  PAYREF_STATUS_PENDING = 2;
+  // PayRef is not mined (transaction not yet in a block)
+  PAYREF_STATUS_NOT_MINED = 3;
 }
