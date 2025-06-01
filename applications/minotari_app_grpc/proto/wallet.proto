@@ -1352,7 +1352,7 @@ message TransactionInfo {
   bytes user_payment_id = 14;
   repeated bytes input_commitments = 15;
   repeated bytes output_commitments = 16;
-  bytes payment_reference = 17;
+  string payment_reference = 17;
 }
 
 enum TransactionDirection {
@@ -1651,8 +1651,8 @@ message GetAllPaymentReferencesResponse {
 
 // Payment details structure containing all relevant information about a payment
 message PaymentDetails {
-  // The 32-byte payment reference hash
-  bytes payment_reference = 1;
+  // The 32-byte payment reference hash (as hex string)
+  string payment_reference = 1;
   // The transaction ID associated with this payment
   uint64 tx_id = 2;
   // The amount of the payment in microTari

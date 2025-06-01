@@ -1189,6 +1189,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         },
                     })
                     .collect();
+                
+                // TODO: PayRef calculation for streaming endpoint - requires refactoring to avoid borrowing issues
+                let payment_reference = String::new();
+                
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
@@ -1211,7 +1215,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
-                        payment_reference: vec![], // TODO: Add PayRef calculation for streaming endpoint
+                        payment_reference,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1287,7 +1291,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         } else {
             usize::MAX
         };
-        let mut transactions = Vec::new();
+        let mut transactions: Vec<TransactionInfo> = Vec::new();
         for txn in completed_transactions.into_iter().skip(offset).take(limit) {
             let output_commitments: Vec<Vec<u8>> = txn
                 .transaction
@@ -1335,7 +1339,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference,
+                payment_reference: payment_reference.to_hex(),
             });
         }
 
@@ -1372,58 +1376,61 @@ impl wallet_server::Wallet for WalletGrpcServer {
             block_height
         );
 
-        let transactions = transactions
-            .iter()
-            .map(|txn| {
-                let output_commitments = txn
+        let mut result_transactions = Vec::new();
+        for txn in &transactions {
+            let output_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        vec![]
+                    },
+                })
+                .collect();
+            
+            // Calculate PayRef for this transaction's first output (if mined)
+            let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
+            let payment_reference = payment_refs.get(0).cloned().unwrap_or_default();
+            
+            result_transactions.push(TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status.clone()) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
                     .transaction
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|o| o.commitment().as_bytes().to_vec())
-                    .collect();
-                let input_commitments = txn
-                    .transaction
-                    .body
-                    .inputs()
-                    .iter()
-                    .map(|i| match i.commitment() {
-                        Ok(c) => c.as_bytes().to_vec(),
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
-                            vec![]
-                        },
-                    })
-                    .collect();
-                TransactionInfo {
-                    tx_id: txn.tx_id.into(),
-                    source_address: txn.source_address.to_vec(),
-                    dest_address: txn.destination_address.to_vec(),
-                    status: TransactionStatus::from(txn.status.clone()) as i32,
-                    amount: txn.amount.into(),
-                    is_cancelled: txn.cancelled.is_some(),
-                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                    fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
-                    excess_sig: txn
-                        .transaction
-                        .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
-                        .get_signature()
-                        .to_vec(),
-                    raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
-                    mined_in_block_height: txn.mined_height.unwrap_or(0),
-                    output_commitments,
-                    input_commitments,
-                    payment_reference: vec![],
-                }
-            })
-            .collect();
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                output_commitments,
+                input_commitments,
+                payment_reference: payment_reference.to_hex(),
+            });
+        }
 
         trace!(target: LOG_TARGET, "'get_block_height_transactions' completed in {:.2?}", start.elapsed());
 
-        Ok(Response::new(GetBlockHeightTransactionsResponse { transactions }))
+        Ok(Response::new(GetBlockHeightTransactionsResponse { transactions: result_transactions }))
     }
 
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
@@ -1758,7 +1765,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 };
                 
                 let grpc_payment_details = PaymentDetails {
-                    payment_reference: payment_details.payment_reference.to_vec(),
+                    payment_reference: payment_details.payment_reference.to_hex(),
                     tx_id: 0, // PaymentDetails from wallet doesn't have tx_id - would need to be added
                     amount: payment_details.amount.into(),
                     direction,
@@ -1834,7 +1841,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         };
                         
                         PaymentDetails {
-                            payment_reference: payment_record.payment_reference.to_vec(),
+                            payment_reference: payment_record.payment_reference.to_hex(),
                             tx_id: 0, // PaymentRecord doesn't have tx_id field
                             amount: payment_record.amount.into(),
                             direction,
@@ -1904,7 +1911,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         };
                         
                         PaymentDetails {
-                            payment_reference: payment_record.payment_reference.to_vec(),
+                            payment_reference: payment_record.payment_reference.to_hex(),
                             tx_id: 0, // PaymentRecord does not have tx_id field
                             amount: payment_record.amount.into(),
                             direction,
@@ -2014,7 +2021,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
-                payment_reference: vec![],
+                payment_reference: String::new(),
             }
         },
         PendingOutbound(tx) => {
@@ -2048,7 +2055,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
-                payment_reference: vec![],
+                payment_reference: String::new(),
             }
         },
         Completed(tx) => {
@@ -2092,7 +2099,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference: vec![],
+                payment_reference: String::new(),
             }
         },
     }
