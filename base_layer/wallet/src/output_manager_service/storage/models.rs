@@ -25,7 +25,7 @@ use std::{cmp::Ordering, convert::TryFrom};
 use blake2::Blake2b;
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use digest::{consts::U32, FixedOutput};
+use digest::consts::U32;
 use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedCommitment, HashOutput},
@@ -33,7 +33,6 @@ use tari_common_types::{
 use tari_core::transactions::{
     transaction_components::{encrypted_data::PaymentId, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
 };
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;

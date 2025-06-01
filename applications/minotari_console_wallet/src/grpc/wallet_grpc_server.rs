@@ -78,8 +78,6 @@ use minotari_app_grpc::tari_rpc::{
     ImportUtxosRequest,
     ImportUtxosResponse,
     PaymentDetails,
-    PaymentDirection,
-    PayRefStatus,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -134,6 +132,10 @@ use tari_core::{
 };
 use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
+use tari_hashing::PaymentReferenceHashDomain;
+use tari_crypto::hashing::{DomainSeparation, DomainSeparatedHasher};
+use blake2::Blake2b;
+use digest::{consts::U32, Digest};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
@@ -208,6 +210,23 @@ impl WalletGrpcServer {
             .map(|m| m.best_block_height())
             .unwrap_or_default();
         Ok(self.rules.consensus_constants(height))
+    }
+
+    /// Calculate PayRefs for a transaction's outputs if the transaction is mined
+    async fn calculate_payment_references_for_transaction(
+        &self,
+        output_commitments: &[Vec<u8>],
+        mined_height: u64,
+    ) -> Vec<Vec<u8>> {
+        // Only calculate PayRefs for mined transactions (height > 0)
+        if mined_height == 0 || output_commitments.is_empty() {
+            return vec![];
+        }
+
+        // TODO: Get actual block hash from height - for now skip PayRef calculation
+        // This will be implemented when proper block hash retrieval is available
+        warn!(target: LOG_TARGET, "PayRef calculation skipped - block hash retrieval not yet implemented");
+        vec![]
     }
 }
 
@@ -1090,7 +1109,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
             for (i, txn) in transactions.iter().enumerate() {
-                let output_commitments = txn
+                let output_commitments: Vec<Vec<u8>> = txn
                     .transaction
                     .body
                     .outputs()
@@ -1132,6 +1151,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
+                        payment_reference: vec![], // TODO: Add PayRef calculation for streaming endpoint
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1212,14 +1232,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .skip(offset)
             .take(limit)
             .map(|txn| {
-                let output_commitments = txn
+                let output_commitments: Vec<Vec<u8>> = txn
                     .transaction
                     .body
                     .outputs()
                     .iter()
                     .map(|o| o.commitment().as_bytes().to_vec())
                     .collect();
-                let input_commitments = txn
+                let input_commitments: Vec<Vec<u8>> = txn
                     .transaction
                     .body
                     .inputs()
@@ -1232,6 +1252,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         },
                     })
                     .collect();
+                // TODO: Calculate PayRef for each transaction - skipping for now due to async complexity
+                let payment_reference: Vec<u8> = vec![];
                 TransactionInfo {
                     tx_id: txn.tx_id.into(),
                     source_address: txn.source_address.to_vec(),
@@ -1253,6 +1275,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
                     output_commitments,
                     input_commitments,
+                    payment_reference,
                 }
             })
             .collect();
@@ -1334,6 +1357,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
                     output_commitments,
                     input_commitments,
+                    payment_reference: vec![],
                 }
             })
             .collect();
@@ -1860,6 +1884,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
+                payment_reference: vec![],
             }
         },
         PendingOutbound(tx) => {
@@ -1893,6 +1918,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
+                payment_reference: vec![],
             }
         },
         Completed(tx) => {
@@ -1936,6 +1962,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
+                payment_reference: vec![],
             }
         },
     }

@@ -23,16 +23,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    transaction::TxId,
     types::{BlockHash, CompressedCommitment},
 };
 use tari_core::transactions::{
-    transaction_components::encrypted_data::PaymentId,
     tari_amount::MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 
-use crate::output_manager_service::storage::{OutputSource, OutputStatus};
+use crate::output_manager_service::storage::OutputStatus;
 
 /// Configuration for Payment Reference system
 #[derive(Debug, Clone, Serialize, Deserialize)]
