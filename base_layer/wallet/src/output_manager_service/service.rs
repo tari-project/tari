@@ -548,6 +548,10 @@ where
                 let payment_references = self.get_available_payment_references()?;
                 Ok(OutputManagerResponse::PaymentReferences(payment_references))
             },
+            OutputManagerRequest::GetAllPaymentReferences => {
+                let payment_references = self.get_all_payment_references()?;
+                Ok(OutputManagerResponse::PaymentReferences(payment_references))
+            },
             OutputManagerRequest::GetPaymentReferenceConfig => {
                 let config = self.get_payment_reference_config()?;
                 Ok(OutputManagerResponse::PaymentReferenceConfig(config))
@@ -3587,6 +3591,51 @@ where
                         block_height,
                         confirmations,
                         timestamp: Some(timestamp),
+                        payment_id: Some(output.payment_id.to_bytes()),
+                    });
+                }
+            }
+        }
+        
+        Ok(payment_references)
+    }
+    
+    /// Get all payment references (regardless of confirmation status)
+    fn get_all_payment_references(
+        &self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        // Get all unspent outputs
+        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        let mut payment_references = Vec::new();
+        
+        // For each output, check if it has a PayRef and add to list regardless of status
+        for output in outputs {
+            use crate::output_manager_service::payment_reference::PayRefStatus;
+            let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
+            let required_confirmations = 5;
+            let status = output.get_payment_reference_status(current_tip_height, required_confirmations);
+            
+            // Add all outputs with PayRefs, regardless of status (Available only, as Pending/NotMined don't have payrefs)
+            if let PayRefStatus::Available(payref, confirmations) = status {
+                if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
+                    payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
+                        payment_reference: payref,
+                        amount: output.wallet_output.value,
+                        direction: output.infer_direction(),
+                        block_height,
+                        confirmations,
+                        timestamp: Some(timestamp),
+                        payment_id: Some(output.payment_id.to_bytes()),
+                    });
+                } else {
+                    // For outputs that aren't mined yet, still include them with default values
+                    payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
+                        payment_reference: payref,
+                        amount: output.wallet_output.value,
+                        direction: output.infer_direction(),
+                        block_height: 0, // Default for unmined
+                        confirmations,
+                        timestamp: None,
                         payment_id: Some(output.payment_id.to_bytes()),
                     });
                 }

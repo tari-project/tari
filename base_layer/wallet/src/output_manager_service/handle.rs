@@ -160,6 +160,7 @@ pub enum OutputManagerRequest {
     // PayRef operations
     FindPaymentByReference([u8; 32]),
     GetAvailablePaymentReferences,
+    GetAllPaymentReferences,
     GetPaymentReferenceConfig,
     SetPaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
 }
@@ -293,6 +294,7 @@ impl fmt::Display for OutputManagerRequest {
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
             FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
+            GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
             GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
             SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
         }
@@ -1040,6 +1042,20 @@ impl OutputManagerHandle {
         match self
             .handle
             .call(OutputManagerRequest::GetAvailablePaymentReferences)
+            .await??
+        {
+            OutputManagerResponse::PaymentReferences(references) => Ok(references),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get all payment references (regardless of confirmation status)
+    pub async fn get_all_payment_references(
+        &mut self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetAllPaymentReferences)
             .await??
         {
             OutputManagerResponse::PaymentReferences(references) => Ok(references),

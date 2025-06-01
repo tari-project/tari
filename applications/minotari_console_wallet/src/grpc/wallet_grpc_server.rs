@@ -1863,7 +1863,76 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         }
     }
-}
+
+    async fn get_all_payment_references(
+        &self,
+        request: Request<GetAllPaymentReferencesRequest>,
+    ) -> Result<Response<GetAllPaymentReferencesResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_all_payment_references: direction filter: {:?}, limit: {}, offset: {}",
+            message.direction, message.limit, message.offset
+        );
+
+        let mut output_service = self.get_output_manager_service();
+        
+        match output_service.get_all_payment_references().await {
+            Ok(payment_records) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "get_all_payment_references: Found {} payment references",
+                    payment_records.len()
+                );
+                
+                let payment_references: Vec<PaymentDetails> = payment_records
+                    .into_iter()
+                    .map(|payment_record| {
+                        let direction = match payment_record.direction {
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
+                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
+                        };
+                        
+                        // Calculate status based on confirmations
+                        let status = if payment_record.confirmations >= 5 {
+                            1 // PAYREF_STATUS_AVAILABLE
+                        } else if payment_record.confirmations > 0 {
+                            2 // PAYREF_STATUS_PENDING
+                        } else {
+                            3 // PAYREF_STATUS_NOT_MINED
+                        };
+                        
+                        PaymentDetails {
+                            payment_reference: payment_record.payment_reference.to_vec(),
+                            tx_id: 0, // PaymentRecord does not have tx_id field
+                            amount: payment_record.amount.into(),
+                            direction,
+                            status,
+                            mined_height: payment_record.block_height,
+                            confirmations: payment_record.confirmations,
+                            message: String::new(), // PaymentRecord does not have message field
+                            payment_id: payment_record.payment_id.unwrap_or_default(),
+                        }
+                    })
+                    .collect();
+                
+                let total_count = payment_references.len() as u64;
+                Ok(Response::new(GetAllPaymentReferencesResponse {
+                    payment_references,
+                    total_count,
+                }))
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_all_payment_references: Error retrieving all payment references: {}",
+                    e
+                );
+                Err(Status::internal(format!("Error retrieving all payment references: {}", e)))
+            },
+        }
+    }}
 
 async fn handle_completed_tx(
     tx_id: TxId,
