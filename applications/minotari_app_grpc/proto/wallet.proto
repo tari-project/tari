@@ -1092,10 +1092,10 @@ service Wallet {
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
 
-  // Gets all available payment references with optional filtering
+  // Gets all unspent payment references with optional filtering
   //
-  // The `GetAvailablePaymentReferences` call retrieves all payment references that are available
-  // (have sufficient confirmations), optionally filtered by direction and with pagination support.
+  // The `GetUnspentPaymentReferences` call retrieves all payment references that are unspent
+  // (have sufficient confirmations and are still available), optionally filtered by direction and with pagination support.
   //
   // ### Request Parameters:
   //
@@ -1122,9 +1122,9 @@ service Wallet {
   //   offset: 0,
   //   limit: 50
   // };
-  // client.getAvailablePaymentReferences(request, (err, response) => {
+  // client.getUnspentPaymentReferences(request, (err, response) => {
   //   if (err) console.error(err);
-  //   else console.log('Available payments:', response.payment_references);
+  //   else console.log('Unspent payments:', response.payment_references);
   // });
   // ```
   //
@@ -1140,13 +1140,71 @@ service Wallet {
   //       "direction": "PAYMENT_DIRECTION_INBOUND",
   //       "status": "PAYREF_STATUS_AVAILABLE",
   //       "mined_height": 150000,
-  //       "confirmations": 10
+  //       "confirmations": 10,
+  //       "payment_id": "aGVsbG8gd29ybGQ="
   //     }
   //   ],
   //   "total_count": 156
   // }
   // ```
-  rpc GetAvailablePaymentReferences(GetAvailablePaymentReferencesRequest) returns (GetAvailablePaymentReferencesResponse);
+  rpc GetUnspentPaymentReferences(GetUnspentPaymentReferencesRequest) returns (GetUnspentPaymentReferencesResponse);
+
+  // Gets all payment references (both spent and unspent) with optional filtering
+  //
+  // The `GetAllPaymentReferences` call retrieves all payment references in the wallet history,
+  // optionally filtered by direction and with pagination support. This includes both spent and unspent outputs.
+  //
+  // ### Request Parameters:
+  //
+  // - `direction` (optional):
+  //   - **Type**: `PaymentDirection`
+  //   - **Description**: Filter by payment direction (inbound/outbound)
+  //   - **Restrictions**: If not specified, returns payments in both directions
+  //
+  // - `offset` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: Number of records to skip for pagination
+  //   - **Default**: 0
+  //
+  // - `limit` (optional):
+  //   - **Type**: `uint64`
+  //   - **Description**: Maximum number of records to return
+  //   - **Default**: 100, **Maximum**: 1000
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   direction: 'PAYMENT_DIRECTION_INBOUND',
+  //   offset: 0,
+  //   limit: 50
+  // };
+  // client.getAllPaymentReferences(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log('All payments:', response.payment_references);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "payment_references": [
+  //     {
+  //       "payment_reference": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+  //       "tx_id": 12345,
+  //       "amount": 1000000,
+  //       "direction": "PAYMENT_DIRECTION_INBOUND",
+  //       "status": "PAYREF_STATUS_AVAILABLE",
+  //       "mined_height": 150000,
+  //       "confirmations": 10,
+  //       "payment_id": "aGVsbG8gd29ybGQ="
+  //     }
+  //   ],
+  //   "total_count": 523
+  // }
+  // ```
+  rpc GetAllPaymentReferences(GetAllPaymentReferencesRequest) returns (GetAllPaymentReferencesResponse);
 }
 
 
@@ -1555,8 +1613,8 @@ message GetPaymentByReferenceResponse {
   PaymentDetails payment_details = 1;
 }
 
-// Request message for getting available payment references with optional filtering
-message GetAvailablePaymentReferencesRequest {
+// Request message for getting unspent payment references with optional filtering
+message GetUnspentPaymentReferencesRequest {
   // Optional filter by payment direction
   PaymentDirection direction = 1;
   // Number of records to skip for pagination (default: 0)
@@ -1565,11 +1623,29 @@ message GetAvailablePaymentReferencesRequest {
   uint64 limit = 3;
 }
 
-// Response message containing a list of available payment references
-message GetAvailablePaymentReferencesResponse {
-  // List of available payment references
+// Response message containing a list of unspent payment references
+message GetUnspentPaymentReferencesResponse {
+  // List of unspent payment references
   repeated PaymentDetails payment_references = 1;
-  // Total count of available payment references (for pagination)
+  // Total count of unspent payment references (for pagination)
+  uint64 total_count = 2;
+}
+
+// Request message for getting all payment references (spent and unspent) with optional filtering
+message GetAllPaymentReferencesRequest {
+  // Optional filter by payment direction
+  PaymentDirection direction = 1;
+  // Number of records to skip for pagination (default: 0)
+  uint64 offset = 2;
+  // Maximum number of records to return (default: 100, max: 1000)
+  uint64 limit = 3;
+}
+
+// Response message containing a list of all payment references
+message GetAllPaymentReferencesResponse {
+  // List of all payment references (both spent and unspent)
+  repeated PaymentDetails payment_references = 1;
+  // Total count of all payment references (for pagination)
   uint64 total_count = 2;
 }
 
@@ -1591,6 +1667,8 @@ message PaymentDetails {
   uint64 confirmations = 7;
   // Optional message or note associated with the payment
   string message = 8;
+  // The payment ID associated with this payment
+  bytes payment_id = 9;
 }
 
 // Enum for payment direction

@@ -115,6 +115,8 @@ pub struct PaymentDetails {
     pub status: OutputStatus,
     /// Number of confirmations
     pub confirmations: u64,
+    /// The payment ID associated with this payment
+    pub payment_id: Option<Vec<u8>>,
 }
 
 /// Summary record for Payment Reference listings
@@ -132,6 +134,8 @@ pub struct PaymentRecord {
     pub confirmations: u64,
     /// Timestamp when the output was mined
     pub timestamp: Option<DateTime<Utc>>,
+    /// The payment ID associated with this payment
+    pub payment_id: Option<Vec<u8>>,
 }
 
 /// Verification result for exchange/merchant use

@@ -151,6 +151,7 @@ impl DbWalletOutput {
                 direction: self.infer_direction(),
                 status: self.status,
                 confirmations,
+                payment_id: Some(self.payment_id.to_bytes()),
             }),
             _ => None,
         }

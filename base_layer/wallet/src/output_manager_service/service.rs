@@ -3587,6 +3587,7 @@ where
                         block_height,
                         confirmations,
                         timestamp: Some(timestamp),
+                        payment_id: Some(output.payment_id.to_bytes()),
                     });
                 }
             }

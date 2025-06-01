@@ -51,8 +51,10 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
     GetAllCompletedTransactionsResponse,
-    GetAvailablePaymentReferencesRequest,
-    GetAvailablePaymentReferencesResponse,
+    GetUnspentPaymentReferencesRequest,
+    GetUnspentPaymentReferencesResponse,
+    GetAllPaymentReferencesRequest,
+    GetAllPaymentReferencesResponse,
     GetBalanceRequest,
     GetBalanceResponse,
     GetBlockHeightTransactionsRequest,
@@ -132,10 +134,6 @@ use tari_core::{
 };
 use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
-use tari_hashing::PaymentReferenceHashDomain;
-use tari_crypto::hashing::{DomainSeparation, DomainSeparatedHasher};
-use blake2::Blake2b;
-use digest::{consts::U32, Digest};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
@@ -212,21 +210,83 @@ impl WalletGrpcServer {
         Ok(self.rules.consensus_constants(height))
     }
 
-    /// Calculate PayRefs for a transaction's outputs if the transaction is mined
+    /// Calculate PayRefs for a transaction's outputs using existing wallet output data
     async fn calculate_payment_references_for_transaction(
         &self,
         output_commitments: &[Vec<u8>],
         mined_height: u64,
     ) -> Vec<Vec<u8>> {
-        // Only calculate PayRefs for mined transactions (height > 0)
-        if mined_height == 0 || output_commitments.is_empty() {
-            return vec![];
+        let mut payment_refs = Vec::new();
+        
+        // Note: Don't skip based on transaction mined_height for restored wallets
+        // Individual outputs may have mining data even if transaction doesn't
+        debug!(target: LOG_TARGET, "PayRef calculation: Processing {} commitments (tx mined_height={})", output_commitments.len(), mined_height);
+        
+        debug!(target: LOG_TARGET, "PayRef calculation: Looking up {} output commitments for mined transaction at height {}", output_commitments.len(), mined_height);
+        
+        // Get ALL wallet outputs (both spent and unspent) from output manager
+        let mut output_manager = self.get_output_manager_service();
+        
+        let unspent_outputs = match output_manager.get_unspent_outputs().await {
+            Ok(outputs) => outputs,
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to get unspent outputs for PayRef calculation: {}", e);
+                Vec::new()
+            }
+        };
+        
+        let spent_outputs = match output_manager.get_spent_outputs().await {
+            Ok(outputs) => outputs,
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to get spent outputs for PayRef calculation: {}", e);
+                Vec::new()
+            }
+        };
+        
+        // Combine both spent and unspent outputs
+        let all_outputs: Vec<_> = unspent_outputs.into_iter().chain(spent_outputs.into_iter()).collect();
+        
+        debug!(target: LOG_TARGET, "PayRef calculation: Found {} total wallet outputs to search", all_outputs.len());
+        
+        for (i, commitment_bytes) in output_commitments.iter().enumerate() {
+            // Find matching DbWalletOutput by commitment
+            if let Some(db_output) = all_outputs.iter()
+                .find(|o| o.commitment.as_bytes() == commitment_bytes) 
+            {
+                // Check if output has mining data (mined_height and mined_in_block)
+                if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
+                    // Use existing PayRef generation method - it will check the output's mining data
+                    if let Some(payref) = db_output.generate_payment_reference() {
+                        debug!(
+                            target: LOG_TARGET, 
+                            "PayRef calculation: Generated PayRef for output {} at height {}: {}", 
+                            i, 
+                            db_output.mined_height.unwrap_or(0),
+                            payref.to_hex()
+                        );
+                        payment_refs.push(payref.to_vec());
+                    } else {
+                        debug!(target: LOG_TARGET, "PayRef calculation: No PayRef generated for output {} (PayRef generation failed)", i);
+                        payment_refs.push(vec![]);
+                    }
+                } else {
+                    debug!(
+                        target: LOG_TARGET, 
+                        "PayRef calculation: Output {} not mined (mined_height: {:?}, mined_in_block: {:?})", 
+                        i,
+                        db_output.mined_height,
+                        db_output.mined_in_block.is_some()
+                    );
+                    payment_refs.push(vec![]);
+                }
+            } else {
+                debug!(target: LOG_TARGET, "PayRef calculation: Output {} commitment not found in wallet", i);
+                payment_refs.push(vec![]);
+            }
         }
-
-        // TODO: Get actual block hash from height - for now skip PayRef calculation
-        // This will be implemented when proper block hash retrieval is available
-        warn!(target: LOG_TARGET, "PayRef calculation skipped - block hash retrieval not yet implemented");
-        vec![]
+        
+        debug!(target: LOG_TARGET, "PayRef calculation: Completed, returning {} PayRefs", payment_refs.len());
+        payment_refs
     }
 }
 
@@ -1227,58 +1287,57 @@ impl wallet_server::Wallet for WalletGrpcServer {
         } else {
             usize::MAX
         };
-        let transactions = completed_transactions
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .map(|txn| {
-                let output_commitments: Vec<Vec<u8>> = txn
+        let mut transactions = Vec::new();
+        for txn in completed_transactions.into_iter().skip(offset).take(limit) {
+            let output_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        vec![]
+                    },
+                })
+                .collect();
+            
+            // Calculate PayRef for this transaction's first output (if mined)
+            let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
+            let payment_reference = payment_refs.get(0).cloned().unwrap_or_default();
+            
+            transactions.push(TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status.clone()) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
                     .transaction
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|o| o.commitment().as_bytes().to_vec())
-                    .collect();
-                let input_commitments: Vec<Vec<u8>> = txn
-                    .transaction
-                    .body
-                    .inputs()
-                    .iter()
-                    .map(|i| match i.commitment() {
-                        Ok(c) => c.as_bytes().to_vec(),
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
-                            vec![]
-                        },
-                    })
-                    .collect();
-                // TODO: Calculate PayRef for each transaction - skipping for now due to async complexity
-                let payment_reference: Vec<u8> = vec![];
-                TransactionInfo {
-                    tx_id: txn.tx_id.into(),
-                    source_address: txn.source_address.to_vec(),
-                    dest_address: txn.destination_address.to_vec(),
-                    status: TransactionStatus::from(txn.status.clone()) as i32,
-                    amount: txn.amount.into(),
-                    is_cancelled: txn.cancelled.is_some(),
-                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                    fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
-                    excess_sig: txn
-                        .transaction
-                        .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
-                        .get_signature()
-                        .to_vec(),
-                    raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
-                    mined_in_block_height: txn.mined_height.unwrap_or(0),
-                    output_commitments,
-                    input_commitments,
-                    payment_reference,
-                }
-            })
-            .collect();
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                output_commitments,
+                input_commitments,
+                payment_reference,
+            });
+        }
 
         trace!(target: LOG_TARGET, "'GetAllCompletedTransactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetAllCompletedTransactionsResponse { transactions }))
@@ -1707,6 +1766,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     mined_height: payment_details.block_height,
                     confirmations: payment_details.confirmations,
                     message: String::new(), // PaymentDetails from wallet doesn't have message field
+                    payment_id: payment_details.payment_id.unwrap_or_default(),
                 };
                 
                 Ok(Response::new(GetPaymentByReferenceResponse {
@@ -1733,10 +1793,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
     }
 
-    async fn get_available_payment_references(
+    async fn get_unspent_payment_references(
         &self,
-        request: Request<GetAvailablePaymentReferencesRequest>,
-    ) -> Result<Response<GetAvailablePaymentReferencesResponse>, Status> {
+        request: Request<GetUnspentPaymentReferencesRequest>,
+    ) -> Result<Response<GetUnspentPaymentReferencesResponse>, Status> {
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -1782,12 +1842,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             mined_height: payment_record.block_height,
                             confirmations: payment_record.confirmations,
                             message: String::new(), // PaymentRecord doesn't have message field
+                            payment_id: payment_record.payment_id.unwrap_or_default(),
                         }
                     })
                     .collect();
                 
                 let total_count = payment_references.len() as u64;
-                Ok(Response::new(GetAvailablePaymentReferencesResponse {
+                Ok(Response::new(GetUnspentPaymentReferencesResponse {
                     payment_references,
                     total_count,
                 }))
