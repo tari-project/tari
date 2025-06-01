@@ -158,7 +158,7 @@ impl DbWalletOutput {
     }
 
     /// Infer the direction of this output based on its source
-    fn infer_direction(&self) -> PaymentDirection {
+    pub fn infer_direction(&self) -> PaymentDirection {
         match self.source {
             OutputSource::Coinbase => PaymentDirection::Received,
             OutputSource::OneSided => PaymentDirection::Received,

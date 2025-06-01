@@ -291,7 +291,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
-            FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", hex::encode(payref)),
+            FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
             GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
             SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
@@ -348,6 +348,11 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    // PayRef responses
+    PaymentDetails(Option<crate::output_manager_service::payment_reference::PaymentDetails>),
+    PaymentReferences(Vec<crate::output_manager_service::payment_reference::PaymentRecord>),
+    PaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
+    PaymentReferenceConfigSet,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1007,6 +1012,66 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// PayRef methods
+    
+    /// Find payment details by PayRef
+    pub async fn find_payment_by_reference(
+        &mut self,
+        payref: [u8; 32],
+    ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::FindPaymentByReference(payref))
+            .await??
+        {
+            OutputManagerResponse::PaymentDetails(details) => Ok(details),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get all available payment references
+    pub async fn get_available_payment_references(
+        &mut self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetAvailablePaymentReferences)
+            .await??
+        {
+            OutputManagerResponse::PaymentReferences(references) => Ok(references),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get PayRef configuration
+    pub async fn get_payment_reference_config(
+        &mut self,
+    ) -> Result<crate::output_manager_service::payment_reference::PayRefConfig, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetPaymentReferenceConfig)
+            .await??
+        {
+            OutputManagerResponse::PaymentReferenceConfig(config) => Ok(config),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Set PayRef configuration
+    pub async fn set_payment_reference_config(
+        &mut self,
+        config: crate::output_manager_service::payment_reference::PayRefConfig,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::SetPaymentReferenceConfig(config))
+            .await??
+        {
+            OutputManagerResponse::PaymentReferenceConfigSet => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

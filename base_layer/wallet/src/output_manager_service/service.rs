@@ -539,6 +539,23 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            // PayRef operations
+            OutputManagerRequest::FindPaymentByReference(payref) => {
+                let payment_details = self.find_payment_by_reference(payref)?;
+                Ok(OutputManagerResponse::PaymentDetails(payment_details))
+            },
+            OutputManagerRequest::GetAvailablePaymentReferences => {
+                let payment_references = self.get_available_payment_references()?;
+                Ok(OutputManagerResponse::PaymentReferences(payment_references))
+            },
+            OutputManagerRequest::GetPaymentReferenceConfig => {
+                let config = self.get_payment_reference_config()?;
+                Ok(OutputManagerResponse::PaymentReferenceConfig(config))
+            },
+            OutputManagerRequest::SetPaymentReferenceConfig(config) => {
+                self.set_payment_reference_config(config)?;
+                Ok(OutputManagerResponse::PaymentReferenceConfigSet)
+            },
         }
     }
 
@@ -3514,6 +3531,87 @@ where
 
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
+    }
+
+    // PayRef methods
+    
+    /// Find payment details by PayRef
+    fn find_payment_by_reference(
+        &self,
+        payref: [u8; 32],
+    ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
+        // Get all unspent outputs
+        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        
+        // Get current chain tip height for confirmation calculations
+        let current_tip_height = match self.last_seen_tip_height {
+            Some(height) => height,
+            None => 0, // Default to 0 if no tip height available
+        };
+        
+        let required_confirmations = 5; // Default required confirmations
+        
+        // Check each output to see if it matches the PayRef
+        for output in outputs {
+            if output.matches_payment_reference(&payref) {
+                if let Some(payment_details) = output.get_payment_details(current_tip_height, required_confirmations) {
+                    return Ok(Some(payment_details));
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    /// Get all available payment references
+    fn get_available_payment_references(
+        &self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        // Get all unspent outputs
+        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        let mut payment_references = Vec::new();
+        
+        // For each output, check if PayRef is available and add to list
+        for output in outputs {
+            use crate::output_manager_service::payment_reference::PayRefStatus;
+            let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
+            let required_confirmations = 5;
+            let status = output.get_payment_reference_status(current_tip_height, required_confirmations); // Default 5 confirmations
+            
+            if let PayRefStatus::Available(payref, confirmations) = status {
+                if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
+                    payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
+                        payment_reference: payref,
+                        amount: output.wallet_output.value,
+                        direction: output.infer_direction(),
+                        block_height,
+                        confirmations,
+                        timestamp: Some(timestamp),
+                    });
+                }
+            }
+        }
+        
+        Ok(payment_references)
+    }
+    
+    /// Get PayRef configuration
+    fn get_payment_reference_config(
+        &self,
+    ) -> Result<crate::output_manager_service::payment_reference::PayRefConfig, OutputManagerError> {
+        // Return default configuration for now
+        // In a full implementation, this would be stored in the database
+        Ok(crate::output_manager_service::payment_reference::PayRefConfig::default())
+    }
+    
+    /// Set PayRef configuration
+    fn set_payment_reference_config(
+        &mut self,
+        _config: crate::output_manager_service::payment_reference::PayRefConfig,
+    ) -> Result<(), OutputManagerError> {
+        // In a full implementation, this would store the configuration in the database
+        // For now, we just return success
+        Ok(())
     }
 }
 
