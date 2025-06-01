@@ -174,6 +174,10 @@ pub enum CliCommands {
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
+    ShowPayRef(ShowPayRefArgs),
+    FindPayRef(FindPayRefArgs),
+    ListPayRefs(ListPayRefsArgs),
+    PayRefConfig(PayRefConfigArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -471,4 +475,38 @@ pub struct RegisterValidatorNodeArgs {
 pub struct SyncArgs {
     #[clap(short, long, default_value = "0")]
     pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ShowPayRefArgs {
+    pub transaction_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FindPayRefArgs {
+    pub payment_reference_hex: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ListPayRefsArgs {
+    #[clap(short, long)]
+    pub limit: Option<usize>,
+    #[clap(long)]
+    pub status_filter: Option<String>, // "available", "pending", "all"
+    #[clap(long)]
+    pub show_private_info: bool,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PayRefConfigArgs {
+    #[clap(long)]
+    pub required_confirmations: Option<u64>,
+    #[clap(long)]
+    pub display_format: Option<String>, // "hex", "base58"
+    #[clap(long)]
+    pub auto_copy_enabled: Option<bool>,
+    #[clap(long)]
+    pub show_pending_progress: Option<bool>,
+    #[clap(long)]
+    pub refresh_interval_seconds: Option<u64>,
 }

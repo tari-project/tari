@@ -2711,6 +2711,90 @@ pub async fn command_runner(
                 println!("removing temp wallet in: {:?}", temp_path);
                 fs::remove_dir_all(temp_path)?;
             },
+            ShowPayRef(_args) => {
+                println!("ShowPayRef functionality is not available.");
+                println!("Transaction ID lookup for payment references is not implemented.");
+                println!("Use 'list-payrefs' to see all payment references or 'find-payref' with a specific payment reference.");
+                eprintln!("ShowPayRef error! Transaction ID lookup not supported");
+            },
+            FindPayRef(args) => {
+                use minotari_wallet::output_manager_service::payment_reference::parse_payref_hex;
+                match parse_payref_hex(&args.payment_reference_hex) {
+                    Ok(payref) => {
+                        match output_service.find_payment_by_reference(payref).await {
+                            Ok(Some(payment_details)) => {
+                                println!("Found payment reference: {}", args.payment_reference_hex);
+                                println!("Amount: {}", payment_details.amount);
+                                println!("Direction: {:?}", payment_details.direction);
+                                println!("Block height: {}", payment_details.block_height);
+                                println!("Confirmations: {}", payment_details.confirmations);
+                                println!("Status: {:?}", payment_details.status);
+                                if let Some(timestamp) = payment_details.mined_timestamp {
+                                    println!("Mined timestamp: {}", timestamp);
+                                }
+                            },
+                            Ok(None) => {
+                                println!("No payment found for payment reference: {}", args.payment_reference_hex);
+                            },
+                            Err(e) => eprintln!("FindPayRef error! {}", e),
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("FindPayRef error! Invalid payment reference format: {}", e);
+                    },
+                }
+            },
+            ListPayRefs(args) => {
+                match output_service.get_all_payment_references().await {
+                    Ok(payment_refs) => {
+                        // Apply limit filter
+                        let limit = args.limit.unwrap_or(50);
+                        let limited_refs: Vec<_> = payment_refs.into_iter().take(limit).collect();
+                        
+                        if limited_refs.is_empty() {
+                            println!("No payment references found.");
+                        } else {
+                            println!("Found {} payment reference(s):", limited_refs.len());
+                            println!("{}", "=".repeat(80));
+                            for (i, payment_ref) in limited_refs.iter().enumerate() {
+
+                                println!("{}. Payment Reference: {}", i + 1, payment_ref.payref_hex());
+                                println!("   Amount: {}", payment_ref.amount);
+                                println!("   Direction: {:?}", payment_ref.direction);
+                                println!("   Block height: {}", payment_ref.block_height);
+                                println!("   Confirmations: {}", payment_ref.confirmations);
+                                if let Some(timestamp) = payment_ref.timestamp {
+                                    println!("   Timestamp: {}", timestamp);
+                                }
+                                if let Some(payment_id) = &payment_ref.payment_id {
+                                    println!("   Payment ID: {}", String::from_utf8_lossy(payment_id));
+                                }
+                                println!();
+                            }
+                        }
+                    },
+                    Err(e) => eprintln!("ListPayRefs error! {}", e),
+                }
+            },
+            PayRefConfig(args) => {
+                println!("PayRef Configuration:");
+                if let Some(confirmations) = args.required_confirmations {
+                    println!("Required confirmations: {}", confirmations);
+                }
+                if let Some(format) = &args.display_format {
+                    println!("Display format: {}", format);
+                }
+                if let Some(auto_copy) = args.auto_copy_enabled {
+                    println!("Auto copy enabled: {}", auto_copy);
+                }
+                if let Some(show_progress) = args.show_pending_progress {
+                    println!("Show pending progress: {}", show_progress);
+                }
+                if let Some(refresh_interval) = args.refresh_interval_seconds {
+                    println!("Refresh interval: {} seconds", refresh_interval);
+                }
+                println!("Note: Configuration changes are not persisted in this implementation.");
+            },
         }
     }
     if unban_peer_manager_peers {
