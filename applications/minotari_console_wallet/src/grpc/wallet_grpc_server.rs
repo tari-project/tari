@@ -1167,6 +1167,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
+        let mut output_manager = self.get_output_manager_service();
         task::spawn(async move {
             for (i, txn) in transactions.iter().enumerate() {
                 let output_commitments: Vec<Vec<u8>> = txn
@@ -1190,8 +1191,51 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 
-                // TODO: PayRef calculation for streaming endpoint - requires refactoring to avoid borrowing issues
-                let payment_reference = String::new();
+                // Calculate PayRef for this transaction's first output (if mined)
+                let mut payment_refs = Vec::new();
+                
+                // Get ALL wallet outputs (both spent and unspent) from output manager
+                let unspent_outputs = match output_manager.get_unspent_outputs().await {
+                    Ok(outputs) => outputs,
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get unspent outputs for PayRef calculation: {}", e);
+                        Vec::new()
+                    }
+                };
+                
+                let spent_outputs = match output_manager.get_spent_outputs().await {
+                    Ok(outputs) => outputs,
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get spent outputs for PayRef calculation: {}", e);
+                        Vec::new()
+                    }
+                };
+                
+                // Combine both spent and unspent outputs
+                let all_outputs: Vec<_> = unspent_outputs.into_iter().chain(spent_outputs.into_iter()).collect();
+                
+                for commitment_bytes in &output_commitments {
+                    // Find matching DbWalletOutput by commitment
+                    if let Some(db_output) = all_outputs.iter()
+                        .find(|o| o.commitment.as_bytes() == commitment_bytes) 
+                    {
+                        // Check if output has mining data (mined_height and mined_in_block)
+                        if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
+                            // Use existing PayRef generation method
+                            if let Some(payref) = db_output.generate_payment_reference() {
+                                payment_refs.push(payref.to_vec());
+                            } else {
+                                payment_refs.push(vec![]);
+                            }
+                        } else {
+                            payment_refs.push(vec![]);
+                        }
+                    } else {
+                        payment_refs.push(vec![]);
+                    }
+                }
+                
+                let payment_reference = payment_refs.get(0).cloned().unwrap_or_default().to_hex();
                 
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
