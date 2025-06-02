@@ -121,9 +121,11 @@ use tari_common::{
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
+    payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
+        BlockHash,
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
@@ -11068,17 +11070,32 @@ pub unsafe extern "C" fn wallet_generate_payment_reference_from_data(
         return ptr::null_mut();
     }
 
-    // For now, return a simple concatenation hash
-    // In production, this would use the same Blake2b method as the wallet
-    let mut combined = [0u8; 64];
-    combined[..32].copy_from_slice(slice::from_raw_parts(block_hash, 32));
-    combined[32..].copy_from_slice(slice::from_raw_parts(commitment, 32));
+    // Convert raw pointers to proper types
+    let block_hash_bytes = slice::from_raw_parts(block_hash, 32);
+    let commitment_bytes = slice::from_raw_parts(commitment, 32);
     
-    // Simple hash for demonstration - in production use proper domain-separated Blake2b
-    let mut simple_hash = [0u8; 32];
-    for i in 0..32 {
-        simple_hash[i] = combined[i] ^ combined[i + 32];
+    // Create BlockHash and CompressedCommitment from the raw bytes
+    let block_hash_typed = BlockHash::try_from(block_hash_bytes)
+        .map_err(|_| {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("Invalid block hash".to_string())).code;
+        });
+    if block_hash_typed.is_err() {
+        return ptr::null_mut();
     }
+    
+    let commitment_typed = CompressedCommitment::from_canonical_bytes(commitment_bytes)
+        .map_err(|_| {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("Invalid commitment".to_string())).code;
+        });
+    if commitment_typed.is_err() {
+        return ptr::null_mut();
+    }
+    
+    // Use the proper payment reference generation function
+    let payment_ref = payment_reference::generate_payment_reference(
+        &block_hash_typed.unwrap(),
+        &commitment_typed.unwrap()
+    );
     
     // Allocate memory for the 32-byte array
     let payment_ref_ptr = libc::malloc(32) as *mut c_uchar;
@@ -11087,8 +11104,8 @@ pub unsafe extern "C" fn wallet_generate_payment_reference_from_data(
         return ptr::null_mut();
     }
 
-    // Copy bytes to allocated memory
-    ptr::copy_nonoverlapping(simple_hash.as_ptr(), payment_ref_ptr, 32);
+    // Copy the proper payment reference to allocated memory
+    ptr::copy_nonoverlapping(payment_ref.as_ptr(), payment_ref_ptr, 32);
     payment_ref_ptr
 }
 
