@@ -18,13 +18,20 @@ use crate::http::handler::{error_handler_with_message, util::from_hex, ErrorResp
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::sync_utxos_by_block";
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct SyncUtxosByBlockQueryParams {
     #[serde(deserialize_with = "from_hex")]
+    #[param(value_type = String, example = "1a8da4213566e3cda06958c7ee46b87870a587fabb1c7f050f553b6da36cccb3"
+    )]
     pub start_header_hash: Vec<u8>,
     #[serde(deserialize_with = "from_hex")]
+    #[param(value_type = String, example = "7e0b29c48e46ca6805ef4593219641badc08f6c278e768e54220ecaa4a68e2a5"
+    )]
     pub end_header_hash: Vec<u8>,
+    #[param(value_type = u64, example = 5)]
     pub limit: u64,
+    #[param(value_type = u64, example = 0)]
     pub page: u64,
 }
 
@@ -39,6 +46,17 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
     }
 }
 
+#[utoipa::path(
+    get,
+    operation_id = "sync_utxos_by_block",
+    params(SyncUtxosByBlockQueryParams),
+    path = "/sync_utxos_by_block",
+    responses(
+        (status = 200, description = "UTXOs returned successfully in the given headers' hash range", body = SyncUtxosByBlockResponse),
+        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
+        (status = INTERNAL_SERVER_ERROR, description = "Start/end header hash not found or header height mismatch", body = ErrorResponse),
+    ),
+)]
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<SyncUtxosByBlockQueryParams>,

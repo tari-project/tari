@@ -43,13 +43,6 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-#[cfg(feature = "base_node")]
-use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::{
-    blocks::BlocksHashDomain,
-    consensus::DomainSeparatedConsensusHasher,
-    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
-};
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
@@ -58,7 +51,14 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
-use utoipa::ToSchema;
+
+#[cfg(feature = "base_node")]
+use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
+use crate::{
+    blocks::BlocksHashDomain,
+    consensus::DomainSeparatedConsensusHasher,
+    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+};
 
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
@@ -88,7 +88,7 @@ pub enum BlockHeaderValidationError {
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
-#[derive(Serialize, Deserialize, Clone, Debug, BorshSerialize, BorshDeserialize, ToSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, BorshSerialize, BorshDeserialize)]
 pub struct BlockHeader {
     /// Version of the block
     pub version: u16,

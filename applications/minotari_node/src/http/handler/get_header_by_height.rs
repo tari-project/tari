@@ -7,8 +7,7 @@ use axum::{extract::Query, http::StatusCode, Extension, Json};
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{query_service, BaseNodeWalletQueryService},
-    blocks::BlockHeader,
+    base_node::rpc::{models::BlockHeader, query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
 
@@ -16,17 +15,20 @@ use crate::http::handler::{error_handler_with_message, ErrorResponse};
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_header_by_height";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct GetHeaderByHeightQueryParams {
     pub height: u64,
 }
 
 #[utoipa::path(
     get,
+    operation_id = "get_header_by_height",
+    params(GetHeaderByHeightQueryParams),
     path = "/get_header_by_height",
-    params((name = "height", parameter_type = Type::Integer)),
     responses(
-        (status = 200, description = "Block header returned successfully", body = BlockHeader)
+        (status = 200, description = "Block header returned successfully", body = BlockHeader),
+        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(

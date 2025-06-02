@@ -22,8 +22,12 @@ use url::Url;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
+#[cfg(feature = "base_node")]
 use crate::{
-    blocks::BlockHeader,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::service::MempoolHandle,
+};
+use crate::{
     proto,
     proto::{
         base_node::{
@@ -47,11 +51,6 @@ use crate::{
         types::{Signature, Transaction},
     },
 };
-#[cfg(feature = "base_node")]
-use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
-};
 
 /// Trait that a base node wallet query service must implement.
 /// Please note that this service is to fetch data, so read-only queries.
@@ -61,7 +60,7 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Self::Error>;
 
-    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error>;
+    async fn get_header_by_height(&self, height: u64) -> Result<models::BlockHeader, Self::Error>;
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;
 

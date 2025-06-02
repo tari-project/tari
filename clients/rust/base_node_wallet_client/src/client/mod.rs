@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pub mod http;
 
-use tari_core::{
-    base_node::rpc::{models, models::SyncUtxosByBlockResponse},
-    blocks::BlockHeader,
+use tari_core::base_node::rpc::{
+    models,
+    models::{BlockHeader, SyncUtxosByBlockResponse},
 };
 use tokio::sync::mpsc;
 

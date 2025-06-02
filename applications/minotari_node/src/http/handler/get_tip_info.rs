@@ -16,9 +16,11 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_tip_info";
 
 #[utoipa::path(
     get,
+    operation_id = "get_tip_info",
     path = "/get_tip_info",
     responses(
-        (status = 200, description = "Tip info returned successfully", body = TipInfoResponse)
+        (status = 200, description = "Tip info returned successfully", body = TipInfoResponse),
+        (status = INTERNAL_SERVER_ERROR, description = "Failed to get chain metadata", body = ErrorResponse, example = json!({"error": "Failed to get chain metadata: chain storage error"})),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(

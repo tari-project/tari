@@ -10,6 +10,7 @@ use thiserror::Error;
 use crate::{
     base_node::{
         rpc::{
+            models,
             models::{
                 SyncUtxoBlockResponse,
                 SyncUtxosByBlockRequest,
@@ -23,7 +24,6 @@ use crate::{
         state_machine_service::states::StateInfo,
         StateMachineHandle,
     },
-    blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
     transactions::transaction_components::TransactionOutput,
@@ -263,12 +263,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         })
     }
 
-    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error> {
-        Ok(self
+    async fn get_header_by_height(&self, height: u64) -> Result<models::BlockHeader, Self::Error> {
+        let result = self
             .db
             .fetch_header(height)
             .await?
-            .ok_or(Error::HeaderNotFound { height })?)
+            .ok_or(Error::HeaderNotFound { height })?
+            .into();
+        Ok(result)
     }
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error> {
