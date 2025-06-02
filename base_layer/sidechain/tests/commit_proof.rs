@@ -9,5 +9,5 @@ use support::load_fixture;
 #[test]
 fn it_validates_a_correct_proof() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-    proof.validate_committed(6, &|_| Ok(true)).unwrap();
+    proof.validate_committed(4, &|_| Ok(true)).unwrap();
 }

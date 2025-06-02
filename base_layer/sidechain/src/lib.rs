@@ -4,6 +4,7 @@ mod command;
 mod commit_proof;
 mod error;
 mod eviction_proof;
+mod serde;
 mod shard_group;
 mod validations;
 

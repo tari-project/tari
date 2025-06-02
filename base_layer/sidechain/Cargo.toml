@@ -14,6 +14,7 @@ tari_jellyfish = { workspace = true }
 log = "0.4.22"
 thiserror = "2.0"
 borsh = "1.5"
+hex = "0.4.3"
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]

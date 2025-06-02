@@ -82,8 +82,8 @@ pub fn check_proof_elements(
                     if block_id != expected {
                         return Err(SidechainProofValidationError::InvalidProof {
                             details: format!(
-                                "Block ID in dummy chain (index :{i}) does not match the parent block ID in the \
-                                 quorum certificate. Expected {expected}, but got {block_id}",
+                                "Block ID in chain link at index {i} does not match the parent block ID in the quorum \
+                                 certificate. Expected {expected}, but got {block_id}",
                             ),
                         });
                     }
