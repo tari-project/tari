@@ -503,10 +503,7 @@ fn try_decode_sender_message(bytes: Vec<u8>) -> Option<TransactionSenderMessage>
         Ok(d) => d?,
     };
 
-    match TransactionSenderMessage::try_from(tx_sender_msg) {
-        Ok(msr) => Some(msr),
-        Err(_) => None,
-    }
+    TransactionSenderMessage::try_from(tx_sender_msg).ok()
 }
 
 // These are helpers functions to attempt to decode the various types of comms messages when using the Mock outbound
@@ -518,10 +515,7 @@ fn try_decode_transaction_reply_message(bytes: Vec<u8>) -> Option<RecipientSigne
         Ok(d) => d?,
     };
 
-    match RecipientSignedMessage::try_from(tx_reply_msg) {
-        Ok(msr) => Some(msr),
-        Err(_) => None,
-    }
+    RecipientSignedMessage::try_from(tx_reply_msg).ok()
 }
 
 fn try_decode_finalized_transaction_message(bytes: Vec<u8>) -> Option<proto::TransactionFinalizedMessage> {

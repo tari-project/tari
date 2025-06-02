@@ -790,9 +790,9 @@ impl AppStateInner {
         // Use the canonical approach: get all outputs directly and use received_in_tx_id as the link
         // This matches the approach used by the working gRPC and ListPayRefs implementations
         let unspent_outputs = self.wallet.output_manager_service.get_unspent_outputs().await
-            .map_err(|e| UiError::OutputManager(e))?;
+            .map_err(UiError::OutputManager)?;
         let spent_outputs = self.wallet.output_manager_service.get_spent_outputs().await
-            .map_err(|e| UiError::OutputManager(e))?;
+            .map_err(UiError::OutputManager)?;
         
         debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
                unspent_outputs.len(), spent_outputs.len());

@@ -10637,6 +10637,14 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 }
 /// Find payment details by PayRef
 /// Returns null if PayRef not found
+/// Find payment details by payment reference
+/// 
+/// # Safety
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure:
+/// - `wallet` is a valid pointer to a TariWallet
+/// - `payment_reference` points to a valid 32-byte array
+/// - `error_out` is a valid pointer to a c_int
+/// - All pointers remain valid for the duration of the call
 #[no_mangle]
 pub unsafe extern "C" fn wallet_find_payment_by_reference(
     wallet: *mut TariWallet,

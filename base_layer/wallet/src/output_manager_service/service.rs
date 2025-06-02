@@ -3126,10 +3126,7 @@ where
             .await?
             .outputs
             .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
+            .filter_map(|o| o.try_into().ok())
             .collect();
         Ok(results)
     }
@@ -3553,10 +3550,7 @@ where
         let outputs = self.resources.db.fetch_all_unspent_outputs()?;
         
         // Get current chain tip height for confirmation calculations
-        let current_tip_height = match self.last_seen_tip_height {
-            Some(height) => height,
-            None => 0, // Default to 0 if no tip height available
-        };
+        let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
         
         let required_confirmations = 5; // Default required confirmations
         
@@ -3632,14 +3626,14 @@ where
         debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", all_unspent_outputs.len(), all_spent_outputs.len());
         
         // Log sample of outputs for diagnosis
-        if all_unspent_outputs.len() > 0 {
+        if !all_unspent_outputs.is_empty() {
             debug!(target: LOG_TARGET, "payref_debug: Sample unspent output - commitment: {}, received_in_tx_id: {:?}, mined_height: {:?}", 
                 all_unspent_outputs[0].commitment.to_hex(), 
                 all_unspent_outputs[0].received_in_tx_id,
                 all_unspent_outputs[0].mined_height
             );
         }
-        if all_spent_outputs.len() > 0 {
+        if !all_spent_outputs.is_empty() {
             debug!(target: LOG_TARGET, "payref_debug: Sample spent output - commitment: {}, received_in_tx_id: {:?}, mined_height: {:?}", 
                 all_spent_outputs[0].commitment.to_hex(), 
                 all_spent_outputs[0].received_in_tx_id,

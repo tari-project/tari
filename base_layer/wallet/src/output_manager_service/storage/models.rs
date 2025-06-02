@@ -93,11 +93,7 @@ impl DbWalletOutput {
     /// Generate a Payment Reference (PayRef) for this output if it has been mined
     /// PayRef = Blake2b_256(block_hash || commitment)
     pub fn generate_payment_reference(&self) -> Option<PaymentReference> {
-        if let Some(block_hash) = &self.mined_in_block {
-            Some(generate_payment_reference(block_hash, &self.commitment))
-        } else {
-            None
-        }
+        self.mined_in_block.as_ref().map(|block_hash| generate_payment_reference(block_hash, &self.commitment))
     }
 
     /// Get the PayRef status based on confirmation requirements
@@ -151,7 +147,7 @@ impl DbWalletOutput {
                 commitment: self.commitment.clone(),
                 amount: self.wallet_output.value,
                 block_height: self.mined_height?,
-                block_hash: self.mined_in_block.clone()?,
+                block_hash: self.mined_in_block?,
                 mined_timestamp: self.mined_timestamp,
                 direction: self.infer_direction(),
                 status: self.status,

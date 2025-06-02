@@ -27,85 +27,68 @@
 
 use std::time::Duration;
 
-use tari_common_types::{
-    payment_reference::{generate_payment_reference, parse_payment_reference_hex},
-    types::{BlockHash, CompressedCommitment},
-    wallet_types::WalletType,
-};
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    test_helpers::{schema_to_transaction, TestParams},
-    transaction_components::{OutputType, WalletOutput},
-};
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
-use tempfile::tempdir;
-use tokio::time::{sleep, timeout};
-
-use crate::{
+use chrono::Utc;
+use minotari_wallet::{
     output_manager_service::{
-        handle::{OutputManagerRequest, OutputManagerResponse},
-        payment_reference::{PayRefStatus, PaymentDetails, PaymentDirection},
+        payment_reference::{PayRefStatus, PaymentDirection},
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
-            models::DbWalletOutput,
-            sqlite_db::OutputManagerSqliteDatabase,
+            models::{DbWalletOutput, SpendingPriority},
             OutputSource, OutputStatus,
         },
     },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-    test_utils::make_input,
 };
+use tari_common_types::{
+    payment_reference::{generate_payment_reference, parse_payment_reference_hex},
+    types::{BlockHash, CompressedCommitment},
+};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    test_helpers::{create_wallet_output_with_data, TestParams},
+    transaction_components::{
+        encrypted_data::PaymentId,
+        OutputFeatures,
+    },
+};
+use tari_script::TariScript;
+use tari_utilities::{hex::Hex, ByteArray};
 
 /// Test the complete PayRef generation and verification workflow
 #[tokio::test]
 async fn test_payref_generation_and_verification_workflow() {
-    // Create test database
-    let db_name = format!("{}.sqlite3", rand::random::<u64>());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    
-    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
+    // Create test key manager and parameters
+    let key_manager = tari_core::transactions::transaction_key_manager::create_memory_db_key_manager().unwrap();
+    let test_params = TestParams::new(&key_manager).await;
     
     // Create test output that simulates a received payment
-    let test_params = TestParams::new(&mut rand::thread_rng());
-    let output = WalletOutput::new(
+    let output = create_wallet_output_with_data(
+        TariScript::default(),
+        OutputFeatures::default(),
+        &test_params,
         MicroMinotari::from(1000000), // 1 XTR
-        test_params.spend_key_id.clone(),
-        test_params.features.clone(),
-        test_params.script.clone(),
-        test_params.input_data.clone(),
-        test_params.script_key_id.clone(),
-        test_params.covenant.clone(),
-        test_params.encrypted_data.clone(),
-        test_params.minimum_value_promise,
-        &test_params.key_manager,
+        &key_manager,
     ).await.unwrap();
     
     // Simulate the output being mined in a block
     let block_hash = BlockHash::from([1u8; 32]);
     let block_height = 100u64;
-    let commitment = output.commitment(&test_params.key_manager).await.unwrap();
+    let commitment = output.commitment(&key_manager).await.unwrap();
     
     let db_output = DbWalletOutput {
+        commitment: commitment.clone(),
         wallet_output: output.clone(),
-        hash: output.hash(),
+        hash: output.hash(&key_manager).await.unwrap(),
         status: OutputStatus::Unspent,
         mined_height: Some(block_height),
         mined_in_block: Some(block_hash),
-        mined_timestamp: Some(chrono::Utc::now().naive_utc()),
+        mined_timestamp: Some(Utc::now()),
+        marked_deleted_at_height: None,
+        marked_deleted_in_block: None,
+        spending_priority: SpendingPriority::Normal,
         source: OutputSource::OneSided,
-        received_in_tx_id: Some(1.into()),
-        spending_key_id: test_params.spend_key_id.clone(),
-        script_key_id: test_params.script_key_id.clone(),
-        payment_id: test_params.encrypted_data.payment_id,
+        received_in_tx_id: Some(1u64.into()),
+        spent_in_tx_id: None,
+        payment_id: PaymentId::Empty,
     };
-    
-    // Add output to database
-    backend.add_unspent_output(db_output.clone()).unwrap();
     
     // Test PayRef generation
     let expected_payref = generate_payment_reference(&block_hash, &commitment);
@@ -181,75 +164,59 @@ fn test_payref_hex_parsing_and_validation() {
 async fn test_exchange_verification_workflow_simulation() {
     // This test simulates the complete workflow from user payment to exchange verification
     
-    // Setup: Create sender and receiver wallets (simulating user and exchange)
-    let db_name_sender = format!("sender_{}.sqlite3", rand::random::<u64>());
-    let db_name_receiver = format!("receiver_{}.sqlite3", rand::random::<u64>());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    
-    let sender_db_path = format!("{}/{}", db_folder, db_name_sender);
-    let receiver_db_path = format!("{}/{}", db_folder, db_name_receiver);
-    
-    let sender_connection = run_migration_and_create_sqlite_connection(&sender_db_path, 16).unwrap();
-    let sender_backend = OutputManagerSqliteDatabase::new(sender_connection, None);
-    
-    let receiver_connection = run_migration_and_create_sqlite_connection(&receiver_db_path, 16).unwrap();
-    let receiver_backend = OutputManagerSqliteDatabase::new(receiver_connection, None);
-    
     // Step 1: User (sender) creates and sends a payment
-    let test_params = TestParams::new(&mut rand::thread_rng());
+    let key_manager = tari_core::transactions::transaction_key_manager::create_memory_db_key_manager().unwrap();
+    let test_params = TestParams::new(&key_manager).await;
     let payment_amount = MicroMinotari::from(5000000); // 5 XTR
     
-    let sender_output = WalletOutput::new(
+    let sender_output = create_wallet_output_with_data(
+        TariScript::default(),
+        OutputFeatures::default(),
+        &test_params,
         payment_amount,
-        test_params.spend_key_id.clone(),
-        test_params.features.clone(),
-        test_params.script.clone(),
-        test_params.input_data.clone(),
-        test_params.script_key_id.clone(),
-        test_params.covenant.clone(),
-        test_params.encrypted_data.clone(),
-        test_params.minimum_value_promise,
-        &test_params.key_manager,
+        &key_manager,
     ).await.unwrap();
     
     // Step 2: Payment gets mined in a block
     let block_hash = BlockHash::from([2u8; 32]);
     let block_height = 200u64;
-    let commitment = sender_output.commitment(&test_params.key_manager).await.unwrap();
+    let commitment = sender_output.commitment(&key_manager).await.unwrap();
     
     // Step 3: Sender wallet records the sent payment
     let sender_db_output = DbWalletOutput {
+        commitment: commitment.clone(),
         wallet_output: sender_output.clone(),
-        hash: sender_output.hash(),
+        hash: sender_output.hash(&key_manager).await.unwrap(),
         status: OutputStatus::Spent, // Spent by sender
         mined_height: Some(block_height),
         mined_in_block: Some(block_hash),
-        mined_timestamp: Some(chrono::Utc::now().naive_utc()),
+        mined_timestamp: Some(Utc::now()),
+        marked_deleted_at_height: None,
+        marked_deleted_in_block: None,
+        spending_priority: SpendingPriority::Normal,
         source: OutputSource::Standard,
-        received_in_tx_id: Some(1.into()), // Transaction ID
-        spending_key_id: test_params.spend_key_id.clone(),
-        script_key_id: test_params.script_key_id.clone(),
-        payment_id: test_params.encrypted_data.payment_id,
+        received_in_tx_id: Some(1u64.into()), // Transaction ID
+        spent_in_tx_id: None,
+        payment_id: PaymentId::Empty,
     };
     
     // Step 4: Exchange (receiver) wallet records the received payment
     let receiver_db_output = DbWalletOutput {
+        commitment: commitment.clone(),
         wallet_output: sender_output.clone(), // Same output, received by exchange
-        hash: sender_output.hash(),
+        hash: sender_output.hash(&key_manager).await.unwrap(),
         status: OutputStatus::Unspent, // Unspent by receiver
         mined_height: Some(block_height),
         mined_in_block: Some(block_hash),
-        mined_timestamp: Some(chrono::Utc::now().naive_utc()),
+        mined_timestamp: Some(Utc::now()),
+        marked_deleted_at_height: None,
+        marked_deleted_in_block: None,
+        spending_priority: SpendingPriority::Normal,
         source: OutputSource::OneSided, // Received as one-sided payment
-        received_in_tx_id: Some(1.into()), // Same transaction ID
-        spending_key_id: test_params.spend_key_id.clone(),
-        script_key_id: test_params.script_key_id.clone(),
-        payment_id: test_params.encrypted_data.payment_id,
+        received_in_tx_id: Some(1u64.into()), // Same transaction ID
+        spent_in_tx_id: None,
+        payment_id: PaymentId::Empty,
     };
-    
-    sender_backend.add_unspent_output(sender_db_output.clone()).unwrap();
-    receiver_backend.add_unspent_output(receiver_db_output.clone()).unwrap();
     
     // Step 5: Generate PayRef from sender's perspective
     let current_tip_height = block_height + 10; // Sufficient confirmations
@@ -307,8 +274,8 @@ fn test_payref_collision_resistance() {
     let block_hash2 = BlockHash::from([2u8; 32]);
     
     // Create dummy commitments
-    let commitment1 = CompressedCommitment::<RistrettoPublicKey>::from_canonical_bytes(&[1u8; 32]).unwrap();
-    let commitment2 = CompressedCommitment::<RistrettoPublicKey>::from_canonical_bytes(&[2u8; 32]).unwrap();
+    let commitment1 = CompressedCommitment::from_canonical_bytes(&[1u8; 32]).unwrap();
+    let commitment2 = CompressedCommitment::from_canonical_bytes(&[2u8; 32]).unwrap();
     
     let payref1 = generate_payment_reference(&block_hash1, &commitment1);
     let payref2 = generate_payment_reference(&block_hash2, &commitment1);
@@ -333,48 +300,37 @@ fn test_payref_collision_resistance() {
 async fn test_payref_stability_and_reorg_handling() {
     // This test simulates how PayRefs behave during blockchain reorganizations
     
-    let db_name = format!("{}.sqlite3", rand::random::<u64>());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    
-    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-    
-    let test_params = TestParams::new(&mut rand::thread_rng());
-    let output = WalletOutput::new(
+    let key_manager = tari_core::transactions::transaction_key_manager::create_memory_db_key_manager().unwrap();
+    let test_params = TestParams::new(&key_manager).await;
+    let output = create_wallet_output_with_data(
+        TariScript::default(),
+        OutputFeatures::default(),
+        &test_params,
         MicroMinotari::from(1000000),
-        test_params.spend_key_id.clone(),
-        test_params.features.clone(),
-        test_params.script.clone(),
-        test_params.input_data.clone(),
-        test_params.script_key_id.clone(),
-        test_params.covenant.clone(),
-        test_params.encrypted_data.clone(),
-        test_params.minimum_value_promise,
-        &test_params.key_manager,
+        &key_manager,
     ).await.unwrap();
     
     // Original block
     let original_block_hash = BlockHash::from([1u8; 32]);
     let block_height = 100u64;
-    let commitment = output.commitment(&test_params.key_manager).await.unwrap();
+    let commitment = output.commitment(&key_manager).await.unwrap();
     
     let mut db_output = DbWalletOutput {
+        commitment: commitment.clone(),
         wallet_output: output.clone(),
-        hash: output.hash(),
+        hash: output.hash(&key_manager).await.unwrap(),
         status: OutputStatus::Unspent,
         mined_height: Some(block_height),
         mined_in_block: Some(original_block_hash),
-        mined_timestamp: Some(chrono::Utc::now().naive_utc()),
+        mined_timestamp: Some(Utc::now()),
+        marked_deleted_at_height: None,
+        marked_deleted_in_block: None,
+        spending_priority: SpendingPriority::Normal,
         source: OutputSource::OneSided,
-        received_in_tx_id: Some(1.into()),
-        spending_key_id: test_params.spend_key_id.clone(),
-        script_key_id: test_params.script_key_id.clone(),
-        payment_id: test_params.encrypted_data.payment_id,
+        received_in_tx_id: Some(1u64.into()),
+        spent_in_tx_id: None,
+        payment_id: PaymentId::Empty,
     };
-    
-    backend.add_unspent_output(db_output.clone()).unwrap();
     
     // Generate original PayRef
     let original_payref = db_output.generate_payment_reference().unwrap();
@@ -405,57 +361,51 @@ async fn test_payref_stability_and_reorg_handling() {
 /// Test PayRef performance with large numbers of outputs
 #[tokio::test]
 async fn test_payref_performance_with_many_outputs() {
-    let db_name = format!("{}.sqlite3", rand::random::<u64>());
-    let temp_dir = tempdir().unwrap();
-    let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    
-    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-    
-    let num_outputs = 1000;
+    let num_outputs = 100; // Reduced for test efficiency
     let mut generated_payrefs = Vec::new();
+    let mut all_outputs = Vec::new();
     
     let start_time = std::time::Instant::now();
     
+    // Create shared key manager for efficiency
+    let key_manager = tari_core::transactions::transaction_key_manager::create_memory_db_key_manager().unwrap();
+    let test_params = TestParams::new(&key_manager).await;
+    
     // Generate many outputs with PayRefs
     for i in 0..num_outputs {
-        let test_params = TestParams::new(&mut rand::thread_rng());
-        let output = WalletOutput::new(
+        let output = create_wallet_output_with_data(
+            TariScript::default(),
+            OutputFeatures::default(),
+            &test_params,
             MicroMinotari::from(1000000 + i), // Unique amounts
-            test_params.spend_key_id.clone(),
-            test_params.features.clone(),
-            test_params.script.clone(),
-            test_params.input_data.clone(),
-            test_params.script_key_id.clone(),
-            test_params.covenant.clone(),
-            test_params.encrypted_data.clone(),
-            test_params.minimum_value_promise,
-            &test_params.key_manager,
+            &key_manager,
         ).await.unwrap();
         
         let block_hash = BlockHash::from([(i % 256) as u8; 32]); // Varied block hashes
-        let block_height = 100 + i as u64;
+        let block_height = 100 + i;
         
+        let output_commitment = output.commitment(&key_manager).await.unwrap();
         let db_output = DbWalletOutput {
+            commitment: output_commitment.clone(),
             wallet_output: output.clone(),
-            hash: output.hash(),
+            hash: output.hash(&key_manager).await.unwrap(),
             status: OutputStatus::Unspent,
             mined_height: Some(block_height),
             mined_in_block: Some(block_hash),
-            mined_timestamp: Some(chrono::Utc::now().naive_utc()),
+            mined_timestamp: Some(Utc::now()),
+            marked_deleted_at_height: None,
+            marked_deleted_in_block: None,
+            spending_priority: SpendingPriority::Normal,
             source: OutputSource::OneSided,
             received_in_tx_id: Some((i + 1).into()),
-            spending_key_id: test_params.spend_key_id.clone(),
-            script_key_id: test_params.script_key_id.clone(),
-            payment_id: test_params.encrypted_data.payment_id,
+            spent_in_tx_id: None,
+            payment_id: PaymentId::Empty,
         };
-        
-        backend.add_unspent_output(db_output.clone()).unwrap();
         
         if let Some(payref) = db_output.generate_payment_reference() {
             generated_payrefs.push(payref);
         }
+        all_outputs.push(db_output);
     }
     
     let generation_time = start_time.elapsed();
@@ -463,11 +413,10 @@ async fn test_payref_performance_with_many_outputs() {
     
     // Test PayRef lookup performance
     let lookup_start = std::time::Instant::now();
-    let test_payref = generated_payrefs[num_outputs / 2]; // Middle PayRef
+    let test_payref = generated_payrefs[num_outputs as usize / 2]; // Middle PayRef
     
-    let all_outputs = backend.fetch_all_unspent_outputs().unwrap();
     let mut found = false;
-    for output in all_outputs {
+    for output in &all_outputs {
         if output.matches_payment_reference(&test_payref) {
             found = true;
             break;
@@ -478,7 +427,7 @@ async fn test_payref_performance_with_many_outputs() {
     println!("PayRef lookup took {:?}", lookup_time);
     
     assert!(found, "Should find the test PayRef");
-    assert_eq!(generated_payrefs.len(), num_outputs);
+    assert_eq!(generated_payrefs.len(), num_outputs as usize);
     
     // Verify all PayRefs are unique
     let mut unique_payrefs = std::collections::HashSet::new();

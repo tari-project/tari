@@ -1274,10 +1274,7 @@ where
             .await?
             .outputs
             .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
+            .filter_map(|o| o.try_into().ok())
             .collect();
         Ok(results)
     }

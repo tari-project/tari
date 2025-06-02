@@ -1235,7 +1235,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     }
                 }
                 
-                let payment_reference = payment_refs.get(0).cloned().unwrap_or_default().to_hex();
+                let payment_reference = payment_refs.first().cloned().unwrap_or_default().to_hex();
                 
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
@@ -1360,7 +1360,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             
             // Calculate PayRef for this transaction's first output (if mined)
             let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
-            let payment_reference = payment_refs.get(0).cloned().unwrap_or_default();
+            let payment_reference = payment_refs.first().cloned().unwrap_or_default();
             
             transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
@@ -1445,7 +1445,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             
             // Calculate PayRef for this transaction's first output (if mined)
             let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
-            let payment_reference = payment_refs.get(0).cloned().unwrap_or_default();
+            let payment_reference = payment_refs.first().cloned().unwrap_or_default();
             
             result_transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
