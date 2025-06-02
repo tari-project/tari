@@ -12,6 +12,8 @@ use crate::{blocks, proof_of_work::ProofOfWork};
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct BlockHeader {
+    /// Hash of the block header
+    pub hash: BlockHash,
     /// Version of the block
     pub version: u16,
     /// Height of this block since the genesis block (height 0)
@@ -93,6 +95,7 @@ impl From<BlockHeader> for blocks::BlockHeader {
 impl From<blocks::BlockHeader> for BlockHeader {
     fn from(header: blocks::BlockHeader) -> Self {
         Self {
+            hash: header.hash(),
             version: header.version,
             height: header.height,
             prev_hash: header.prev_hash,

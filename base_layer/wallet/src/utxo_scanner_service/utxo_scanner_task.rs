@@ -42,8 +42,8 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
+    base_node::rpc::{models::BlockHeader, BaseNodeWalletRpcClient},
+    // blocks::BlockHeader,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
@@ -247,7 +247,7 @@ where
         let timer = Instant::now();
         loop {
             let tip_header = self.get_chain_tip_header(&wallet_service_client).await?;
-            let tip_header_hash = tip_header.hash();
+            let tip_header_hash = tip_header.hash;
             let last_scanned_block = self
                 .get_last_scanned_block(&wallet_service_client, tip_header.height)
                 .await?;
@@ -272,7 +272,7 @@ where
                 let next_header = wallet_service_client
                     .get_header_by_height(last_scanned_block.height + 1)
                     .await?;
-                let next_header_hash = next_header.hash();
+                let next_header_hash = next_header.hash;
 
                 ScannedBlock {
                     height: next_header.height,
@@ -402,7 +402,7 @@ where
                 let header = client.get_header_by_height(sb.height).await.ok();
                 match header {
                     Some(header) => {
-                        let header_hash = header.hash();
+                        let header_hash = header.hash;
                         if header_hash == sb.header_hash {
                             found_scanned_block = Some(sb.clone());
                         } else {
@@ -778,7 +778,7 @@ where
                 0
             });
         let header = client.get_header_by_height(block_height_scanning_start).await?;
-        let header_hash_scanning_start = header.hash();
+        let header_hash_scanning_start = header.hash;
         info!(
             target: LOG_TARGET,
             "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', scanning \
