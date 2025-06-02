@@ -31,6 +31,7 @@ use tokio::{
     sync::{broadcast, watch},
     task,
 };
+use url::Url;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -54,7 +55,6 @@ pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) retry_limit: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
@@ -69,7 +69,6 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,
         mode: UtxoScannerMode,
         resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
@@ -81,7 +80,6 @@ where
     ) -> Self {
         Self {
             resources,
-            peer_seeds,
             retry_limit,
             mode,
             shutdown_signal,
@@ -95,7 +93,6 @@ where
     fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity> {
         UtxoScannerTask {
             resources: self.resources.clone(),
-            peer_seeds: self.peer_seeds.clone(),
             event_sender: self.event_sender.clone(),
             retry_limit: self.retry_limit,
             peer_index: 0,
@@ -160,14 +157,11 @@ where
                         debug!(target: LOG_TARGET, "UTXO scanning round completed");
                         local_shutdown.trigger();
                     }
-                    _ = self.resources.current_base_node_watcher.changed() => {
-                        debug!(target: LOG_TARGET, "Base node change detected.");
-                        let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                        if let Some(peer) = selected_peer {
-                            self.peer_seeds = vec![peer.get_current_peer().public_key];
-                        }
-                        local_shutdown.trigger();
-                    },
+                    // _ = self.resources.current_base_node_watcher.changed() => {
+                    //     debug!(target: LOG_TARGET, "Base node change detected.");
+                    //     let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                    //     local_shutdown.trigger();
+                    // },
                     _ = main_shutdown.wait() => {
                         // this will stop the task if its running, and let that thread exit gracefully
                         local_shutdown.trigger();
@@ -187,7 +181,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
+pub(crate) struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub db: WalletDatabase<TBackend>,
     pub comms_connectivity: ConnectivityRequester,
     pub wallet_connectivity: TWalletConnectivity,
@@ -199,6 +193,7 @@ pub struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub recovery_message: String,
     pub one_sided_payment_message: String,
     pub birthday_offset: u16,
+    pub http_client_url: Url
 }
 
 #[derive(Debug, Clone)]

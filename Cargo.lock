@@ -4449,6 +4449,7 @@ dependencies = [
 name = "minotari_wallet"
 version = "3.0.0-pre.2"
 dependencies = [
+ "anyhow",
  "argon2 0.4.1",
  "async-trait",
  "bincode",
@@ -4537,6 +4538,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "url",
  "zeroize",
 ]
 

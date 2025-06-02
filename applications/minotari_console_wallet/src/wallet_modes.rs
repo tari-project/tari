@@ -82,15 +82,17 @@ pub struct PeerConfig {
     pub base_node_custom: Option<Peer>,
     pub base_node_peers: Vec<Peer>,
     pub peer_seeds: Vec<Peer>,
+    pub http_client_url: Url
 }
 
 impl PeerConfig {
     /// Create a new PeerConfig
-    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>) -> Self {
+    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>, http_client_url: Url) -> Self {
         Self {
             base_node_custom,
             base_node_peers,
             peer_seeds,
+            http_client_url,
         }
     }
 

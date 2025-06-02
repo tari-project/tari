@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::any;
+
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{
@@ -28,6 +30,7 @@ use tari_core::transactions::{
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
+use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
@@ -55,20 +58,20 @@ pub enum UtxoScannerMode {
 #[derive(Debug, Clone)]
 pub struct UtxoScannerServiceBuilder {
     retry_limit: usize,
-    peers: Vec<CommsPublicKey>,
     mode: Option<UtxoScannerMode>,
     one_sided_message: String,
     recovery_message: String,
+    node_url: Option<Url>,
 }
 
 impl Default for UtxoScannerServiceBuilder {
     fn default() -> Self {
         Self {
             retry_limit: 0,
-            peers: vec![],
             mode: None,
             one_sided_message: "Detected one-sided payment on blockchain".to_string(),
             recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
+            node_url: None,
         }
     }
 }
@@ -78,11 +81,6 @@ impl UtxoScannerServiceBuilder {
     /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
     pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
         self.retry_limit = limit;
-        self
-    }
-
-    pub fn with_peers(&mut self, peer_public_keys: Vec<CommsPublicKey>) -> &mut Self {
-        self.peers = peer_public_keys;
         self
     }
 
@@ -101,12 +99,21 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
+    pub fn with_http_node_url(&mut self, node_url: Url) -> &mut Self {
+        self.node_url = Some(node_url);
+        self
+    }
+
     pub async fn build_with_wallet(
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, anyhow::Error> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
+        let http_client_url = match &self.node_url {
+            Some(url) => url.clone(),
+            None => return Err(anyhow::anyhow!("Node URL must be set before building the UTXO scanner service.")),
+        };
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
             comms_connectivity: wallet.comms.connectivity(),
@@ -119,12 +126,12 @@ impl UtxoScannerServiceBuilder {
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
+            http_client_url
         };
 
         let (event_sender, _) = broadcast::channel(200);
 
         Ok(UtxoScannerService::new(
-            self.peers.drain(..).collect(),
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
@@ -155,7 +162,11 @@ impl UtxoScannerServiceBuilder {
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
-    ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
+    ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity>, anyhow::Error> {
+          let http_client_url = match &self.node_url {
+            Some(url) => url.clone(),
+            None => return Err(anyhow::anyhow!("Node URL must be set before building the UTXO scanner service.")),
+        };
         let resources = UtxoScannerResources {
             db,
             comms_connectivity,
@@ -168,10 +179,11 @@ impl UtxoScannerServiceBuilder {
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset,
+            http_client_url
         };
+        
 
-        UtxoScannerService::new(
-            self.peers.drain(..).collect(),
+       Ok( UtxoScannerService::new(
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
@@ -180,6 +192,6 @@ impl UtxoScannerServiceBuilder {
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
-        )
+        ))
     }
 }

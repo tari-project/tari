@@ -76,7 +76,6 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
     pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -105,8 +104,7 @@ where
             if self.shutdown_signal.is_triggered() {
                 return Ok(());
             }
-            match self.get_next_peer() {
-                Some(peer) => match self.attempt_sync(peer.clone()).await {
+            match self.attempt_sync().await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
                         debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
@@ -116,7 +114,7 @@ where
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to scan UTXO's from base node {}: {}", peer, e
+                            "Failed to scan UTXO's from base node: {}", e
                         );
                         self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                             num_retries: self.num_retries,
@@ -125,29 +123,9 @@ where
                         });
                         continue;
                     },
-                },
-                None => {
-                    self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
-                        num_retries: self.num_retries,
-                        retry_limit: self.retry_limit,
-                        error: "No new peers to try after this round".to_string(),
-                    });
-
-                    if self.num_retries >= self.retry_limit {
-                        self.publish_event(UtxoScannerEvent::ScanningFailed);
-                        return Err(UtxoScannerError::UtxoScanningError(format!(
-                            "Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
-                            self.num_retries,
-                        )));
-                    }
-
-                    self.num_retries += 1;
-                    // Reset peer index to try connect to the first peer again
-                    self.peer_index = 0;
-                },
-            }
-        }
+        };
     }
+}
 
     async fn finalize(
         &mut self,
@@ -206,43 +184,41 @@ where
     }
 
     /// Try to instantiate a Base Node Wallet Service client.
-    async fn base_node_wallet_service_client(
+    fn base_node_wallet_service_client(
         &self,
-        rpc_client: &mut RpcClientLease<BaseNodeWalletRpcClient>,
     ) -> Result<http::Client, UtxoScannerError> {
-        let address = rpc_client.get_wallet_query_http_service_address().await?;
-        if address.http_address.is_empty() {
-            Err(UtxoScannerError::BaseNodeWalletServiceUrlEmpty)
-        } else {
-            Ok(http::Client::new(Url::parse(address.http_address.as_str())?))
-        }
+        // let address = rpc_client.get_wallet_query_http_service_address().await?;
+        // if address.http_address.is_empty() {
+            // Err(UtxoScannerError::BaseNodeWalletServiceUrlEmpty)
+        // } else {
+            Ok(http::Client::new(self.resources.http_client_url.clone()))
+        // }
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
-        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
+    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+        // let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
         // get RPC client
-        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
-            // Use the wallet connectivity service so that RPC pools are correctly managed
-            self.resources
-                .wallet_connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or(UtxoScannerError::ConnectivityShutdown)?
-        } else {
-            self.establish_new_rpc_connection(&peer).await?
-        };
+        // let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
+        //     // Use the wallet connectivity service so that RPC pools are correctly managed
+        //     self.resources
+        //         .wallet_connectivity
+        //         .obtain_base_node_wallet_rpc_client()
+        //         .await
+        //         .ok_or(UtxoScannerError::ConnectivityShutdown)?
+        // } else {
+        //     self.establish_new_rpc_connection(&peer).await?
+        // };
 
-        let latency = client.get_last_request_latency();
-        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
-            peer.clone(),
-            latency.unwrap_or_default(),
-        ));
+        // let latency = client.get_last_request_latency();
+        // self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
+        //     peer.clone(),
+        //     latency.unwrap_or_default(),
+        // ));
 
         // get wallet service query client
-        let wallet_service_client = self.base_node_wallet_service_client(&mut client).await?;
+        let wallet_service_client = self.base_node_wallet_service_client()?;
 
         let timer = Instant::now();
         loop {
@@ -744,11 +720,11 @@ where
         Ok(tx_id)
     }
 
-    fn get_next_peer(&mut self) -> Option<NodeId> {
-        let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
-        self.peer_index += 1;
-        peer
-    }
+    // fn get_next_peer(&mut self) -> Option<NodeId> {
+    //     let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
+    //     self.peer_index += 1;
+    //     peer
+    // }
 
     async fn get_scanning_start_header_height_hash(
         &self,

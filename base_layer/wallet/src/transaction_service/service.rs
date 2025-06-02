@@ -1086,7 +1086,7 @@ where
         >,
     ) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
+            UtxoScannerEvent::ConnectingToBaseNode => {},
             UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
             UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},

@@ -30,6 +30,7 @@ use tari_comms::connectivity::ConnectivityRequester;
 use tari_core::transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
+use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
@@ -41,7 +42,7 @@ use crate::{
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
-        uxto_scanner_service_builder::UtxoScannerMode,
+        uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
     },
 };
 
@@ -52,19 +53,21 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     factories: CryptoFactories,
     network: Network,
     birthday_offset: u16,
+    http_node_url: Url,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network, birthday_offset: u16) -> Self {
+    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network, birthday_offset: u16, http_node_url: Url) -> Self {
         Self {
             backend: Some(backend),
             factories,
             network,
             phantom: PhantomData,
             birthday_offset,
+            http_node_url,
         }
     }
 }
@@ -98,6 +101,7 @@ where
         let factories = self.factories.clone();
         let network = self.network;
         let birthday_offset = self.birthday_offset;
+        let node_url = self.http_node_url.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -125,7 +129,7 @@ where
             .expect("Could not create one-sided Tari address");
 
             let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle>::builder()
-                .with_peers(vec![])
+            .with_http_node_url(node_url)
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources::<T, WalletConnectivityHandle, TKeyManagerInterface>(
@@ -143,7 +147,7 @@ where
                     recovery_message_watch_receiver,
                     birthday_offset,
                 )
-                .await
+                .await.expect("Failed to build UTXO scanner service")
                 .run();
 
             futures::pin_mut!(scanning_service);

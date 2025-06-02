@@ -106,6 +106,8 @@ pub enum WalletError {
     PublicAddressNotSet,
     #[error("Wallet connectivity error: `{0}`")]
     WalletConnectivityError(#[from] WalletConnectivityError),
+    #[error("Invalid http node url: `{0}`")]
+    InvalidHttpNodeUrl(String),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

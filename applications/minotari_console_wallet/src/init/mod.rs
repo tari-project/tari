@@ -82,6 +82,7 @@ use tari_key_manager::{
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
+use url::Url;
 use zxcvbn::zxcvbn;
 
 use crate::{
@@ -362,7 +363,13 @@ pub async fn set_peer_and_get_base_node_peer_config(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
 
-    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
+    let http_client_url = Url::parse(config.http_client_url.as_ref().ok_or_else(|| {
+        ExitError::new(
+            ExitCode::ConfigError,
+            format!("HTTP client URL is not set in the wallet config"),
+        )
+    })?).map_err(|e| ExitError::new(ExitCode::ConfigError, format!("HTTP Client URL is not a valid url:{}", e.to_string())))?;
+    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 
     Ok(peer_config)

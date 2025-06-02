@@ -121,8 +121,10 @@ pub struct WalletConfig {
     /// responsiveness of the wallet with slightly delayed balance updates
     #[serde(with = "serializers::seconds")]
     pub balance_enquiry_cooldown_period: Duration,
-    // How many days do we need to start scanning before our actual birthday
+    /// How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
+    /// The URL of the HTTP client to use for base node requests
+    pub http_client_url: Option<String>,
 }
 
 impl Default for WalletConfig {
@@ -163,6 +165,7 @@ impl Default for WalletConfig {
             identity_file: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
+            http_client_url: None,
         }
     }
 }

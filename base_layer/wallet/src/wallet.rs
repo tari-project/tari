@@ -99,6 +99,7 @@ use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
+use url::Url;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -263,6 +264,7 @@ where
                 factories.clone(),
                 config.network,
                 config.birthday_offset,
+               Url::parse( config.http_client_url.as_ref().ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?).map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.

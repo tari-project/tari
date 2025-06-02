@@ -34,6 +34,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use clap::Command;
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use futures::FutureExt;
@@ -121,6 +122,7 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
+use url::Url;
 
 use super::error::CommandError;
 use crate::{
@@ -2422,7 +2424,7 @@ pub async fn command_runner(
                 loop {
                     match receiver.recv().await {
                         Ok(event) => match event {
-                            UtxoScannerEvent::ConnectingToBaseNode(_) => {
+                            UtxoScannerEvent::ConnectingToBaseNode => {
                                 println!("Connecting to base node...");
                             },
                             UtxoScannerEvent::ConnectedToBaseNode(_, _) => {
@@ -2621,7 +2623,14 @@ pub async fn command_runner(
                         None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
-                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
+                    let http_client_url = Url::parse(&config
+                        .http_client_url
+                        .clone()
+                        .ok_or(CommandError::General(
+                            "Base node service HTTP client URL is not set".to_string(),
+                        ))?).map_err(|e| CommandError::General(format!("Not a valid url: {}", e.to_string())))?;
+
+                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
 
                     let base_nodes = peer_config
                         .get_base_node_peers()

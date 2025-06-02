@@ -30,7 +30,7 @@ use crate::util::watch::Watch;
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
-    ConnectingToBaseNode(NodeId),
+    ConnectingToBaseNode,
     ConnectedToBaseNode(NodeId, Duration),
     ConnectionFailedToBaseNode {
         peer: NodeId,

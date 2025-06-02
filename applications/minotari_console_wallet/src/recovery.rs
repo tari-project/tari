@@ -106,26 +106,9 @@ pub async fn wallet_recovery(
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let peers = base_node_config.get_all_peers();
-
-    let peer_manager = wallet.comms.peer_manager();
-    let mut peer_public_keys = Vec::with_capacity(peers.len());
-    for peer in peers {
-        debug!(
-            target: LOG_TARGET,
-            "Peer added: {} (NodeId: {})",
-            peer.public_key.to_hex(),
-            peer.node_id.to_hex()
-        );
-        peer_public_keys.push(peer.public_key.clone());
-        peer_manager
-            .add_or_update_peer(peer)
-            .await
-            .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
-    }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder()
-        .with_peers(peer_public_keys)
+        .with_http_node_url(base_node_config.http_client_url.clone())
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal).await
@@ -138,8 +121,8 @@ pub async fn wallet_recovery(
     // Read recovery task events. The event stream will end once recovery has completed.
     loop {
         match event_stream.recv().await {
-            Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
-                println!("Connecting to base node {}... ", peer);
+            Ok(UtxoScannerEvent::ConnectingToBaseNode) => {
+                println!("Connecting to base node... ");
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
                 println!("OK (latency = {:.2?})", latency);

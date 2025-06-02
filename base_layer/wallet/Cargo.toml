@@ -35,6 +35,7 @@ minotari_node_wallet_client = { workspace = true }
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.44", features = ["sync", "macros"] }
 
+anyhow = { workspace = true }
 async-trait = "0.1.50"
 argon2 = "0.4.1"
 bincode = "1.3.1"

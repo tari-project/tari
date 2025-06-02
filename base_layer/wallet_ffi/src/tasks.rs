@@ -51,14 +51,13 @@ pub async fn recovery_event_monitoring(
 ) {
     loop {
         match event_stream.recv().await {
-            Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
+            Ok(UtxoScannerEvent::ConnectingToBaseNode) => {
                 unsafe {
                     (recovery_progress_callback)(context.0, RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
                 }
                 info!(
                     target: LOG_TARGET,
-                    "Attempting connection to base node {}",
-                    peer.to_hex(),
+                    "Attempting connection to base node",
                 );
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {

@@ -60,7 +60,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
+use url::Url;
 use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
@@ -9964,6 +9964,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
     base_node_public_keys: *mut TariPublicKeys,
+    http_base_node: *const c_char,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     recovered_output_message: *const c_char,
     error_out: *mut c_int,
@@ -10011,16 +10012,35 @@ pub unsafe extern "C" fn wallet_start_recovery(
         };
         recovery_task_builder.with_recovery_message(message_str);
     }
+    let http_url = if http_base_node.is_null() {
+        *error_out =
+            LibWalletError::from(InterfaceError::NullError("http_base_node".to_string())).code;
+        return false;
+    } else {
+        match CStr::from_ptr(http_base_node).to_str() {
+            Ok(v) => match Url::parse(v) {
+                Ok(url) => url,
+                Err(e) => {
+                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!("Url is not valid: {}", e.to_string()))).code;
+                    return false;
+                },
+            },
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("http_base_node".to_string())).code;
+                return false;
+            },
+        }
+    };
     let mut recovery_task = match runtime.block_on(async {
         recovery_task_builder
-            .with_peers(peer_public_keys)
+            .with_http_node_url(http_url)
             .with_retry_limit(10)
             .build_with_wallet(&(*wallet).wallet, shutdown_signal)
             .await
     }) {
         Ok(v) => v,
         Err(e) => {
-            *error_out = LibWalletError::from(WalletError::KeyManagerServiceError(e)).code;
+            *error_out = LibWalletError::from(WalletError::ServiceInitializationError(e)).code;
             return false;
         },
     };

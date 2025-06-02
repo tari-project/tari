@@ -46,6 +46,7 @@ resolver = "2"
 
 
 [workspace.dependencies]
+anyhow = { version = "1.0" }
 # tari_jellyfish = { path = "infrastructure/jellyfish" }
 tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
 tari_common = { path = "common" }
