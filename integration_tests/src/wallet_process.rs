@@ -66,7 +66,9 @@ pub async fn spawn_wallet(
     routing_mechanism: Option<TransactionRoutingMechanism>,
     cli: Option<Cli>,
 ) {
-    std::env::set_var("TARI_NETWORK", "localnet");
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let port: u64;

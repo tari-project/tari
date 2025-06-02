@@ -94,7 +94,9 @@ pub async fn spawn_base_node_with_config(
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
 ) {
-    std::env::set_var("TARI_NETWORK", "localnet");
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let port: u64;

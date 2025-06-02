@@ -76,6 +76,10 @@ impl TargetDifficultyWindow {
         let difficulty = self.lwma.get_difficulty().unwrap_or(min);
         cmp::max(min, cmp::min(max, difficulty))
     }
+
+    pub fn update_target_time(&mut self, target_time: u64) -> Result<(), String> {
+        self.lwma.update_target_time(target_time)
+    }
 }
 
 #[cfg(test)]

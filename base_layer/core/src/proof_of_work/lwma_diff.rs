@@ -176,6 +176,26 @@ impl LinearWeightedMovingAverage {
         }
         self.target_difficulties.push_back((timestamp, target_difficulty));
     }
+
+    pub fn update_target_time(&mut self, target_time: u64) -> Result<(), String> {
+        if target_time == 0 {
+            return Err(
+                "LinearWeightedMovingAverage::update_target_time(...) expected `target_time` to be greater than 0, \
+                 but 0 was given"
+                    .into(),
+            );
+        }
+        if target_time.checked_mul(LWMA_MAX_BLOCK_TIME_RATIO).is_none() {
+            return Err(format!(
+                "LinearWeightedMovingAverage::update_target_time(...) expected `target_time` to be at least {} times \
+                 smaller than `u64::MAX`",
+                LWMA_MAX_BLOCK_TIME_RATIO,
+            ));
+        }
+        self.target_time = u128::from(target_time);
+        self.max_block_time = target_time * LWMA_MAX_BLOCK_TIME_RATIO;
+        Ok(())
+    }
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {

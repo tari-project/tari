@@ -1254,7 +1254,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return 0;
     }
-    (*ptr).0[position as usize]
+    (&(*ptr).0)[position as usize]
 }
 
 /// Gets the number of elements in a ByteVector
@@ -2523,7 +2523,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*outputs).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariUnblindedOutputs
@@ -3992,7 +3992,7 @@ pub unsafe extern "C" fn contacts_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*contacts).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*contacts).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariContacts
@@ -4296,7 +4296,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariCompletedTransactions
@@ -4390,7 +4390,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariPendingOutboundTransactions
@@ -4483,7 +4483,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
+    Box::into_raw(Box::new((&(*transactions).0)[position as usize].clone()))
 }
 
 /// Frees memory for a TariPendingInboundTransactions
@@ -6500,7 +6500,7 @@ pub unsafe extern "C" fn public_keys_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    let result = (*public_keys).0[position as usize].clone();
+    let result = (&(*public_keys).0)[position as usize].clone();
     Box::into_raw(Box::new(result))
 }
 
@@ -10224,7 +10224,7 @@ pub unsafe extern "C" fn emoji_set_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    let result = (*emoji_set).0[position as usize].clone();
+    let result = (&(*emoji_set).0)[position as usize].clone();
     Box::into_raw(Box::new(result))
 }
 
@@ -10430,7 +10430,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
+    Box::into_raw(Box::new((&(*fee_per_gram_stats).stats)[position as usize].clone()))
 }
 
 /// Frees memory for a TariFeePerGramStats
