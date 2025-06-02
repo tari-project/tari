@@ -448,6 +448,18 @@ where B: BlockchainBackend
         db.fetch_output(&output_hash)
     }
 
+    /// Returns output mined info by PayRef (Payment Reference)
+    pub fn fetch_output_by_payref(&self, payref: [u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_output_by_payref(&payref)
+    }
+
+    /// Check if an output is spent and return spent information
+    pub fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.check_output_spent_status(output_hash)
+    }
+
     /// Returns a copy of the current input mined info
     pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;

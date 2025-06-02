@@ -38,7 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
+    chain_storage::{TemplateRegistrationEntry, OutputMinedInfo, InputMinedInfo},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -353,6 +353,36 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch output by PayRef (Payment Reference)
+    pub async fn fetch_output_by_payref(
+        &mut self,
+        payref: &[u8; 32],
+    ) -> Result<Option<OutputMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchOutputByPayRef(*payref))
+            .await??
+        {
+            NodeCommsResponse::OutputMinedInfo(output_info) => Ok(output_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Check if an output is spent and return spent information
+    pub async fn check_output_spent_status(
+        &mut self,
+        output_hash: HashOutput,
+    ) -> Result<Option<InputMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::CheckOutputSpentStatus(output_hash))
+            .await??
+        {
+            NodeCommsResponse::InputMinedInfo(input_info) => Ok(input_info),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

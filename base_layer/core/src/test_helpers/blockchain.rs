@@ -314,6 +314,14 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
+    fn fetch_output_by_payref(&self, payref: &[u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_output_by_payref(payref)
+    }
+
+    fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().check_output_spent_status(output_hash)
+    }
+
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }

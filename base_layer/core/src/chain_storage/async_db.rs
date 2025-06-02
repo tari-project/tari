@@ -154,6 +154,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_output(output_hash: HashOutput) -> Option<OutputMinedInfo>, "fetch_output");
 
+    make_async_fn!(fetch_output_by_payref(payref: [u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
+
+    make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
+
     make_async_fn!(fetch_input(output_hash: HashOutput) -> Option<InputMinedInfo>, "fetch_input");
 
     make_async_fn!(fetch_unspent_output_hash_by_commitment(commitment: CompressedCommitment) -> Option<HashOutput>, "fetch_unspent_output_by_commitment");
