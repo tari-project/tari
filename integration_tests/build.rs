@@ -4,6 +4,12 @@ use std::env;
 
 fn main() {
     // link FFI lib
+    // the FFI library is built by the `minotari_wallet_ffi` crate
+    // and is expected to be in the folder: `target/<profile>/deps/`
+    // where `<profile>` is the current build profile (e.g., debug, release)
+    // We need to tell the linker to look in that folder for the library.
+    // All OS's have different ENV variables for this, so we handle them separately.
+    // the target/<profile>/deps/ is the first one, so we take that one out
     #[cfg(target_os = "macos")]
     let out_dirs = env::var("DYLD_FALLBACK_LIBRARY_PATH").unwrap();
     #[cfg(windows)]
