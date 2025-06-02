@@ -44,15 +44,8 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
-        EncryptedData,
-        KernelFeatures,
-        RangeProofType,
-        TransactionError,
-        TransactionInputVersion,
-        TransactionKernelVersion,
-        TransactionOutput,
-        TransactionOutputVersion,
+        encrypted_data::PaymentId, EncryptedData, KernelFeatures, RangeProofType, TransactionError,
+        TransactionInputVersion, TransactionKernelVersion, TransactionOutput, TransactionOutputVersion,
     },
     transaction_key_manager::error::KeyManagerServiceError,
 };
@@ -390,6 +383,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
+
+    async fn get_script_private_key(&self, script_key_ids: &[TariKeyId]) -> Result<PrivateKey, TransactionError>;
+
+    async fn get_script_offset_from_private_key(
+        &self,
+        script_private_key: PrivateKey,
+        sender_offset_key_ids: &[TariKeyId],
+    ) -> Result<PrivateKey, TransactionError>;
 
     async fn get_script_offset(
         &self,

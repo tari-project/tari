@@ -369,7 +369,7 @@ where
 
         stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, Some(&spending_key_id))
             .await?;
-        stp.persist_script_offset(&self.resources.transaction_key_manager_service)
+        stp.persist_script_private_key(&self.resources.transaction_key_manager_service)
             .await?;
 
         Ok(SignedOneSidedTransactionResult {

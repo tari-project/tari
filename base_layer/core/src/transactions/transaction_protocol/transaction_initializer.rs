@@ -635,7 +635,7 @@ where
             outputs: self.sender_custom_outputs,
             payment_id: self.payment_id.unwrap_or_default(),
             sender_address: self.sender_address.clone(),
-            script_offset: None,
+            script_private_key: None,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));

@@ -38,23 +38,14 @@ use tokio::sync::RwLock;
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
-        EncryptedData,
-        KernelFeatures,
-        RangeProofType,
-        TransactionError,
-        TransactionInputVersion,
-        TransactionKernelVersion,
-        TransactionOutput,
-        TransactionOutputVersion,
+        encrypted_data::PaymentId, EncryptedData, KernelFeatures, RangeProofType, TransactionError,
+        TransactionInputVersion, TransactionKernelVersion, TransactionOutput, TransactionOutputVersion,
     },
     transaction_key_manager::{
         error::KeyManagerServiceError,
         interface::{SecretTransactionKeyManagerInterface, TariKeyAndId, TxoStage},
         storage::database::{TransactionKeyManagerBackend, TransactionKeyManagerDatabase},
-        TariKeyId,
-        TransactionKeyManagerInner,
-        TransactionKeyManagerInterface,
+        TariKeyId, TransactionKeyManagerInner, TransactionKeyManagerInterface,
     },
     CryptoFactories,
 };
@@ -70,7 +61,8 @@ pub struct TransactionKeyManagerWrapper<TBackend> {
 }
 
 impl<TBackend> TransactionKeyManagerWrapper<TBackend>
-where TBackend: TransactionKeyManagerBackend + 'static
+where
+    TBackend: TransactionKeyManagerBackend + 'static,
 {
     /// Creates a new key manager.
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
@@ -99,7 +91,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
 #[async_trait::async_trait]
 impl<TBackend> TransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
-where TBackend: TransactionKeyManagerBackend + 'static
+where
+    TBackend: TransactionKeyManagerBackend + 'static,
 {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         self.transaction_key_manager_inner
@@ -420,6 +413,26 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
+    async fn get_script_private_key(&self, script_key_ids: &[TariKeyId]) -> Result<PrivateKey, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_script_private_key(script_key_ids)
+            .await
+    }
+
+    async fn get_script_offset_from_private_key(
+        &self,
+        script_private_key: PrivateKey,
+        sender_offset_key_ids: &[TariKeyId],
+    ) -> Result<PrivateKey, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_script_offset_from_private_key(script_private_key, sender_offset_key_ids)
+            .await
+    }
+
     async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
@@ -598,7 +611,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
 #[async_trait::async_trait]
 impl<TBackend> SecretTransactionKeyManagerInterface for TransactionKeyManagerWrapper<TBackend>
-where TBackend: TransactionKeyManagerBackend + 'static
+where
+    TBackend: TransactionKeyManagerBackend + 'static,
 {
     async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         self.transaction_key_manager_inner
