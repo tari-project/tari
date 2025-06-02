@@ -1046,13 +1046,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
 
-        let mut not_validated =
-            CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
-                .into_iter()
-                .map(|ct: CompletedTransactionSql| {
-                    CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
-                })
-                .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        let mut not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut not_validated);
         Ok(coinbases)
     }
