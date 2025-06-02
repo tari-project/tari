@@ -30,7 +30,7 @@ use chrono::{DateTime, Utc};
 use minotari_node_grpc_client::grpc;
 use tari_common_types::types::FixedHash;
 use tari_core::{proof_of_work::monero_rx::FixedByteArray, AuxChainHashes};
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::trace;
 
 use crate::{block_template_manager::FinalBlockTemplateData, error::MmProxyError};
@@ -39,9 +39,10 @@ const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 const MAX_TEMPLATE_CACHE_SIZE: usize = 1000;
 
 /// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct BlockTemplateRepository {
     blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
+    _cleanup_task_handle: JoinHandle<()>,
 }
 
 /// Structure holding [FinalBlockTemplateData] along with a timestamp.
@@ -68,18 +69,19 @@ impl BlockRepositoryItem {
 
 impl BlockTemplateRepository {
     pub fn new() -> Self {
-        let repo = Self {
-            blocks: Arc::new(RwLock::new(HashMap::new())),
-        };
+        let blocks = Arc::new(RwLock::new(HashMap::new()));
         
-        // Start automatic cleanup task
-        repo.start_cleanup_task();
-        repo
+        // Start automatic cleanup task and store the handle
+        let cleanup_task_handle = Self::start_cleanup_task(blocks.clone());
+        
+        Self {
+            blocks,
+            _cleanup_task_handle: cleanup_task_handle,
+        }
     }
     
     /// Start a background task for automatic cleanup
-    fn start_cleanup_task(&self) {
-        let blocks = self.blocks.clone();
+    fn start_cleanup_task(blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>) -> JoinHandle<()> {
         tokio::spawn(async move {
             let mut cleanup_timer = tokio::time::interval(std::time::Duration::from_secs(600)); // Every 10 minutes
             cleanup_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -117,7 +119,7 @@ impl BlockTemplateRepository {
                     );
                 }
             }
-        });
+        })
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
@@ -167,6 +169,26 @@ impl BlockTemplateRepository {
         );
         let mut b = self.blocks.write().await;
         b.remove(hash.as_ref())
+    }
+}
+
+impl Clone for BlockTemplateRepository {
+    fn clone(&self) -> Self {
+        // When cloning, start a new cleanup task for the clone
+        let cleanup_task_handle = Self::start_cleanup_task(self.blocks.clone());
+        
+        Self {
+            blocks: self.blocks.clone(),
+            _cleanup_task_handle: cleanup_task_handle,
+        }
+    }
+}
+
+impl Drop for BlockTemplateRepository {
+    fn drop(&mut self) {
+        // Abort the cleanup task when the repository is dropped
+        self._cleanup_task_handle.abort();
+        trace!(target: LOG_TARGET, "Block template repository cleanup task aborted");
     }
 }
 
