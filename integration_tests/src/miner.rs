@@ -91,7 +91,9 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())

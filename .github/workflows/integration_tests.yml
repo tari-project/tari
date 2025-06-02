@@ -28,7 +28,7 @@ name: Integration tests
 
 env:
   toolchain: stable
-  nightly_toolchain: nightly-2024-07-07
+  nightly_toolchain: nightly-2025-01-01
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
