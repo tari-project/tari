@@ -113,7 +113,7 @@ where
                             warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
                         },
                         Err(_) => {
-                            error!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Inbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
                                  deadlock or excessive delay in processing this pipeline.",

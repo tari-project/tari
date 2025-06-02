@@ -227,7 +227,7 @@ impl DhtConnectivity {
 
         let current_ratio = num_tcp_nodes as f32 / conns.len() as f32;
         if current_ratio < desired_ratio {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "{:.1?}% of this node's {} connections are using TCPv4. This node requires at least {:.1?}% of nodes \
                  to be TCP nodes.",

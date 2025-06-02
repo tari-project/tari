@@ -186,7 +186,7 @@ where
                     },
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Failed to read wire format byte due to error: {}", err
                     );
@@ -194,7 +194,7 @@ where
                 },
             },
             Err(elapsed) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Failed to read wire format byte within timeout of {:#?}. {}", time_to_first_byte, elapsed
                 );
