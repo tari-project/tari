@@ -59,10 +59,10 @@ impl TargetDifficulties {
             if let std::collections::hash_map::Entry::Vacant(e) = self.algos.entry(algo) {
                 let target_difficulty_window = consensus_rules.new_target_difficulty(algo, height)?;
                 e.insert(target_difficulty_window);
+            } else if let Some(target_diff) = self.algos.get_mut(&algo) {
+                target_diff.update_target_time(consensus_constants.pow_target_block_interval(algo))?
             } else {
-                if let Some(target_diff) = self.algos.get_mut(&algo) {
-                    target_diff.update_target_time(consensus_constants.pow_target_block_interval(algo))?
-                }
+                // clippy, this else should never be hit
             }
         }
         Ok(())
