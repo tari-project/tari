@@ -180,7 +180,7 @@ pub struct PaymentReceipt {
     /// Amount of the payment
     pub amount: MicroMinotari,
     /// Date when payment was received
-    pub received_date: String,
+    pub received_date: DateTime<Utc>,
     /// Block height where payment was mined
     pub block_height: u64,
     /// Number of confirmations at time of verification

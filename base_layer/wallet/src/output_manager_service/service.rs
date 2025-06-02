@@ -3114,7 +3114,7 @@ where
         let req = FetchMatchingUtxos {
             output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
         };
-        let results: Vec<TransactionOutput> = self
+        let outputs = self
             .resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
@@ -3124,10 +3124,18 @@ where
             })?
             .fetch_matching_utxos(req)
             .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| o.try_into().ok())
-            .collect();
+            .outputs;
+
+        let mut results = Vec::new();
+        for output in outputs {
+            match output.try_into() {
+                Ok(tx_output) => results.push(tx_output),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
+                    // Continue processing other outputs instead of failing completely
+                }
+            }
+        }
         Ok(results)
     }
 
@@ -3566,82 +3574,24 @@ where
         Ok(None)
     }
     
-    /// Get all available payment references
-    fn get_available_payment_references(
-        &self,
-    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
-        // Get all unspent outputs
-        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
-        let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
-        
-        // For each output, check if PayRef is available and add to list
-        for output in outputs {
-            use crate::output_manager_service::payment_reference::PayRefStatus;
-            let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
-            let required_confirmations = 5;
-            let status = output.get_payment_reference_status(current_tip_height, required_confirmations); // Default 5 confirmations
-            
-            if let PayRefStatus::Available(payref, confirmations) = status {
-                if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
-                    payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
-                        payment_reference: payref,
-                        amount: output.wallet_output.value,
-                        direction: output.infer_direction(),
-                        block_height,
-                        confirmations,
-                        timestamp: Some(timestamp),
-                        payment_id: Some(output.payment_id.to_bytes()),
-                    });
-                }
-            }
-        }
-        
-        Ok(payment_references)
-    }
-    
-    /// Get all payment references (regardless of confirmation status)
-    /// This method bridges the gap between CompletedTransactions (used by TUI) and Outputs (which have block data)
-    fn get_all_payment_references(
-        &self,
-    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
-        let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
+    /// Helper function to get current tip height and required confirmations
+    fn get_tip_height_and_confirmations(&self) -> Result<(u64, u64), OutputManagerError> {
         let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
-        let required_confirmations = 5;
+        let required_confirmations = 5; // TODO: Make this configurable
         
-        debug!(target: LOG_TARGET, "payref_debug: get_all_payment_references() - current_tip_height: {}, required_confirmations: {}", current_tip_height, required_confirmations);
+        // Validate values
+        if current_tip_height == 0 {
+            warn!(target: LOG_TARGET, "Current tip height is 0, wallet may not be synced");
+        }
         
-        // Add diagnostic logging to identify database access issues
-        debug!(target: LOG_TARGET, "payref_debug: Service instance debug - OutputManagerService calling database methods");
-        debug!(target: LOG_TARGET, "payref_debug: Database backend type: {}", std::any::type_name::<TBackend>());
-        
-        // Get all outputs that have received_in_tx_id set (these correspond to completed transactions)
-        let start_time = std::time::Instant::now();
+        Ok((current_tip_height, required_confirmations))
+    }
+
+    /// Collect all outputs that are linked to transactions (have received_in_tx_id)
+    fn collect_transaction_linked_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         let all_unspent_outputs = self.resources.db.fetch_all_unspent_outputs()?;
-        debug!(target: LOG_TARGET, "payref_debug: fetch_all_unspent_outputs() took {} ms", start_time.elapsed().as_millis());
-        
-        let start_time = std::time::Instant::now();
         let all_spent_outputs = self.resources.db.fetch_spent_outputs()?;
-        debug!(target: LOG_TARGET, "payref_debug: fetch_spent_outputs() took {} ms", start_time.elapsed().as_millis());
         
-        debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", all_unspent_outputs.len(), all_spent_outputs.len());
-        
-        // Log sample of outputs for diagnosis
-        if !all_unspent_outputs.is_empty() {
-            debug!(target: LOG_TARGET, "payref_debug: Sample unspent output - commitment: {}, received_in_tx_id: {:?}, mined_height: {:?}", 
-                all_unspent_outputs[0].commitment.to_hex(), 
-                all_unspent_outputs[0].received_in_tx_id,
-                all_unspent_outputs[0].mined_height
-            );
-        }
-        if !all_spent_outputs.is_empty() {
-            debug!(target: LOG_TARGET, "payref_debug: Sample spent output - commitment: {}, received_in_tx_id: {:?}, mined_height: {:?}", 
-                all_spent_outputs[0].commitment.to_hex(), 
-                all_spent_outputs[0].received_in_tx_id,
-                all_spent_outputs[0].mined_height
-            );
-        }
-        
-        // Combine all outputs and filter for those linked to transactions
         let mut transaction_linked_outputs = Vec::new();
         
         // Add unspent outputs that have received_in_tx_id (received transactions)
@@ -3657,6 +3607,61 @@ where
                 transaction_linked_outputs.push(output);
             }
         }
+        
+        Ok(transaction_linked_outputs)
+    }
+
+    /// Get all available payment references
+    fn get_available_payment_references(
+        &self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        // Get current blockchain state
+        let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
+        
+        // Get all unspent outputs
+        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
+        
+        // For each output, check if PayRef is available and add to list
+        for output in outputs {
+            use crate::output_manager_service::payment_reference::PayRefStatus;
+            let status = output.get_payment_reference_status(current_tip_height, required_confirmations);
+            
+            if let PayRefStatus::Available(payref, confirmations) = status {
+                // Validate required data before creating PaymentRecord
+                if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
+                    if block_height > 0 && !payref.is_empty() {
+                        payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
+                            payment_reference: payref,
+                            amount: output.wallet_output.value,
+                            direction: output.infer_direction(),
+                            block_height,
+                            confirmations,
+                            timestamp: Some(timestamp),
+                            payment_id: Some(output.payment_id.to_bytes()),
+                        });
+                    } else {
+                        warn!(target: LOG_TARGET, "Skipping output with invalid data: block_height={}, payref_empty={}", 
+                            block_height, payref.is_empty());
+                    }
+                }
+            }
+        }
+        
+        Ok(payment_references)
+    }
+    
+    /// Get all payment references (regardless of confirmation status)
+    /// This method bridges the gap between CompletedTransactions (used by TUI) and Outputs (which have block data)
+    fn get_all_payment_references(
+        &self,
+    ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
+        let mut seen_payment_refs = std::collections::HashSet::new();
+        let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
+        
+        // Collect all transaction-linked outputs
+        let transaction_linked_outputs = self.collect_transaction_linked_outputs()?;
         
         // Group outputs by their received_in_tx_id to handle transactions with multiple outputs
         let mut outputs_by_tx_id = std::collections::HashMap::new();
@@ -3675,15 +3680,9 @@ where
                 // Only include outputs that have valid PayRefs (i.e., are mined with enough confirmations)
                 if let PayRefStatus::Available(payref, confirmations) = status {
                     if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
-                        // Check if we already have this PayRef to avoid duplicates
-                        let mut duplicate_found = false;
-                        for existing_pr in payment_references.iter() {
-                            if existing_pr.payment_reference == payref {
-                                duplicate_found = true;
-                                break;
-                            }
-                        }
-                        if !duplicate_found {
+                        // Check if we already have this PayRef to avoid duplicates (O(1) lookup)
+                        if !seen_payment_refs.contains(&payref) {
+                            seen_payment_refs.insert(payref.clone());
                             payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
                                 payment_reference: payref,
                                 amount: output.wallet_output.value,
@@ -3719,8 +3718,7 @@ where
         &mut self,
         _config: crate::output_manager_service::payment_reference::PayRefConfig,
     ) -> Result<(), OutputManagerError> {
-        // In a full implementation, this would store the configuration in the database
-        // For now, we just return success
+        // Note: This method is designed not to persist config - it operates as transient configuration
         Ok(())
     }
 }

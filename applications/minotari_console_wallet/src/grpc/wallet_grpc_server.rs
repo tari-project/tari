@@ -103,7 +103,11 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
-    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
+    output_manager_service::{
+        handle::OutputManagerHandle,
+        payment_reference::PaymentDirection,
+        UtxoSelectionCriteria,
+    },
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::models::{self, WalletTransaction},
@@ -697,6 +701,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             wallet_tx,
                             &wallet_address,
                             &self.wallet.key_manager_service,
+                            self,
                         )
                         .await;
                         TransferResult {
@@ -774,6 +779,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             wallet_tx,
                             &wallet_address,
                             &self.wallet.key_manager_service,
+                            self,
                         )
                         .await;
                         TransferResult {
@@ -921,6 +927,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         wallet_tx,
                         &wallet_address,
                         &self.wallet.key_manager_service,
+                        self,
                     )
                     .await;
                     results.push(TransferResult {
@@ -1034,6 +1041,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx,
                         &wallet_address,
                         &self.wallet.key_manager_service,
+                        self,
                     )
                     .await
                 },
@@ -1191,51 +1199,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 
-                // Calculate PayRef for this transaction's first output (if mined)
-                let mut payment_refs = Vec::new();
+                // Calculate PayRef for this transaction using existing helper
+                let payment_refs = self.calculate_payment_references_for_transaction(
+                    &output_commitments,
+                    txn.mined_height.unwrap_or(0),
+                ).await;
                 
-                // Get ALL wallet outputs (both spent and unspent) from output manager
-                let unspent_outputs = match output_manager.get_unspent_outputs().await {
-                    Ok(outputs) => outputs,
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to get unspent outputs for PayRef calculation: {}", e);
-                        Vec::new()
-                    }
-                };
-                
-                let spent_outputs = match output_manager.get_spent_outputs().await {
-                    Ok(outputs) => outputs,
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to get spent outputs for PayRef calculation: {}", e);
-                        Vec::new()
-                    }
-                };
-                
-                // Combine both spent and unspent outputs
-                let all_outputs: Vec<_> = unspent_outputs.into_iter().chain(spent_outputs.into_iter()).collect();
-                
-                for commitment_bytes in &output_commitments {
-                    // Find matching DbWalletOutput by commitment
-                    if let Some(db_output) = all_outputs.iter()
-                        .find(|o| o.commitment.as_bytes() == commitment_bytes) 
-                    {
-                        // Check if output has mining data (mined_height and mined_in_block)
-                        if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
-                            // Use existing PayRef generation method
-                            if let Some(payref) = db_output.generate_payment_reference() {
-                                payment_refs.push(payref.to_vec());
-                            } else {
-                                payment_refs.push(vec![]);
-                            }
-                        } else {
-                            payment_refs.push(vec![]);
-                        }
-                    } else {
-                        payment_refs.push(vec![]);
-                    }
-                }
-                
-                let payment_reference = payment_refs.first().cloned().unwrap_or_default().to_hex();
+                let payment_reference = payment_refs
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
                 
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
@@ -1793,20 +1769,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     payment_ref.to_hex()
                 );
                 
-                let direction = match payment_details.direction {
-                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
-                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
-                    minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
-                };
+                let direction = payment_direction_to_grpc(&payment_details.direction);
                 
                 // Calculate status based on confirmations since PaymentDetails doesn't have a status field
-                let status = if payment_details.has_sufficient_confirmations(5) {
-                    1 // PAYREF_STATUS_AVAILABLE
-                } else if payment_details.confirmations > 0 {
-                    2 // PAYREF_STATUS_PENDING
-                } else {
-                    3 // PAYREF_STATUS_NOT_MINED
-                };
+                let status = calculate_payref_status(payment_details.confirmations, 5);
                 
                 let grpc_payment_details = PaymentDetails {
                     payment_reference: payment_details.payment_reference.to_hex(),
@@ -1868,21 +1834,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let payment_references: Vec<PaymentDetails> = payment_records
                     .into_iter()
                     .map(|payment_record| {
-                        let direction = match payment_record.direction {
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
-                        };
+                        let direction = payment_direction_to_grpc(&payment_record.direction);
                         
                         // Calculate status based on confirmations (PaymentRecord doesn't have status field)
                         // Assuming 5 confirmations required for "available" status
-                        let status = if payment_record.confirmations >= 5 {
-                            1 // PAYREF_STATUS_AVAILABLE
-                        } else if payment_record.confirmations > 0 {
-                            2 // PAYREF_STATUS_PENDING
-                        } else {
-                            3 // PAYREF_STATUS_NOT_MINED
-                        };
+                        let status = calculate_payref_status(payment_record.confirmations, 5);
                         
                         PaymentDetails {
                             payment_reference: payment_record.payment_reference.to_hex(),
@@ -1939,20 +1895,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let payment_references: Vec<PaymentDetails> = payment_records
                     .into_iter()
                     .map(|payment_record| {
-                        let direction = match payment_record.direction {
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::Sent | 
-                            minotari_wallet::output_manager_service::payment_reference::PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
-                        };
+                        let direction = payment_direction_to_grpc(&payment_record.direction);
                         
                         // Calculate status based on confirmations
-                        let status = if payment_record.confirmations >= 5 {
-                            1 // PAYREF_STATUS_AVAILABLE
-                        } else if payment_record.confirmations > 0 {
-                            2 // PAYREF_STATUS_PENDING
-                        } else {
-                            3 // PAYREF_STATUS_NOT_MINED
-                        };
+                        let status = calculate_payref_status(payment_record.confirmations, 5);
                         
                         PaymentDetails {
                             payment_reference: payment_record.payment_reference.to_hex(),
@@ -2041,6 +1987,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
     tx: models::WalletTransaction,
     wallet_address: &TariAddress,
     key_manager: &KM,
+    wallet_grpc_server: &WalletGrpcServer,
 ) -> TransactionInfo {
     use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
@@ -2065,7 +2012,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
-                payment_reference: String::new(),
+                payment_reference: String::new(), // Payment references not available for pending inbound transactions
             }
         },
         PendingOutbound(tx) => {
@@ -2099,7 +2046,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
-                payment_reference: String::new(),
+                payment_reference: String::new(), // Payment references not available for pending outbound transactions
             }
         },
         Completed(tx) => {
@@ -2141,10 +2088,48 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.user_data_as_bytes(),
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
-                output_commitments,
+                output_commitments: output_commitments.clone(),
                 input_commitments,
-                payment_reference: String::new(),
+                payment_reference: {
+                    // Calculate payment reference for completed transactions
+                    if tx.mined_height.is_some() && !output_commitments.is_empty() {
+                        let payment_refs = wallet_grpc_server
+                            .calculate_payment_references_for_transaction(
+                                &output_commitments,
+                                tx.mined_height.unwrap_or(0),
+                            )
+                            .await;
+                        
+                        // Use the first non-empty payment reference found
+                        payment_refs
+                            .into_iter()
+                            .find(|pr| !pr.is_empty())
+                            .map(|pr| hex::encode(pr))
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    }
+                },
             }
         },
+    }
+}
+
+/// Calculate payment reference status based on confirmations and required confirmations
+fn calculate_payref_status(confirmations: u64, required_confirmations: u64) -> i32 {
+    if confirmations >= required_confirmations {
+        1 // PAYREF_STATUS_AVAILABLE
+    } else if confirmations > 0 {
+        2 // PAYREF_STATUS_PENDING
+    } else {
+        3 // PAYREF_STATUS_NOT_MINED
+    }
+}
+
+/// Convert PaymentDirection to gRPC direction value
+fn payment_direction_to_grpc(direction: &PaymentDirection) -> i32 {
+    match direction {
+        PaymentDirection::Received => 1, // PAYMENT_DIRECTION_INBOUND
+        PaymentDirection::Sent | PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
     }
 }
