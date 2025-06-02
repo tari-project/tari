@@ -109,14 +109,4 @@ impl Hooks {
         self.on_complete.clear();
         self.on_rewind.clear();
     }
-
-    /// Get the total number of registered hooks for monitoring purposes
-    pub fn hook_count(&self) -> usize {
-        self.on_starting.len() +
-        self.on_progress_header.len() +
-        self.on_progress_block.len() +
-        self.on_progress_horizon_sync.len() +
-        self.on_complete.len() +
-        self.on_rewind.len()
-    }
 }

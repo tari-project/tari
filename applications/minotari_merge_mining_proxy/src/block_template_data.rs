@@ -136,7 +136,7 @@ impl BlockTemplateRepository {
         // Enforce size limit before adding new entries
         if b.len() >= MAX_TEMPLATE_CACHE_SIZE {
             // Remove oldest entry to make space
-            if let Some((oldest_key, _)) = b.iter()
+            if let Some(oldest_key) = b.iter()
                 .min_by_key(|(_, item)| item.datetime())
                 .map(|(k, _)| k.clone()) 
             {
