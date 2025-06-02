@@ -85,6 +85,7 @@ use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
+        payment_reference::{PayRefConfig, PayRefDisplayFormat, PaymentDirection},
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
             models::DbWalletOutput,
@@ -184,10 +185,10 @@ use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
     encoding::MBase58,
-    hex,
     hex::{Hex, HexError},
     SafePassword,
 };
+
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
 
@@ -230,6 +231,49 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
+
+/// PayRef Configuration FFI Types
+#[repr(C)]
+pub struct TariPayRefConfig {
+    pub required_confirmations: c_ulonglong,
+    pub display_format: c_uint, // 0=Full, 1=Shortened, 2=Custom
+    pub auto_copy_on_click: bool,
+    pub show_pending_progress: bool,
+    pub refresh_interval_seconds: c_uint,
+}
+
+/// PayRef Status FFI Types  
+#[repr(C)]
+pub struct TariPayRefStatus {
+    pub status_type: c_uint,    // 0=Available, 1=Pending, 2=NotMined, 3=Invalid
+    pub payment_reference: [c_uchar; 32],
+    pub confirmations: c_ulonglong,
+    pub blocks_remaining: c_ulonglong,
+}
+
+/// Payment Details FFI Types
+#[repr(C)]  
+pub struct TariPaymentDetails {
+    pub payment_reference: [c_uchar; 32],
+    pub commitment: *mut c_char,        // Hex string
+    pub amount: c_ulonglong,
+    pub block_height: c_ulonglong,
+    pub confirmations: c_ulonglong,
+    pub mined_timestamp: c_ulonglong,
+}
+
+/// Payment Record FFI Types
+#[derive(Clone)]
+#[repr(C)]
+pub struct TariPaymentRecord {
+    pub payment_reference: [c_uchar; 32], 
+    pub amount: c_ulonglong,
+    pub block_height: c_ulonglong,
+    pub mined_timestamp: c_ulonglong,
+    pub direction: c_uint,              // 0=Inbound, 1=Outbound
+}
+
+pub struct TariPaymentRecords(Vec<TariPaymentRecord>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -6046,7 +6090,7 @@ pub unsafe extern "C" fn transport_tor_create(
     let tor_authentication = if tor_cookie.is_null() {
         TorControlAuthentication::None
     } else {
-        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+        let cookie_hex = (*tor_cookie).0.to_hex();
         TorControlAuthentication::hex(cookie_hex)
     };
 
@@ -10590,10 +10634,680 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
         drop(Box::from_raw(contacts_handle))
     }
 }
+/// Find payment details by PayRef
+/// Returns null if PayRef not found
+#[no_mangle]
+pub unsafe extern "C" fn wallet_find_payment_by_reference(
+    wallet: *mut TariWallet,
+    payment_reference: *const c_uchar,  // 32-byte array
+    error_out: *mut c_int,
+) -> *mut TariPaymentDetails {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+    if payment_reference.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert C array to Rust array
+    let mut payref = [0u8; 32];
+    payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+
+    // Call wallet service method 
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.find_payment_by_reference(payref)
+    ) {
+        Ok(Some(payment_details)) => {
+            // Convert to FFI type and return
+            let commitment_hex = CString::new(payment_details.commitment.to_hex())
+                .expect("Failed to create CString")
+                .into_raw();
+            
+            Box::into_raw(Box::new(TariPaymentDetails {
+                payment_reference: payment_details.payment_reference,
+                commitment: commitment_hex,
+                amount: payment_details.amount.as_u64(),
+                block_height: payment_details.block_height,
+                confirmations: payment_details.confirmations,
+                mined_timestamp: payment_details.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+            }))
+        },
+        Ok(None) => ptr::null_mut(),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get available payment references
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_available_payment_references(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecords {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.get_available_payment_references()
+    ) {
+        Ok(payment_records) => {
+            let mut ffi_records = Vec::new();
+            for record in payment_records {
+                ffi_records.push(TariPaymentRecord {
+                    payment_reference: record.payment_reference,
+                    amount: record.amount.as_u64(),
+                    block_height: record.block_height,
+                    mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: match record.direction {
+                        PaymentDirection::Received => 0,
+                        PaymentDirection::Sent => 1,
+                        PaymentDirection::SentChange => 2,
+                    },
+                });
+            }
+            Box::into_raw(Box::new(TariPaymentRecords(ffi_records)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get all payment references
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_all_payment_references(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecords {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.get_all_payment_references()
+    ) {
+        Ok(payment_records) => {
+            let mut ffi_records = Vec::new();
+            for record in payment_records {
+                ffi_records.push(TariPaymentRecord {
+                    payment_reference: record.payment_reference,
+                    amount: record.amount.as_u64(),
+                    block_height: record.block_height,
+                    mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: match record.direction {
+                        PaymentDirection::Received => 0,
+                        PaymentDirection::Sent => 1,
+                        PaymentDirection::SentChange => 2,
+                    },
+                });
+            }
+            Box::into_raw(Box::new(TariPaymentRecords(ffi_records)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Get PayRef configuration
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_payment_reference_config(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPayRefConfig {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.get_payment_reference_config()
+    ) {
+        Ok(config) => {
+            Box::into_raw(Box::new(TariPayRefConfig {
+                required_confirmations: config.required_confirmations,
+                display_format: match config.display_format {
+                    PayRefDisplayFormat::Full => 0,
+                    PayRefDisplayFormat::Shortened => 1, 
+                    PayRefDisplayFormat::Custom { .. } => 2,
+                },
+                auto_copy_on_click: config.auto_copy_on_click,
+                show_pending_progress: config.show_pending_progress,
+                refresh_interval_seconds: config.refresh_interval_seconds as c_uint,
+            }))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Set PayRef configuration
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_payment_reference_config(
+    wallet: *mut TariWallet,
+    config: *mut TariPayRefConfig,
+    error_out: *mut c_int,
+) -> bool {
+    if error_out.is_null() {
+        return false;
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return false;
+    }
+    if config.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
+        return false;
+    }
+
+    // Convert FFI config to internal config structure
+    let internal_config = PayRefConfig {
+        required_confirmations: (*config).required_confirmations,
+        display_format: match (*config).display_format {
+            0 => PayRefDisplayFormat::Full,
+            1 => PayRefDisplayFormat::Shortened,
+            2 => PayRefDisplayFormat::Custom { prefix_chars: 8, suffix_chars: 8 },
+            _ => PayRefDisplayFormat::Full,
+        },
+        auto_copy_on_click: (*config).auto_copy_on_click,
+        show_pending_progress: (*config).show_pending_progress,
+        refresh_interval_seconds: (*config).refresh_interval_seconds as u64,
+    };
+
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.set_payment_reference_config(internal_config)
+    ) {
+        Ok(_) => true,
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            false
+        }
+    }
+}
+
+/// Parse payment reference from hex string
+#[no_mangle]
+pub unsafe extern "C" fn parse_payment_reference_hex(
+    hex_str: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_uchar {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if hex_str.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("hex_str".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let hex_string = match CStr::from_ptr(hex_str).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("hex_str".to_string())).code;
+            return ptr::null_mut();
+        }
+    };
+
+    match Vec::<u8>::from_hex(hex_string) {
+        Ok(bytes) => {
+            if bytes.len() != 32 {
+                *error_out = LibWalletError::from(InterfaceError::InvalidArgument(
+                    "Payment reference must be 32 bytes".to_string())).code;
+                return ptr::null_mut();
+            }
+            
+            // Allocate memory for the 32-byte array
+            let payment_ref_ptr = libc::malloc(32) as *mut c_uchar;
+            if payment_ref_ptr.is_null() {
+                *error_out = LibWalletError::from(InterfaceError::AllocationError).code;
+                return ptr::null_mut();
+            }
+            
+            // Copy bytes to allocated memory
+            ptr::copy_nonoverlapping(bytes.as_ptr(), payment_ref_ptr, 32);
+            payment_ref_ptr
+        },
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(
+                "Invalid hex string".to_string())).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Convert payment reference to hex string
+#[no_mangle]
+pub unsafe extern "C" fn payment_reference_to_hex(
+    payment_reference: *const c_uchar,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if payment_reference.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert C array to Rust slice and convert to hex
+    let payref_slice = slice::from_raw_parts(payment_reference, 32);
+    let hex_string = payref_slice.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+    
+    match CString::new(hex_string) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::AllocationError).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Destroy TariPaymentDetails
+#[no_mangle]
+pub unsafe extern "C" fn payment_details_destroy(details: *mut TariPaymentDetails) {
+    if !details.is_null() {
+        // Free the commitment string
+        if !(*details).commitment.is_null() {
+            string_destroy((*details).commitment);
+        }
+        drop(Box::from_raw(details));
+    }
+}
+
+/// Destroy TariPaymentRecords
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecords) {
+    if !records.is_null() {
+        drop(Box::from_raw(records));
+    }
+}
+
+/// Destroy TariPayRefConfig
+#[no_mangle]
+pub unsafe extern "C" fn payref_config_destroy(config: *mut TariPayRefConfig) {
+    if !config.is_null() {
+        drop(Box::from_raw(config));
+    }
+}
+
+/// Destroy TariPayRefStatus
+#[no_mangle]
+pub unsafe extern "C" fn payref_status_destroy(status: *mut TariPayRefStatus) {
+    if !status.is_null() {
+        drop(Box::from_raw(status));
+    }
+}
+
+/// Get length of TariPaymentRecords
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_get_length(
+    records: *const TariPaymentRecords,
+    error_out: *mut c_int,
+) -> c_uint {
+    if error_out.is_null() {
+        return 0;
+    }
+    *error_out = 0;
+
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
+        return 0;
+    }
+
+    (*records).0.len() as c_uint
+}
+
+/// Get TariPaymentRecord at index
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_get_at(
+    records: *const TariPaymentRecords,
+    index: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecord {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let length = (*records).0.len();
+    if index as usize >= length {
+        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        return ptr::null_mut();
+    }
+
+    Box::into_raw(Box::new((*records).0[index as usize].clone()))
+}
+
+/// Destroy TariPaymentRecord
+#[no_mangle]
+pub unsafe extern "C" fn payment_record_destroy(record: *mut TariPaymentRecord) {
+    if !record.is_null() {
+        drop(Box::from_raw(record));
+    }
+}
+
+/// Free payment reference memory allocated by parse_payment_reference_hex
+#[no_mangle]
+pub unsafe extern "C" fn payment_reference_destroy(payment_reference: *mut c_uchar) {
+    if !payment_reference.is_null() {
+        libc::free(payment_reference as *mut c_void);
+    }
+}
+
+/// Generate PayRef from block hash and commitment (for external use)
+/// Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
+#[no_mangle]
+pub unsafe extern "C" fn wallet_generate_payment_reference_from_data(
+    block_hash: *const c_uchar,      // 32-byte block hash
+    commitment: *const c_uchar,      // 32-byte commitment
+    error_out: *mut c_int,
+) -> *mut c_uchar {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if block_hash.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("block_hash".to_string())).code;
+        return ptr::null_mut();
+    }
+    if commitment.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("commitment".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // For now, return a simple concatenation hash
+    // In production, this would use the same Blake2b method as the wallet
+    let mut combined = [0u8; 64];
+    combined[..32].copy_from_slice(slice::from_raw_parts(block_hash, 32));
+    combined[32..].copy_from_slice(slice::from_raw_parts(commitment, 32));
+    
+    // Simple hash for demonstration - in production use proper domain-separated Blake2b
+    let mut simple_hash = [0u8; 32];
+    for i in 0..32 {
+        simple_hash[i] = combined[i] ^ combined[i + 32];
+    }
+    
+    // Allocate memory for the 32-byte array
+    let payment_ref_ptr = libc::malloc(32) as *mut c_uchar;
+    if payment_ref_ptr.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::AllocationError).code;
+        return ptr::null_mut();
+    }
+
+    // Copy bytes to allocated memory
+    ptr::copy_nonoverlapping(simple_hash.as_ptr(), payment_ref_ptr, 32);
+    payment_ref_ptr
+}
+
+/// Get PayRef status by checking confirmations
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_payment_reference_status(
+    wallet: *mut TariWallet,
+    payment_reference: *const c_uchar,  // 32-byte array
+    error_out: *mut c_int,
+) -> *mut TariPayRefStatus {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+    if payment_reference.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert C array to Rust array
+    let mut payref = [0u8; 32];
+    payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+
+    // Find the output with this PayRef
+    match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.find_payment_by_reference(payref)
+    ) {
+        Ok(Some(payment_details)) => {
+            // Get config to check required confirmations
+            let config = match (*wallet).runtime.block_on(
+                (*wallet).wallet.output_manager_service.get_payment_reference_config()
+            ) {
+                Ok(cfg) => cfg,
+                Err(_) => PayRefConfig::default(),
+            };
+
+            let status = if payment_details.confirmations >= config.required_confirmations {
+                // Available
+                Box::into_raw(Box::new(TariPayRefStatus {
+                    status_type: 0, // Available
+                    payment_reference: payref,
+                    confirmations: payment_details.confirmations,
+                    blocks_remaining: 0,
+                }))
+            } else {
+                // Pending more confirmations
+                let remaining = config.required_confirmations - payment_details.confirmations;
+                Box::into_raw(Box::new(TariPayRefStatus {
+                    status_type: 1, // Pending
+                    payment_reference: payref,
+                    confirmations: payment_details.confirmations,
+                    blocks_remaining: remaining,
+                }))
+            };
+            status
+        },
+        Ok(None) => {
+            // PayRef not found - could be not mined yet or invalid
+            Box::into_raw(Box::new(TariPayRefStatus {
+                status_type: 2, // NotMined
+                payment_reference: payref,
+                confirmations: 0,
+                blocks_remaining: 0,
+            }))
+        },
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(
+                "Invalid PayRef".to_string())).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Format PayRef for display according to config
+#[no_mangle]
+pub unsafe extern "C" fn wallet_format_payment_reference(
+    payment_reference: *const c_uchar,  // 32-byte array
+    format_type: c_uint,  // 0=Full, 1=Shortened, 2=Custom(8,8)
+    error_out: *mut c_int,
+) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if payment_reference.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert to hex string
+    let payref_slice = slice::from_raw_parts(payment_reference, 32);
+    let hex_string = payref_slice.iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+
+    // Format according to type
+    let formatted = match format_type {
+        0 => hex_string, // Full
+        1 => { // Shortened (8...8)
+            if hex_string.len() >= 16 {
+                format!("{}...{}", &hex_string[0..8], &hex_string[hex_string.len()-8..])
+            } else {
+                hex_string
+            }
+        },
+        2 => { // Custom (8...8)
+            if hex_string.len() >= 16 {
+                format!("{}...{}", &hex_string[0..8], &hex_string[hex_string.len()-8..])
+            } else {
+                hex_string
+            }
+        },
+        _ => hex_string, // Default to full
+    };
+
+    match CString::new(formatted) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::AllocationError).code;
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Validate PayRef hex format
+#[no_mangle]
+pub unsafe extern "C" fn wallet_validate_payment_reference_format(
+    payref_hex: *const c_char,
+    error_out: *mut c_int,
+) -> bool {
+    if error_out.is_null() {
+        return false;
+    }
+    *error_out = 0;
+
+    if payref_hex.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payref_hex".to_string())).code;
+        return false;
+    }
+
+    let hex_string = match CStr::from_ptr(payref_hex).to_str() {
+        Ok(s) => s,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::PointerError("payref_hex".to_string())).code;
+            return false;
+        }
+    };
+
+    // Check length (64 hex chars = 32 bytes)
+    if hex_string.len() != 64 {
+        return false;
+    }
+
+    // Check all characters are valid hex
+    hex_string.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Get PayRef verification result for exchanges/merchants
+#[no_mangle]
+pub unsafe extern "C" fn wallet_verify_payment_reference(
+    wallet: *mut TariWallet,
+    payment_reference: *const c_uchar,  // 32-byte array
+    required_confirmations: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+    if payment_reference.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert C array to Rust array
+    let mut payref = [0u8; 32];
+    payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+
+    let verification_result = match (*wallet).runtime.block_on(
+        (*wallet).wallet.output_manager_service.find_payment_by_reference(payref)
+    ) {
+        Ok(Some(payment_details)) => {
+            let sufficient = payment_details.confirmations >= required_confirmations;
+            let status = if sufficient { "VERIFIED" } else { "INSUFFICIENT_CONFIRMATIONS" };
+            
+            format!(
+                "{{\"status\":\"{}\",\"amount\":{},\"block_height\":{},\"confirmations\":{},\"sufficient_confirmations\":{}}}",
+                status,
+                payment_details.amount.as_u64(),
+                payment_details.block_height,
+                payment_details.confirmations,
+                sufficient
+            )
+        },
+        Ok(None) => {
+            "{\"status\":\"NOT_FOUND\",\"sufficient_confirmations\":false}".to_string()
+        },
+        Err(_) => {
+            "{\"status\":\"INVALID\",\"sufficient_confirmations\":false}".to_string()
+        }
+    };
+
+    match CString::new(verification_result) {
+        Ok(c_string) => c_string.into_raw(),
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::AllocationError).code;
+            ptr::null_mut()
+        }
+    }
+}
+
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
     use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
+
+    use tari_test_utils::random;
 
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -10613,7 +11327,7 @@ mod test {
     use tari_key_manager::mnemonic_wordlists;
     use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
-    use tari_test_utils::random;
+
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 

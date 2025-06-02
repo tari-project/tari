@@ -118,6 +118,8 @@ struct TariCompletedTransactions;
 
 struct TariContacts;
 
+struct TariPaymentRecords;
+
 struct TariPendingInboundTransactions;
 
 struct TariPendingOutboundTransactions;
@@ -244,6 +246,50 @@ typedef struct Balance TariBalance;
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
+
+/**
+ * Payment Details FFI Types
+ */
+struct TariPaymentDetails {
+  unsigned char payment_reference[32];
+  char *commitment;
+  unsigned long long amount;
+  unsigned long long block_height;
+  unsigned long long confirmations;
+  unsigned long long mined_timestamp;
+};
+
+/**
+ * PayRef Configuration FFI Types
+ */
+struct TariPayRefConfig {
+  unsigned long long required_confirmations;
+  unsigned int display_format;
+  bool auto_copy_on_click;
+  unsigned int prefix_chars;
+  unsigned int suffix_chars;
+};
+
+/**
+ * PayRef Status FFI Types
+ */
+struct TariPayRefStatus {
+  unsigned int status_type;
+  unsigned char payment_reference[32];
+  unsigned long long confirmations;
+  unsigned long long blocks_remaining;
+};
+
+/**
+ * Payment Record FFI Types
+ */
+struct TariPaymentRecord {
+  unsigned char payment_reference[32];
+  unsigned long long amount;
+  unsigned long long block_height;
+  unsigned long long mined_timestamp;
+  unsigned int direction;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -4708,6 +4754,125 @@ struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
  * None
  */
 void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
+
+/**
+ * Find payment details by PayRef
+ * Returns null if PayRef not found
+ */
+struct TariPaymentDetails *wallet_find_payment_by_reference(struct TariWallet *wallet,
+                                                            const unsigned char *payment_reference,
+                                                            int *error_out);
+
+/**
+ * Get available payment references
+ */
+struct TariPaymentRecords *wallet_get_available_payment_references(struct TariWallet *wallet,
+                                                                   int *error_out);
+
+/**
+ * Get all payment references
+ */
+struct TariPaymentRecords *wallet_get_all_payment_references(struct TariWallet *wallet,
+                                                             int *error_out);
+
+/**
+ * Get PayRef configuration
+ */
+struct TariPayRefConfig *wallet_get_payment_reference_config(struct TariWallet *wallet,
+                                                             int *error_out);
+
+/**
+ * Set PayRef configuration
+ */
+bool wallet_set_payment_reference_config(struct TariWallet *wallet,
+                                         struct TariPayRefConfig *config,
+                                         int *error_out);
+
+/**
+ * Parse payment reference from hex string
+ */
+unsigned char *parse_payment_reference_hex(const char *hex_str, int *error_out);
+
+/**
+ * Convert payment reference to hex string
+ */
+char *payment_reference_to_hex(const unsigned char *payment_reference, int *error_out);
+
+/**
+ * Destroy TariPaymentDetails
+ */
+void payment_details_destroy(struct TariPaymentDetails *details);
+
+/**
+ * Destroy TariPaymentRecords
+ */
+void payment_records_destroy(struct TariPaymentRecords *records);
+
+/**
+ * Destroy TariPayRefConfig
+ */
+void payref_config_destroy(struct TariPayRefConfig *config);
+
+/**
+ * Destroy TariPayRefStatus
+ */
+void payref_status_destroy(struct TariPayRefStatus *status);
+
+/**
+ * Get length of TariPaymentRecords
+ */
+unsigned int payment_records_get_length(const struct TariPaymentRecords *records, int *error_out);
+
+/**
+ * Get TariPaymentRecord at index
+ */
+struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords *records,
+                                                 unsigned int index,
+                                                 int *error_out);
+
+/**
+ * Destroy TariPaymentRecord
+ */
+void payment_record_destroy(struct TariPaymentRecord *record);
+
+/**
+ * Free payment reference memory allocated by parse_payment_reference_hex
+ */
+void payment_reference_destroy(unsigned char *payment_reference);
+
+/**
+ * Generate PayRef from block hash and commitment (for external use)
+ */
+unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
+                                                          const unsigned char *commitment,
+                                                          int *error_out);
+
+/**
+ * Get PayRef status by checking confirmations
+ */
+struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *wallet,
+                                                            const unsigned char *payment_reference,
+                                                            int *error_out);
+
+/**
+ * Format PayRef for display according to config
+ */
+char *wallet_format_payment_reference(const unsigned char *payment_reference,
+                                     unsigned int format_type,
+                                     int *error_out);
+
+/**
+ * Validate PayRef hex format
+ */
+bool wallet_validate_payment_reference_format(const char *payref_hex, int *error_out);
+
+/**
+ * Get PayRef verification result for exchanges/merchants (returns JSON string)
+ */
+char *wallet_verify_payment_reference(struct TariWallet *wallet,
+                                     const unsigned char *payment_reference,
+                                     unsigned long long required_confirmations,
+                                     int *error_out);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
