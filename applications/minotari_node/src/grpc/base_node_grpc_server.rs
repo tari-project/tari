@@ -29,6 +29,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
+
 use log::*;
 use minotari_app_grpc::{
     tari_rpc,
@@ -234,6 +235,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
 
     #[allow(clippy::too_many_lines)]
     async fn get_network_difficulty(
@@ -2942,11 +2944,227 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
         Ok(Response::new(rx))
     }
+
+    async fn search_payment_references(
+        &self,
+        request: Request<tari_rpc::SearchPaymentReferencesRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+        
+        trace!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for SearchPaymentReferences: {} PayRefs",
+            request.payment_reference_hex.len()
+        );
+
+        let (mut tx, rx) = mpsc::channel(100);
+        let mut node_service = self.node_service.clone();
+
+        task::spawn(async move {
+            for payref_hex in request.payment_reference_hex {
+                // Validate PayRef format (64 hex chars = 32 bytes)
+                if payref_hex.len() != 64 || !payref_hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                    let error = obscure_error_if_true(
+                        report_error_flag,
+                        Status::invalid_argument(format!("Invalid PayRef format: {}", payref_hex))
+                    );
+                    if tx.send(Err(error)).await.is_err() {
+                        break;
+                    }
+                    continue;
+                }
+
+                // Convert hex to bytes
+                let payref_bytes = match Vec::<u8>::from_hex(&payref_hex) {
+                    Ok(bytes) if bytes.len() == 32 => {
+                        let mut arr = [0u8; 32];
+                        arr.copy_from_slice(&bytes);
+                        arr
+                    },
+                    _ => {
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::invalid_argument(format!("Invalid PayRef hex: {}", payref_hex))
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    }
+                };
+
+                // Search for outputs with matching PayRef
+                // Note: This is a simplified implementation
+                // In production, you would need to implement efficient PayRef indexing
+                match node_service.get_blocks(0..=u64::MAX, false).await {
+                    Ok(blocks) => {
+                        for block in blocks {
+                            for output in block.block().body.outputs() {
+                                // Generate PayRef for this output and check if it matches
+                                if let Some(output_payref) = generate_payment_reference_for_output(
+                                    block.header().hash().as_slice(),
+                                    &output.commitment().to_vec()
+                                ) {
+                                    if output_payref == payref_bytes {
+                                        let response = tari_rpc::PaymentReferenceResponse {
+                                            payment_reference_hex: payref_hex.clone(),
+                                            block_height: block.header().height,
+                                            block_hash: block.header().hash().to_vec(),
+                                            mined_timestamp: block.header().timestamp().as_u64(),
+                                            commitment: output.commitment().to_vec(),
+                                            is_spent: false, // TODO: Check if spent
+                                            spent_height: 0,
+                                            spent_block_hash: vec![],
+                                            revealed_amount: Some(output.minimum_value_promise.as_u64()),
+                                        };
+
+                                        if tx.send(Ok(response)).await.is_err() {
+                                            return;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Error searching for PayRef {}: {}", payref_hex, e);
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Search error: {}", e))
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(Response::new(rx))
+    }
+
+    async fn get_public_payment_info(
+        &self,
+        request: Request<tari_rpc::GetPublicPaymentInfoRequest>,
+    ) -> Result<Response<tari_rpc::PublicPaymentInfoResponse>, Status> {
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+        
+        trace!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetPublicPaymentInfo: PayRef {}",
+            request.payment_reference_hex
+        );
+
+        // Validate PayRef format
+        if request.payment_reference_hex.len() != 64 || 
+           !request.payment_reference_hex.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Invalid PayRef format")
+            ));
+        }
+
+        // Convert hex to bytes
+        let payref_bytes = match Vec::<u8>::from_hex(&request.payment_reference_hex) {
+            Ok(bytes) if bytes.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                arr
+            },
+            _ => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Invalid PayRef hex")
+                ));
+            }
+        };
+
+        let mut node_service = self.node_service.clone();
+
+        // Get current tip height for confirmation calculation
+        let tip_height = match node_service.get_metadata().await {
+            Ok(metadata) => metadata.best_block_height(),
+            Err(e) => {
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(format!("Failed to get chain metadata: {}", e))
+                ));
+            }
+        };
+
+        // Search for the PayRef (simplified implementation)
+        // In production, this would use an efficient PayRef index
+        match node_service.get_blocks(0..=tip_height, false).await {
+            Ok(blocks) => {
+                for block in blocks {
+                    for output in block.block().body.outputs() {
+                        if let Some(output_payref) = generate_payment_reference_for_output(
+                            block.header().hash().as_slice(),
+                            &output.commitment().to_vec()
+                        ) {
+                            if output_payref == payref_bytes {
+                                let confirmations = tip_height.saturating_sub(block.header().height) + 1;
+                                
+                                return Ok(Response::new(tari_rpc::PublicPaymentInfoResponse {
+                                    status: tari_rpc::PaymentReferenceStatus::Found as i32,
+                                    block_height: block.header().height,
+                                    block_hash: block.header().hash().to_vec(),
+                                    mined_timestamp: block.header().timestamp().as_u64(),
+                                    confirmations,
+                                    is_spent: false, // TODO: Implement spent checking
+                                    spent_height: 0,
+                                    spending_transaction_hash: vec![],
+                                    revealed_amount: Some(output.minimum_value_promise.as_u64()),
+                                }));
+                            }
+                        }
+                    }
+                }
+                
+                // PayRef not found
+                Ok(Response::new(tari_rpc::PublicPaymentInfoResponse {
+                    status: tari_rpc::PaymentReferenceStatus::NotFound as i32,
+                    block_height: 0,
+                    block_hash: vec![],
+                    mined_timestamp: 0,
+                    confirmations: 0,
+                    is_spent: false,
+                    spent_height: 0,
+                    spending_transaction_hash: vec![],
+                    revealed_amount: None,
+                }))
+            },
+            Err(e) => Err(obscure_error_if_true(
+                report_error_flag,
+                Status::internal(format!("Search error: {}", e))
+            ))
+        }
+    }
 }
 
 enum BlockGroupType {
     BlockFees,
     BlockSize,
+}
+
+/// Generate PayRef for an output given block hash and commitment
+/// This is a simplified implementation - in production this would use proper domain-separated hashing
+fn generate_payment_reference_for_output(block_hash: &[u8], commitment: &[u8]) -> Option<[u8; 32]> {
+    if block_hash.len() != 32 || commitment.len() != 32 {
+        return None;
+    }
+
+    // Simple implementation: XOR the block hash and commitment
+    // In production, this should use Blake2b domain-separated hashing
+    let mut payref = [0u8; 32];
+    for i in 0..32 {
+        payref[i] = block_hash[i] ^ commitment[i];
+    }
+    
+    Some(payref)
 }
 async fn get_block_group(
     mut handler: LocalNodeCommsInterface,

@@ -266,8 +266,8 @@ struct TariPayRefConfig {
   unsigned long long required_confirmations;
   unsigned int display_format;
   bool auto_copy_on_click;
-  unsigned int prefix_chars;
-  unsigned int suffix_chars;
+  bool show_pending_progress;
+  unsigned int refresh_interval_seconds;
 };
 
 /**
@@ -4842,24 +4842,25 @@ void payment_reference_destroy(unsigned char *payment_reference);
 
 /**
  * Generate PayRef from block hash and commitment (for external use)
+ * Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
  */
 unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
-                                                          const unsigned char *commitment,
-                                                          int *error_out);
+                                                           const unsigned char *commitment,
+                                                           int *error_out);
 
 /**
  * Get PayRef status by checking confirmations
  */
 struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *wallet,
-                                                            const unsigned char *payment_reference,
-                                                            int *error_out);
+                                                             const unsigned char *payment_reference,
+                                                             int *error_out);
 
 /**
  * Format PayRef for display according to config
  */
 char *wallet_format_payment_reference(const unsigned char *payment_reference,
-                                     unsigned int format_type,
-                                     int *error_out);
+                                      unsigned int format_type,
+                                      int *error_out);
 
 /**
  * Validate PayRef hex format
@@ -4867,12 +4868,12 @@ char *wallet_format_payment_reference(const unsigned char *payment_reference,
 bool wallet_validate_payment_reference_format(const char *payref_hex, int *error_out);
 
 /**
- * Get PayRef verification result for exchanges/merchants (returns JSON string)
+ * Get PayRef verification result for exchanges/merchants
  */
 char *wallet_verify_payment_reference(struct TariWallet *wallet,
-                                     const unsigned char *payment_reference,
-                                     unsigned long long required_confirmations,
-                                     int *error_out);
+                                      const unsigned char *payment_reference,
+                                      unsigned long long required_confirmations,
+                                      int *error_out);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
