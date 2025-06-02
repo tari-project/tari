@@ -30,8 +30,7 @@ use std::{
     time::Instant,
 };
 
-use blake2::Blake2b;
-use digest::consts::U32;
+// Blake2b and digest removed - using shared PayRef utility
 
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
@@ -42,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
+    payment_reference::generate_payment_reference,
     types::{
         BadBlock,
         BlockHash,
@@ -59,8 +59,7 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
-use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_hashing::PaymentReferenceHashDomain;
+// PayRef generation moved to shared utility crate
 
 use super::{
     cursors::KeyPrefixCursor,
@@ -609,7 +608,7 @@ impl LMDBDatabase {
         }
 
         // Generate PayRef and add to index
-        let payref = Self::generate_payment_reference(header_hash, &output.commitment);
+        let payref = Self::generate_payment_reference_for_output(header_hash, &output.commitment);
         lmdb_insert(
             txn,
             &self.payref_to_output_index,
@@ -642,15 +641,10 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    /// Generate payment reference (PayRef) for an output
+    /// Generate payment reference (PayRef) for an output using shared utility
     /// PayRef = Blake2b_256(block_hash || commitment) using domain separation
-    fn generate_payment_reference(header_hash: &HashOutput, commitment: &CompressedCommitment) -> [u8; 32] {
-        let mut hasher = DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
-        hasher.update(header_hash.as_slice());
-        hasher.update(commitment.as_bytes());
-        let mut output = [0u8; 32];
-        hasher.finalize_into_reset(digest::generic_array::GenericArray::from_mut_slice(&mut output));
-        output
+    fn generate_payment_reference_for_output(header_hash: &HashOutput, commitment: &CompressedCommitment) -> [u8; 32] {
+        generate_payment_reference(&(*header_hash).into(), commitment)
     }
 
     fn insert_kernel(
@@ -784,7 +778,7 @@ impl LMDBDatabase {
         // We need to find where this output was mined to calculate its PayRef
         if let Ok(Some(output_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
             // Generate the PayRef using the same method as in generate_payment_reference
-            let payref_bytes = Self::generate_payment_reference(&output_info.header_hash, &output_info.output.commitment);
+            let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_info.output.commitment);
 
             // Delete the PayRef index entry
             lmdb_delete(
@@ -1913,6 +1907,10 @@ impl LMDBDatabase {
         let txn = self.read_transaction()?;
         self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }
+
+    // TODO: PayRef index rebuilding functionality
+    // This would allow rebuilding PayRef indexes for databases created before PayRef support
+    // Implementation would require proper integration with the blockchain backend interface
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)

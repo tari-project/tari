@@ -7198,6 +7198,7 @@ dependencies = [
  "strum_macros",
  "tari_common",
  "tari_crypto",
+ "tari_hashing",
  "tari_max_size",
  "tari_utilities",
  "thiserror 1.0.69",

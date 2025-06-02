@@ -38,6 +38,8 @@ pub struct TransactionsTab {
     detailed_transaction: Option<CompletedTransactionInfo>,
     error_message: Option<String>,
     confirmation_dialog: bool,
+    payref_search: String,
+    payref_search_active: bool,
 }
 
 impl TransactionsTab {
@@ -50,6 +52,8 @@ impl TransactionsTab {
             detailed_transaction: None,
             error_message: None,
             confirmation_dialog: false,
+            payref_search: String::new(),
+            payref_search_active: false,
         }
     }
 
@@ -517,10 +521,24 @@ impl TransactionsTab {
 
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let payment_ref_content = Span::styled(
-                tx.payment_reference_hex.as_ref().unwrap_or(&"N/A".to_string()).clone(),
-                Style::default().fg(Color::White),
-            );
+            let payment_ref_content = {
+                let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
+                    (Some(hex), Some(status)) => format!("{}\nStatus: {}", hex, status),
+                    (None, Some(status)) => format!("PayRef: N/A\nStatus: {}", status),
+                    (Some(hex), None) => hex.clone(),
+                    (None, None) => "N/A".to_string(),
+                };
+                
+                // Color code based on status
+                let color = match &tx.payment_reference_status {
+                    Some(status) if status.starts_with("Available") => Color::Green,
+                    Some(status) if status.starts_with("Pending") => Color::Yellow,
+                    Some(status) if status.contains("Not mined") => Color::Gray,
+                    _ => Color::White,
+                };
+                
+                Span::styled(payref_text, Style::default().fg(color))
+            };
 
             let paragraph = Paragraph::new(payment_ref_content).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
@@ -551,6 +569,31 @@ impl TransactionsTab {
             let paragraph = Paragraph::new(payment_id).wrap(trim);
             f.render_widget(paragraph, content_layout[13]);
         }
+    }
+
+    fn search_by_payref(&mut self, app_state: &AppState) {
+        let search_term = self.payref_search.trim().replace(' ', "").to_lowercase();
+        
+        // Search in completed transactions
+        let completed_txs = app_state.get_completed_txs();
+        for (index, tx) in completed_txs.iter().enumerate() {
+            if let Some(payref_hex) = &tx.payment_reference_hex {
+                if payref_hex.to_lowercase().contains(&search_term) {
+                    // Found a match - select this transaction
+                    self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                    self.completed_list_state.select(Some(index));
+                    self.pending_list_state.select(None);
+                    self.detailed_transaction = Some((*tx).clone());
+                    return;
+                }
+            }
+        }
+        
+        // If no match found, show error
+        self.error_message = Some(format!(
+            "No transaction found with PayRef containing '{}'\nPress Enter to continue.",
+            search_term
+        ));
     }
 }
 
@@ -590,6 +633,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" show/hide mining "));
         span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" rebroadcast Txs "));
+        span_vec.push(Span::styled("(S)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" search PayRef "));
         span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exit list"));
 
@@ -613,6 +658,15 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 120,
                 9,
             );
+        }
+
+        // Draw PayRef search input if active
+        if self.payref_search_active {
+            let search_prompt = format!(
+                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel", 
+                self.payref_search
+            );
+            draw_dialog(f, area, "PayRef Search".to_string(), search_prompt, Color::Yellow, 120, 9);
         }
     }
 
@@ -646,7 +700,42 @@ impl<B: Backend> Component<B> for TransactionsTab {
             }
         }
 
+        // Handle PayRef search input mode
+        if self.payref_search_active {
+            match c {
+                '\n' => {
+                    // Perform search
+                    if !self.payref_search.is_empty() {
+                        self.search_by_payref(app_state);
+                    }
+                    self.payref_search_active = false;
+                },
+                '\u{1b}' => {
+                    // Escape key - cancel search
+                    self.payref_search_active = false;
+                    self.payref_search.clear();
+                },
+                '\u{7f}' => {
+                    // Backspace
+                    self.payref_search.pop();
+                },
+                c if c.is_ascii_hexdigit() || c == ' ' => {
+                    // Only allow hex characters and spaces
+                    self.payref_search.push(c);
+                },
+                _ => {
+                    // Ignore other characters
+                }
+            }
+            return;
+        }
+
         match c {
+            's' => {
+                // Activate PayRef search mode
+                self.payref_search_active = true;
+                self.payref_search.clear();
+            },
             'p' => {
                 if let Err(e) = Handle::current().block_on(app_state.restart_transaction_protocols()) {
                     error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);

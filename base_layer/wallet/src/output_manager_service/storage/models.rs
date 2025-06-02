@@ -22,11 +22,10 @@
 
 use std::{cmp::Ordering, convert::TryFrom};
 
-use blake2::Blake2b;
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
-use digest::consts::U32;
 use tari_common_types::{
+    payment_reference::{generate_payment_reference, PaymentReference},
     transaction::TxId,
     types::{BlockHash, CompressedCommitment, HashOutput},
 };
@@ -34,10 +33,7 @@ use tari_core::transactions::{
     transaction_components::{encrypted_data::PaymentId, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
-use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_hashing::PaymentReferenceHashDomain;
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::ByteArray;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -96,14 +92,9 @@ impl DbWalletOutput {
 
     /// Generate a Payment Reference (PayRef) for this output if it has been mined
     /// PayRef = Blake2b_256(block_hash || commitment)
-    pub fn generate_payment_reference(&self) -> Option<[u8; 32]> {
+    pub fn generate_payment_reference(&self) -> Option<PaymentReference> {
         if let Some(block_hash) = &self.mined_in_block {
-            let mut hasher = DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
-            hasher.update(block_hash.as_slice());
-            hasher.update(self.commitment.as_bytes());
-            let mut output = [0u8; 32];
-            hasher.finalize_into_reset(digest::generic_array::GenericArray::from_mut_slice(&mut output));
-            Some(output)
+            Some(generate_payment_reference(block_hash, &self.commitment))
         } else {
             None
         }
@@ -144,7 +135,7 @@ impl DbWalletOutput {
     }
 
     /// Check if this output's PayRef matches the given reference
-    pub fn matches_payment_reference(&self, payref: &[u8; 32]) -> bool {
+    pub fn matches_payment_reference(&self, payref: &PaymentReference) -> bool {
         if let Some(generated_payref) = self.generate_payment_reference() {
             generated_payref == *payref
         } else {

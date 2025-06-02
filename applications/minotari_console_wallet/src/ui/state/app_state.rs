@@ -797,22 +797,49 @@ impl AppStateInner {
         debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
                unspent_outputs.len(), spent_outputs.len());
         
-        // Create lookup map: TxId -> PayRef hex using the canonical transaction ID link
+        // Create lookup maps: TxId -> (PayRef hex, status) using the canonical transaction ID link
         let mut payref_by_tx_id = std::collections::HashMap::new();
+        let mut payref_status_by_tx_id = std::collections::HashMap::new();
+        
+        // Get current tip height for confirmation calculations
+        let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
+            Ok(Some(metadata)) => metadata.best_block_height(),
+            _ => 0, // Default to 0 if we can't get chain height
+        };
         
         // Process all outputs (unspent and spent) to build the lookup map
         for output in unspent_outputs.into_iter().chain(spent_outputs.into_iter()) {
-            // Only include outputs that are linked to transactions and have been mined
-            if let (Some(tx_id), Some(_mined_height), Some(_block_hash)) = 
-                (output.received_in_tx_id, output.mined_height, output.mined_in_block) {
-                    
-                // Generate payment reference using the canonical method
-                if let Some(payment_ref) = output.generate_payment_reference() {
-                    let payref_hex = tari_utilities::hex::Hex::to_hex(&payment_ref);
+            // Only include outputs that are linked to transactions
+            if let Some(tx_id) = output.received_in_tx_id {
+                use minotari_wallet::output_manager_service::payment_reference::PayRefStatus;
+                
+                // Get PayRef status
+                let status = output.get_payment_reference_status(current_tip_height, 5); // Default 5 confirmations
+                
+                let (payref_hex_opt, status_text) = match status {
+                    PayRefStatus::Available(payref, confirmations) => {
+                        let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
+                        (Some(payref_hex), format!("Available ({} confirmations)", confirmations))
+                    },
+                    PayRefStatus::Pending(current_confs, blocks_remaining) => {
+                        (None, format!("Pending {}/{} confirmations ({} blocks remaining)", 
+                                     current_confs, current_confs + blocks_remaining, blocks_remaining))
+                    },
+                    PayRefStatus::NotMined => {
+                        (None, "Not mined".to_string())
+                    },
+                    PayRefStatus::InvalidOutput => {
+                        (None, "Invalid output".to_string())
+                    },
+                };
+                
+                if let Some(payref_hex) = payref_hex_opt {
                     payref_by_tx_id.insert(tx_id, payref_hex.clone());
                     debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
                            tx_id, payref_hex);
                 }
+                
+                payref_status_by_tx_id.insert(tx_id, status_text);
             }
         }
         
@@ -829,6 +856,13 @@ impl AppStateInner {
             } else {
                 debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
                        tx.tx_id);
+            }
+            
+            // Always set the status, regardless of whether PayRef is available
+            if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id) {
+                tx.payment_reference_status = Some(status.clone());
+                debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}", 
+                       tx.tx_id, status);
             }
         }
         
@@ -1248,6 +1282,7 @@ pub struct CompletedTransactionInfo {
     pub coinbase: bool,
     pub burn: bool,
     pub payment_reference_hex: Option<String>,
+    pub payment_reference_status: Option<String>, // "Available", "Pending 3/5", "Not Mined", etc.
 }
 
 impl CompletedTransactionInfo {
@@ -1309,6 +1344,7 @@ impl CompletedTransactionInfo {
             coinbase,
             burn,
             payment_reference_hex: None, // Will be populated when transactions are loaded
+            payment_reference_status: None, // Will be populated when transactions are loaded
         })
     }
 }
