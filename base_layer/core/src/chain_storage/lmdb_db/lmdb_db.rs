@@ -3027,6 +3027,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         last_correct_height = height;
                     }
                 } else {
+                    info!(target: LOG_TARGET, "No accumulated difficulty found for block height {}", height);
                     break;
                 }
             }
