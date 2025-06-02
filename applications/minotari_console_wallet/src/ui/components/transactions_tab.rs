@@ -332,9 +332,10 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 13];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
+        let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
         let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
@@ -350,37 +351,39 @@ impl TransactionsTab {
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(excess_sig).wrap(trim);
+        let paragraph = Paragraph::new(payment_ref).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
-        let paragraph = Paragraph::new(source_address).wrap(trim);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
-        let paragraph = Paragraph::new(destination_address).wrap(trim);
+        let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[2]);
-        let paragraph = Paragraph::new(direction).wrap(trim);
+        let paragraph = Paragraph::new(destination_address).wrap(trim);
         f.render_widget(paragraph, label_layout[3]);
-        let paragraph = Paragraph::new(amount).wrap(trim);
+        let paragraph = Paragraph::new(direction).wrap(trim);
         f.render_widget(paragraph, label_layout[4]);
-        let paragraph = Paragraph::new(fee).wrap(trim);
+        let paragraph = Paragraph::new(amount).wrap(trim);
         f.render_widget(paragraph, label_layout[5]);
-        let paragraph = Paragraph::new(status).wrap(trim);
+        let paragraph = Paragraph::new(fee).wrap(trim);
         f.render_widget(paragraph, label_layout[6]);
-        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        let paragraph = Paragraph::new(maturity).wrap(trim);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
         f.render_widget(paragraph, label_layout[11]);
-        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[12]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 13];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
@@ -514,32 +517,39 @@ impl TransactionsTab {
 
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(excess_sig).wrap(trim);
+            let payment_ref_content = Span::styled(
+                tx.payment_reference_hex.as_ref().unwrap_or(&"N/A".to_string()).clone(),
+                Style::default().fg(Color::White),
+            );
+
+            let paragraph = Paragraph::new(payment_ref_content).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
-            let paragraph = Paragraph::new(source_address).wrap(trim);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
-            let paragraph = Paragraph::new(destination_address).wrap(trim);
+            let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[2]);
-            let paragraph = Paragraph::new(direction).wrap(trim);
+            let paragraph = Paragraph::new(destination_address).wrap(trim);
             f.render_widget(paragraph, content_layout[3]);
-            let paragraph = Paragraph::new(amount).wrap(trim);
+            let paragraph = Paragraph::new(direction).wrap(trim);
             f.render_widget(paragraph, content_layout[4]);
-            let paragraph = Paragraph::new(fee).wrap(trim);
+            let paragraph = Paragraph::new(amount).wrap(trim);
             f.render_widget(paragraph, content_layout[5]);
-            let paragraph = Paragraph::new(status).wrap(trim);
+            let paragraph = Paragraph::new(fee).wrap(trim);
             f.render_widget(paragraph, content_layout[6]);
-            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
-            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
-            let paragraph = Paragraph::new(maturity).wrap(trim);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
             f.render_widget(paragraph, content_layout[11]);
-            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[12]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[13]);
         }
     }
 }

@@ -157,6 +157,7 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    GetOutputsByTxId(TxId),
     // PayRef operations
     FindPaymentByReference([u8; 32]),
     GetAvailablePaymentReferences,
@@ -292,6 +293,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            GetOutputsByTxId(t) => write!(f, "GetOutputsByTxId: {}", t),
             FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
             GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
@@ -1053,12 +1055,16 @@ impl OutputManagerHandle {
     pub async fn get_all_payment_references(
         &mut self,
     ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
+        log::debug!(target: "wallet::output_manager_service::handle", "payref_debug: get_all_payment_references() called via handle");
         match self
             .handle
             .call(OutputManagerRequest::GetAllPaymentReferences)
             .await??
         {
-            OutputManagerResponse::PaymentReferences(references) => Ok(references),
+            OutputManagerResponse::PaymentReferences(references) => {
+                log::debug!(target: "wallet::output_manager_service::handle", "payref_debug: get_all_payment_references() returning {} references via handle", references.len());
+                Ok(references)
+            },
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

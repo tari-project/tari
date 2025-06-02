@@ -112,7 +112,21 @@ impl DbWalletOutput {
     /// Get the PayRef status based on confirmation requirements
     pub fn get_payment_reference_status(&self, current_tip_height: u64, required_confirmations: u64) -> PayRefStatus {
         if let Some(mined_height) = self.mined_height {
-            let confirmations = current_tip_height.saturating_sub(mined_height) + 1;
+            // Handle unsynced wallet case: if current_tip_height is 0 or very low,
+            // treat all mined outputs as having sufficient confirmations
+            let (confirmations, is_unsynced_mode) = if current_tip_height == 0 || current_tip_height < mined_height {
+                // For unsynced wallets, treat all mined outputs as confirmed
+                // Use a high confirmation count to indicate it's definitely confirmed
+                (required_confirmations + 1, true)
+            } else {
+                (current_tip_height.saturating_sub(mined_height) + 1, false)
+            };
+            
+            log::debug!(
+                target: "wallet::output_manager_service::models",
+                "payref_debug: confirmation calc - current_tip: {}, mined_height: {}, confirmations: {}, required: {}, unsynced_mode: {}",
+                current_tip_height, mined_height, confirmations, required_confirmations, is_unsynced_mode
+            );
             
             if confirmations >= required_confirmations {
                 if let Some(payref) = self.generate_payment_reference() {

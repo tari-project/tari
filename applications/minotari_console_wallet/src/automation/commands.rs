@@ -2711,11 +2711,57 @@ pub async fn command_runner(
                 println!("removing temp wallet in: {:?}", temp_path);
                 fs::remove_dir_all(temp_path)?;
             },
-            ShowPayRef(_args) => {
-                println!("ShowPayRef functionality is not available.");
-                println!("Transaction ID lookup for payment references is not implemented.");
-                println!("Use 'list-payrefs' to see all payment references or 'find-payref' with a specific payment reference.");
-                eprintln!("ShowPayRef error! Transaction ID lookup not supported");
+            ShowPayRef(args) => {
+                // Show transaction details first
+                match transaction_service.get_any_transaction(args.transaction_id.into()).await {
+                    Ok(Some(tx)) => {
+                        println!("Transaction ID: {}", args.transaction_id);
+                        let _status = match &tx {
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::Completed(completed_tx) => {
+                                println!("Transaction status: Completed");
+                                println!("Amount: {}", completed_tx.amount);
+                                println!("Fee: {}", completed_tx.fee);
+                                println!("Direction: {:?}", completed_tx.direction);
+                                if let Some(height) = completed_tx.mined_height {
+                                    println!("Mined at height: {}", height);
+                                }
+                                if let Some(timestamp) = completed_tx.mined_timestamp {
+                                    println!("Mined timestamp: {}", timestamp);
+                                }
+                                "Completed"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingInbound(_) => {
+                                println!("Transaction status: PendingInbound");
+                                "PendingInbound"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingOutbound(_) => {
+                                println!("Transaction status: PendingOutbound");
+                                "PendingOutbound"
+                            },
+                        };
+                        
+                        // Try to find associated payment references
+                        match output_service.get_all_payment_references().await {
+                            Ok(payment_refs) => {
+                                if payment_refs.is_empty() {
+                                    println!("\nNo payment references are available yet.");
+                                    println!("This may happen if:");
+                                    println!("- No transactions have been mined and confirmed");
+                                    println!("- Payment reference generation is not enabled");
+                                } else {
+                                    println!("\nNote: Payment reference correlation with specific transactions");
+                                    println!("requires additional implementation. Use 'list-payrefs' to see all available");
+                                    println!("payment references and correlate manually based on amount and timestamp.");
+                                }
+                            },
+                            Err(e) => eprintln!("Error getting payment references: {}", e),
+                        }
+                    },
+                    Ok(None) => {
+                        println!("Transaction ID {} not found", args.transaction_id);
+                    },
+                    Err(e) => eprintln!("ShowPayRef error! {}", e),
+                }
             },
             FindPayRef(args) => {
                 use minotari_wallet::output_manager_service::payment_reference::parse_payref_hex;
@@ -2745,10 +2791,12 @@ pub async fn command_runner(
                 }
             },
             ListPayRefs(args) => {
+                debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command starting execution");
                 match output_service.get_all_payment_references().await {
                     Ok(payment_refs) => {
+                        debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command got {} payment_refs from output_service", payment_refs.len());
                         // Apply limit filter
-                        let limit = args.limit.unwrap_or(50);
+                        let limit = args.limit.unwrap_or(usize::MAX);
                         let limited_refs: Vec<_> = payment_refs.into_iter().take(limit).collect();
                         
                         if limited_refs.is_empty() {

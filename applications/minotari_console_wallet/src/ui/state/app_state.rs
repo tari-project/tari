@@ -777,7 +777,62 @@ impl AppStateInner {
                     .map_err(|e| UiError::TransactionError(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // Calculate payment references for completed transactions using canonical approach
+        self.calculate_payment_references_for_transactions().await?;
+        
         self.updated = true;
+        Ok(())
+    }
+
+    async fn calculate_payment_references_for_transactions(&mut self) -> Result<(), UiError> {
+        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_transactions() called using canonical approach");
+        
+        // Use the canonical approach: get all outputs directly and use received_in_tx_id as the link
+        // This matches the approach used by the working gRPC and ListPayRefs implementations
+        let unspent_outputs = self.wallet.output_manager_service.get_unspent_outputs().await
+            .map_err(|e| UiError::OutputManager(e))?;
+        let spent_outputs = self.wallet.output_manager_service.get_spent_outputs().await
+            .map_err(|e| UiError::OutputManager(e))?;
+        
+        debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
+               unspent_outputs.len(), spent_outputs.len());
+        
+        // Create lookup map: TxId -> PayRef hex using the canonical transaction ID link
+        let mut payref_by_tx_id = std::collections::HashMap::new();
+        
+        // Process all outputs (unspent and spent) to build the lookup map
+        for output in unspent_outputs.into_iter().chain(spent_outputs.into_iter()) {
+            // Only include outputs that are linked to transactions and have been mined
+            if let (Some(tx_id), Some(_mined_height), Some(_block_hash)) = 
+                (output.received_in_tx_id, output.mined_height, output.mined_in_block) {
+                    
+                // Generate payment reference using the canonical method
+                if let Some(payment_ref) = output.generate_payment_reference() {
+                    let payref_hex = tari_utilities::hex::Hex::to_hex(&payment_ref);
+                    payref_by_tx_id.insert(tx_id, payref_hex.clone());
+                    debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
+                           tx_id, payref_hex);
+                }
+            }
+        }
+        
+        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
+               payref_by_tx_id.len());
+        
+        // Update completed transactions with their payment references using the canonical TxId link
+        for tx in &mut self.data.completed_txs {
+            // Look up payment reference by transaction ID (canonical approach)
+            if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id) {
+                tx.payment_reference_hex = Some(payref_hex.clone());
+                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
+                       tx.tx_id, payref_hex);
+            } else {
+                debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
+                       tx.tx_id);
+            }
+        }
+        
+        debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using canonical approach");
         Ok(())
     }
 
@@ -1192,6 +1247,7 @@ pub struct CompletedTransactionInfo {
     pub payment_id: Option<PaymentId>,
     pub coinbase: bool,
     pub burn: bool,
+    pub payment_reference_hex: Option<String>,
 }
 
 impl CompletedTransactionInfo {
@@ -1252,6 +1308,7 @@ impl CompletedTransactionInfo {
             payment_id: Some(tx.payment_id),
             coinbase,
             burn,
+            payment_reference_hex: None, // Will be populated when transactions are loaded
         })
     }
 }
