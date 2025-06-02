@@ -188,7 +188,7 @@ use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
 };
-use tari_common_types::payment_reference::{parse_payment_reference_hex, payment_reference_to_hex};
+
 
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;

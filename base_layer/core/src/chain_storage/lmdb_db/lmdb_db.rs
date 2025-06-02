@@ -1896,11 +1896,7 @@ impl LMDBDatabase {
         }
     }
 
-    /// Public method to fetch output by PayRef
-    fn fetch_output_by_payref(&self, payref: &[u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        self.fetch_output_by_payref_in_txn(&txn, payref)
-    }
+
 
     /// Check if an output is spent and return spent information
     fn check_output_spent_status(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
