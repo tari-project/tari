@@ -36,6 +36,7 @@ use tracing::trace;
 use crate::{block_template_manager::FinalBlockTemplateData, error::MmProxyError};
 
 const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
+const MAX_TEMPLATE_CACHE_SIZE: usize = 1000;
 
 /// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
 #[derive(Debug, Clone)]
@@ -67,9 +68,56 @@ impl BlockRepositoryItem {
 
 impl BlockTemplateRepository {
     pub fn new() -> Self {
-        Self {
+        let repo = Self {
             blocks: Arc::new(RwLock::new(HashMap::new())),
-        }
+        };
+        
+        // Start automatic cleanup task
+        repo.start_cleanup_task();
+        repo
+    }
+    
+    /// Start a background task for automatic cleanup
+    fn start_cleanup_task(&self) {
+        let blocks = self.blocks.clone();
+        tokio::spawn(async move {
+            let mut cleanup_timer = tokio::time::interval(std::time::Duration::from_secs(600)); // Every 10 minutes
+            cleanup_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            
+            loop {
+                cleanup_timer.tick().await;
+                
+                trace!(target: LOG_TARGET, "Starting automatic cleanup of block template repository");
+                let mut b = blocks.write().await;
+                #[cfg(test)]
+                let threshold = Utc::now();
+                #[cfg(not(test))]
+                let threshold = Utc::now() - Duration::minutes(20);
+                
+                let before_count = b.len();
+                *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
+                
+                // Also enforce maximum size limit
+                if b.len() > MAX_TEMPLATE_CACHE_SIZE {
+                    // Keep only the most recent entries
+                    let mut items: Vec<_> = b.drain().collect();
+                    items.sort_by(|a, b| b.1.datetime().cmp(&a.1.datetime()));
+                    items.truncate(MAX_TEMPLATE_CACHE_SIZE);
+                    *b = items.into_iter().collect();
+                }
+                
+                let after_count = b.len();
+                
+                if before_count != after_count {
+                    trace!(
+                        target: LOG_TARGET, 
+                        "Automatic cleanup removed {} outdated block templates (size limit: {})", 
+                        before_count - after_count,
+                        MAX_TEMPLATE_CACHE_SIZE
+                    );
+                }
+            }
+        });
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
@@ -82,6 +130,19 @@ impl BlockTemplateRepository {
     pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
         let merge_mining_hash = block_template.aux_chain_mr.to_vec();
         let mut b = self.blocks.write().await;
+        
+        // Enforce size limit before adding new entries
+        if b.len() >= MAX_TEMPLATE_CACHE_SIZE {
+            // Remove oldest entry to make space
+            if let Some((oldest_key, _)) = b.iter()
+                .min_by_key(|(_, item)| item.datetime())
+                .map(|(k, _)| k.clone()) 
+            {
+                b.remove(&oldest_key);
+                trace!(target: LOG_TARGET, "Removed oldest template to maintain size limit");
+            }
+        }
+        
         b.entry(merge_mining_hash)
             .or_insert_with(|| BlockRepositoryItem::new(block_template));
     }

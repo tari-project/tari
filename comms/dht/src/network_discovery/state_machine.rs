@@ -184,6 +184,18 @@ impl NetworkDiscoveryContext {
         self.num_rounds.fetch_add(1, Ordering::SeqCst)
     }
 
+    /// Clean up resources to prevent potential memory leaks
+    pub(super) async fn cleanup(&self) {
+        // Clear stored round info to break potential circular references
+        *self.last_round.write().await = None;
+        
+        // Clear attempted peers list
+        self.all_attempted_peers.write().await.clear();
+        
+        // Reset counters
+        self.reset_num_rounds();
+    }
+
     /// Get the number of rounds
     pub fn num_rounds(&self) -> usize {
         self.num_rounds.load(Ordering::SeqCst)
@@ -263,7 +275,19 @@ impl NetworkDiscoveryContext {
             .write()
             .await
             .append(&mut last_round.sync_peers.clone());
-        *self.last_round.write().await = Some(last_round);
+        
+        // Create a copy to store internally to avoid potential circular references
+        // when the same data is also broadcast via events
+        let stored_round = DhtNetworkDiscoveryRoundInfo {
+            num_new_peers: last_round.num_new_peers,
+            num_duplicate_peers: last_round.num_duplicate_peers,
+            num_succeeded: last_round.num_succeeded,
+            sync_peers: last_round.sync_peers.clone(),
+            phase: last_round.phase,
+            round_number: last_round.round_number,
+            total_rounds: last_round.total_rounds,
+        };
+        *self.last_round.write().await = Some(stored_round);
     }
 
     pub async fn last_round(&self) -> Option<DhtNetworkDiscoveryRoundInfo> {
@@ -460,6 +484,8 @@ impl DhtNetworkDiscovery {
 
             state = self.transition(state, next_event).await;
             if state.is_shutdown() {
+                // Clean up resources when shutting down to prevent memory leaks
+                self.context.cleanup().await;
                 break;
             }
         }

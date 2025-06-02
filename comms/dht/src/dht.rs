@@ -63,6 +63,7 @@ const LOG_TARGET: &str = "comms::dht";
 
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
 const DHT_EVENT_BROADCAST_CHANNEL_SIZE: usize = 100;
+const DHT_ACTOR_CHANNEL_SIZE: usize = 1000;
 
 #[derive(Debug, Error)]
 pub enum DhtInitializationError {
@@ -87,7 +88,7 @@ pub struct Dht {
     /// Used to create a OutboundMessageRequester.
     outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>,
     /// Sender for DHT requests
-    dht_sender: mpsc::UnboundedSender<DhtRequest>,
+    dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connectivity actor requester
@@ -107,7 +108,7 @@ impl Dht {
         connectivity: ConnectivityRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, DhtInitializationError> {
-        let (dht_sender, dht_receiver) = mpsc::unbounded_channel();
+        let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
@@ -151,7 +152,7 @@ impl Dht {
     fn actor(
         &self,
         conn: DbConnection,
-        request_receiver: mpsc::UnboundedReceiver<DhtRequest>,
+        request_receiver: mpsc::Receiver<DhtRequest>,
         shutdown_signal: ShutdownSignal,
     ) -> DhtActor {
         DhtActor::new(

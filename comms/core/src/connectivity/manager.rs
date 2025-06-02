@@ -419,6 +419,9 @@ impl ConnectivityManagerActor {
                 if !conn.is_connected() {
                     continue;
                 }
+                // Explicitly cleanup RPC clients before disconnect to prevent circular references
+                conn.cleanup_rpc_clients();
+                
                 match disconnect_silent_with_timeout(conn, Minimized::No, None).await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());

@@ -180,7 +180,7 @@ where
 
     add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
-    // Create outbound channel
+    // Create outbound channel - keep unbounded for tests
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let dht = Dht::builder()
@@ -344,7 +344,8 @@ async fn configure_comms_and_dht(
     let connectivity = comms.connectivity();
     let node_identity = comms.node_identity();
     let shutdown_signal = comms.shutdown_signal();
-    // Create outbound channel
+    // Create outbound channel - keeping unbounded for now due to pipeline compatibility
+    // The main memory leak fix is in the DHT actor channel which is now bounded
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut dht = Dht::builder();

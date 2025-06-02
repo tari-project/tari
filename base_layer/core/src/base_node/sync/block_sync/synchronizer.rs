@@ -95,6 +95,17 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
+        // Ensure hooks are cleaned up on method exit (success or failure)
+        struct HookCleanupGuard<'a> {
+            hooks: &'a mut super::Hooks,
+        }
+        impl<'a> Drop for HookCleanupGuard<'a> {
+            fn drop(&mut self) {
+                self.hooks.clear_all_hooks();
+            }
+        }
+        let _cleanup_guard = HookCleanupGuard { hooks: &mut self.hooks };
+
         let mut max_latency = self.config.initial_max_sync_latency;
         let mut sync_round = 0;
         let mut latency_increases_counter = 0;

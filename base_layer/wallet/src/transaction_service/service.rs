@@ -334,6 +334,67 @@ where
         })
     }
 
+    /// Periodic cleanup of transaction service collections to prevent memory leaks
+    async fn cleanup_completed_transactions(&mut self) -> Result<(), TransactionServiceError> {
+        trace!(target: LOG_TARGET, "Starting periodic cleanup of completed transactions");
+        
+        // Get completed and cancelled transaction IDs from database
+        let completed_txs = self.db.get_completed_transactions(None, None, None)?;
+        let cancelled_txs = self.db.get_cancelled_completed_transactions()?;
+        
+        let mut cleanup_count = 0;
+        
+        // Remove senders for completed transactions
+        for tx in completed_txs {
+            if self.pending_transaction_reply_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.send_transaction_cancellation_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.receiver_transaction_cancellation_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.finalized_transaction_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            // Remove base node response senders older than needed
+            if self.base_node_response_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            self.active_transaction_broadcast_protocols.remove(&tx.tx_id);
+        }
+        
+        // Remove senders for cancelled transactions
+        for tx in cancelled_txs {
+            if self.pending_transaction_reply_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.send_transaction_cancellation_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.receiver_transaction_cancellation_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.finalized_transaction_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            if self.base_node_response_senders.remove(&tx.tx_id).is_some() {
+                cleanup_count += 1;
+            }
+            self.active_transaction_broadcast_protocols.remove(&tx.tx_id);
+        }
+        
+        if cleanup_count > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Cleaned up {} orphaned transaction senders to prevent memory leaks", cleanup_count
+            );
+        }
+        
+        Ok(())
+    }
+
     #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
         let request_stream = self
@@ -395,6 +456,11 @@ where
         let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
 
+        // Timer for periodic cleanup to prevent memory leaks
+        let cleanup_interval = tokio::time::Duration::from_secs(3600); // Cleanup every hour
+        let mut cleanup_timer = tokio::time::interval(cleanup_interval);
+        cleanup_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
@@ -415,6 +481,12 @@ where
                     match event {
                         Ok(msg) => self.handle_utxo_scanner_service_event(msg, &mut transaction_validation_protocol_handles).await,
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
+                    }
+                },
+                // Periodic cleanup of completed transactions to prevent memory leaks
+                _ = cleanup_timer.tick() => {
+                    if let Err(e) = self.cleanup_completed_transactions().await {
+                        debug!(target: LOG_TARGET, "Error during transaction cleanup: {}", e);
                     }
                 },
                 //Incoming request

@@ -315,30 +315,36 @@ impl PeerConnection {
         self.force_disconnect_rpc_clients_when_clone_drops
             .store(true, Ordering::Relaxed);
     }
+
+    /// Explicitly cleanup RPC clients to avoid circular reference issues in Drop
+    pub fn cleanup_rpc_clients(&mut self) {
+        let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
+        if number_of_rpc_clients > 0 {
+            self.drop_notifier.broadcast(self.peer_node_id.clone());
+            trace!(
+                target: LOG_TARGET,
+                "PeerConnection `{}` explicitly cleaned up {} RPC clients",
+                self.peer_node_id, number_of_rpc_clients
+            );
+        }
+    }
 }
 
 impl Drop for PeerConnection {
     fn drop(&mut self) {
-        if self.handle_count() <= 1 ||
-            self.force_disconnect_rpc_clients_when_clone_drops
-                .load(Ordering::Relaxed)
-        {
-            let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
-            if number_of_rpc_clients > 0 {
-                self.drop_notifier.broadcast(self.peer_node_id.clone());
-                trace!(
-                    target: LOG_TARGET,
-                    "PeerConnection `{}` drop called, open sub-streams: {}, notified {} potential RPC clients to drop \
-                    connection",
-                    self.peer_node_id.clone(), self.substream_count(), number_of_rpc_clients,
-                );
-            } else {
-                trace!(
-                    target: LOG_TARGET,
-                    "PeerConnection `{}` drop called, open sub-streams: {}, RPC clients: {}",
-                    self.peer_node_id, self.substream_count(), number_of_rpc_clients
-                );
-            }
+        // Simplified drop logic - only cleanup if explicitly requested
+        // This prevents complex reference counting dependencies that could cause cycles
+        if self.force_disconnect_rpc_clients_when_clone_drops.load(Ordering::Relaxed) {
+            self.cleanup_rpc_clients();
+        } else {
+            // Simple logging without complex cleanup logic
+            trace!(
+                target: LOG_TARGET,
+                "PeerConnection `{}` dropped, sub-streams: {}, RPC clients: {}",
+                self.peer_node_id,
+                self.substream_count(),
+                self.number_of_rpc_clients.load(Ordering::Relaxed)
+            );
         }
     }
 }

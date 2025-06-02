@@ -175,24 +175,24 @@ impl Display for DhtRequest {
 /// DHT actor requester
 #[derive(Clone)]
 pub struct DhtRequester {
-    sender: mpsc::UnboundedSender<DhtRequest>,
+    sender: mpsc::Sender<DhtRequest>,
 }
 
 impl DhtRequester {
-    pub(crate) fn new(sender: mpsc::UnboundedSender<DhtRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
         Self { sender }
     }
 
     /// Send a Join message to the network
     pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
-        self.sender.send(DhtRequest::SendJoin).map_err(Into::into)
+        self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
     }
 
     /// Select peers by [BroadcastStrategy](crate::broadcast_strategy::BroadcastStrategy]
     pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))?;
+            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx)).await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
@@ -207,7 +207,7 @@ impl DhtRequester {
             message_hash,
             received_from,
             reply_tx,
-        })?;
+        }).await?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -216,7 +216,7 @@ impl DhtRequester {
     pub async fn get_message_cache_hit_count(&mut self, message_hash: Vec<u8>) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx))?;
+            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx)).await?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -224,7 +224,7 @@ impl DhtRequester {
     /// Returns the deserialized metadata value for the given key
     pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender.send(DhtRequest::GetMetadata(key, reply_tx))?;
+        self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
         match reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?? {
             Some(bytes) => T::from_binary(&bytes)
                 .map(Some)
@@ -237,7 +237,7 @@ impl DhtRequester {
     pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
-        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx))?;
+        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx)).await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -248,7 +248,7 @@ impl DhtRequester {
         self.sender.send(DhtRequest::DialDiscoverPeer {
             public_key,
             reply: reply_tx,
-        })?;
+        }).await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -260,6 +260,7 @@ impl DhtRequester {
                 severity,
                 reason: reason.to_string(),
             })
+            .await
             .is_err()
         {
             debug!(target: LOG_TARGET, "DhtActor is shut down and no longer responding to requests. This is expected during shutdown.");
@@ -277,7 +278,7 @@ pub struct DhtActor {
     config: Arc<DhtConfig>,
     discovery: DhtDiscoveryRequester,
     shutdown_signal: ShutdownSignal,
-    request_rx: mpsc::UnboundedReceiver<DhtRequest>,
+    request_rx: mpsc::Receiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
@@ -290,7 +291,7 @@ impl DhtActor {
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
-        request_rx: mpsc::UnboundedReceiver<DhtRequest>,
+        request_rx: mpsc::Receiver<DhtRequest>,
         discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self {

@@ -99,4 +99,24 @@ impl Hooks {
     pub fn call_on_rewind_hooks(&mut self, blocks: Vec<Arc<ChainBlock>>) {
         self.on_rewind.iter().for_each(|f| (*f)(blocks.clone()));
     }
+
+    /// Clear all hooks to prevent memory leaks when sync operations complete
+    pub fn clear_all_hooks(&mut self) {
+        self.on_starting.clear();
+        self.on_progress_header.clear();
+        self.on_progress_block.clear();
+        self.on_progress_horizon_sync.clear();
+        self.on_complete.clear();
+        self.on_rewind.clear();
+    }
+
+    /// Get the total number of registered hooks for monitoring purposes
+    pub fn hook_count(&self) -> usize {
+        self.on_starting.len() +
+        self.on_progress_header.len() +
+        self.on_progress_block.len() +
+        self.on_progress_horizon_sync.len() +
+        self.on_complete.len() +
+        self.on_rewind.len()
+    }
 }
