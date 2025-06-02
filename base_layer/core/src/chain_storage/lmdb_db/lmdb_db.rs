@@ -2955,7 +2955,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 1;
+    const MIGRATION_VERSION: u64 = 2;
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
@@ -3082,6 +3082,83 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 lmdb_replace(&txn, &db.orphan_chain_tips_db, &parent_hash, &val, None)?;
             }
             txn.commit()?;
+        }
+        
+        if migrate_from_version == 1 {
+            // Migration v1 -> v2: Rebuild PayRef index for existing nodes
+            info!(target: LOG_TARGET, "Migrating to v2: Checking if PayRef index needs rebuilding");
+            
+            let read_txn = db.read_transaction()?;
+            let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
+                Ok(v) => v,
+                Err(_) => {
+                    // No chain data, skip PayRef rebuild
+                    drop(read_txn);
+                    continue;
+                },
+            };
+            
+            // Check if PayRef index is empty by trying to get the first entry
+            let payref_entries: Vec<(Vec<u8>, HashOutput)> = lmdb_fetch_matching_after(&read_txn, &db.payref_to_output_index, &[])?;
+            let payref_index_empty = payref_entries.is_empty();
+            drop(read_txn);
+
+            if !payref_index_empty {
+                info!(target: LOG_TARGET, "PayRef index already populated, skipping rebuild");
+                continue;
+            }
+            
+            info!(target: LOG_TARGET, "PayRef index is empty, rebuilding for existing outputs");
+
+            // Rebuild PayRef index by iterating through all existing outputs
+            let mut rebuild_count = 0u64;
+            for height in 0..=chain_height {
+                let read_txn = db.read_transaction()?;
+                
+                // Get block header to get block hash
+                let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
+                if let Some(header) = header {
+                    let block_hash = header.hash();
+                    
+                    // Get all outputs for this block using the block hash
+                    let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
+                        &read_txn,
+                        &db.utxos_db,
+                        block_hash.as_slice(),
+                    )?;
+                    
+                    drop(read_txn);
+                    
+                    if !outputs.is_empty() {
+                        let write_txn = db.write_transaction()?;
+                        
+                        for (_, output_data) in outputs {
+                            // Generate PayRef and add to index
+                            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.output.commitment);
+                            let output_hash = &output_data.hash;
+                            
+                            // Insert into PayRef index 
+                            lmdb_replace(
+                                &write_txn,
+                                &db.payref_to_output_index,
+                                &payref,
+                                output_hash,
+                                None,
+                            )?;
+                            
+                            rebuild_count += 1;
+                        }
+                        
+                        write_txn.commit()?;
+                    }
+                    
+                    if height % 1000 == 0 {
+                        info!(target: LOG_TARGET, "PayRef rebuild progress: processed {} blocks, {} outputs", height, rebuild_count);
+                    }
+                }
+            }
+            
+            info!(target: LOG_TARGET, "PayRef index rebuild completed: {} outputs indexed", rebuild_count);
         }
     }
     if last_migrated_version != MIGRATION_VERSION {
