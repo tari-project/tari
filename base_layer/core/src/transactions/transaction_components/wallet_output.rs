@@ -43,12 +43,7 @@ use crate::{
             encrypted_data::PaymentId,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionError,
-            TransactionInputVersion,
+            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInputVersion,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     },
@@ -73,6 +68,7 @@ pub struct WalletOutput {
     pub minimum_value_promise: MicroMinotari,
     pub range_proof: Option<RangeProof>,
     pub payment_id: PaymentId,
+    pub script_signature: Option<ComAndPubSignature>,
 }
 
 impl WalletOutput {
@@ -120,6 +116,7 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof,
             payment_id,
+            script_signature: None,
         })
     }
 
@@ -157,6 +154,7 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof: rangeproof,
             payment_id,
+            script_signature: None,
         }
     }
 
@@ -197,6 +195,26 @@ impl WalletOutput {
         .await
     }
 
+    /// Builds script signature
+    pub async fn build_script_signature<KM: TransactionKeyManagerInterface>(
+        &self,
+        key_manager: &KM,
+        spending_key_id: Option<&TariKeyId>,
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let value = self.value.into();
+        let version = TransactionInputVersion::get_current_version();
+        let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        key_manager
+            .get_script_signature(
+                &self.script_key_id,
+                spending_key_id.unwrap_or(&self.spending_key_id),
+                &value,
+                &version,
+                &script_message,
+            )
+            .await
+    }
+
     /// Commits an KeyManagerOutput into a Transaction input
     pub async fn to_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
@@ -208,17 +226,13 @@ impl WalletOutput {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
         };
-        let version = TransactionInputVersion::get_current_version();
-        let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
-        let script_signature = key_manager
-            .get_script_signature(
-                &self.script_key_id,
-                &self.spending_key_id,
-                &value,
-                &version,
-                &script_message,
-            )
-            .await?;
+        let script_signature = match &self.script_signature {
+            Some(s) => s.clone(),
+            None => {
+                self.build_script_signature(key_manager, Some(&self.spending_key_id))
+                    .await?
+            },
+        };
 
         Ok(TransactionInput::new_current_version(
             SpentOutput::OutputData {
@@ -258,8 +272,8 @@ impl WalletOutput {
         );
 
         let total_ephemeral_public_key = CompressedPublicKey::new_from_pk(
-            aggregated_script_signature_public_nonces.to_public_key()? +
-                &ephemeral_public_key_self.pub_key.to_public_key()?,
+            aggregated_script_signature_public_nonces.to_public_key()?
+                + &ephemeral_public_key_self.pub_key.to_public_key()?,
         );
         let commitment_partial_script_signature = key_manager
             .get_partial_script_signature(
@@ -283,8 +297,8 @@ impl WalletOutput {
             .sign_with_nonce_and_challenge(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
             .await?;
         let script_signature = ComAndPubSignature::new_from_capk_signature(
-            &commitment_partial_script_signature.to_capk_signature()? +
-                &script_key_partial_script_signature.to_schnorr_signature()?,
+            &commitment_partial_script_signature.to_capk_signature()?
+                + &script_key_partial_script_signature.to_schnorr_signature()?,
         );
 
         let input = TransactionInput::new_current_version(
@@ -355,9 +369,9 @@ impl WalletOutput {
     }
 
     pub fn features_and_scripts_byte_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()? +
-            self.script.get_serialized_size()? +
-            self.covenant.get_serialized_size()?)
+        Ok(self.features.get_serialized_size()?
+            + self.script.get_serialized_size()?
+            + self.covenant.get_serialized_size()?)
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not

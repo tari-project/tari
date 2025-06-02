@@ -4152,10 +4152,22 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = request.request.tx_id;
-        let stp = request.stp;
+        let mut stp = request.stp;
         let dest_address = request.request.dest_address;
         let amount = request.request.amount;
         let payment_id = request.request.payment_id;
+
+        // Finalize
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         let _result = self
             .event_publisher

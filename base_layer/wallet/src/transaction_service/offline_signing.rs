@@ -5,6 +5,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
+    types::PrivateKey,
     wallet_types::WalletType,
 };
 use tari_core::{
@@ -74,14 +75,10 @@ pub struct LockOneSidedTransactionResult {
     pub version: Version,
     pub dest_address: TariAddress,
     pub amount: MicroMinotari,
-    pub output_features: OutputFeatures,
-    pub fee_per_gram: MicroMinotari,
     pub payment_id: PaymentId,
     pub tx_id: TxId,
     pub stp: SenderTransactionProtocol,
-    pub script: TariScript,
-    pub use_stealth_address: bool,
-    pub tip_height: u64,
+    pub commitment_mask_private_key: PrivateKey,
 }
 
 impl TransactionResult for LockOneSidedTransactionResult {}
@@ -198,13 +195,10 @@ where
         // For a stealth transaction, the script is not provided because the public key that should be included
         // is not known at this stage. This will only be known later. For now,
         // we include a default public key to ensure that the script size is correct.
-        let (script, use_stealth_address) = match recipient_script {
+        let (mut script, use_stealth_address) = match recipient_script {
             Some(s) => (s, false),
             None => (push_pubkey_script(&Default::default()), true),
         };
-        // let script = recipient_script
-        // .clone()
-        // .unwrap_or_else(|| push_pubkey_script(&Default::default()));
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -240,33 +234,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        Ok(LockOneSidedTransactionResult {
-            version: get_supported_version(),
-            dest_address,
-            amount,
-            output_features,
-            fee_per_gram,
-            payment_id,
-            tx_id,
-            stp,
-            use_stealth_address,
-            script,
-            tip_height: self.last_seen_tip_height.unwrap_or(0),
-        })
-    }
-
-    pub async fn sign_locked_transaction(
-        &self,
-        request: LockOneSidedTransactionResult,
-    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
-        let req = request.clone();
-        let mut stp = req.stp;
-        let tx_id = req.tx_id;
-        let dest_address = req.dest_address;
-        let mut script = req.script;
-        let amount = req.amount;
-        let payment_id = req.payment_id;
-
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
@@ -274,7 +241,6 @@ where
                 tx_id,
                 TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
             ))?;
-
         let shared_secret = self
             .resources
             .transaction_key_manager_service
@@ -296,7 +262,7 @@ where
             .import_key(commitment_mask_private_key.clone())
             .await?;
 
-        if request.use_stealth_address {
+        if use_stealth_address {
             let script_spending_key = self
                 .resources
                 .transaction_key_manager_service
@@ -320,7 +286,7 @@ where
         let spending_key_id = self
             .resources
             .transaction_key_manager_service
-            .import_key(commitment_mask_private_key)
+            .import_key(commitment_mask_private_key.clone())
             .await?;
 
         let sender_offset_public_key = self
@@ -330,6 +296,7 @@ where
             .await?;
 
         let minimum_value_promise = MicroMinotari::zero();
+
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -341,7 +308,7 @@ where
                     .features
                     .clone(),
             )
-            .with_script(script)
+            .with_script(script.clone())
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
                 Some(&encryption_key),
@@ -377,17 +344,33 @@ where
         stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        // Finalize
-        stp.finalize(&self.resources.transaction_key_manager_service)
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-                );
-                TransactionServiceProtocolError::new(tx_id, e.into())
-            })?;
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        Ok(LockOneSidedTransactionResult {
+            version: get_supported_version(),
+            dest_address,
+            amount,
+            payment_id,
+            tx_id,
+            stp,
+            commitment_mask_private_key,
+        })
+    }
+
+    pub async fn sign_locked_transaction(
+        &self,
+        request: LockOneSidedTransactionResult,
+    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
+        let mut stp = request.stp.clone();
+
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(request.commitment_mask_private_key.clone())
+            .await?;
+
+        stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, Some(&spending_key_id))
+            .await?;
+        stp.persist_script_offset(&self.resources.transaction_key_manager_service)
+            .await?;
 
         Ok(SignedOneSidedTransactionResult {
             version: get_supported_version(),

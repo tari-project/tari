@@ -41,18 +41,13 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            OutputFeatures,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            MAX_TRANSACTION_INPUTS,
+            OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput, MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
             sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
-            KernelFeatures,
-            TransactionMetadata,
+            KernelFeatures, TransactionMetadata,
         },
     },
 };
@@ -119,7 +114,8 @@ impl<KM> Debug for BuildError<KM> {
 }
 
 impl<KM> SenderTransactionInitializer<KM>
-where KM: TransactionKeyManagerInterface
+where
+    KM: TransactionKeyManagerInterface,
 {
     pub fn new(consensus_constants: &ConsensusConstants, key_manager: KM) -> Self {
         Self {
@@ -288,8 +284,8 @@ where KM: TransactionKeyManagerInterface
             .sum::<usize>();
         if let Some(recipient_data) = &self.recipient {
             size += self.fee.weighting().round_up_features_and_scripts_size(
-                self.get_recipient_output_features().get_serialized_size()? +
-                    recipient_data.recipient_script.get_serialized_size()?,
+                self.get_recipient_output_features().get_serialized_size()?
+                    + recipient_data.recipient_script.get_serialized_size()?,
             )
         }
 
@@ -344,8 +340,8 @@ where KM: TransactionKeyManagerInterface
         let output_features = OutputFeatures::default();
         let change_features_and_scripts_size = match &self.change {
             Some(data) => {
-                data.change_script.get_serialized_size().map_err(|e| e.to_string())? +
-                    OutputFeatures::default()
+                data.change_script.get_serialized_size().map_err(|e| e.to_string())?
+                    + OutputFeatures::default()
                         .get_serialized_size()
                         .map_err(|e| e.to_string())?
             },
@@ -437,13 +433,13 @@ where KM: TransactionKeyManagerInterface
                                 TxType::PaymentToOther => {
                                     payment_id.transaction_info_set_address(recipient.recipient_address)
                                 },
-                                TxType::PaymentToSelf |
-                                TxType::CoinSplit |
-                                TxType::CoinJoin |
-                                TxType::ValidatorNodeRegistration |
-                                TxType::CodeTemplateRegistration |
-                                TxType::ClaimAtomicSwap |
-                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
+                                TxType::PaymentToSelf
+                                | TxType::CoinSplit
+                                | TxType::CoinJoin
+                                | TxType::ValidatorNodeRegistration
+                                | TxType::CodeTemplateRegistration
+                                | TxType::ClaimAtomicSwap
+                                | TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
                                 _ => {},
                             }
                         } else {
@@ -639,6 +635,7 @@ where KM: TransactionKeyManagerInterface
             outputs: self.sender_custom_outputs,
             payment_id: self.payment_id.unwrap_or_default(),
             sender_address: self.sender_address.clone(),
+            script_offset: None,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
