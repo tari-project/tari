@@ -17,6 +17,7 @@ use tari_utilities::ByteArray;
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
+    serde::hex_or_bytes,
     shard_group::ShardGroup,
     validations::check_proof_elements,
 };
@@ -145,6 +146,16 @@ impl SidechainBlockCommitProof {
     pub fn header(&self) -> &SidechainBlockHeader {
         &self.header
     }
+
+    pub fn last_qc(&self) -> Option<&QuorumCertificate> {
+        self.proof_elements
+            .iter()
+            .filter_map(|elem| match elem {
+                CommitProofElement::QuorumCertificate(qc) => Some(qc),
+                _ => None,
+            })
+            .next_back()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
@@ -155,7 +166,9 @@ pub enum CommitProofElement {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ChainLink {
+    #[serde(with = "hex_or_bytes")]
     pub header_hash: FixedHash,
+    #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
 }
 
@@ -172,16 +185,21 @@ impl ChainLink {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct SidechainBlockHeader {
     pub network: u8,
+    #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
+    #[serde(with = "hex_or_bytes")]
     pub justify_id: FixedHash,
     pub height: u64,
     pub epoch: u64,
     pub shard_group: ShardGroup,
     pub proposed_by: CompressedPublicKey,
+    #[serde(with = "hex_or_bytes")]
     pub state_merkle_root: FixedHash,
+    #[serde(with = "hex_or_bytes")]
     pub command_merkle_root: FixedHash,
     /// Signature of block by the proposer.
     pub signature: ValidatorBlockSignature,
+    #[serde(with = "hex_or_bytes")]
     pub metadata_hash: FixedHash,
 }
 
@@ -218,7 +236,9 @@ impl SidechainBlockHeader {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct QuorumCertificate {
+    #[serde(with = "hex_or_bytes")]
     pub header_hash: FixedHash,
+    #[serde(with = "hex_or_bytes")]
     pub parent_id: FixedHash,
     pub signatures: Vec<ValidatorQcSignature>,
     pub decision: QuorumDecision,

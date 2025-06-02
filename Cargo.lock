@@ -7536,6 +7536,7 @@ version = "1.13.3-pre.0"
 dependencies = [
  "borsh",
  "env_logger 0.11.8",
+ "hex",
  "log",
  "serde",
  "serde_json",

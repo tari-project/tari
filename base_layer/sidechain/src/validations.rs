@@ -27,7 +27,6 @@ pub fn check_proof_elements(
     check_proof_elements_num_qcs(proof_elements, 3)?;
 
     let mut last_parent = None::<&FixedHash>;
-    let mut last_justify = None;
     let mut proven_3_chain = 0usize;
     for elem in proof_elements {
         match elem {
@@ -55,7 +54,6 @@ pub fn check_proof_elements(
 
                 debug!(target: LOG_TARGET, "Setting last parent to {}", qc.parent_id);
                 last_parent = Some(&qc.parent_id);
-                last_justify = Some(justifies);
             },
             CommitProofElement::ChainLinks(chain) => {
                 if proven_3_chain != 3 {
@@ -84,8 +82,8 @@ pub fn check_proof_elements(
                     if block_id != expected {
                         return Err(SidechainProofValidationError::InvalidProof {
                             details: format!(
-                                "Block ID in dummy chain (index :{i}) does not match the parent block ID in the \
-                                 quorum certificate. Expected {expected}, but got {block_id}",
+                                "Block ID in chain link at index {i} does not match the parent block ID in the quorum \
+                                 certificate. Expected {expected}, but got {block_id}",
                             ),
                         });
                     }
@@ -96,19 +94,39 @@ pub fn check_proof_elements(
         }
     }
 
-    let Some(last_justify) = last_justify else {
+    let Some(last_elem) = proof_elements.last() else {
         // Not reachable because we check length of proof elements above
         return Err(SidechainProofValidationError::InvalidProof {
-            details: "BUG: Proof must contain at least one quorum certificate".to_string(),
+            details: "BUG: Proof must contain at least one proof element".to_string(),
         });
     };
 
+    let Some(last_parent) = last_parent else {
+        // Not reachable because we check length of proof elements above
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: "BUG: Proof must contain at least proof element (last_parent == None)".to_string(),
+        });
+    };
+
+    let justified = match last_elem {
+        CommitProofElement::QuorumCertificate(qc) => qc.calculate_justified_block(),
+        CommitProofElement::ChainLinks(links) => {
+            links
+                .last()
+                .map(|link| link.parent_id)
+                // Already checked that links is not empty
+                .ok_or_else(|| SidechainProofValidationError::InvalidProof {
+                    details: "BUG: chain must contain at least one element".to_string(),
+                })?
+        },
+    };
+
     let header_block_id = header.calculate_block_id();
-    if last_justify != header_block_id {
+    if justified != header_block_id {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
                 "Last parent block ID does not match the block ID in the header. Expected {}, but got {}",
-                header_block_id, last_justify,
+                header_block_id, last_parent,
             ),
         });
     }
