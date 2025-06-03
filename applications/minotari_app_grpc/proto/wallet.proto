@@ -1426,6 +1426,7 @@ message ImportTransactionsResponse {
 message GetAllCompletedTransactionsRequest {
   uint64 offset = 1;
   uint64 limit = 2;
+  uint64 status_bitflag = 3;
 }
 
 message GetAllCompletedTransactionsResponse {

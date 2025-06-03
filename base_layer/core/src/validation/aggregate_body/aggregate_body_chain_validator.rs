@@ -22,7 +22,7 @@
 
 use std::collections::HashSet;
 
-use log::warn;
+use log::*;
 use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
@@ -125,7 +125,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                         if let Some(found) = body.outputs().iter().find(|o| o.hash() == input_output_hash) {
                             found.clone()
                         } else {
-                            warn!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Input not found in database or block, commitment: {}, hash: {}",
                                 input.commitment()?.to_hex(), input_output_hash.to_hex()
@@ -232,7 +232,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) ->
                 if output_hashes.iter().any(|val| val == &input_output_hash) {
                     continue;
                 }
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Input not found in database, commitment: {}, hash: {}",
                     input.commitment()?.to_hex(), input_output_hash.to_hex()

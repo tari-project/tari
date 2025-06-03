@@ -212,7 +212,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         return Err(ValidationError::ContainsSTxO);
     }
 
-    warn!(
+    debug!(
         target: LOG_TARGET,
         "Input ({}, {}) does not exist in the database yet", input.commitment()?.to_hex(), output_hash.to_hex()
     );
