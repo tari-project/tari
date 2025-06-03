@@ -193,7 +193,7 @@ where B: BlockchainBackend + 'static
         )
         .await;
 
-        let comms = if p2p_config.transport.transport_type == TransportType::Tor {
+        let comms = if p2p_config.transport.is_tor() {
             let tor_id_path = base_node_config.tor_identity_file.clone();
             let node_id_path = base_node_config.identity_file.clone();
             let node_id = comms.node_identity();

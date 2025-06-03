@@ -6262,7 +6262,7 @@ pub unsafe extern "C" fn comms_config_create(
 
     match public_address {
         Ok(public_address) => {
-            let addresses = if (*transport).transport_type == TransportType::Tor {
+            let addresses = if (*transport).is_tor() {
                 MultiaddrList::default()
             } else {
                 MultiaddrList::from(vec![public_address])
@@ -6917,7 +6917,7 @@ pub unsafe extern "C" fn wallet_create(
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
     let mut comms_config = (*config).clone();
-    if let TransportType::Tor = comms_config.transport.transport_type {
+    if comms_config.transport.is_tor() {
         comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
     }
 

@@ -93,7 +93,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
-    TransportType,
+
 };
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -285,7 +285,7 @@ where
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
-        let comms = if config.p2p.transport.transport_type == TransportType::Tor {
+        let comms = if config.p2p.transport.is_tor() {
             let wallet_db = wallet_database.clone();
             let node_id = comms.node_identity();
             let moved_ts_clone = transaction_service_handle.clone();
