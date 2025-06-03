@@ -1613,40 +1613,26 @@ message GetPaymentByReferenceResponse {
   PaymentDetails payment_details = 1;
 }
 
-// Request message for getting unspent payment references with optional filtering
+// Request message for getting unspent payment references
 message GetUnspentPaymentReferencesRequest {
-  // Optional filter by payment direction
-  PaymentDirection direction = 1;
-  // Number of records to skip for pagination (default: 0)
-  uint64 offset = 2;
-  // Maximum number of records to return (default: 100, max: 1000)
-  uint64 limit = 3;
+  // This request has no parameters - returns all unspent payment references
 }
 
 // Response message containing a list of unspent payment references
 message GetUnspentPaymentReferencesResponse {
   // List of unspent payment references
   repeated PaymentDetails payment_references = 1;
-  // Total count of unspent payment references (for pagination)
-  uint64 total_count = 2;
 }
 
-// Request message for getting all payment references (spent and unspent) with optional filtering
+// Request message for getting all payment references (spent and unspent)
 message GetAllPaymentReferencesRequest {
-  // Optional filter by payment direction
-  PaymentDirection direction = 1;
-  // Number of records to skip for pagination (default: 0)
-  uint64 offset = 2;
-  // Maximum number of records to return (default: 100, max: 1000)
-  uint64 limit = 3;
+  // This request has no parameters - returns all payment references
 }
 
 // Response message containing a list of all payment references
 message GetAllPaymentReferencesResponse {
   // List of all payment references (both spent and unspent)
   repeated PaymentDetails payment_references = 1;
-  // Total count of all payment references (for pagination)
-  uint64 total_count = 2;
 }
 
 // Payment details structure containing all relevant information about a payment

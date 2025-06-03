@@ -1838,7 +1838,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_unspent_payment_references(
         &self,
-        _request: Request<GetUnspentPaymentReferencesRequest>,
+        _: Request<GetUnspentPaymentReferencesRequest>,
     ) -> Result<Response<GetUnspentPaymentReferencesResponse>, Status> {
         debug!(
             target: LOG_TARGET,
@@ -1877,10 +1877,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 
-                let total_count = payment_references.len() as u64;
                 Ok(Response::new(GetUnspentPaymentReferencesResponse {
                     payment_references,
-                    total_count,
                 }))
             },
             Err(e) => {
@@ -1896,7 +1894,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_all_payment_references(
         &self,
-        _request: Request<GetAllPaymentReferencesRequest>,
+        _: Request<GetAllPaymentReferencesRequest>,
     ) -> Result<Response<GetAllPaymentReferencesResponse>, Status> {
         debug!(
             target: LOG_TARGET,
@@ -1935,10 +1933,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
                 
-                let total_count = payment_references.len() as u64;
                 Ok(Response::new(GetAllPaymentReferencesResponse {
                     payment_references,
-                    total_count,
                 }))
             },
             Err(e) => {
