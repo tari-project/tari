@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
@@ -58,31 +58,21 @@ pub struct DbStatsArgs {
     pub export: Option<PathBuf>,
 }
 
-#[derive(clap::ValueEnum, Clone)]
+#[derive(clap::ValueEnum, Clone, Default)]
 pub enum OutputFormat {
+    #[default]
     Table,
     Json,
     Csv,
 }
 
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Table
-    }
-}
-
-#[derive(clap::ValueEnum, Clone)]
+#[derive(clap::ValueEnum, Clone, Default)]
 pub enum SortField {
     Name,
+    #[default]
     Size,
     Entries,
     Pages,
-}
-
-impl Default for SortField {
-    fn default() -> Self {
-        SortField::Size
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tabled)]
@@ -146,7 +136,7 @@ impl DbStatsArgs {
         }
 
         let stats = collect_database_stats(&db_path)?;
-        
+
         match self.format {
             OutputFormat::Table => self.output_table(&stats)?,
             OutputFormat::Json => self.output_json(&stats)?,
@@ -200,11 +190,11 @@ impl DbStatsArgs {
 
     fn output_csv(&self, stats: &DbStatsOutput) -> Result<()> {
         let mut wtr = csv::Writer::from_writer(std::io::stdout());
-        
+
         for db in &stats.databases {
             wtr.serialize(db)?;
         }
-        
+
         wtr.flush()?;
         Ok(())
     }
@@ -237,7 +227,7 @@ impl DbStatsArgs {
     }
 }
 
-fn collect_database_stats(db_path: &PathBuf) -> Result<DbStatsOutput> {
+fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     let env = unsafe {
         let mut builder = lmdb::EnvBuilder::new()?;
         builder.set_maxdbs(50)?;
@@ -260,7 +250,7 @@ fn collect_database_stats(db_path: &PathBuf) -> Result<DbStatsOutput> {
     // List of known Tari database names - hardcoded since we know the structure
     let db_names = vec![
         "metadata",
-        "headers", 
+        "headers",
         "header_accumulated_data",
         "block_accumulated_data",
         "block_hashes",
@@ -324,7 +314,11 @@ fn collect_database_stats(db_path: &PathBuf) -> Result<DbStatsOutput> {
         .max_by_key(|d| d.total_size)
         .map(|d| d.name.clone())
         .unwrap_or_else(|| "None".to_string());
-    let avg_entries_per_db = if total_databases > 0 { total_entries / total_databases } else { 0 };
+    let avg_entries_per_db = if total_databases > 0 {
+        total_entries / total_databases
+    } else {
+        0
+    };
 
     let summary = DatabaseSummary {
         total_databases,

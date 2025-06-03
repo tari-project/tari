@@ -26,22 +26,18 @@ use crate::cli::Cli;
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
+    #[allow(dead_code)]
     pub base_path: PathBuf,
+    #[allow(dead_code)]
     pub network: String,
     pub db_path: PathBuf,
 }
 
 impl AppConfig {
     pub fn from_cli(cli: &Cli) -> anyhow::Result<Self> {
-        let base_path = cli
-            .base_path
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let base_path = cli.base_path.clone().unwrap_or_else(|| PathBuf::from("."));
 
-        let network = cli
-            .network
-            .clone()
-            .unwrap_or_else(|| "mainnet".to_string());
+        let network = cli.network.clone().unwrap_or_else(|| "mainnet".to_string());
 
         let db_path = base_path.join("data").join("base_node").join("db");
 
