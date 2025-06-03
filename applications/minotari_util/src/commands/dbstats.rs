@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, fs};
 
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
@@ -37,9 +37,9 @@ use crate::{cli::Cli, config::AppConfig};
 
 #[derive(Args, Default)]
 pub struct DbStatsArgs {
-    /// Custom base node LMDB path (overrides default: data/base_node/db/)
+    /// Tari network directory path (e.g., ~/.tari/mainnet)
     #[arg(long, value_name = "PATH")]
-    pub db_path: Option<PathBuf>,
+    pub network_dir: Option<PathBuf>,
 
     /// Output format: table (default), json, csv
     #[arg(long, value_enum, default_value = "table")]
@@ -126,29 +126,69 @@ pub struct DatabaseSummary {
     pub avg_entries_per_db: usize,
 }
 
+// New structures for multi-database analysis
+#[derive(Debug, Serialize, Deserialize)]
+enum DatabaseType {
+    LMDB,
+    SQLite,
+}
+
+#[derive(Debug, Serialize, Deserialize, Tabled)]
+struct ComponentDatabaseInfo {
+    #[tabled(rename = "Component")]
+    component: String,
+    #[tabled(rename = "Database")]
+    name: String,
+    #[tabled(rename = "Type")]
+    db_type: String,
+    #[tabled(rename = "Size", display_with = "format_size_u64")]
+    total_size: u64,
+    #[tabled(rename = "Path")]
+    path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AllDatabasesOutput {
+    pub component_databases: Vec<ComponentDatabaseInfo>,
+    pub lmdb_details: Option<DbStatsOutput>, // Detailed LMDB stats for base node if requested
+}
+
 fn format_size(size: &usize) -> String {
     ByteSize(*size as u64).to_string()
 }
 
+fn format_size_u64(size: &u64) -> String {
+    ByteSize(*size).to_string()
+}
+
 impl DbStatsArgs {
     pub fn execute(self, cli: &Cli) -> Result<()> {
-        let config = AppConfig::from_cli(cli)?;
-        let db_path = self.db_path.clone().unwrap_or(config.db_path);
+        let _config = AppConfig::from_cli(cli)?;
+        
+        // Default to ~/.tari/mainnet if no network dir specified
+        let network_dir = self.network_dir.clone().unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            PathBuf::from(home).join(".tari").join("mainnet")
+        });
 
-        if !db_path.exists() {
-            return Err(anyhow!("Database path does not exist: {}", db_path.display()));
+        if !network_dir.exists() {
+            return Err(anyhow!("Network directory does not exist: {}", network_dir.display()));
         }
 
-        let stats = collect_database_stats(&db_path)?;
-
-        match self.format {
-            OutputFormat::Table => self.output_table(&stats)?,
-            OutputFormat::Json => self.output_json(&stats)?,
-            OutputFormat::Csv => self.output_csv(&stats)?,
-        }
-
-        if let Some(export_path) = &self.export {
-            self.export_to_file(&stats, export_path)?;
+        // For now, just scan and show what databases we find
+        let databases = scan_for_databases(&network_dir)?;
+        
+        // Show summary table
+        println!("Found {} databases in {}", databases.len(), network_dir.display());
+        println!();
+        
+        let mut table_data = Table::new(&databases);
+        let table = table_data.with(Style::rounded());
+        println!("{}", table);
+        
+        // TODO: Add detailed LMDB analysis if requested
+        if self.include_detailed {
+            println!("\nDetailed LMDB analysis not yet implemented in network scan mode");
         }
 
         Ok(())
@@ -229,6 +269,101 @@ impl DbStatsArgs {
             SortField::Pages => databases.sort_by(|a, b| b.total_pages.cmp(&a.total_pages)),
         }
     }
+}
+
+fn scan_for_databases(network_dir: &Path) -> Result<Vec<ComponentDatabaseInfo>> {
+    let mut databases = Vec::new();
+    
+    // Recursively scan for database files
+    scan_directory(network_dir, network_dir, &mut databases)?;
+    
+    // Sort by component and then by size
+    databases.sort_by(|a, b| {
+        a.component.cmp(&b.component)
+            .then_with(|| b.total_size.cmp(&a.total_size))
+    });
+    
+    Ok(databases)
+}
+
+fn scan_directory(dir: &Path, base_dir: &Path, databases: &mut Vec<ComponentDatabaseInfo>) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_dir() {
+            // Check if this is an LMDB database directory (contains data.mdb and lock.mdb)
+            if path.join("data.mdb").exists() && path.join("lock.mdb").exists() {
+                let component = determine_component(&path, base_dir);
+                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let size = get_directory_size(&path)?;
+                
+                databases.push(ComponentDatabaseInfo {
+                    component,
+                    name,
+                    db_type: "LMDB".to_string(),
+                    total_size: size,
+                    path: path.to_string_lossy().to_string(),
+                });
+            } else {
+                // Recursively scan subdirectories
+                scan_directory(&path, base_dir, databases)?;
+            }
+        } else if path.extension().map_or(false, |ext| ext == "db") {
+            // SQLite database file
+            let component = determine_component(&path, base_dir);
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let size = path.metadata()?.len();
+            
+            databases.push(ComponentDatabaseInfo {
+                component,
+                name,
+                db_type: "SQLite".to_string(),
+                total_size: size,
+                path: path.to_string_lossy().to_string(),
+            });
+        }
+    }
+    
+    Ok(())
+}
+
+fn determine_component(path: &Path, base_dir: &Path) -> String {
+    let relative_path = path.strip_prefix(base_dir).unwrap_or(path);
+    let path_str = relative_path.to_string_lossy();
+    
+    if path_str.contains("base_node") {
+        "Base Node".to_string()
+    } else if path_str.contains("wallet") {
+        "Wallet".to_string()
+    } else if path_str.contains("peer_db") {
+        "Peer Database".to_string()
+    } else if path_str.contains("dht") {
+        "DHT".to_string()
+    } else {
+        "Other".to_string()
+    }
+}
+
+fn get_directory_size(dir: &Path) -> Result<u64> {
+    let mut total_size = 0;
+    
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_file() {
+            total_size += path.metadata()?.len();
+        } else if path.is_dir() {
+            total_size += get_directory_size(&path)?;
+        }
+    }
+    
+    Ok(total_size)
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {

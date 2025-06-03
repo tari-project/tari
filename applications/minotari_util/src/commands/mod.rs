@@ -28,21 +28,21 @@ pub mod dbstats;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Base node database statistics and analysis
-    #[command(name = "nodedbstats")]
-    NodeDbStats(dbstats::DbStatsArgs),
+    /// Database statistics and analysis for all Tari components
+    #[command(name = "dbstats")]
+    DbStats(dbstats::DbStatsArgs),
 }
 
 impl Default for Commands {
     fn default() -> Self {
-        Commands::NodeDbStats(dbstats::DbStatsArgs::default())
+        Commands::DbStats(dbstats::DbStatsArgs::default())
     }
 }
 
 impl Commands {
     pub fn execute(self, cli: &Cli) -> anyhow::Result<()> {
         match self {
-            Commands::NodeDbStats(args) => args.execute(cli),
+            Commands::DbStats(args) => args.execute(cli),
         }
     }
 }
