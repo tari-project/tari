@@ -2,7 +2,7 @@
 
 mod simple_transfer;
 
-use minotari_mcp_common::{ToolRegistry, McpTool};
+use minotari_mcp_common::ToolRegistry;
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use std::sync::Arc;
 use tonic::transport::Channel;

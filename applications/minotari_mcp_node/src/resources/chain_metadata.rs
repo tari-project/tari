@@ -40,24 +40,32 @@ impl McpResource for ChainMetadataResource {
         let mut client = self.grpc_client.as_ref().clone();
         
         let response = client
-            .get_metadata(Empty {})
+            .get_tip_info(Empty {})
             .await
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get chain metadata: {}", e)))?;
 
-        let metadata = response.into_inner();
+        let tip_info = response.into_inner();
 
-        Ok(serde_json::json!({
-            "height_of_longest_chain": metadata.height_of_longest_chain,
-            "best_block_hash": hex::encode(&metadata.best_block_hash),
-            "best_block_height": metadata.best_block_height,
-            "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
-            "pruned_height": metadata.pruned_height,
-            "timestamp": metadata.timestamp,
-            "chain_metadata": {
-                "effective_pruned_height": metadata.effective_pruned_height,
+        if let Some(metadata) = tip_info.metadata {
+            Ok(serde_json::json!({
+                "height_of_longest_chain": metadata.height_of_longest_chain,
+                "best_block_hash": hex::encode(&metadata.best_block_hash),
+                "best_block_height": metadata.best_block_height,
                 "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
-                "total_chainwork": metadata.total_chainwork.to_string(),
-            }
-        }))
+                "pruned_height": metadata.pruned_height,
+                "timestamp": metadata.timestamp,
+                "chain_metadata": {
+                    "effective_pruned_height": metadata.effective_pruned_height,
+                    "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
+                    "total_chainwork": metadata.total_chainwork.to_string(),
+                }
+            }))
+        } else {
+            Ok(serde_json::json!({
+                "error": "No metadata available",
+                "initial_sync_achieved": tip_info.initial_sync_achieved,
+                "base_node_state": tip_info.base_node_state
+            }))
+        }
     }
 }

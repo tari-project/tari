@@ -1,16 +1,25 @@
 //! Command line interface for the Minotari Node MCP Server
 
 use clap::Parser;
-use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use std::net::IpAddr;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[clap(name = "minotari_mcp_node")]
 #[clap(about = "Minotari Node MCP (Model Context Protocol) Server")]
 #[clap(version)]
 pub struct Cli {
-    #[clap(flatten)]
-    pub common: CommonCliArgs,
+    /// Base directory path
+    #[clap(short, long, env = "TARI_BASE_DIR")]
+    pub base_path: Option<PathBuf>,
+    
+    /// Config file path
+    #[clap(short, long, env = "TARI_CONFIG")]
+    pub config: Option<PathBuf>,
+    
+    /// Log config file path
+    #[clap(long, env = "TARI_LOG_CONFIG")]
+    pub log_config: Option<PathBuf>,
     
     /// Enable MCP server
     #[clap(long, env = "MINOTARI_MCP_ENABLED")]
@@ -56,6 +65,24 @@ pub struct Cli {
 }
 
 impl Cli {
+    /// Get base path with default
+    pub fn get_base_path(&self) -> PathBuf {
+        self.base_path.clone().unwrap_or_else(|| {
+            dirs::data_dir()
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+                .join("tari")
+        })
+    }
+    
+    /// Get log config path with application name
+    pub fn log_config_path(&self, app_name: &str) -> PathBuf {
+        if let Some(ref path) = self.log_config {
+            path.clone()
+        } else {
+            self.get_base_path().join("config").join("log4rs").join(format!("{}.yml", app_name))
+        }
+    }
+    
     /// Validate CLI arguments
     pub fn validate(&self) -> Result<(), String> {
         if self.mcp_enabled {

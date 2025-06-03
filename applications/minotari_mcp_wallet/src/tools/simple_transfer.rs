@@ -12,6 +12,7 @@ use tonic::transport::Channel;
 
 /// Simple tool for transferring Tari - basic implementation
 pub struct SimpleTransferTool {
+    #[allow(dead_code)]
     grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 

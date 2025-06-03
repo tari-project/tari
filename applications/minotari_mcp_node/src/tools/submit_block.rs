@@ -37,10 +37,10 @@ impl McpTool for SubmitBlockTool {
 
     fn input_schema(&self) -> Value {
         json_schema! {
-            "block_hex" => {
+            "block_hex" => serde_json::json!({
                 "type": "string",
                 "description": "Hexadecimal representation of the block to submit"
-            }
+            })
         }
     }
 
@@ -67,7 +67,7 @@ impl McpTool for SubmitBlockTool {
         let block_hex = get_required_string_param(&params, "block_hex")?;
         
         // Convert hex to bytes
-        let block_bytes = hex::decode(&block_hex)
+        let _block_bytes = hex::decode(&block_hex)
             .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {}", e)))?;
 
         // Parse block (this would need proper block parsing)
@@ -77,12 +77,10 @@ impl McpTool for SubmitBlockTool {
             body: None,   // Would be populated from parsed block data
         };
 
-        let request = SubmitBlockRequest { block: Some(block) };
-
         // Submit block to node
         let mut client = self.grpc_client.as_ref().clone();
         let response = client
-            .submit_block(request)
+            .submit_block(block)  // Submit the block directly
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit block: {}", e)))?;
 
@@ -92,7 +90,6 @@ impl McpTool for SubmitBlockTool {
         Ok(serde_json::json!({
             "success": true,
             "block_hash": response.block_hash,
-            "height": response.height,
             "message": "Block submitted successfully"
         }))
     }

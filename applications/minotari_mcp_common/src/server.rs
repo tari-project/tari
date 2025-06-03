@@ -32,6 +32,7 @@ pub struct McpServerImpl {
     tool_registry: Arc<ToolRegistry>,
     resource_registry: Arc<ResourceRegistry>,
     prompt_registry: Arc<PromptRegistry>,
+    #[allow(dead_code)]
     transport: Option<Box<dyn Transport>>,
     running: Arc<RwLock<bool>>,
 }

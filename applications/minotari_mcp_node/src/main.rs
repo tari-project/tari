@@ -15,7 +15,7 @@ use crate::config::NodeMcpConfig;
 use crate::server::NodeMcpServer;
 use clap::Parser;
 use log::info;
-use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_common::initialize_logging;
 use std::process;
 
 #[tokio::main]
@@ -24,9 +24,9 @@ async fn main() {
     let cli = Cli::parse();
     
     // Initialize logging
-    minotari_app_utilities::initialize_logging(
-        &cli.common.log_config_path("minotari_mcp_node"),
-        &cli.common.get_base_path(),
+    initialize_logging(
+        &cli.log_config_path("minotari_mcp_node"),
+        &cli.get_base_path(),
         include_str!("../../../common/logging/log4rs_sample.yml"),
     ).expect("Failed to initialize logging");
 

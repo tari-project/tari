@@ -33,8 +33,10 @@ pub struct SecurityContext {
 struct Session {
     id: Uuid,
     client_ip: IpAddr,
+    #[allow(dead_code)]
     created_at: DateTime<Utc>,
     last_activity: DateTime<Utc>,
+    #[allow(dead_code)]
     request_count: u32,
 }
 

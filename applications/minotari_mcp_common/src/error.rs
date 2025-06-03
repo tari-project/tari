@@ -77,6 +77,10 @@ impl McpError {
         Self::ConfigError(msg.into())
     }
 
+    pub fn resource_access_failed(msg: impl Into<String>) -> Self {
+        Self::ResourceAccessFailed(msg.into())
+    }
+
     pub fn is_permission_denied(&self) -> bool {
         matches!(self, Self::PermissionDenied(_))
     }

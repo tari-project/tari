@@ -1,6 +1,6 @@
 //! Simple balance resource for testing
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
+use minotari_mcp_common::{McpResource, McpResult};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -9,6 +9,7 @@ use tonic::transport::Channel;
 
 /// Simple resource providing wallet balance information
 pub struct SimpleBalanceResource {
+    #[allow(dead_code)]
     grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 

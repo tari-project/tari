@@ -37,19 +37,19 @@ impl McpTool for BanPeerTool {
 
     fn input_schema(&self) -> Value {
         json_schema! {
-            "peer_public_key" => {
+            "peer_public_key" => serde_json::json!({
                 "type": "string",
                 "description": "Public key of the peer to ban (hex encoded)"
-            },
-            "duration_hours" => {
+            }),
+            "duration_hours" => serde_json::json!({
                 "type": "number",
                 "description": "Duration of the ban in hours (0 for permanent)",
                 "minimum": 0
-            },
-            "reason" => {
+            }),
+            "reason" => serde_json::json!({
                 "type": "string",
                 "description": "Reason for banning the peer"
-            }
+            })
         }
     }
 
@@ -142,10 +142,10 @@ impl McpTool for UnbanPeerTool {
 
     fn input_schema(&self) -> Value {
         json_schema! {
-            "peer_public_key" => {
+            "peer_public_key" => serde_json::json!({
                 "type": "string",
                 "description": "Public key of the peer to unban (hex encoded)"
-            }
+            })
         }
     }
 

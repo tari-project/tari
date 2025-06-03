@@ -41,7 +41,7 @@ impl McpResource for NetworkDifficultyResource {
         
         // Get chain metadata for difficulty info
         let metadata_response = client
-            .get_metadata(Empty {})
+            .get_tip_info(Empty {})
             .await
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {}", e)))?;
 
