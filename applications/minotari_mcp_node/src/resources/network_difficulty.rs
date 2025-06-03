@@ -45,13 +45,21 @@ impl McpResource for NetworkDifficultyResource {
             .await
             .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {}", e)))?;
 
-        let metadata = metadata_response.into_inner();
+        let tip_info = metadata_response.into_inner();
 
-        Ok(serde_json::json!({
-            "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
-            "height": metadata.height_of_longest_chain,
-            "timestamp": metadata.timestamp,
-            "message": "Network difficulty information"
-        }))
+        if let Some(metadata) = tip_info.metadata {
+            Ok(serde_json::json!({
+                "accumulated_difficulty": hex::encode(&metadata.accumulated_difficulty),
+                "height": metadata.best_block_height,
+                "timestamp": metadata.timestamp,
+                "message": "Network difficulty information"
+            }))
+        } else {
+            Ok(serde_json::json!({
+                "error": "No metadata available",
+                "initial_sync_achieved": tip_info.initial_sync_achieved,
+                "message": "Network difficulty information unavailable"
+            }))
+        }
     }
 }

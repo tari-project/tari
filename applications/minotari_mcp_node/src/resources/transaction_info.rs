@@ -10,6 +10,7 @@ use tonic::transport::Channel;
 
 /// Resource providing transaction information by hash
 pub struct TransactionInfoResource {
+    #[allow(dead_code)]
     grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
 }
 

@@ -97,7 +97,7 @@ impl McpTool for GetNewBlockTemplateTool {
                     "prev_hash": block.header.as_ref()
                         .map(|h| hex::encode(&h.prev_hash))
                         .unwrap_or_default(),
-                    "nonce": block.header.as_ref().and_then(|h| h.pow.as_ref()).map(|p| p.nonce).unwrap_or(0),
+                    "pow_data": block.header.as_ref().and_then(|h| h.pow.as_ref()).map(|p| hex::encode(&p.pow_data)).unwrap_or_default(),
                     "pow_algo": pow_algo_str,
                 },
                 "body": {

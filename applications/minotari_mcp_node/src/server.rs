@@ -53,12 +53,14 @@ impl NodeMcpServer {
     }
 
     /// Stop the MCP server
+    #[allow(dead_code)]
     pub async fn stop(&self) -> McpResult<()> {
         log::info!("Stopping Minotari Node MCP Server");
         self.inner.stop().await
     }
 
     /// Check if the server is running
+    #[allow(dead_code)]
     pub fn is_running(&self) -> bool {
         self.inner.is_running()
     }

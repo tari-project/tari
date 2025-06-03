@@ -4,7 +4,7 @@ use minotari_mcp_common::{
     McpTool, McpResult, McpError, PermissionLevel,
     json_schema, get_required_string_param
 };
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{Block, SubmitBlockRequest}};
+use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Block};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;

@@ -1,7 +1,7 @@
 //! Block information resource
 
 use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::GetBlocksRequest};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ use tonic::transport::Channel;
 
 /// Resource providing block information by height
 pub struct BlockInfoResource {
+    #[allow(dead_code)]
     grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
 }
 

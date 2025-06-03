@@ -5,7 +5,7 @@ mod submit_transaction;
 // mod ban_peer; // Commented out - BanPeerRequest/UnbanPeerRequest not available in gRPC client
 mod mining_tools;
 
-use minotari_mcp_common::{ToolRegistry, McpTool};
+use minotari_mcp_common::ToolRegistry;
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use std::sync::Arc;
 use tonic::transport::Channel;

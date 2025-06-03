@@ -48,16 +48,15 @@ impl McpResource for ChainMetadataResource {
 
         if let Some(metadata) = tip_info.metadata {
             Ok(serde_json::json!({
-                "height_of_longest_chain": metadata.height_of_longest_chain,
-                "best_block_hash": hex::encode(&metadata.best_block_hash),
                 "best_block_height": metadata.best_block_height,
-                "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
+                "best_block_hash": hex::encode(&metadata.best_block_hash),
+                "accumulated_difficulty": hex::encode(&metadata.accumulated_difficulty),
                 "pruned_height": metadata.pruned_height,
                 "timestamp": metadata.timestamp,
                 "chain_metadata": {
-                    "effective_pruned_height": metadata.effective_pruned_height,
-                    "accumulated_difficulty": metadata.accumulated_difficulty.to_string(),
-                    "total_chainwork": metadata.total_chainwork.to_string(),
+                    "best_block_height": metadata.best_block_height,
+                    "accumulated_difficulty": hex::encode(&metadata.accumulated_difficulty),
+                    "pruned_height": metadata.pruned_height,
                 }
             }))
         } else {
