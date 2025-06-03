@@ -1040,12 +1040,12 @@ impl PeerDatabaseSql {
                 .filter(peers::node_id.like(format!("{}%", partial_key)))
                 .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
-            if results.is_empty() {
-                results = peers::table
-                    .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-                    .filter(peers::public_key.like(format!("{}%", partial_key)))
-                    .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
-            }
+            let mut publik_key_match = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(peers::public_key.like(format!("{}%", partial_key)))
+                .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+
+            results.append(&mut publik_key_match);
         }
 
         PeerDatabaseSql::peers_from_join_query(results)
