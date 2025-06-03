@@ -544,7 +544,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 31] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 32] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -561,6 +561,7 @@ impl LMDBDatabase {
             (LMDB_DB_UTXO_COMMITMENT_INDEX, &self.utxo_commitment_index),
             (LMDB_DB_CONTRACT_ID_INDEX, &self.contract_index),
             (LMDB_DB_UNIQUE_ID_INDEX, &self.unique_id_index),
+            (LMDB_DB_PAYREF_TO_OUTPUT_INDEX, &self.payref_to_output_index),
             (
                 LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
                 &self.deleted_txo_hash_to_header_index,
@@ -2337,7 +2338,8 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        self.check_output_spent_status(&output_hash)
+        let txn = self.read_transaction()?;
+        self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
