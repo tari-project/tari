@@ -3058,6 +3058,36 @@ TariTransportConfig *transport_tor_create(const char *control_server_address,
                                           int *error_out);
 
 /**
+ * Creates an auto-fallback transport type that tries Tor first, then falls back to TCP if Tor is blocked
+ *
+ * ## Arguments
+ * `tcp_listener_address` - The pointer to a char array for TCP fallback address
+ * `tor_control_address` - The pointer to a char array for Tor control server address (optional, can be null)
+ * `tor_cookie` - The cookie to authenticate with Tor (optional, can be null)
+ * `tor_port` - The port that tor proxy will use
+ * `tor_proxy_bypass_for_outbound` - Whether to bypass tor proxy for outbound TCP connections
+ * `socks_username` - Username for socks authentication (optional, can be null)
+ * `socks_password` - Password for socks authentication (optional, can be null)
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TariTransportConfig` - Returns a pointer to an AutoFallback TariTransportConfig, null on error.
+ *
+ * # Safety
+ * The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+ * memory leak
+ */
+TariTransportConfig *transport_auto_fallback_create(const char *tcp_listener_address,
+                                                    const char *tor_control_address,
+                                                    const struct ByteVector *tor_cookie,
+                                                    unsigned short tor_port,
+                                                    bool tor_proxy_bypass_for_outbound,
+                                                    const char *socks_username,
+                                                    const char *socks_password,
+                                                    int *error_out);
+
+/**
  * Gets the address for a memory transport type
  *
  * ## Arguments

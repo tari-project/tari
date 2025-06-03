@@ -6087,6 +6087,157 @@ pub unsafe extern "C" fn transport_tor_create(
     }
 }
 
+/// Creates an auto-fallback transport type that tries Tor first, then falls back to TCP if Tor is blocked
+///
+/// ## Arguments
+/// `tcp_listener_address` - The pointer to a char array for TCP fallback address
+/// `tor_control_address` - The pointer to a char array for Tor control server address (optional, can be null)
+/// `tor_cookie` - The cookie to authenticate with Tor (optional, can be null)
+/// `tor_port` - The port that tor proxy will use
+/// `tor_proxy_bypass_for_outbound` - Whether to bypass tor proxy for outbound TCP connections
+/// `socks_username` - Username for socks authentication (optional, can be null)
+/// `socks_password` - Password for socks authentication (optional, can be null)
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariTransportConfig` - Returns a pointer to an AutoFallback TariTransportConfig, null on error.
+///
+/// # Safety
+/// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn transport_auto_fallback_create(
+    tcp_listener_address: *const c_char,
+    tor_control_address: *const c_char,
+    tor_cookie: *const ByteVector,
+    tor_port: c_ushort,
+    tor_proxy_bypass_for_outbound: bool,
+    socks_username: *const c_char,
+    socks_password: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariTransportConfig {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    // Parse TCP listener address (required for fallback)
+    let tcp_address_str;
+    if tcp_listener_address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("tcp_listener_address".to_string())).code;
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(tcp_listener_address).to_str() {
+            Ok(v) => {
+                tcp_address_str = v.to_owned();
+            },
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("tcp_listener_address".to_string())).code;
+                return ptr::null_mut();
+            },
+        }
+    }
+
+    let tcp_listener_addr = match tcp_address_str.parse() {
+        Ok(addr) => addr,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("tcp_listener_address".to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    // Parse Tor control address (optional - if null, use default)
+    let control_address = if tor_control_address.is_null() {
+        "/ip4/127.0.0.1/tcp/9051".parse().expect("Default Tor control address should be valid")
+    } else {
+        match CStr::from_ptr(tor_control_address).to_str() {
+            Ok(control_address_str) => match control_address_str.parse() {
+                Ok(addr) => addr,
+                Err(_) => {
+                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument("tor_control_address".to_string())).code;
+                    return ptr::null_mut();
+                },
+            },
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("tor_control_address".to_string())).code;
+                return ptr::null_mut();
+            },
+        }
+    };
+
+    // Handle SOCKS authentication (same logic as tor_create)
+    let username_str;
+    let password_str;
+    let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
+        match CStr::from_ptr(socks_username).to_str() {
+            Ok(v) => {
+                username_str = v.to_owned();
+            },
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("socks_username".to_string())).code;
+                return ptr::null_mut();
+            },
+        }
+        match CStr::from_ptr(socks_password).to_str() {
+            Ok(v) => {
+                password_str = v.to_owned();
+            },
+            _ => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("socks_password".to_string())).code;
+                return ptr::null_mut();
+            },
+        }
+        SocksAuthentication::UsernamePassword {
+            username: username_str,
+            password: password_str,
+        }
+    } else {
+        SocksAuthentication::None
+    };
+
+    // Handle Tor cookie authentication
+    let control_auth = if tor_cookie.is_null() {
+        TorControlAuthentication::Auto
+    } else {
+        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+        TorControlAuthentication::hex(cookie_hex)
+    };
+
+    let onion_port = match NonZeroU16::new(tor_port) {
+        Some(p) => p,
+        None => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument(
+                "onion_port must be greater than 0".to_string(),
+            ))
+            .code;
+            return ptr::null_mut();
+        },
+    };
+
+    let transport = TariTransportConfig {
+        transport_type: TransportType::AutoFallback,
+        tcp: TcpTransportConfig {
+            listener_address: tcp_listener_addr,
+            ..Default::default()
+        },
+        tor: TorTransportConfig {
+            control_address,
+            socks_auth: socks_authentication,
+            control_auth,
+            onion_port,
+            proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
+            allow_fallback: true,  // Enable fallback
+            tor_timeout: Some(std::time::Duration::from_secs(15)), // 15 second timeout
+            tor_retry_interval: Some(std::time::Duration::from_secs(300)), // 5 minute retry
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    Box::into_raw(Box::new(transport))
+}
+
 /// Gets the address for a memory transport type
 ///
 /// ## Arguments
