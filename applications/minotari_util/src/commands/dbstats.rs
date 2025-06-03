@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap::Args;
-use lmdb_zero::open;
+use lmdb_zero::{open, ReadTransaction, Database, DatabaseOptions};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
@@ -274,26 +274,62 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         numreaders: env_info.numreaders,
     };
 
-    // Get basic environment stats only for now (can be expanded later)
+    // Get individual database statistics
     let page_size = env_stat.psize as usize;
-    let total_pages = env_stat.leaf_pages + env_stat.branch_pages + env_stat.overflow_pages;
-    let total_size = total_pages * page_size;
+    let mut databases = Vec::new();
     
-    let databases = vec![DatabaseStats {
-        name: "Environment Summary".to_string(),
-        entries: env_stat.entries,
-        total_size,
-        avg_size: if env_stat.entries > 0 {
-            total_size / env_stat.entries
-        } else {
-            0
-        },
-        depth: env_stat.depth,
-        total_pages,
-        leaf_pages: env_stat.leaf_pages,
-        branch_pages: env_stat.branch_pages,
-        overflow_pages: env_stat.overflow_pages,
-    }];
+    // Get the known Tari database names (same as in create_lmdb_database)
+    let db_names = vec![
+        "metadata", "headers", "header_accumulated_data", "block_accumulated_data",
+        "block_hashes", "utxos", "inputs", "txos_hash_to_index", "kernels",
+        "kernel_excess_index", "kernel_excess_sig_index", "kernel_mmr_size_index",
+        "utxo_commitment_index", "unique_id_index", "contract_id_index",
+        "deleted_txo_hash_to_header_index", "orphans", "orphan_accumulated_data",
+        "monero_seed_height", "monero_seed_height_index", "orphan_chain_tips",
+        "orphan_parent_map_index", "bad_blocks", "reorgs", "validator_nodes",
+        "validator_nodes_mapping", "template_registrations", "utxo_smt",
+        "jmt_value_data", "jmt_node_data", "jmt_unique_key_data"
+    ];
+    
+    // Try to get stats for each database by opening them directly
+    
+    let txn = ReadTransaction::new(env.clone()).map_err(|e| anyhow!("Failed to create read transaction: {}", e))?;
+    
+    for db_name in db_names {
+        match Database::open(&*env, Some(db_name), &DatabaseOptions::new(lmdb_zero::db::Flags::empty())) {
+            Ok(database) => {
+                match txn.db_stat(&database) {
+                    Ok(db_stat) => {
+                        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+                        let total_size = total_pages * page_size;
+                        let avg_size = if db_stat.entries > 0 {
+                            total_size / db_stat.entries
+                        } else {
+                            0
+                        };
+
+                        databases.push(DatabaseStats {
+                            name: db_name.to_string(),
+                            entries: db_stat.entries,
+                            total_size,
+                            avg_size,
+                            depth: db_stat.depth,
+                            total_pages,
+                            leaf_pages: db_stat.leaf_pages,
+                            branch_pages: db_stat.branch_pages,
+                            overflow_pages: db_stat.overflow_pages,
+                        });
+                    }
+                    Err(e) => {
+                        debug!("Failed to get stats for database '{}': {}", db_name, e);
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to open database '{}': {}", db_name, e);
+            }
+        }
+    }
 
     // Create summary
     let total_databases = databases.len();
