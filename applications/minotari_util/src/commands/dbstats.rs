@@ -257,51 +257,40 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     
     let txn = ReadTransaction::new(env.clone()).map_err(|e| anyhow!("Failed to create read transaction: {}", e))?;
     
-    for db_name in db_names {
-        match Database::open(&*env, Some(db_name), &DatabaseOptions::new(lmdb_zero::db::Flags::empty())) {
+    // Try a simpler approach - just get overall environment stats for now to verify this works
+    println!("Environment opened successfully, found {} databases to check", db_names.len());
+    
+    // Let's try accessing the main database (metadata) with different approaches
+    if let Some(&first_db_name) = db_names.first() {
+        println!("Trying to open first database: {}", first_db_name);
+        
+        // Try with different database options
+        match Database::open(&*env, Some(first_db_name), &DatabaseOptions::defaults()) {
             Ok(database) => {
+                println!("Successfully opened database: {}", first_db_name);
                 match txn.db_stat(&database) {
                     Ok(db_stat) => {
-                        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-                        let total_size = total_pages * page_size;
-                        let avg_size = if db_stat.entries > 0 {
-                            total_size / db_stat.entries
-                        } else {
-                            0
-                        };
-
-                        databases.push(DatabaseStats {
-                            name: db_name.to_string(),
-                            entries: db_stat.entries,
-                            total_size,
-                            avg_size,
-                            depth: db_stat.depth,
-                            total_pages,
-                            leaf_pages: db_stat.leaf_pages,
-                            branch_pages: db_stat.branch_pages,
-                            overflow_pages: db_stat.overflow_pages,
-                        });
+                        println!("Successfully got stats for {}: {} entries", first_db_name, db_stat.entries);
                     }
                     Err(e) => {
-                        println!("Failed to get stats for database '{}': {}", db_name, e);
+                        println!("Failed to get stats for {} with defaults: {}", first_db_name, e);
+                        
+                        // Try with a different transaction approach  
+                        println!("Trying alternative transaction methods...");
                     }
                 }
             }
             Err(e) => {
-                println!("Failed to open database '{}': {}", db_name, e);
+                println!("Failed to open {} with defaults: {}", first_db_name, e);
             }
         }
     }
 
-    // Create summary
+    // Create summary (placeholder since we're debugging)
     let total_databases = databases.len();
-    let total_entries: usize = databases.iter().map(|d| d.entries).sum();
-    let total_size: usize = databases.iter().map(|d| d.total_size).sum();
-    let largest_db = databases
-        .iter()
-        .max_by_key(|d| d.total_size)
-        .map(|d| d.name.clone())
-        .unwrap_or_else(|| "None".to_string());
+    let total_entries: usize = 0; // databases.iter().map(|d| d.entries).sum();
+    let total_size: usize = 0; // databases.iter().map(|d| d.total_size).sum();
+    let largest_db = "None".to_string(); // placeholder while debugging
     let avg_entries_per_db = if total_databases > 0 {
         total_entries / total_databases
     } else {
