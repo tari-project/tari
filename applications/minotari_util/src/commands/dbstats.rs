@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::{Path, PathBuf}, fs};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
@@ -28,12 +31,10 @@ use clap::Args;
 use csv;
 use rusqlite::Connection;
 
-
+use lmdb_zero::{Database, DatabaseOptions, ReadTransaction};
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
 use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names};
-use lmdb_zero::{ReadTransaction, Database, DatabaseOptions};
-
 
 use crate::{cli::Cli, config::AppConfig};
 
@@ -131,7 +132,7 @@ pub struct DatabaseSummary {
 // New structures for multi-database analysis
 #[derive(Debug, Serialize, Deserialize)]
 enum DatabaseType {
-    LMDB,
+    Lmdb,
     SQLite,
 }
 
@@ -202,7 +203,7 @@ fn format_u64(value: &u64) -> String {
 impl DbStatsArgs {
     pub fn execute(self, cli: &Cli) -> Result<()> {
         let _config = AppConfig::from_cli(cli)?;
-        
+
         // Default to ~/.tari/mainnet if no network dir specified
         let network_dir = self.network_dir.clone().unwrap_or_else(|| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -215,37 +216,41 @@ impl DbStatsArgs {
 
         // Scan for all databases
         let databases = scan_for_databases(&network_dir)?;
-        
+
         // Create output structure
         let all_stats = AllDatabasesOutput {
             component_databases: databases,
-            lmdb_details: None, // Will be populated below if include_detailed
+            lmdb_details: None,         // Will be populated below if include_detailed
             sqlite_details: Vec::new(), // Will be populated below if include_detailed
         };
-        
+
         // Output in requested format
         match self.format {
             OutputFormat::Table => {
-                println!("Found {} databases in {}", all_stats.component_databases.len(), network_dir.display());
+                println!(
+                    "Found {} databases in {}",
+                    all_stats.component_databases.len(),
+                    network_dir.display()
+                );
                 println!();
-                
+
                 let mut table_data = Table::new(&all_stats.component_databases);
                 let table = table_data.with(Style::rounded());
                 println!("{}", table);
-            }
+            },
             OutputFormat::Json => {
                 let json = serde_json::to_string_pretty(&all_stats)?;
                 println!("{}", json);
-            }
+            },
             OutputFormat::Csv => {
                 let mut wtr = csv::Writer::from_writer(std::io::stdout());
                 for db in &all_stats.component_databases {
                     wtr.serialize(db)?;
                 }
                 wtr.flush()?;
-            }
+            },
         }
-        
+
         // Export to file if requested
         if let Some(export_path) = &self.export {
             let content = match export_path.extension().and_then(|s| s.to_str()) {
@@ -260,16 +265,16 @@ impl DbStatsArgs {
                         wtr.flush()?;
                     }
                     String::from_utf8(buffer)?
-                }
+                },
                 _ => {
                     // Default to JSON for unknown extensions
                     serde_json::to_string_pretty(&all_stats)?
-                }
+                },
             };
             std::fs::write(export_path, content)?;
             println!("Exported statistics to {}", export_path.display());
         }
-        
+
         // Add detailed LMDB analysis if requested
         if self.include_detailed {
             if let Some(base_node_lmdb) = find_base_node_lmdb_database(&all_stats.component_databases) {
@@ -282,39 +287,41 @@ impl DbStatsArgs {
                         println!("  Last Transaction ID: {}", lmdb_stats.environment.last_txnid);
                         println!("  Max Readers: {}", lmdb_stats.environment.maxreaders);
                         println!("  Used Readers: {}", lmdb_stats.environment.numreaders);
-                        
+
                         println!("\nDatabase Statistics:");
                         let mut lmdb_databases = lmdb_stats.databases.clone();
                         self.sort_lmdb_databases(&mut lmdb_databases);
-                        
+
                         if let Some(top) = self.top {
                             lmdb_databases.truncate(top);
                         }
-                        
+
                         let mut table_data = Table::new(&lmdb_databases);
                         let table = table_data.with(Style::rounded());
                         println!("{}", table);
-                        
+
                         println!("\nSummary:");
                         println!("  Total Databases: {}", lmdb_stats.summary.total_databases);
                         println!("  Total Entries: {}", lmdb_stats.summary.total_entries);
                         println!("  Total Size: {}", ByteSize(lmdb_stats.summary.total_size as u64));
                         println!("  Largest Database: {}", lmdb_stats.summary.largest_db);
                         println!("  Average Entries per DB: {}", lmdb_stats.summary.avg_entries_per_db);
-                    }
+                    },
                     Err(e) => {
                         println!("Failed to analyze base node LMDB database: {}", e);
-                    }
+                    },
                 }
             } else {
                 println!("\nNo base node LMDB database found for detailed analysis");
             }
-            
+
             // Add detailed SQLite analysis for all SQLite databases
-            let sqlite_databases: Vec<_> = all_stats.component_databases.iter()
+            let sqlite_databases: Vec<_> = all_stats
+                .component_databases
+                .iter()
                 .filter(|db| db.db_type == "SQLite")
                 .collect();
-                
+
             if !sqlite_databases.is_empty() {
                 println!("\n=== Detailed SQLite Database Analysis ===");
                 for sqlite_db in sqlite_databases {
@@ -326,30 +333,30 @@ impl DbStatsArgs {
                             println!("  Page Size: {}", ByteSize(sqlite_stats.page_size));
                             println!("  Page Count: {}", sqlite_stats.page_count);
                             println!("  Free Pages: {}", sqlite_stats.freelist_count);
-                            
+
                             if !sqlite_stats.tables.is_empty() {
                                 println!("\nTable Statistics:");
                                 let mut sqlite_tables = sqlite_stats.tables.clone();
-                                
+
                                 if let Some(top) = self.top {
                                     sqlite_tables.truncate(top);
                                 }
-                                
+
                                 let mut table_data = Table::new(&sqlite_tables);
                                 let table = table_data.with(Style::rounded());
                                 println!("{}", table);
                             }
-                            
+
                             println!("\nSummary:");
                             println!("  Total Tables: {}", sqlite_stats.summary.total_tables);
                             println!("  Total Rows: {}", sqlite_stats.summary.total_rows);
                             println!("  Total Size: {}", ByteSize(sqlite_stats.summary.total_size));
                             println!("  Largest Table: {}", sqlite_stats.summary.largest_table);
                             println!("  Average Rows per Table: {}", sqlite_stats.summary.avg_rows_per_table);
-                        }
+                        },
                         Err(e) => {
                             println!("Failed to analyze SQLite database {}: {}", sqlite_db.name, e);
-                        }
+                        },
                     }
                 }
             }
@@ -366,30 +373,21 @@ impl DbStatsArgs {
             SortField::Pages => databases.sort_by(|a, b| b.total_pages.cmp(&a.total_pages)),
         }
     }
-
-
-
-
-
-
-
-
-
-
 }
 
 fn scan_for_databases(network_dir: &Path) -> Result<Vec<ComponentDatabaseInfo>> {
     let mut databases = Vec::new();
-    
+
     // Recursively scan for database files
     scan_directory(network_dir, network_dir, &mut databases)?;
-    
+
     // Sort by component and then by size
     databases.sort_by(|a, b| {
-        a.component.cmp(&b.component)
+        a.component
+            .cmp(&b.component)
             .then_with(|| b.total_size.cmp(&a.total_size))
     });
-    
+
     Ok(databases)
 }
 
@@ -397,18 +395,18 @@ fn scan_directory(dir: &Path, base_dir: &Path, databases: &mut Vec<ComponentData
     if !dir.is_dir() {
         return Ok(());
     }
-    
+
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        
+
         if path.is_dir() {
             // Check if this is an LMDB database directory (contains data.mdb)
             if path.join("data.mdb").exists() {
                 let component = determine_component(&path, base_dir);
                 let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 let size = get_directory_size(&path)?;
-                
+
                 databases.push(ComponentDatabaseInfo {
                     component,
                     name,
@@ -420,12 +418,12 @@ fn scan_directory(dir: &Path, base_dir: &Path, databases: &mut Vec<ComponentData
                 // Recursively scan subdirectories
                 scan_directory(&path, base_dir, databases)?;
             }
-        } else if path.extension().map_or(false, |ext| ext == "db") {
+        } else if path.extension().is_some_and(|ext| ext == "db") {
             // SQLite database file
             let component = determine_component(&path, base_dir);
             let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
             let size = path.metadata()?.len();
-            
+
             databases.push(ComponentDatabaseInfo {
                 component,
                 name,
@@ -435,14 +433,14 @@ fn scan_directory(dir: &Path, base_dir: &Path, databases: &mut Vec<ComponentData
             });
         }
     }
-    
+
     Ok(())
 }
 
 fn determine_component(path: &Path, base_dir: &Path) -> String {
     let relative_path = path.strip_prefix(base_dir).unwrap_or(path);
     let path_str = relative_path.to_string_lossy();
-    
+
     if path_str.contains("base_node") {
         "Base Node".to_string()
     } else if path_str.contains("wallet") {
@@ -458,37 +456,39 @@ fn determine_component(path: &Path, base_dir: &Path) -> String {
 
 fn get_directory_size(dir: &Path) -> Result<u64> {
     let mut total_size = 0;
-    
+
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        
+
         if path.is_file() {
             total_size += path.metadata()?.len();
         } else if path.is_dir() {
             total_size += get_directory_size(&path)?;
         }
     }
-    
+
     Ok(total_size)
 }
 
 fn find_base_node_lmdb_database(databases: &[ComponentDatabaseInfo]) -> Option<&ComponentDatabaseInfo> {
-    databases.iter().find(|db| {
-        db.component == "Base Node" && 
-        db.db_type == "LMDB" && 
-        db.path.contains("data/base_node/db")
-    })
+    databases
+        .iter()
+        .find(|db| db.component == "Base Node" && db.db_type == "LMDB" && db.path.contains("data/base_node/db"))
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     // Open LMDB environment directly in read-only mode (like the original working approach)
-    let env = create_readonly_lmdb_environment(db_path)
-        .map_err(|e| anyhow!("Failed to open LMDB environment: {}", e))?;
+    let env =
+        create_readonly_lmdb_environment(db_path).map_err(|e| anyhow!("Failed to open LMDB environment: {}", e))?;
 
     // Get environment information
-    let env_info = env.info().map_err(|e| anyhow!("Failed to get environment info: {}", e))?;
-    let env_stat = env.stat().map_err(|e| anyhow!("Failed to get environment stat: {}", e))?;
+    let env_info = env
+        .info()
+        .map_err(|e| anyhow!("Failed to get environment info: {}", e))?;
+    let env_stat = env
+        .stat()
+        .map_err(|e| anyhow!("Failed to get environment stat: {}", e))?;
 
     let environment = EnvironmentInfo {
         mapsize: env_info.mapsize,
@@ -501,10 +501,10 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     // Get individual database statistics by opening them directly
     let mut databases = Vec::new();
     let page_size = env_stat.psize as usize;
-    
+
     // Get the authoritative list of database names from Tari core
     let db_names = get_all_database_names();
-    
+
     // Get statistics for each database
     for db_name in db_names {
         if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
@@ -564,73 +564,80 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
 
 fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
     let conn = Connection::open(db_path)?;
-    
+
     // Get database file information
     let file_size = db_path.metadata()?.len();
-    
+
     // Get database pragma information
     let page_size: u64 = conn.pragma_query_value(None, "page_size", |row| row.get(0))?;
     let page_count: u64 = conn.pragma_query_value(None, "page_count", |row| row.get(0))?;
     let freelist_count: u64 = conn.pragma_query_value(None, "freelist_count", |row| row.get(0))?;
-    
+
     // Get list of tables
     let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table'")?;
-    let table_names: Vec<String> = stmt.query_map([], |row| {
-        Ok(row.get::<_, String>(0)?)
-    })?.collect::<Result<Vec<_>, _>>()?;
-    
+    let table_names: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
     let mut tables = Vec::new();
     let mut total_rows = 0;
-    
+
     for table_name in table_names {
         // Skip SQLite internal tables
         if table_name.starts_with("sqlite_") {
             continue;
         }
-        
+
         // Get row count
-        let row_count: u64 = conn.query_row(
-            &format!("SELECT COUNT(*) FROM {}", table_name),
-            [],
-            |row| row.get(0)
-        ).unwrap_or(0);
-        
+        let row_count: u64 = conn
+            .query_row(&format!("SELECT COUNT(*) FROM {}", table_name), [], |row| row.get(0))
+            .unwrap_or(0);
+
         // Estimate table size using database_list and page info
         // This is an approximation since SQLite doesn't provide direct table size info
         let table_size_estimate = if row_count > 0 {
             // Use rough estimation: file_size * (table_rows / total_db_rows_estimate)
             // This is not perfect but gives a reasonable approximation
-            let size_per_row = if row_count > 0 { file_size / page_count.max(1) } else { 0 };
+            let size_per_row = if row_count > 0 {
+                file_size / page_count.max(1)
+            } else {
+                0
+            };
             row_count * size_per_row
         } else {
             0
         };
-        
-        let avg_row_size = if row_count > 0 { table_size_estimate / row_count } else { 0 };
-        
+
+        let avg_row_size = if row_count > 0 {
+            table_size_estimate / row_count
+        } else {
+            0
+        };
+
         tables.push(SqliteTableInfo {
             name: table_name,
             row_count,
             size_bytes: table_size_estimate,
             avg_row_size,
         });
-        
+
         total_rows += row_count;
     }
-    
+
     // Sort tables by row count (descending)
     tables.sort_by(|a, b| b.row_count.cmp(&a.row_count));
-    
-    let largest_table = tables.first()
+
+    let largest_table = tables
+        .first()
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "N/A".to_string());
-    
-    let avg_rows_per_table = if !tables.is_empty() { 
-        total_rows / tables.len() as u64 
-    } else { 
-        0 
+
+    let avg_rows_per_table = if !tables.is_empty() {
+        total_rows / tables.len() as u64
+    } else {
+        0
     };
-    
+
     let summary = SqliteSummary {
         total_tables: tables.len(),
         total_rows,
@@ -638,7 +645,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
         largest_table,
         avg_rows_per_table,
     };
-    
+
     Ok(SqliteStatsOutput {
         file_size,
         page_size,
@@ -648,6 +655,3 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
         summary,
     })
 }
-
-
-
