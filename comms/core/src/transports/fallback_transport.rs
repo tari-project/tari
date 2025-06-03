@@ -139,55 +139,40 @@ impl FallbackTransport {
         self.mode_notifier.subscribe()
     }
 
-    /// Check if Tor is available by testing connection timeout
-    async fn test_tor_availability(&self) -> bool {
-        let state = self.state.read().await;
-        if state.tor_transport.is_none() {
-            return false;
-        }
-        
-        // Update last attempt time
-        {
-            let mut state = self.state.write().await;
-            state.last_tor_attempt = Some(std::time::Instant::now());
-        }
-        
-        info!(target: LOG_TARGET, "Testing Tor availability with timeout of {:?}", self.config.tor_timeout);
-        // For now, we'll just assume Tor is available if we have a transport configured
-        // The real test will happen during actual listen/dial operations
-        true
-    }
-
     /// Initialize transport, trying Tor first, then falling back to TCP
     async fn initialize(&self, addr: &Multiaddr) -> Result<(FallbackListener, Multiaddr), FallbackTransportError> {
-        // Check if Tor transport is available and test it
-        if self.test_tor_availability().await {
-            let tor_transport = {
-                let state = self.state.read().await;
-                state.tor_transport.clone()
-            };
+        // Try Tor transport if available
+        let tor_transport = {
+            let state = self.state.read().await;
+            state.tor_transport.clone()
+        };
+        
+        if let Some(tor_transport) = tor_transport {
+            info!(target: LOG_TARGET, "Attempting to initialize Tor transport with timeout of {:?}...", self.config.tor_timeout);
             
-            if let Some(tor_transport) = tor_transport {
-                info!(target: LOG_TARGET, "Attempting to initialize Tor transport...");
-                
-                let tor_init_future = tor_transport.listen(addr);
-                pin_mut!(tor_init_future);
-                
-                match time::timeout(self.config.tor_timeout, tor_init_future).await {
-                    Ok(Ok((listener, listen_addr))) => {
-                        info!(target: LOG_TARGET, "Tor transport initialized successfully");
-                        let mut state = self.state.write().await;
-                        state.mode = TransportMode::Tor;
-                        let _ = self.mode_notifier.send(TransportMode::Tor);
-                        
-                        return Ok((FallbackListener::Tor(listener), listen_addr));
-                    },
-                    Ok(Err(err)) => {
-                        warn!(target: LOG_TARGET, "Tor transport failed to initialize: {}", err);
-                    },
-                    Err(_) => {
-                        warn!(target: LOG_TARGET, "Tor transport initialization timed out after {:?}", self.config.tor_timeout);
-                    }
+            // Update last attempt time
+            {
+                let mut state = self.state.write().await;
+                state.last_tor_attempt = Some(std::time::Instant::now());
+            }
+            
+            let tor_init_future = tor_transport.listen(addr);
+            pin_mut!(tor_init_future);
+            
+            match time::timeout(self.config.tor_timeout, tor_init_future).await {
+                Ok(Ok((listener, listen_addr))) => {
+                    info!(target: LOG_TARGET, "Tor transport initialized successfully");
+                    let mut state = self.state.write().await;
+                    state.mode = TransportMode::Tor;
+                    let _ = self.mode_notifier.send(TransportMode::Tor);
+                    
+                    return Ok((FallbackListener::Tor(listener), listen_addr));
+                },
+                Ok(Err(err)) => {
+                    warn!(target: LOG_TARGET, "Tor transport failed to initialize: {}", err);
+                },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "Tor transport initialization timed out after {:?}", self.config.tor_timeout);
                 }
             }
         }
@@ -305,7 +290,9 @@ impl Transport for FallbackTransport {
             let state = self.state.read().await;
             if self.should_retry_tor(&state) {
                 drop(state);
-                let _ = self.test_tor_availability().await;
+                // Just update the attempt time, actual testing happens during connection
+                let mut state = self.state.write().await;
+                state.last_tor_attempt = Some(std::time::Instant::now());
             }
         }
 
@@ -432,5 +419,34 @@ mod tests {
         
         // Both should share the same state
         assert_eq!(transport.mode().await, TransportMode::Failed);
+    }
+
+    #[tokio::test]
+    async fn test_fallback_to_tcp_when_no_tor() {
+        // Create a fallback config with short timeout for testing
+        let config = FallbackConfig {
+            tor_timeout: Duration::from_secs(1), // Short timeout
+            allow_fallback: true,
+            enable_tor_retry: true,
+            tor_retry_interval: Duration::from_secs(60),
+        };
+        
+        // Create TCP transport (this should work)
+        let tcp_transport = TcpTransport::new();
+        
+        // Create fallback transport without Tor transport (simulating Tor unavailable)
+        let fallback_transport = FallbackTransport::new(config, None, tcp_transport);
+        
+        // Initial mode should be Failed
+        assert_eq!(fallback_transport.mode().await, TransportMode::Failed);
+        
+        // Try to listen on a local address - should fallback to TCP
+        let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
+        
+        let result = fallback_transport.listen(&listen_addr).await;
+        assert!(result.is_ok(), "Transport initialization should succeed with TCP fallback");
+        
+        // Should now be in IPv4Only mode
+        assert_eq!(fallback_transport.mode().await, TransportMode::IPv4Only);
     }
 }
