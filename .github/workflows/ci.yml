@@ -16,7 +16,7 @@ name: CI
 env:
   toolchain: stable
   nightly_toolchain: nightly-2025-01-01
-  nightly_test_toolchain: nightly-2024-08-03
+  nightly_test_toolchain: nightly-2025-01-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
