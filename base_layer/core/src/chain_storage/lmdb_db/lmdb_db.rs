@@ -230,6 +230,74 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
 }
 
+/// Create a read-only LMDB database connection that doesn't require exclusive file lock.
+/// This is useful for utilities and read-only analysis while the main node is running.
+pub fn create_readonly_lmdb_database<P: AsRef<Path>>(
+    path: P,
+    config: LMDBConfig,
+    consensus_manager: ConsensusManager,
+) -> Result<LMDBDatabase, ChainStorageError> {
+    let flags = db::Flags::empty(); // No CREATE flag for read-only access
+    debug!(target: LOG_TARGET, "Opening LMDB database in read-only mode at {:?}", path.as_ref());
+    
+    if !path.as_ref().exists() {
+        return Err(ChainStorageError::CriticalError(format!(
+            "Database path does not exist: {}", 
+            path.as_ref().display()
+        )));
+    }
+
+    // Create a dummy file lock (we won't use it for read-only access)
+    use std::fs::OpenOptions;
+    let dummy_lock_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(path.as_ref().join(".readonly_dummy"))
+        .map_err(|e| ChainStorageError::AccessError(format!("Could not create dummy lock file: {}", e)))?;
+
+    let lmdb_store = LMDBBuilder::new()
+        .set_path(path)
+        .set_env_flags(open::NOLOCK | open::RDONLY) // Read-only mode without file locks
+        .set_env_config(config)
+        .set_max_number_of_databases(40)
+        .add_database(LMDB_DB_METADATA, flags)
+        .add_database(LMDB_DB_HEADERS, flags)
+        .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags)
+        .add_database(LMDB_DB_BLOCK_ACCUMULATED_DATA, flags)
+        .add_database(LMDB_DB_BLOCK_HASHES, flags)
+        .add_database(LMDB_DB_UTXOS, flags)
+        .add_database(LMDB_DB_INPUTS, flags)
+        .add_database(LMDB_DB_TXOS_HASH_TO_INDEX, flags)
+        .add_database(LMDB_DB_KERNELS, flags)
+        .add_database(LMDB_DB_KERNEL_EXCESS_INDEX, flags)
+        .add_database(LMDB_DB_KERNEL_EXCESS_SIG_INDEX, flags)
+        .add_database(LMDB_DB_KERNEL_MMR_SIZE_INDEX, flags)
+        .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
+        .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
+        .add_database(LMDB_DB_CONTRACT_ID_INDEX, flags)
+        .add_database(LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX, flags)
+        .add_database(LMDB_DB_ORPHANS, flags)
+        .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
+        .add_database(LMDB_DB_MONERO_SEED_HEIGHT_INDEX, flags)
+        .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
+        .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
+        .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags)
+        .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
+        .add_database(LMDB_DB_REORGS, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES, flags)
+        .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
+        .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags)
+        .add_database(LMDB_DB_UTXO_SMT, flags)
+        .add_database(LMDB_DB_JMT_VALUE_DATA, flags)
+        .add_database(LMDB_DB_JMT_NODE_DATA, flags)
+        .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
+        .build()
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not open LMDB store: {}", err)))?;
+    
+    debug!(target: LOG_TARGET, "LMDB read-only database access successful");
+    LMDBDatabase::new(&lmdb_store, dummy_lock_file, consensus_manager)
+}
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,

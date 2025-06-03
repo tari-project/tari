@@ -25,39 +25,18 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap::Args;
-use lmdb_zero::{open, ReadTransaction, Database, DatabaseOptions};
-use log::debug;
+
+
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
-
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_core::{
+    chain_storage::{create_readonly_lmdb_database, BlockchainBackend},
+    consensus::ConsensusManager,
+};
+use tari_common::configuration::Network;
+use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{cli::Cli, config::AppConfig};
-
-/// Create a read-only LMDB store connection that doesn't require exclusive lock
-fn create_readonly_lmdb_store<P: AsRef<Path>>(
-    path: P,
-    config: LMDBConfig,
-) -> Result<LMDBStore, anyhow::Error> {
-
-    
-    debug!("Opening LMDB store in read-only mode at {:?}", path.as_ref());
-    
-    if !path.as_ref().exists() {
-        return Err(anyhow!("Database path does not exist: {}", path.as_ref().display()));
-    }
-
-    // Create LMDB store without acquiring exclusive file lock - just open existing databases
-    let lmdb_store = LMDBBuilder::new()
-        .set_path(path)
-        .set_env_flags(open::NOLOCK | open::RDONLY) // Read-only mode without locks
-        .set_env_config(config)
-        .set_max_number_of_databases(40)
-        .build()
-        .map_err(|e| anyhow!("Failed to open LMDB store: {}", e))?;
-
-    Ok(lmdb_store)
-}
 
 #[derive(Args, Default)]
 pub struct DbStatsArgs {
@@ -256,16 +235,20 @@ impl DbStatsArgs {
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
+    // Use the existing Tari LMDBDatabase infrastructure in read-only mode
+    let consensus_manager = ConsensusManager::builder(Network::MainNet).build()?;
+    let lmdb_database = create_readonly_lmdb_database(db_path, LMDBConfig::default(), consensus_manager)
+        .map_err(|e| anyhow!("Failed to open Tari database: {}", e))?;
+
+    // Use existing methods to get statistics
+    let basic_stats = lmdb_database.get_stats()
+        .map_err(|e| anyhow!("Failed to get database stats: {}", e))?;
     
-    // Open LMDB store in read-only mode without exclusive lock
-    let lmdb_store = create_readonly_lmdb_store(db_path, LMDBConfig::default())
-        .map_err(|e| anyhow!("Failed to open LMDB store: {}", e))?;
+    let _size_stats = lmdb_database.fetch_total_size_stats()
+        .map_err(|e| anyhow!("Failed to get size stats: {}", e))?;
 
-    // Get environment information directly from LMDB
-    let env = lmdb_store.env();
-    let env_info = env.info().map_err(|e| anyhow!("Failed to get environment info: {}", e))?;
-    let env_stat = env.stat().map_err(|e| anyhow!("Failed to get environment stat: {}", e))?;
-
+    // Convert environment info
+    let env_info = basic_stats.env_info();
     let environment = EnvironmentInfo {
         mapsize: env_info.mapsize,
         last_pgno: env_info.last_pgno,
@@ -274,61 +257,28 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         numreaders: env_info.numreaders,
     };
 
-    // Get individual database statistics
-    let page_size = env_stat.psize as usize;
+    // Convert database statistics
     let mut databases = Vec::new();
-    
-    // Get the known Tari database names (same as in create_lmdb_database)
-    let db_names = vec![
-        "metadata", "headers", "header_accumulated_data", "block_accumulated_data",
-        "block_hashes", "utxos", "inputs", "txos_hash_to_index", "kernels",
-        "kernel_excess_index", "kernel_excess_sig_index", "kernel_mmr_size_index",
-        "utxo_commitment_index", "unique_id_index", "contract_id_index",
-        "deleted_txo_hash_to_header_index", "orphans", "orphan_accumulated_data",
-        "monero_seed_height", "monero_seed_height_index", "orphan_chain_tips",
-        "orphan_parent_map_index", "bad_blocks", "reorgs", "validator_nodes",
-        "validator_nodes_mapping", "template_registrations", "utxo_smt",
-        "jmt_value_data", "jmt_node_data", "jmt_unique_key_data"
-    ];
-    
-    // Try to get stats for each database by opening them directly
-    
-    let txn = ReadTransaction::new(env.clone()).map_err(|e| anyhow!("Failed to create read transaction: {}", e))?;
-    
-    for db_name in db_names {
-        match Database::open(&*env, Some(db_name), &DatabaseOptions::new(lmdb_zero::db::Flags::empty())) {
-            Ok(database) => {
-                match txn.db_stat(&database) {
-                    Ok(db_stat) => {
-                        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-                        let total_size = total_pages * page_size;
-                        let avg_size = if db_stat.entries > 0 {
-                            total_size / db_stat.entries
-                        } else {
-                            0
-                        };
+    for db_stat in basic_stats.db_stats() {
+        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+        let total_size = db_stat.total_page_size();
+        let avg_size = if db_stat.entries > 0 {
+            total_size / db_stat.entries
+        } else {
+            0
+        };
 
-                        databases.push(DatabaseStats {
-                            name: db_name.to_string(),
-                            entries: db_stat.entries,
-                            total_size,
-                            avg_size,
-                            depth: db_stat.depth,
-                            total_pages,
-                            leaf_pages: db_stat.leaf_pages,
-                            branch_pages: db_stat.branch_pages,
-                            overflow_pages: db_stat.overflow_pages,
-                        });
-                    }
-                    Err(e) => {
-                        debug!("Failed to get stats for database '{}': {}", db_name, e);
-                    }
-                }
-            }
-            Err(e) => {
-                debug!("Failed to open database '{}': {}", db_name, e);
-            }
-        }
+        databases.push(DatabaseStats {
+            name: db_stat.name.to_string(),
+            entries: db_stat.entries,
+            total_size,
+            avg_size,
+            depth: db_stat.depth,
+            total_pages,
+            leaf_pages: db_stat.leaf_pages,
+            branch_pages: db_stat.branch_pages,
+            overflow_pages: db_stat.overflow_pages,
+        });
     }
 
     // Create summary
