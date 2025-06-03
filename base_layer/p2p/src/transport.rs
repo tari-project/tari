@@ -125,6 +125,13 @@ impl Default for TransportType {
     }
 }
 
+impl TransportType {
+    /// Returns true if this transport type uses Tor (either directly or with fallback)
+    pub fn is_tor(&self) -> bool {
+        matches!(self, TransportType::Tor | TransportType::AutoFallback)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TcpTransportConfig {
@@ -268,5 +275,25 @@ impl Default for MemoryTransportConfig {
         Self {
             listener_address: "/memory/0".parse().unwrap(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transport_type_default_is_auto_fallback() {
+        let default_transport = TransportType::default();
+        assert!(matches!(default_transport, TransportType::AutoFallback));
+        assert!(default_transport.is_tor());
+    }
+
+    #[test]
+    fn test_auto_fallback_is_tor() {
+        assert!(TransportType::AutoFallback.is_tor());
+        assert!(TransportType::Tor.is_tor());
+        assert!(!TransportType::Tcp.is_tor());
+        assert!(!TransportType::Socks5.is_tor());
     }
 }

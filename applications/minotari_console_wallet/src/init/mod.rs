@@ -443,7 +443,7 @@ pub async fn init_wallet(
     let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
     let mut wallet_config = config.clone();
-    if let TransportType::Tor = config.p2p.transport.transport_type {
+    if config.p2p.transport.is_tor() {
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
