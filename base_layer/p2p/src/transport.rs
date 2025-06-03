@@ -119,9 +119,9 @@ pub enum TransportType {
 
 impl Default for TransportType {
     fn default() -> Self {
-        // The tor transport configures itself as long as it has access to the control port at
-        // `TorConfig::control_address`
-        Self::Tor
+        // AutoFallback provides the best connectivity - tries Tor first, falls back to TCP if blocked
+        // Users who want Tor-only can explicitly set type = "tor"
+        Self::AutoFallback
     }
 }
 
