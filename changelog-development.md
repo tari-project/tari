@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.2.0-pre.0](https://github.com/tari-project/tari/compare/v4.1.0-pre.0...v4.2.0-pre.0) (2025-06-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* update target time (#7141)
+
+### Bug Fixes
+
+* add migration code ([#7153](https://github.com/tari-project/tari/issues/7153)) ([41add9f](https://github.com/tari-project/tari/commit/41add9fe30e1c0d80e93197944a86446bcb966b7))
+* update target time ([#7141](https://github.com/tari-project/tari/issues/7141)) ([f29829f](https://github.com/tari-project/tari/commit/f29829fbace9cfcd7371bbfc20c6419a7a46a28d))
+
 ## [4.1.0-pre.0](https://github.com/tari-project/tari/compare/v4.0.0-pre.0...v4.1.0-pre.0) (2025-05-30)
 
 
