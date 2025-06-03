@@ -92,7 +92,7 @@ where
 
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
         let validation_timeout = self.config.transaction_validation_timeout;
-        
+
         // Wrap the entire validation process with a timeout to prevent hanging
         let validation_result = timeout(validation_timeout, async {
             let mut base_node_wallet_client = self
@@ -162,8 +162,9 @@ where
             }
             self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
             Ok(self.operation_id)
-        }).await;
-        
+        })
+        .await;
+
         match validation_result {
             Ok(result) => result,
             Err(_) => {
@@ -174,8 +175,11 @@ where
                     self.operation_id
                 );
                 self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
-                Err(TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Timeout))
-            }
+                Err(TransactionServiceProtocolError::new(
+                    self.operation_id,
+                    TransactionServiceError::Timeout,
+                ))
+            },
         }
     }
 
@@ -294,7 +298,7 @@ where
         // Add retry logic with exponential backoff for base node failures
         let max_retries = self.config.base_node_rpc_max_retries;
         let initial_retry_delay = Duration::from_millis(self.config.base_node_rpc_retry_delay_ms);
-        
+
         let mut retry_count = 0;
         let batch_response = loop {
             match base_node_client
@@ -319,7 +323,7 @@ where
                         );
                         return Err(e.into());
                     }
-                    
+
                     let delay = initial_retry_delay * 2_u32.pow(retry_count as u32 - 1);
                     warn!(
                         target: LOG_TARGET,
@@ -330,9 +334,9 @@ where
                         delay,
                         self.operation_id
                     );
-                    
+
                     tokio::time::sleep(delay).await;
-                }
+                },
             }
         };
 
@@ -341,9 +345,9 @@ where
                 .map_err(TransactionServiceError::ProtobufConversionError)?;
             let sig = response.signature;
             if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
-                if response.location == TxLocation::Mined &&
-                    response.best_block_hash.is_some() &&
-                    response.mined_timestamp.is_some()
+                if response.location == TxLocation::Mined
+                    && response.best_block_hash.is_some()
+                    && response.mined_timestamp.is_some()
                 {
                     mined.push((
                         (*unconfirmed_tx).clone(),
@@ -384,34 +388,31 @@ where
     ) -> Result<Option<BlockHash>, TransactionServiceError> {
         let max_retries = self.config.base_node_rpc_max_retries;
         let initial_retry_delay = Duration::from_millis(self.config.base_node_rpc_retry_delay_ms / 2); // Use half the delay for header queries
-        
+
         let mut retry_count = 0;
         let result = loop {
             match client.get_header_by_height(height).await {
                 Ok(r) => break r,
                 Err(rpc_error) => {
                     // Handle specific errors that shouldn't be retried
-                    match &rpc_error {
-                        RequestFailed(status) => {
-                            if status.as_status_code() == NotFound {
-                                return Ok(None);
-                            }
-                        },
-                        _ => {},
+                    if let RequestFailed(status) = &rpc_error {
+                        if status.as_status_code() == NotFound {
+                            return Ok(None);
+                        }
                     }
-                    
+
                     retry_count += 1;
                     if retry_count > max_retries {
                         warn!(
                             target: LOG_TARGET,
-                            "Error asking base node for header after {} retries: {} (Operation ID: {})", 
+                            "Error asking base node for header after {} retries: {} (Operation ID: {})",
                             max_retries,
-                            rpc_error, 
+                            rpc_error,
                             self.operation_id
                         );
                         return Err(rpc_error.into());
                     }
-                    
+
                     let delay = initial_retry_delay * 2_u32.pow(retry_count as u32 - 1);
                     debug!(
                         target: LOG_TARGET,
@@ -422,9 +423,9 @@ where
                         delay,
                         self.operation_id
                     );
-                    
+
                     tokio::time::sleep(delay).await;
-                }
+                },
             }
         };
 

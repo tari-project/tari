@@ -35,11 +35,7 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    traits::OrOptional,
-    types::CommsPublicKey,
-    Minimized,
+    peer_manager::NodeId, protocol::rpc::RpcClientLease, traits::OrOptional, types::CommsPublicKey, Minimized,
     PeerConnection,
 };
 use tari_core::{
@@ -571,10 +567,10 @@ where
     ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
         // Chunk size to prevent hitting the 512 UTXO limit from base node
         const MAX_OUTPUTS_PER_CHUNK: usize = 256;
-        
+
         let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         let total_outputs = outputs.len();
-        
+
         if total_outputs > MAX_OUTPUTS_PER_CHUNK {
             debug!(
                 target: LOG_TARGET,
@@ -583,25 +579,25 @@ where
                 MAX_OUTPUTS_PER_CHUNK
             );
         }
-        
+
         let start = Instant::now();
-        
+
         // Process outputs in chunks to avoid hitting base node limits
         for (chunk_idx, chunk) in outputs.chunks(MAX_OUTPUTS_PER_CHUNK).enumerate() {
             if self.shutdown_signal.is_triggered() {
                 break;
             }
-            
+
             if total_outputs > MAX_OUTPUTS_PER_CHUNK {
                 trace!(
                     target: LOG_TARGET,
                     "Processing chunk {} of {} ({} outputs)",
                     chunk_idx + 1,
-                    (total_outputs + MAX_OUTPUTS_PER_CHUNK - 1) / MAX_OUTPUTS_PER_CHUNK,
+                    total_outputs.div_ceil(MAX_OUTPUTS_PER_CHUNK),
                     chunk.len()
                 );
             }
-            
+
             // Scan for recoverable outputs in this chunk
             let chunk_vec = chunk.to_vec();
             let chunk_start = Instant::now();
@@ -623,9 +619,9 @@ where
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-                
+
             found_outputs.append(&mut chunk_found);
-            
+
             // Scan for one-sided payments in this chunk
             let mut one_sided_found = self
                 .resources
@@ -645,9 +641,9 @@ where
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-                
+
             found_outputs.append(&mut one_sided_found);
-            
+
             let chunk_time = chunk_start.elapsed();
             if total_outputs > MAX_OUTPUTS_PER_CHUNK {
                 trace!(
@@ -660,7 +656,7 @@ where
                 );
             }
         }
-        
+
         let total_time = start.elapsed();
         if total_outputs > MAX_OUTPUTS_PER_CHUNK {
             debug!(
@@ -678,7 +674,7 @@ where
                 total_time.as_millis(),
             );
         }
-        
+
         Ok(found_outputs)
     }
 
