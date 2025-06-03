@@ -33,7 +33,7 @@ use tokio::{
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, PeerConnection};
+use crate::{message::InboundMessage, peer_manager, PeerConnection};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
@@ -66,6 +66,7 @@ impl InboundMessaging {
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = self.connection.peer_node_id();
+        
         #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(
@@ -73,6 +74,7 @@ impl InboundMessaging {
             "Starting inbound messaging protocol for peer '{}'",
             peer.short_str()
         );
+
 
         let stream = MessagingProtocol::framed(socket);
         let stream = stream.take_until(self.connection.on_disconnect());
