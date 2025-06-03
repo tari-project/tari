@@ -243,11 +243,11 @@ impl PeerStorageSql {
         Ok(self.peer_db.get_seed_peers()?)
     }
 
-    /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+    /// Process all stale peers, removing them from the database and returning their node_ids
+    pub fn process_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
         Ok(self
             .peer_db
-            .hard_delete_all_stale_peers(STALE_PEER_THRESHOLD_DURATION, MAX_NEIGHBOUR_WALLET_PEER_COUNT)?)
+            .process_all_stale_peers(STALE_PEER_THRESHOLD_DURATION, MAX_NEIGHBOUR_WALLET_PEER_COUNT)?)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline

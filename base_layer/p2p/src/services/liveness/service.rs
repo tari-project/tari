@@ -195,6 +195,15 @@ where
 
                 let ping_event = PingPongEvent::new(node_id, None, ping_pong_msg.metadata.into(), ping_pong_msg.nonce);
                 self.publish_event(LivenessEvent::ReceivedPing(Box::new(ping_event)));
+
+                // When we receive a ping we do not know from which of the peer's addresses it was sent
+                let mut peer_to_update = source_peer.clone();
+                if source_peer.addresses.addresses().len() == 1 {
+                    let address = source_peer.addresses.addresses()[0].address();
+                    peer_to_update.addresses.mark_last_seen_now(address);
+                }
+                peer_to_update.deleted_at = None;
+                self.peer_manager.add_or_update_peer(peer_to_update).await?;
             },
             PingPong::Pong => {
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
@@ -228,14 +237,16 @@ where
                 );
                 self.publish_event(LivenessEvent::ReceivedPong(Box::new(pong_event)));
 
+                // We can only receive a pong if we sent a ping, so we know which address we used
+                let mut peer_to_update = source_peer.clone();
                 if let Some(address) = source_peer.last_address_used() {
-                    let mut peer_to_update = source_peer.clone();
                     if let Some(val) = maybe_latency {
                         peer_to_update.addresses.update_latency(&address, val);
                     }
                     peer_to_update.addresses.mark_last_seen_now(&address);
-                    self.peer_manager.add_or_update_peer(peer_to_update).await?;
                 }
+                peer_to_update.deleted_at = None;
+                self.peer_manager.add_or_update_peer(peer_to_update).await?;
             },
         }
         Ok(())

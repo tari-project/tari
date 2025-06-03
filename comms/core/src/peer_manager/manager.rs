@@ -92,9 +92,9 @@ impl PeerManager {
         Ok(())
     }
 
-    /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let deleted_peers = self.peer_storage_sql.hard_delete_all_stale_peers()?;
+    /// Process all stale peers, removing them from the database and returning their node_ids
+    pub async fn process_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
+        let deleted_peers = self.peer_storage_sql.process_all_stale_peers()?;
         Ok(deleted_peers)
     }
 
