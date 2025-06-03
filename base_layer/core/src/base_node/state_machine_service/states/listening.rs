@@ -336,11 +336,10 @@ impl Listening {
             }
         }
         debug!(
-                    target: LOG_TARGET,
-                    "Event listener is complete because liveness metadata and timeout streams were closed"
-                );
+            target: LOG_TARGET,
+            "Event listener is complete because liveness metadata and timeout streams were closed"
+        );
         StateEvent::UserQuit
-
     }
 }
 

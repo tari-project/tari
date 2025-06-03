@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_comms_dht::Dht;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
-use tari_comms::PeerManager;
+
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataHandle,
@@ -42,8 +44,6 @@ use crate::{
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
 };
-
-use std::sync::Arc;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 

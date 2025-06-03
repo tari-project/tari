@@ -44,6 +44,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 pub struct Starting;
 
 impl Starting {
+    #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,

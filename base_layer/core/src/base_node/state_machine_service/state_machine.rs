@@ -26,11 +26,11 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
-use tari_comms::PeerManager;
+
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
