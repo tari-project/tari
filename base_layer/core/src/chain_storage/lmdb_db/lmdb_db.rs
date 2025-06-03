@@ -247,13 +247,10 @@ pub fn create_readonly_lmdb_database<P: AsRef<Path>>(
         )));
     }
 
-    // Create a dummy file lock (we won't use it for read-only access)
-    use std::fs::OpenOptions;
-    let dummy_lock_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(path.as_ref().join(".readonly_dummy"))
-        .map_err(|e| ChainStorageError::AccessError(format!("Could not create dummy lock file: {}", e)))?;
+    // For read-only access, we don't need a real lock file. Use /dev/null as a dummy.
+    use std::fs::File;
+    let dummy_lock_file = File::open("/dev/null")
+        .map_err(|e| ChainStorageError::AccessError(format!("Could not open /dev/null: {}", e)))?;
 
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
