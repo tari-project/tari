@@ -105,7 +105,7 @@ use minotari_wallet::{
     error::WalletStorageError,
     output_manager_service::{
         handle::OutputManagerHandle,
-        payment_reference::PaymentDirection,
+        payment_reference::{PaymentDirection, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS},
         UtxoSelectionCriteria,
     },
     transaction_service::{
@@ -1798,7 +1798,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let direction = payment_direction_to_grpc(&payment_details.direction);
                 
                 // Calculate status based on confirmations since PaymentDetails doesn't have a status field
-                let status = calculate_payref_status(payment_details.confirmations, 5);
+                let status = calculate_payref_status(payment_details.confirmations, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS);
                 
                 let grpc_payment_details = PaymentDetails {
                     payment_reference: payment_details.payment_reference.to_hex(),
@@ -1861,8 +1861,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let direction = payment_direction_to_grpc(&payment_record.direction);
                         
                         // Calculate status based on confirmations (PaymentRecord doesn't have status field)
-                        // Assuming 5 confirmations required for "available" status
-                        let status = calculate_payref_status(payment_record.confirmations, 5);
+                        let status = calculate_payref_status(payment_record.confirmations, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS);
                         
                         PaymentDetails {
                             payment_reference: payment_record.payment_reference.to_hex(),
@@ -1920,7 +1919,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         let direction = payment_direction_to_grpc(&payment_record.direction);
                         
                         // Calculate status based on confirmations
-                        let status = calculate_payref_status(payment_record.confirmations, 5);
+                        let status = calculate_payref_status(payment_record.confirmations, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS);
                         
                         PaymentDetails {
                             payment_reference: payment_record.payment_reference.to_hex(),
