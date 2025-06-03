@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.3.1-pre.0](https://github.com/tari-project/tari/compare/v4.3.0-pre.0...v4.3.1-pre.0) (2025-06-03)
+
+
+### Bug Fixes
+
+* fixed the wallet ffi ([#7174](https://github.com/tari-project/tari/issues/7174)) ([7bd4ff7](https://github.com/tari-project/tari/commit/7bd4ff7bfebe14fca0e239f052d39c8ff6a874b0))
+* unban peers when their ban expires ([#7177](https://github.com/tari-project/tari/issues/7177)) ([4965ff0](https://github.com/tari-project/tari/commit/4965ff0558f8f7d8b87530209a97dba03b950684))
+
 ## [4.3.0-pre.0](https://github.com/tari-project/tari/compare/v4.2.0-pre.0...v4.3.0-pre.0) (2025-06-03)
 
 
