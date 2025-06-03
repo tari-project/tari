@@ -44,7 +44,7 @@
   },
   {
     "name": "windows-x64",
-    "runs-on": "windows-2019",
+    "runs-on": "windows-2022",
     "rust": "stable",
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
