@@ -224,14 +224,12 @@ impl Listening {
                 info!(target: LOG_TARGET, "[BN SM LISTENING] Bootstrap not complete - setting UI to show bootstrap phase 0/{}", shared.config.blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap());
             };
 
-        info!(target: LOG_TARGET, "here");
             // Ensure other fields are also current
             current_listening_info.synced = self.is_synced;
             current_listening_info.initial_delay_connected_count = self.initial_delay_count;
             shared.set_state_info(StateInfo::Listening(current_listening_info));
         }
 
-        info!(target: LOG_TARGET, "here");
 
         let mut chain_metadata_events = shared.metadata_event_stream.resubscribe();
         let mut dht_events = shared.dht_event_stream.resubscribe();
@@ -239,11 +237,9 @@ impl Listening {
         let mut initial_sync_counter = 0; // This seems to track number of peers heard from for initial sync decision.
         let mut ahead_of_peers_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
-        info!(target: LOG_TARGET, "here");
         loop {
             tokio::select! {
                 result = chain_metadata_events.recv() => {
-        info!(target: LOG_TARGET, "here");
                     match result {
                         Ok(metadata_event_arc) => {
                             let metadata_event = metadata_event_arc.deref();
@@ -378,7 +374,6 @@ impl Listening {
                     }
                 },
                 result = dht_events.recv() => {
-        info!(target: LOG_TARGET, "here");
                     match result {
                         Ok(dht_event_arc) => {
                             let dht_event = dht_event_arc.deref();
