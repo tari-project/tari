@@ -282,13 +282,13 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
                             overflow_pages: db_stat.overflow_pages,
                         });
                     }
-                    Err(_e) => {
-                        // Silently skip databases that don't exist or can't be read
+                    Err(e) => {
+                        println!("Failed to get stats for database '{}': {}", db_name, e);
                     }
                 }
             }
-            Err(_e) => {
-                // Silently skip databases that can't be opened
+            Err(e) => {
+                println!("Failed to open database '{}': {}", db_name, e);
             }
         }
     }
