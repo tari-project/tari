@@ -1898,18 +1898,6 @@ impl LMDBDatabase {
         }
     }
 
-
-
-    /// Check if an output is spent and return spent information
-    fn check_output_spent_status(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, output_hash.as_slice())
-    }
-
-    // TODO: PayRef index rebuilding functionality
-    // This would allow rebuilding PayRef indexes for databases created before PayRef support
-    // Implementation would require proper integration with the blockchain backend interface
-
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
     }

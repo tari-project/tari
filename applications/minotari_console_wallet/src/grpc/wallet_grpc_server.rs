@@ -1838,13 +1838,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_unspent_payment_references(
         &self,
-        request: Request<GetUnspentPaymentReferencesRequest>,
+        _request: Request<GetUnspentPaymentReferencesRequest>,
     ) -> Result<Response<GetUnspentPaymentReferencesResponse>, Status> {
-        let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "get_available_payment_references: direction filter: {:?}, limit: {}, offset: {}",
-            message.direction, message.limit, message.offset
+            "get_available_payment_references: Getting all available payment references"
         );
 
         let mut output_service = self.get_output_manager_service();
@@ -1899,13 +1897,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_all_payment_references(
         &self,
-        request: Request<GetAllPaymentReferencesRequest>,
+        _request: Request<GetAllPaymentReferencesRequest>,
     ) -> Result<Response<GetAllPaymentReferencesResponse>, Status> {
-        let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
-            "get_all_payment_references: direction filter: {:?}, limit: {}, offset: {}",
-            message.direction, message.limit, message.offset
+            "get_all_payment_references: Getting all payment references"
         );
 
         let mut output_service = self.get_output_manager_service();
