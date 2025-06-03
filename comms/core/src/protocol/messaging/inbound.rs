@@ -66,7 +66,7 @@ impl InboundMessaging {
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = self.connection.peer_node_id();
-        
+
         #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(
@@ -74,7 +74,6 @@ impl InboundMessaging {
             "Starting inbound messaging protocol for peer '{}'",
             peer.short_str()
         );
-
 
         let stream = MessagingProtocol::framed(socket);
         let stream = stream.take_until(self.connection.on_disconnect());
