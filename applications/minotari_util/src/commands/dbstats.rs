@@ -29,12 +29,9 @@ use clap::Args;
 
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
-use tari_core::{
-    chain_storage::{create_readonly_lmdb_database, BlockchainBackend},
-    consensus::ConsensusManager,
-};
-use tari_common::configuration::Network;
-use tari_storage::lmdb_store::LMDBConfig;
+use tari_core::chain_storage::create_readonly_lmdb_environment;
+use lmdb_zero::{ReadTransaction, Database, DatabaseOptions};
+
 
 use crate::{cli::Cli, config::AppConfig};
 
@@ -235,20 +232,14 @@ impl DbStatsArgs {
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
-    // Use the existing Tari LMDBDatabase infrastructure in read-only mode
-    let consensus_manager = ConsensusManager::builder(Network::MainNet).build()?;
-    let lmdb_database = create_readonly_lmdb_database(db_path, LMDBConfig::default(), consensus_manager)
-        .map_err(|e| anyhow!("Failed to open Tari database: {}", e))?;
+    // Open LMDB environment directly in read-only mode (like the original working approach)
+    let env = create_readonly_lmdb_environment(db_path)
+        .map_err(|e| anyhow!("Failed to open LMDB environment: {}", e))?;
 
-    // Use existing methods to get statistics
-    let basic_stats = lmdb_database.get_stats()
-        .map_err(|e| anyhow!("Failed to get database stats: {}", e))?;
-    
-    let _size_stats = lmdb_database.fetch_total_size_stats()
-        .map_err(|e| anyhow!("Failed to get size stats: {}", e))?;
+    // Get environment information
+    let env_info = env.info().map_err(|e| anyhow!("Failed to get environment info: {}", e))?;
+    let env_stat = env.stat().map_err(|e| anyhow!("Failed to get environment stat: {}", e))?;
 
-    // Convert environment info
-    let env_info = basic_stats.env_info();
     let environment = EnvironmentInfo {
         mapsize: env_info.mapsize,
         last_pgno: env_info.last_pgno,
@@ -257,28 +248,59 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         numreaders: env_info.numreaders,
     };
 
-    // Convert database statistics
+    // Get individual database statistics by opening them directly
     let mut databases = Vec::new();
-    for db_stat in basic_stats.db_stats() {
-        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-        let total_size = db_stat.total_page_size();
-        let avg_size = if db_stat.entries > 0 {
-            total_size / db_stat.entries
-        } else {
-            0
-        };
+    let page_size = env_stat.psize as usize;
+    
+    // Use the known Tari database names (from the constants in lmdb_db.rs)
+    let db_names = vec![
+        "metadata", "headers", "header_accumulated_data", "block_accumulated_data",
+        "block_hashes", "utxos", "inputs", "txos_hash_to_index", "kernels",
+        "kernel_excess_index", "kernel_excess_sig_index", "kernel_mmr_size_index",
+        "utxo_commitment_index", "unique_id_index", "contract_id_index",
+        "deleted_txo_hash_to_header_index", "orphans", "orphan_accumulated_data",
+        "monero_seed_height", "monero_seed_height_index", "orphan_chain_tips",
+        "orphan_parent_map_index", "bad_blocks", "reorgs", "validator_nodes",
+        "validator_nodes_mapping", "template_registrations", "utxo_smt",
+        "jmt_value_data", "jmt_node_data", "jmt_unique_key_data"
+    ];
+    
+    let txn = ReadTransaction::new(env.clone()).map_err(|e| anyhow!("Failed to create read transaction: {}", e))?;
+    
+    for db_name in db_names {
+        match Database::open(&*env, Some(db_name), &DatabaseOptions::new(lmdb_zero::db::Flags::empty())) {
+            Ok(database) => {
+                match txn.db_stat(&database) {
+                    Ok(db_stat) => {
+                        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+                        let total_size = total_pages * page_size;
+                        let avg_size = if db_stat.entries > 0 {
+                            total_size / db_stat.entries
+                        } else {
+                            0
+                        };
 
-        databases.push(DatabaseStats {
-            name: db_stat.name.to_string(),
-            entries: db_stat.entries,
-            total_size,
-            avg_size,
-            depth: db_stat.depth,
-            total_pages,
-            leaf_pages: db_stat.leaf_pages,
-            branch_pages: db_stat.branch_pages,
-            overflow_pages: db_stat.overflow_pages,
-        });
+                        databases.push(DatabaseStats {
+                            name: db_name.to_string(),
+                            entries: db_stat.entries,
+                            total_size,
+                            avg_size,
+                            depth: db_stat.depth,
+                            total_pages,
+                            leaf_pages: db_stat.leaf_pages,
+                            branch_pages: db_stat.branch_pages,
+                            overflow_pages: db_stat.overflow_pages,
+                        });
+                    }
+                    Err(_e) => {
+                        // Silently skip databases that don't exist or can't be read
+                    }
+                }
+            }
+            Err(_e) => {
+                // Silently skip databases that can't be opened
+            }
+        }
     }
 
     // Create summary

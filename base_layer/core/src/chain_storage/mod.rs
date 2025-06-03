@@ -65,7 +65,7 @@ pub use reorg::Reorg;
 mod lmdb_db;
 pub use lmdb_db::{
     create_lmdb_database,
-    create_readonly_lmdb_database,
+    create_readonly_lmdb_environment,
     create_recovery_lmdb_database,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     LMDBDatabase,
