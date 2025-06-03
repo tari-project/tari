@@ -220,77 +220,12 @@ impl WalletGrpcServer {
         output_commitments: &[Vec<u8>],
         mined_height: u64,
     ) -> Vec<Vec<u8>> {
-        let mut payment_refs = Vec::new();
-        
-        // Note: Don't skip based on transaction mined_height for restored wallets
-        // Individual outputs may have mining data even if transaction doesn't
-        debug!(target: LOG_TARGET, "PayRef calculation: Processing {} commitments (tx mined_height={})", output_commitments.len(), mined_height);
-        
-        debug!(target: LOG_TARGET, "PayRef calculation: Looking up {} output commitments for mined transaction at height {}", output_commitments.len(), mined_height);
-        
-        // Get ALL wallet outputs (both spent and unspent) from output manager
-        let mut output_manager = self.get_output_manager_service();
-        
-        let unspent_outputs = match output_manager.get_unspent_outputs().await {
-            Ok(outputs) => outputs,
-            Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to get unspent outputs for PayRef calculation: {}", e);
-                Vec::new()
-            }
-        };
-        
-        let spent_outputs = match output_manager.get_spent_outputs().await {
-            Ok(outputs) => outputs,
-            Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to get spent outputs for PayRef calculation: {}", e);
-                Vec::new()
-            }
-        };
-        
-        // Combine both spent and unspent outputs
-        let all_outputs: Vec<_> = unspent_outputs.into_iter().chain(spent_outputs.into_iter()).collect();
-        
-        debug!(target: LOG_TARGET, "PayRef calculation: Found {} total wallet outputs to search", all_outputs.len());
-        
-        for (i, commitment_bytes) in output_commitments.iter().enumerate() {
-            // Find matching DbWalletOutput by commitment
-            if let Some(db_output) = all_outputs.iter()
-                .find(|o| o.commitment.as_bytes() == commitment_bytes) 
-            {
-                // Check if output has mining data (mined_height and mined_in_block)
-                if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
-                    // Use existing PayRef generation method - it will check the output's mining data
-                    if let Some(payref) = db_output.generate_payment_reference() {
-                        debug!(
-                            target: LOG_TARGET, 
-                            "PayRef calculation: Generated PayRef for output {} at height {}: {}", 
-                            i, 
-                            db_output.mined_height.unwrap_or(0),
-                            payref.to_hex()
-                        );
-                        payment_refs.push(payref.to_vec());
-                    } else {
-                        debug!(target: LOG_TARGET, "PayRef calculation: No PayRef generated for output {} (PayRef generation failed)", i);
-                        payment_refs.push(vec![]);
-                    }
-                } else {
-                    debug!(
-                        target: LOG_TARGET, 
-                        "PayRef calculation: Output {} not mined (mined_height: {:?}, mined_in_block: {:?})", 
-                        i,
-                        db_output.mined_height,
-                        db_output.mined_in_block.is_some()
-                    );
-                    payment_refs.push(vec![]);
-                }
-            } else {
-                debug!(target: LOG_TARGET, "PayRef calculation: Output {} commitment not found in wallet", i);
-                payment_refs.push(vec![]);
-            }
-        }
-        
-        debug!(target: LOG_TARGET, "PayRef calculation: Completed, returning {} PayRefs", payment_refs.len());
-        payment_refs
+        calculate_payment_references_impl(
+            self.get_output_manager_service(),
+            output_commitments,
+            mined_height,
+        )
+        .await
     }
 }
 
@@ -300,14 +235,28 @@ async fn calculate_payment_references_for_transaction_standalone(
     output_commitments: &[Vec<u8>],
     mined_height: u64,
 ) -> Vec<Vec<u8>> {
+    calculate_payment_references_impl(
+        output_manager.clone(),
+        output_commitments,
+        mined_height,
+    )
+    .await
+}
+
+/// Private helper function that contains the core payment reference calculation logic
+async fn calculate_payment_references_impl(
+    mut output_manager: OutputManagerHandle,
+    output_commitments: &[Vec<u8>],
+    mined_height: u64,
+) -> Vec<Vec<u8>> {
     let mut payment_refs = Vec::new();
     
+    // Note: Don't skip based on transaction mined_height for restored wallets
+    // Individual outputs may have mining data even if transaction doesn't
     debug!(target: LOG_TARGET, "PayRef calculation: Processing {} commitments (tx mined_height={})", output_commitments.len(), mined_height);
     debug!(target: LOG_TARGET, "PayRef calculation: Looking up {} output commitments for mined transaction at height {}", output_commitments.len(), mined_height);
     
     // Get ALL wallet outputs (both spent and unspent) from output manager
-    let mut output_manager = output_manager.clone();
-    
     let unspent_outputs = match output_manager.get_unspent_outputs().await {
         Ok(outputs) => outputs,
         Err(e) => {
