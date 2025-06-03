@@ -41,6 +41,7 @@ use tari_core::{
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
 use tari_utilities::hex::Hex;
+use tokio::time::{timeout, Duration};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -90,73 +91,92 @@ where
     }
 
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
-        let mut base_node_wallet_client = self
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id)?;
-
-        self.check_for_reorgs(&mut base_node_wallet_client).await?;
-        debug!(
-            target: LOG_TARGET,
-            "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
-        );
-        // Fetch completed but unconfirmed transactions that were not imported
-        let unconfirmed_transactions = self
-            .db
-            .fetch_unconfirmed_transactions_info()
-            .for_protocol(self.operation_id)
-            .unwrap();
-
-        let mut state_changed = false;
-        for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
-            let (mined, unmined, tip_info) = self
-                .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
+        let validation_timeout = self.config.transaction_validation_timeout;
+        
+        // Wrap the entire validation process with a timeout to prevent hanging
+        let validation_result = timeout(validation_timeout, async {
+            let mut base_node_wallet_client = self
+                .connectivity
+                .obtain_base_node_wallet_rpc_client()
                 .await
+                .ok_or(TransactionServiceError::Shutdown)
                 .for_protocol(self.operation_id)?;
+
+            self.check_for_reorgs(&mut base_node_wallet_client).await?;
             debug!(
                 target: LOG_TARGET,
-                "Base node returned {} as mined and {} as unmined (Operation ID: {})",
-                mined.len(),
-                unmined.len(),
-                self.operation_id
+                "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
             );
-            for (mined_tx, mined_height, mined_in_block, num_confirmations, mined_timestamp) in &mined {
+            // Fetch completed but unconfirmed transactions that were not imported
+            let unconfirmed_transactions = self
+                .db
+                .fetch_unconfirmed_transactions_info()
+                .for_protocol(self.operation_id)
+                .unwrap();
+
+            let mut state_changed = false;
+            for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
+                let (mined, unmined, tip_info) = self
+                    .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
+                    .await
+                    .for_protocol(self.operation_id)?;
                 debug!(
                     target: LOG_TARGET,
-                    "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
-                    mined_tx.tx_id,
-                    *num_confirmations >= self.config.num_confirmations_required,
+                    "Base node returned {} as mined and {} as unmined (Operation ID: {})",
+                    mined.len(),
+                    unmined.len(),
                     self.operation_id
                 );
-                self.update_transaction_as_mined(
-                    mined_tx.tx_id,
-                    &mined_tx.status,
-                    mined_in_block,
-                    *mined_height,
-                    *num_confirmations,
-                    *mined_timestamp,
-                )
-                .await?;
-                state_changed = true;
-            }
-            if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
-                for unmined_tx in &unmined {
+                for (mined_tx, mined_height, mined_in_block, num_confirmations, mined_timestamp) in &mined {
                     debug!(
                         target: LOG_TARGET,
-                        "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                        "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
+                        mined_tx.tx_id,
+                        *num_confirmations >= self.config.num_confirmations_required,
+                        self.operation_id
                     );
-                    self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
-                        .await?;
+                    self.update_transaction_as_mined(
+                        mined_tx.tx_id,
+                        &mined_tx.status,
+                        mined_in_block,
+                        *mined_height,
+                        *num_confirmations,
+                        *mined_timestamp,
+                    )
+                    .await?;
+                    state_changed = true;
+                }
+                if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
+                    for unmined_tx in &unmined {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                        );
+                        self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
+                            .await?;
+                    }
                 }
             }
+            if state_changed {
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
+            }
+            self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
+            Ok(self.operation_id)
+        }).await;
+        
+        match validation_result {
+            Ok(result) => result,
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Transaction validation protocol timed out after {:?} (Operation ID: {})",
+                    validation_timeout,
+                    self.operation_id
+                );
+                self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
+                Err(TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Timeout))
+            }
         }
-        if state_changed {
-            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
-        }
-        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
-        Ok(self.operation_id)
     }
 
     fn publish_event(&self, event: TransactionEvent) {
@@ -271,14 +291,50 @@ where
             self.operation_id
         );
 
-        let batch_response = base_node_client
-            .transaction_batch_query(SignaturesProto {
-                sigs: batch_signatures
-                    .keys()
-                    .map(|s| SignatureProto::from(s.clone()))
-                    .collect(),
-            })
-            .await?;
+        // Add retry logic with exponential backoff for base node failures
+        let max_retries = self.config.base_node_rpc_max_retries;
+        let initial_retry_delay = Duration::from_millis(self.config.base_node_rpc_retry_delay_ms);
+        
+        let mut retry_count = 0;
+        let batch_response = loop {
+            match base_node_client
+                .transaction_batch_query(SignaturesProto {
+                    sigs: batch_signatures
+                        .keys()
+                        .map(|s| SignatureProto::from(s.clone()))
+                        .collect(),
+                })
+                .await
+            {
+                Ok(response) => break response,
+                Err(e) => {
+                    retry_count += 1;
+                    if retry_count > max_retries {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to query base node after {} retries: {} (Operation ID: {})",
+                            max_retries,
+                            e,
+                            self.operation_id
+                        );
+                        return Err(e.into());
+                    }
+                    
+                    let delay = initial_retry_delay * 2_u32.pow(retry_count as u32 - 1);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Base node query failed (attempt {}/{}): {}. Retrying in {:?} (Operation ID: {})",
+                        retry_count,
+                        max_retries,
+                        e,
+                        delay,
+                        self.operation_id
+                    );
+                    
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        };
 
         for response_proto in batch_response.responses {
             let response = TxQueryBatchResponse::try_from(response_proto)
@@ -326,26 +382,50 @@ where
         height: u64,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<BlockHash>, TransactionServiceError> {
-        let result = match client.get_header_by_height(height).await {
-            Ok(r) => r,
-            Err(rpc_error) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
-                );
-                match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code() == NotFound {
-                            return Ok(None);
-                        } else {
-                            return Err(rpc_error.into());
-                        }
-                    },
-                    _ => {
+        let max_retries = self.config.base_node_rpc_max_retries;
+        let initial_retry_delay = Duration::from_millis(self.config.base_node_rpc_retry_delay_ms / 2); // Use half the delay for header queries
+        
+        let mut retry_count = 0;
+        let result = loop {
+            match client.get_header_by_height(height).await {
+                Ok(r) => break r,
+                Err(rpc_error) => {
+                    // Handle specific errors that shouldn't be retried
+                    match &rpc_error {
+                        RequestFailed(status) => {
+                            if status.as_status_code() == NotFound {
+                                return Ok(None);
+                            }
+                        },
+                        _ => {},
+                    }
+                    
+                    retry_count += 1;
+                    if retry_count > max_retries {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error asking base node for header after {} retries: {} (Operation ID: {})", 
+                            max_retries,
+                            rpc_error, 
+                            self.operation_id
+                        );
                         return Err(rpc_error.into());
-                    },
+                    }
+                    
+                    let delay = initial_retry_delay * 2_u32.pow(retry_count as u32 - 1);
+                    debug!(
+                        target: LOG_TARGET,
+                        "Get header failed (attempt {}/{}): {}. Retrying in {:?} (Operation ID: {})",
+                        retry_count,
+                        max_retries,
+                        rpc_error,
+                        delay,
+                        self.operation_id
+                    );
+                    
+                    tokio::time::sleep(delay).await;
                 }
-            },
+            }
         };
 
         let block_header: BlockHeader = result.try_into().map_err(|s| {

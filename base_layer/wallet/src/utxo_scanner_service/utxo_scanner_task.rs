@@ -569,13 +569,46 @@ where
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+        // Chunk size to prevent hitting the 512 UTXO limit from base node
+        const MAX_OUTPUTS_PER_CHUNK: usize = 256;
+        
         let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
+        let total_outputs = outputs.len();
+        
+        if total_outputs > MAX_OUTPUTS_PER_CHUNK {
+            debug!(
+                target: LOG_TARGET,
+                "Chunking {} outputs into batches of {} to avoid base node limits",
+                total_outputs,
+                MAX_OUTPUTS_PER_CHUNK
+            );
+        }
+        
         let start = Instant::now();
-        found_outputs.append(
-            &mut self
+        
+        // Process outputs in chunks to avoid hitting base node limits
+        for (chunk_idx, chunk) in outputs.chunks(MAX_OUTPUTS_PER_CHUNK).enumerate() {
+            if self.shutdown_signal.is_triggered() {
+                break;
+            }
+            
+            if total_outputs > MAX_OUTPUTS_PER_CHUNK {
+                trace!(
+                    target: LOG_TARGET,
+                    "Processing chunk {} of {} ({} outputs)",
+                    chunk_idx + 1,
+                    (total_outputs + MAX_OUTPUTS_PER_CHUNK - 1) / MAX_OUTPUTS_PER_CHUNK,
+                    chunk.len()
+                );
+            }
+            
+            // Scan for recoverable outputs in this chunk
+            let chunk_vec = chunk.to_vec();
+            let chunk_start = Instant::now();
+            let mut chunk_found = self
                 .resources
                 .output_manager_service
-                .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
+                .scan_for_recoverable_outputs(chunk_vec.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -584,21 +617,20 @@ where
                     } else {
                         ImportStatus::Imported
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                    let output = chunk_vec.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-        let scanned_time = start.elapsed();
-        let start = Instant::now();
-
-        found_outputs.append(
-            &mut self
+                .collect::<Result<Vec<_>, _>>()?;
+                
+            found_outputs.append(&mut chunk_found);
+            
+            // Scan for one-sided payments in this chunk
+            let mut one_sided_found = self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
+                .scan_outputs_for_one_sided_payments(chunk_vec.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
@@ -607,20 +639,46 @@ where
                     } else {
                         ImportStatus::OneSidedUnconfirmed
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                    let output = chunk_vec.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-        let one_sided_time = start.elapsed();
-        trace!(
-            target: LOG_TARGET,
-            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
-            scanned_time.as_millis(),
-            one_sided_time.as_millis(),
-        );
+                .collect::<Result<Vec<_>, _>>()?;
+                
+            found_outputs.append(&mut one_sided_found);
+            
+            let chunk_time = chunk_start.elapsed();
+            if total_outputs > MAX_OUTPUTS_PER_CHUNK {
+                trace!(
+                    target: LOG_TARGET,
+                    "Chunk {} processed in {} ms ({} outputs, {} found)",
+                    chunk_idx + 1,
+                    chunk_time.as_millis(),
+                    chunk.len(),
+                    found_outputs.len()
+                );
+            }
+        }
+        
+        let total_time = start.elapsed();
+        if total_outputs > MAX_OUTPUTS_PER_CHUNK {
+            debug!(
+                target: LOG_TARGET,
+                "Chunked scanning completed: {} outputs processed in {} ms ({} found)",
+                total_outputs,
+                total_time.as_millis(),
+                found_outputs.len()
+            );
+        } else {
+            trace!(
+                target: LOG_TARGET,
+                "Scanned for outputs: {} outputs processed in {} ms",
+                total_outputs,
+                total_time.as_millis(),
+            );
+        }
+        
         Ok(found_outputs)
     }
 

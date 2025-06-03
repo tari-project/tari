@@ -45,6 +45,8 @@ pub struct OutputManagerServiceConfig {
     pub autoignore_onesided_utxos: bool,
     /// The number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
     pub num_of_seconds_to_revalidate_invalid_utxos: u64,
+    /// The maximum number of UTXOs to process in a single chunk during scanning to avoid base node limits
+    pub utxo_scanning_chunk_size: usize,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -54,9 +56,10 @@ impl Default for OutputManagerServiceConfig {
             dust_ignore_value: 100,
             event_channel_size: 250,
             num_confirmations_required: 3,
-            tx_validator_batch_size: 100,
+            tx_validator_batch_size: 256,
             autoignore_onesided_utxos: false,
             num_of_seconds_to_revalidate_invalid_utxos: 60 * 60 * 24 * 3,
+            utxo_scanning_chunk_size: 256,
         }
     }
 }

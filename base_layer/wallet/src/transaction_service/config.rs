@@ -69,6 +69,13 @@ pub struct TransactionServiceConfig {
     /// This is the timeout period that will be used to re-submit transactions not found in the mempool
     #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
+    /// This is the timeout period that will be used for transaction validation protocol calls to base node
+    #[serde(with = "serializers::seconds")]
+    pub transaction_validation_timeout: Duration,
+    /// The maximum number of retries for base node RPC calls when they fail
+    pub base_node_rpc_max_retries: usize,
+    /// The initial delay between base node RPC retries in milliseconds (will exponentially backoff)
+    pub base_node_rpc_retry_delay_ms: u64,
 }
 
 impl Default for TransactionServiceConfig {
@@ -83,10 +90,13 @@ impl Default for TransactionServiceConfig {
             resend_response_cooldown: Duration::from_secs(300),
             pending_transaction_cancellation_timeout: Duration::from_secs(259_200), // 3 Days
             num_confirmations_required: 3,
-            max_tx_query_batch_size: 20,
+            max_tx_query_batch_size: 256,
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
             transaction_event_channel_size: 1000,
             transaction_mempool_resubmission_window: Duration::from_secs(600),
+            transaction_validation_timeout: Duration::from_secs(30),
+            base_node_rpc_max_retries: 3,
+            base_node_rpc_retry_delay_ms: 500,
         }
     }
 }
