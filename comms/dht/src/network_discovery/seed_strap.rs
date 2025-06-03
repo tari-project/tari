@@ -388,22 +388,22 @@ impl SeedStrap {
                             },
                         }
                     },
-                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })) |
-                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityNoAddresses {
-                        ..
-                    })) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Ban-worthy invalid peer data for peer {} received from seed peer '{}'. Will ban seed peer and stop processing its list.",
-                            seed_peer_node_id_str,
-                            peer_idx_loop + 1,
-                            peers_count,
-                            candidate_node_id,
-                            seed_peer_node_id_str,
-                        );
-                        ban_this_seed_peer = true;
-                        break;
-                    },
+                    // Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })) |
+                    // Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityNoAddresses {
+                    //     ..
+                    // })) => {
+                    //     warn!(
+                    //         target: LOG_TARGET,
+                    //         "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Ban-worthy invalid peer data for peer {} received from seed peer '{}'. Will ban seed peer and stop processing its list.",
+                    //         seed_peer_node_id_str,
+                    //         peer_idx_loop + 1,
+                    //         peers_count,
+                    //         candidate_node_id,
+                    //         seed_peer_node_id_str,
+                    //     );
+                    //     ban_this_seed_peer = true;
+                    //     break;
+                    // },
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
