@@ -61,11 +61,15 @@ use tari_comms::{
     tor::{HiddenServiceControllerError, TorIdentity},
     transports::{
         predicate::FalsePredicate,
+        FallbackConfig,
+        FallbackTransport,
         HiddenServiceTransport,
         MemoryTransport,
         SocksConfig,
         SocksTransport,
+        TcpTransport,
         TcpWithTorTransport,
+
     },
     utils::cidr::parse_cidrs,
     CommsBuilder,
@@ -269,6 +273,39 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
                     listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
                 )
                 .spawn_with_transport(transport)
+                .await?
+        },
+        TransportType::AutoFallback => {
+            let tor_config = transport_config.tor.clone();
+            debug!(target: LOG_TARGET, "Building AUTO_FALLBACK comms stack (Tor with TCP fallback)");
+            
+            let tcp_transport = TcpTransport::new();
+            let tor_transport = if tor_config.control_address.to_string().is_empty() {
+                None
+            } else {
+                let hidden_service_ctl = initialize_hidden_service(tor_config.clone())?;
+                let boxed_after_comms: Box<dyn Fn(TorIdentity) + Send + Sync> = Box::new(after_comms);
+                Some(HiddenServiceTransport::new(hidden_service_ctl, boxed_after_comms))
+            };
+            
+            let fallback_config = FallbackConfig {
+                tor_timeout: tor_config.tor_timeout.unwrap_or_else(|| std::time::Duration::from_secs(15)),
+                allow_fallback: tor_config.allow_fallback,
+                tor_retry_interval: tor_config.tor_retry_interval.unwrap_or_else(|| std::time::Duration::from_secs(300)),
+                enable_tor_retry: true,
+            };
+            
+            let fallback_transport = FallbackTransport::new(
+                fallback_config,
+                tor_transport,
+                tcp_transport,
+            );
+            
+            comms
+                .with_listener_address(
+                    tor_config.listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
+                )
+                .spawn_with_transport(fallback_transport)
                 .await?
         },
         TransportType::Socks5 => {

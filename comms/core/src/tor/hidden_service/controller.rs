@@ -74,6 +74,10 @@ pub enum HiddenServiceControllerError {
     UnrecognizedAuthenticationMethod(String),
     #[error("Failed to load tor cookie file: {0}")]
     FailedToLoadCookieFile(io::Error),
+    #[error("Tor connection blocked by firewall or GFW")]
+    TorBlocked,
+    #[error("Tor connection timed out - possible network blocking")]
+    TorConnectionTimeout,
 }
 
 pub struct HiddenServiceController {
@@ -248,14 +252,36 @@ impl HiddenServiceController {
         }
 
         let (event_tx, _) = broadcast::channel(20);
-        let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
+        
+        // Use timeout for faster detection of blocked connections
+        const TOR_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+        
+        let connect_future = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx);
+        let client = time::timeout(TOR_CONNECT_TIMEOUT, connect_future)
             .await
+            .map_err(|_| {
+                warn!(target: LOG_TARGET, "Tor connection timed out after {}s - possible blocking by firewall or GFW", TOR_CONNECT_TIMEOUT.as_secs());
+                HiddenServiceControllerError::TorConnectionTimeout
+            })?
             .map_err(|err| {
-                error!(target: LOG_TARGET, "Tor client error: {:?}", err);
-                HiddenServiceControllerError::TorControlPortOffline
+                match err {
+                    TorClientError::Io(ref io_err) if io_err.kind() == io::ErrorKind::TimedOut => {
+                        warn!(target: LOG_TARGET, "Tor connection blocked or filtered");
+                        HiddenServiceControllerError::TorBlocked
+                    },
+                    TorClientError::Io(ref io_err) if io_err.kind() == io::ErrorKind::ConnectionRefused => {
+                        warn!(target: LOG_TARGET, "Tor control port offline or blocked");
+                        HiddenServiceControllerError::TorControlPortOffline
+                    },
+                    _ => {
+                        error!(target: LOG_TARGET, "Tor client error: {:?}", err);
+                        HiddenServiceControllerError::TorControlPortOffline
+                    }
+                }
             })?;
 
         self.client = Some(client);
+        info!(target: LOG_TARGET, "Successfully connected to Tor control port");
         Ok(())
     }
 

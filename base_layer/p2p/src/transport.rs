@@ -19,9 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{num::NonZeroU16, sync::Arc};
+use std::{num::NonZeroU16, sync::Arc, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 use tari_comms::{
     multiaddr::Multiaddr,
     socks,
@@ -32,6 +33,14 @@ use tari_comms::{
 };
 
 use crate::{initialization::CommsInitializationError, SocksAuthentication, TorControlAuthentication};
+
+fn default_tor_timeout() -> Option<Duration> {
+    Some(Duration::from_secs(15))
+}
+
+fn default_tor_retry_interval() -> Option<Duration> {
+    Some(Duration::from_secs(300))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -82,7 +91,11 @@ impl TransportConfig {
     }
 
     pub fn is_tor(&self) -> bool {
-        matches!(self.transport_type, TransportType::Tor)
+        matches!(self.transport_type, TransportType::Tor | TransportType::AutoFallback)
+    }
+
+    pub fn allows_fallback(&self) -> bool {
+        matches!(self.transport_type, TransportType::AutoFallback)
     }
 }
 
@@ -99,6 +112,9 @@ pub enum TransportType {
     Tor,
     /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
     Socks5,
+    /// Automatically fallback from Tor to TCP when Tor is unavailable (e.g., blocked by firewall or GFW).
+    /// Tries Tor first with a timeout, then falls back to TCP if Tor fails.
+    AutoFallback,
 }
 
 impl Default for TransportType {
@@ -155,6 +171,14 @@ pub struct TorTransportConfig {
     /// The tor identity to use to create the hidden service. If None, a new one will be generated.
     #[serde(skip)]
     pub identity: Option<TorIdentity>,
+    /// Timeout for Tor initialization before fallback (seconds). Only used with AutoFallback transport.
+    #[serde(with = "serializers::optional_seconds", default = "default_tor_timeout")]
+    pub tor_timeout: Option<Duration>,
+    /// Whether to allow fallback to IPv4 when Tor fails. Only used with AutoFallback transport.
+    pub allow_fallback: bool,
+    /// Interval for retrying Tor connection (seconds). Only used with AutoFallback transport.
+    #[serde(with = "serializers::optional_seconds", default = "default_tor_retry_interval")]
+    pub tor_retry_interval: Option<Duration>,
 }
 
 impl TorTransportConfig {
@@ -200,6 +224,9 @@ impl Default for TorTransportConfig {
             forward_address: None,
             listener_address_override: None,
             identity: None,
+            tor_timeout: default_tor_timeout(),
+            allow_fallback: true,
+            tor_retry_interval: default_tor_retry_interval(),
         }
     }
 }

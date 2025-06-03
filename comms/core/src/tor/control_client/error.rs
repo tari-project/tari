@@ -52,6 +52,10 @@ pub enum TorClientError {
     KeyValueNoValue,
     #[error("The command sender disconnected")]
     CommandSenderDisconnected,
+    #[error("Tor connection blocked by firewall or GFW")]
+    TorBlocked,
+    #[error("Tor connection timed out - possible network blocking")]
+    TorConnectionTimeout,
 }
 
 impl From<LinesCodecError> for TorClientError {
