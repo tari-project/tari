@@ -84,7 +84,7 @@ where
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    let res ;
+                    let res;
                     if let Some(source_peer) = peer_manager.find_by_node_id(&source_peer).await? {
                         // .or_not_found(&source_peer)
                         // .map(Arc::new)?;
