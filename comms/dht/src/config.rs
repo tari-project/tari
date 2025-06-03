@@ -52,10 +52,10 @@ pub struct DhtConfig {
     /// Default: 4
     pub propagation_factor: usize,
     /// The max capacity of the message hash cache
-    /// Default: 2,500
+    /// Default: 50,000
     pub dedup_cache_capacity: usize,
     /// The periodic trim interval for items in the message hash cache
-    /// Default: 300s (5 mins)
+    /// Default: 12 x 60 x 60s (12 hours)
     #[serde(with = "serializers::seconds")]
     pub dedup_cache_trim_interval: Duration,
     /// The number of occurrences of a message is allowed to pass through the DHT pipeline before being
@@ -111,6 +111,9 @@ pub struct DhtConfig {
     ///                or
     ///   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
     pub excluded_dial_addresses: MultiaddrRangeList,
+    /// Enables the DHT to forward messages to other nodes in the network - communication nodes only
+    /// Default: false
+    pub enable_forwarding: bool,
 }
 
 impl DhtConfig {
@@ -140,6 +143,7 @@ impl DhtConfig {
                 ..Default::default()
             },
             excluded_dial_addresses: vec![].into(),
+            enable_forwarding: true,
             ..Default::default()
         }
     }
@@ -168,8 +172,8 @@ impl Default for DhtConfig {
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,
-            dedup_cache_capacity: 2_500,
-            dedup_cache_trim_interval: Duration::from_secs(5 * 60),
+            dedup_cache_capacity: 50_000,
+            dedup_cache_trim_interval: Duration::from_secs(12 * 60 * 60), // 12 hours
             dedup_allowed_message_occurrences: 1,
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
@@ -185,6 +189,7 @@ impl Default for DhtConfig {
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
             peer_validator_config: Default::default(),
             excluded_dial_addresses: vec![].into(),
+            enable_forwarding: false,
         }
     }
 }
