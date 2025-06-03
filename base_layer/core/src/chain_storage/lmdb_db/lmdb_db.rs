@@ -171,6 +171,44 @@ const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
+/// Returns the list of all LMDB database names used by Tari.
+/// This is the authoritative source for database names to avoid duplication.
+pub fn get_all_database_names() -> Vec<&'static str> {
+    vec![
+        LMDB_DB_METADATA,
+        LMDB_DB_HEADERS,
+        LMDB_DB_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_BLOCK_ACCUMULATED_DATA,
+        LMDB_DB_BLOCK_HASHES,
+        LMDB_DB_UTXOS,
+        LMDB_DB_INPUTS,
+        LMDB_DB_TXOS_HASH_TO_INDEX,
+        LMDB_DB_KERNELS,
+        LMDB_DB_KERNEL_EXCESS_INDEX,
+        LMDB_DB_KERNEL_EXCESS_SIG_INDEX,
+        LMDB_DB_KERNEL_MMR_SIZE_INDEX,
+        LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
+        LMDB_DB_UTXO_COMMITMENT_INDEX,
+        LMDB_DB_UNIQUE_ID_INDEX,
+        LMDB_DB_CONTRACT_ID_INDEX,
+        LMDB_DB_ORPHANS,
+        LMDB_DB_MONERO_SEED_HEIGHT,
+        LMDB_DB_MONERO_SEED_HEIGHT_INDEX,
+        LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_ORPHAN_CHAIN_TIPS,
+        LMDB_DB_ORPHAN_PARENT_MAP_INDEX,
+        LMDB_DB_BAD_BLOCK_LIST,
+        LMDB_DB_REORGS,
+        LMDB_DB_VALIDATOR_NODES,
+        LMDB_DB_VALIDATOR_NODES_MAPPING,
+        LMDB_DB_TEMPLATE_REGISTRATIONS,
+        LMDB_DB_UTXO_SMT,
+        LMDB_DB_JMT_VALUE_DATA,
+        LMDB_DB_JMT_NODE_DATA,
+        LMDB_DB_JMT_UNIQUE_KEY_DATA,
+    ]
+}
+
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)

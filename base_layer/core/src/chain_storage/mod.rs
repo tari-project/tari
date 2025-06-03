@@ -67,6 +67,7 @@ pub use lmdb_db::{
     create_lmdb_database,
     create_readonly_lmdb_environment,
     create_recovery_lmdb_database,
+    get_all_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     LMDBDatabase,
 };

@@ -29,7 +29,7 @@ use clap::Args;
 
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
-use tari_core::chain_storage::create_readonly_lmdb_environment;
+use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names};
 use lmdb_zero::{ReadTransaction, Database, DatabaseOptions};
 
 
@@ -252,18 +252,8 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     let mut databases = Vec::new();
     let page_size = env_stat.psize as usize;
     
-    // Use the known Tari database names (from the constants in lmdb_db.rs)
-    let db_names = vec![
-        "metadata", "headers", "header_accumulated_data", "block_accumulated_data",
-        "block_hashes", "utxos", "inputs", "txos_hash_to_index", "kernels",
-        "kernel_excess_index", "kernel_excess_sig_index", "kernel_mmr_size_index",
-        "utxo_commitment_index", "unique_id_index", "contract_id_index",
-        "deleted_txo_hash_to_header_index", "orphans", "orphan_accumulated_data",
-        "monero_seed_height", "monero_seed_height_index", "orphan_chain_tips",
-        "orphan_parent_map_index", "bad_blocks", "reorgs", "validator_nodes",
-        "validator_nodes_mapping", "template_registrations", "utxo_smt",
-        "jmt_value_data", "jmt_node_data", "jmt_unique_key_data"
-    ];
+    // Get the authoritative list of database names from Tari core
+    let db_names = get_all_database_names();
     
     let txn = ReadTransaction::new(env.clone()).map_err(|e| anyhow!("Failed to create read transaction: {}", e))?;
     
