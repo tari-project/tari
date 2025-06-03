@@ -28,21 +28,21 @@ pub mod dbstats;
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Database statistics and analysis
-    #[command(name = "dbstats")]
-    DbStats(dbstats::DbStatsArgs),
+    /// Base node database statistics and analysis
+    #[command(name = "nodedbstats")]
+    NodeDbStats(dbstats::DbStatsArgs),
 }
 
 impl Default for Commands {
     fn default() -> Self {
-        Commands::DbStats(dbstats::DbStatsArgs::default())
+        Commands::NodeDbStats(dbstats::DbStatsArgs::default())
     }
 }
 
 impl Commands {
     pub fn execute(self, cli: &Cli) -> anyhow::Result<()> {
         match self {
-            Commands::DbStats(args) => args.execute(cli),
+            Commands::NodeDbStats(args) => args.execute(cli),
         }
     }
 }

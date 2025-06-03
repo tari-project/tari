@@ -12,36 +12,36 @@ cargo build --package minotari_util
 
 ## Usage
 
-### Database Statistics
+### Base Node Database Statistics
 
-Analyze LMDB database usage for the base node:
+Analyze base node LMDB database usage:
 
 ```bash
 # Basic usage with default table output
-minotari_util dbstats
+minotari_util nodedbstats
 
 # Specify custom database path
-minotari_util dbstats --db-path /path/to/tari/data/base_node/db
+minotari_util nodedbstats --db-path /path/to/tari/data/base_node/db
 
 # JSON output format
-minotari_util dbstats --format json
+minotari_util nodedbstats --format json
 
 # CSV output format
-minotari_util dbstats --format csv
+minotari_util nodedbstats --format csv
 
 # Show only top 10 databases by size
-minotari_util dbstats --top 10
+minotari_util nodedbstats --top 10
 
 # Sort by number of entries
-minotari_util dbstats --sort-by entries
+minotari_util nodedbstats --sort-by entries
 
 # Export to file
-minotari_util dbstats --export stats.json --format json
+minotari_util nodedbstats --export stats.json --format json
 ```
 
 ### Output Information
 
-The `dbstats` command provides:
+The `nodedbstats` command provides:
 
 1. **Environment Information**
    - Total mapped size
@@ -86,17 +86,17 @@ The tool is designed to be extensible for additional utilities:
 
 ```bash
 # Get database statistics for mainnet
-minotari_util --network mainnet dbstats
+minotari_util --network mainnet nodedbstats
 
 # Analyze specific database path with custom output
-minotari_util dbstats \
+minotari_util nodedbstats \
   --db-path /custom/path/db \
   --format table \
   --sort-by size \
   --top 15
 
 # Export full stats to JSON for analysis
-minotari_util dbstats \
+minotari_util nodedbstats \
   --format json \
   --export analysis.json \
   --include-detailed

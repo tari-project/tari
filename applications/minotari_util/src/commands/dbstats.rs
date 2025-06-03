@@ -37,7 +37,7 @@ use crate::{cli::Cli, config::AppConfig};
 
 #[derive(Args, Default)]
 pub struct DbStatsArgs {
-    /// Custom LMDB path (overrides default: data/base_node/db/)
+    /// Custom base node LMDB path (overrides default: data/base_node/db/)
     #[arg(long, value_name = "PATH")]
     pub db_path: Option<PathBuf>,
 
@@ -255,49 +255,29 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     // Get the authoritative list of database names from Tari core
     let db_names = get_all_database_names();
     
-    println!("Environment opened successfully, found {} databases to check", db_names.len());
-    
-    // Try the exact same pattern as in Tari's get_stats() method
+    // Get statistics for each database
     for db_name in db_names {
-        println!("Trying database: {}", db_name);
-        
-        match Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
-            Ok(database) => {
-                println!("Successfully opened database: {}", db_name);
-                
-                // Use the exact pattern from Tari's get_stats() method:
-                // ReadTransaction::new(env).and_then(|txn| txn.db_stat(&database))
-                match ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
-                    Ok(db_stat) => {
-                        println!("✅ Success for {}: {} entries", db_name, db_stat.entries);
-                        
-                        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
-                        let total_size = total_pages * page_size;
-                        let avg_size = if db_stat.entries > 0 {
-                            total_size / db_stat.entries
-                        } else {
-                            0
-                        };
+        if let Ok(database) = Database::open(&*env, Some(db_name), &DatabaseOptions::defaults()) {
+            if let Ok(db_stat) = ReadTransaction::new(env.clone()).and_then(|txn| txn.db_stat(&database)) {
+                let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+                let total_size = total_pages * page_size;
+                let avg_size = if db_stat.entries > 0 {
+                    total_size / db_stat.entries
+                } else {
+                    0
+                };
 
-                        databases.push(DatabaseStats {
-                            name: db_name.to_string(),
-                            entries: db_stat.entries,
-                            total_size,
-                            avg_size,
-                            depth: db_stat.depth,
-                            total_pages,
-                            leaf_pages: db_stat.leaf_pages,
-                            branch_pages: db_stat.branch_pages,
-                            overflow_pages: db_stat.overflow_pages,
-                        });
-                    }
-                    Err(e) => {
-                        println!("❌ Failed to get stats for {}: {}", db_name, e);
-                    }
-                }
-            }
-            Err(e) => {
-                println!("❌ Failed to open {}: {}", db_name, e);
+                databases.push(DatabaseStats {
+                    name: db_name.to_string(),
+                    entries: db_stat.entries,
+                    total_size,
+                    avg_size,
+                    depth: db_stat.depth,
+                    total_pages,
+                    leaf_pages: db_stat.leaf_pages,
+                    branch_pages: db_stat.branch_pages,
+                    overflow_pages: db_stat.overflow_pages,
+                });
             }
         }
     }
