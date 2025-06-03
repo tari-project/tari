@@ -3557,10 +3557,8 @@ where
         // Get all unspent outputs
         let outputs = self.resources.db.fetch_all_unspent_outputs()?;
         
-        // Get current chain tip height for confirmation calculations
-        let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
-        
-        let required_confirmations = 5; // Default required confirmations
+        // Get current chain tip height and confirmation requirements for calculation
+        let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
         
         // Check each output to see if it matches the PayRef
         for output in outputs {
@@ -3577,7 +3575,8 @@ where
     /// Helper function to get current tip height and required confirmations
     fn get_tip_height_and_confirmations(&self) -> Result<(u64, u64), OutputManagerError> {
         let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
-        let required_confirmations = 5; // TODO: Make this configurable
+        let payref_config = self.get_payment_reference_config()?;
+        let required_confirmations = payref_config.required_confirmations;
         
         // Validate values
         if current_tip_height == 0 {

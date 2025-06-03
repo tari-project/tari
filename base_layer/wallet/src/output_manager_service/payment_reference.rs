@@ -32,6 +32,9 @@ use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::storage::OutputStatus;
 
+/// Default number of block confirmations required before a PayRef becomes available
+pub const DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS: u64 = 5;
+
 /// Configuration for Payment Reference system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PayRefConfig {
@@ -50,7 +53,7 @@ pub struct PayRefConfig {
 impl Default for PayRefConfig {
     fn default() -> Self {
         Self {
-            required_confirmations: 5,
+            required_confirmations: DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS,
             display_format: PayRefDisplayFormat::Shortened,
             auto_copy_on_click: true,
             show_pending_progress: true,
