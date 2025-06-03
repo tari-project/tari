@@ -38,6 +38,9 @@ members = [
     "applications/minotari_miner",
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
+    "applications/minotari_mcp_common",
+    "applications/minotari_mcp_node",
+    "applications/minotari_mcp_wallet",
     "integration_tests",
     "hashing",
 ]
@@ -84,6 +87,7 @@ minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }
+minotari_mcp_common = { path = "applications/minotari_mcp_common" }
 
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error
