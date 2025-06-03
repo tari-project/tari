@@ -284,6 +284,17 @@ async fn test_listening_initial_fallen_behind() {
 
 #[tokio::test]
 async fn test_event_channel() {
+    let network = Network::Esmeralda;
+    if std::env::var("TARI_NETWORK").is_err() {
+        std::env::set_var("TARI_NETWORK", network.as_key_str());
+    }
+    if Network::get_current_or_user_setting_or_default() != network {
+        let _ = Network::set_current(network);
+    }
+    let current_network = Network::get_current_or_user_setting_or_default();
+    if current_network != network {
+        panic!("could not set network");
+    }
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())

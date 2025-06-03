@@ -74,6 +74,7 @@ use crate::{
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
+        blockchain_database::rewind_to_height,
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
@@ -303,7 +304,7 @@ impl LMDBDatabase {
         consensus_manager: ConsensusManager,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
-        let db = Self {
+        let mut db = Self {
             metadata_db: get_database(store, LMDB_DB_METADATA)?,
             headers_db: get_database(store, LMDB_DB_HEADERS)?,
             header_accumulated_data_db: get_database(store, LMDB_DB_HEADER_ACCUMULATED_DATA)?,
@@ -341,7 +342,7 @@ impl LMDBDatabase {
             consensus_manager,
         };
 
-        run_migrations(&db)?;
+        run_migrations(&mut db)?;
 
         Ok(db)
     }
@@ -2875,8 +2876,8 @@ impl fmt::Display for MetadataValue {
 }
 
 #[allow(clippy::too_many_lines)]
-fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 1;
+fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
+    const MIGRATION_VERSION: u64 = 2;
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
@@ -3004,6 +3005,40 @@ fn run_migrations(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
             }
             txn.commit()?;
         }
+
+        if migrate_from_version == 1 {
+            let known_good_difficulties = get_correct_accumulated_difficulty();
+            if known_good_difficulties.is_empty() {
+                info!(target: LOG_TARGET, "No migration to perform for version network");
+                continue;
+            }
+            let mut last_correct_height = 0;
+            for (height, correct_difficulty) in known_good_difficulties {
+                let txn = db.read_transaction()?;
+                let accum_data: Option<BlockHeaderAccumulatedData> =
+                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?;
+                if let Some(accum_data) = accum_data {
+                    if accum_data.total_accumulated_difficulty == correct_difficulty {
+                        info!(
+                            target: LOG_TARGET,
+                            "Block height {} already has correct accumulated difficulty",
+                            height
+                        );
+                        last_correct_height = height;
+                    }
+                } else {
+                    info!(target: LOG_TARGET, "No accumulated difficulty found for block height {}", height);
+                    break;
+                }
+            }
+            if last_correct_height == 0 {
+                // this will happen only happen if the db is below the fork height of the RxT fork
+                info!(target: LOG_TARGET, "No migration to perform for version network");
+                continue;
+            }
+            // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
+            rewind_to_height(db, last_correct_height)?;
+        }
     }
     if last_migrated_version != MIGRATION_VERSION {
         let txn = db.write_transaction()?;
@@ -3059,4 +3094,55 @@ enum OldMetadataValue {
 pub struct OldChainTipData {
     pub hash: HashOutput,
     pub total_accumulated_difficulty: U256,
+}
+
+fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
+    #[cfg(tari_target_network_mainnet)]
+    {
+        vec![
+            (
+                14999,
+                U512::from_dec_str("230963847231029670329787338266632060").expect("should not fail"),
+            ),
+            (
+                16000,
+                U512::from_dec_str("37870972808147006178902366165325544920691850526080").expect("should not fail"),
+            ),
+            (
+                17000,
+                U512::from_dec_str("123219722351554302645774736761840507999792186766920").expect("should not fail"),
+            ),
+            (
+                18000,
+                U512::from_dec_str("245169616636012105701848119083014332169855273375890").expect("should not fail"),
+            ),
+            (
+                19000,
+                U512::from_dec_str("428081108397470519627923902616128115025981546384670").expect("should not fail"),
+            ),
+            (
+                20000,
+                U512::from_dec_str("678404434598953994059276298108149917133080906779800").expect("should not fail"),
+            ),
+        ]
+    }
+    #[cfg(tari_target_network_nextnet)]
+    {
+        vec![
+            (
+                1499,
+                U512::from_dec_str("17340317256602964156796").expect("should not fail"),
+            ),
+            (
+                2000,
+                U512::from_dec_str("267045542397987769905169797604842").expect("should not fail"),
+            ),
+            (
+                3000,
+                U512::from_dec_str("2261524423095838119669981829692352").expect("should not fail"),
+            ),
+        ]
+    }
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+    vec![]
 }

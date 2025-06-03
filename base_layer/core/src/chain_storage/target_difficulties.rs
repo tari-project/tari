@@ -47,9 +47,8 @@ impl TargetDifficulties {
     }
 
     pub fn update_algos(&mut self, consensus_rules: &ConsensusManager, height: u64) -> Result<(), String> {
-        let permitted_algos = consensus_rules
-            .consensus_constants(height)
-            .current_permitted_pow_algos();
+        let consensus_constants = consensus_rules.consensus_constants(height);
+        let permitted_algos = consensus_constants.current_permitted_pow_algos();
         let current_keys: Vec<PowAlgorithm> = self.algos.keys().copied().collect();
         for algo in current_keys {
             if !permitted_algos.contains(&algo) {
@@ -60,6 +59,10 @@ impl TargetDifficulties {
             if let std::collections::hash_map::Entry::Vacant(e) = self.algos.entry(algo) {
                 let target_difficulty_window = consensus_rules.new_target_difficulty(algo, height)?;
                 e.insert(target_difficulty_window);
+            } else if let Some(target_diff) = self.algos.get_mut(&algo) {
+                target_diff.update_target_time(consensus_constants.pow_target_block_interval(algo))?
+            } else {
+                // clippy, this else should never be hit
             }
         }
         Ok(())

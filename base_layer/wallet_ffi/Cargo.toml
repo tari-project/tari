@@ -64,7 +64,7 @@ borsh = "1.5.7"
 env_logger = "0.7.1"
 
 [build-dependencies]
-cbindgen = "0.24.3"
+cbindgen = "0.24.5"
 tari_common = { workspace = true, features = [
     "build",
     "static-application-info",

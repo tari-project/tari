@@ -1803,7 +1803,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
 #[allow(clippy::too_many_lines)]
-fn rewind_to_height<T: BlockchainBackend>(
+pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     db: &mut T,
     target_height: u64,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
