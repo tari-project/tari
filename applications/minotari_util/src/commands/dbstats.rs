@@ -25,6 +25,7 @@ use std::{path::{Path, PathBuf}, fs};
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap::Args;
+use csv;
 use rusqlite::Connection;
 
 
