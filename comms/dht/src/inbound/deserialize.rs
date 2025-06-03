@@ -25,7 +25,7 @@ use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::InboundMessage, pipeline::PipelineError, OrNotFound, PeerManager};
+use tari_comms::{message::InboundMessage, pipeline::PipelineError, PeerManager};
 use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
@@ -84,7 +84,7 @@ where
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    let mut res = Ok(());
+                    let res ;
                     if let Some(source_peer) = peer_manager.find_by_node_id(&source_peer).await? {
                         // .or_not_found(&source_peer)
                         // .map(Arc::new)?;
