@@ -33,7 +33,7 @@ use tokio::{
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::{MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, peer_manager, PeerConnection};
+use crate::{message::InboundMessage, PeerConnection};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 

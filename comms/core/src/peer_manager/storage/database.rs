@@ -26,7 +26,6 @@ use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
 use diesel::{
     self,
-    dsl::now,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     ExpressionMethods,
