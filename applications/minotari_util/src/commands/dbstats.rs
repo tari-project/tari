@@ -25,9 +25,14 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap::Args;
-use lmdb_zero as lmdb;
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
+use tari_core::{
+    chain_storage::{create_lmdb_database, BlockchainBackend},
+    consensus::ConsensusManager,
+};
+use tari_common::configuration::Network;
+use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{cli::Cli, config::AppConfig};
 
@@ -228,14 +233,20 @@ impl DbStatsArgs {
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
-    let env = unsafe {
-        let mut builder = lmdb::EnvBuilder::new()?;
-        builder.set_maxdbs(50)?;
-        builder.open(&db_path.to_string_lossy(), lmdb::open::RDONLY, 0o644)?
-    };
+    // Use the existing Tari LMDBDatabase infrastructure
+    let consensus_manager = ConsensusManager::builder(Network::MainNet).build()?;
+    let lmdb_database = create_lmdb_database(db_path, LMDBConfig::default(), consensus_manager)
+        .map_err(|e| anyhow!("Failed to open Tari database: {}", e))?;
 
-    let env_info = env.info()?;
+    // Use existing methods to get statistics
+    let basic_stats = lmdb_database.get_stats()
+        .map_err(|e| anyhow!("Failed to get database stats: {}", e))?;
+    
+    let _size_stats = lmdb_database.fetch_total_size_stats()
+        .map_err(|e| anyhow!("Failed to get size stats: {}", e))?;
 
+    // Convert environment info
+    let env_info = basic_stats.env_info();
     let environment = EnvironmentInfo {
         mapsize: env_info.mapsize,
         last_pgno: env_info.last_pgno,
@@ -244,65 +255,28 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         numreaders: env_info.numreaders,
     };
 
-    let txn = lmdb::ReadTransaction::new(&env)?;
+    // Convert database statistics
     let mut databases = Vec::new();
+    for db_stat in basic_stats.db_stats() {
+        let total_pages = db_stat.leaf_pages + db_stat.branch_pages + db_stat.overflow_pages;
+        let total_size = db_stat.total_page_size();
+        let avg_size = if db_stat.entries > 0 {
+            total_size / db_stat.entries
+        } else {
+            0
+        };
 
-    // List of known Tari database names - hardcoded since we know the structure
-    let db_names = vec![
-        "metadata",
-        "headers",
-        "header_accumulated_data",
-        "block_accumulated_data",
-        "block_hashes",
-        "utxos",
-        "inputs",
-        "txos_hash_to_index",
-        "kernels",
-        "kernel_excess_index",
-        "kernel_excess_sig_index",
-        "kernel_mmr_size_index",
-        "utxo_commitment_index",
-        "contract_index",
-        "unique_id_index",
-        "deleted_txo_hash_to_header_index",
-        "orphans",
-        "orphan_header_accumulated_data",
-        "monero_seed_height",
-        "monero_seed_height_index",
-        "orphan_chain_tips",
-        "orphan_parent_map_index",
-        "bad_block_list",
-        "reorgs",
-        "validator_nodes",
-        "validator_nodes_mapping",
-        "template_registrations",
-        "utxo_smt",
-        "jmt_value_data",
-        "jmt_node_data",
-        "jmt_unique_key_data",
-    ];
-
-    // Collect stats for each database
-    for name in &db_names {
-        if let Ok(db) = lmdb::Database::open(&env, Some(name), &lmdb::DatabaseOptions::defaults()) {
-            if let Ok(stat) = txn.db_stat(&db) {
-                let total_pages = stat.leaf_pages + stat.branch_pages + stat.overflow_pages;
-                let total_size = stat.psize as usize * total_pages;
-                let avg_size = if stat.entries > 0 { total_size / stat.entries } else { 0 };
-
-                databases.push(DatabaseStats {
-                    name: name.to_string(),
-                    entries: stat.entries,
-                    total_size,
-                    avg_size,
-                    depth: stat.depth,
-                    total_pages,
-                    leaf_pages: stat.leaf_pages,
-                    branch_pages: stat.branch_pages,
-                    overflow_pages: stat.overflow_pages,
-                });
-            }
-        }
+        databases.push(DatabaseStats {
+            name: db_stat.name.to_string(),
+            entries: db_stat.entries,
+            total_size,
+            avg_size,
+            depth: db_stat.depth,
+            total_pages,
+            leaf_pages: db_stat.leaf_pages,
+            branch_pages: db_stat.branch_pages,
+            overflow_pages: db_stat.overflow_pages,
+        });
     }
 
     // Create summary
@@ -334,3 +308,6 @@ fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
         summary,
     })
 }
+
+
+
