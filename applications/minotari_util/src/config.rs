@@ -30,6 +30,7 @@ pub struct AppConfig {
     pub base_path: PathBuf,
     #[allow(dead_code)]
     pub network: String,
+    #[allow(dead_code)]
     pub db_path: PathBuf,
 }
 

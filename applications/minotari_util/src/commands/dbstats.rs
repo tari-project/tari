@@ -134,7 +134,7 @@ enum DatabaseType {
 }
 
 #[derive(Debug, Serialize, Deserialize, Tabled)]
-struct ComponentDatabaseInfo {
+pub struct ComponentDatabaseInfo {
     #[tabled(rename = "Component")]
     component: String,
     #[tabled(rename = "Database")]
@@ -175,93 +175,107 @@ impl DbStatsArgs {
             return Err(anyhow!("Network directory does not exist: {}", network_dir.display()));
         }
 
-        // For now, just scan and show what databases we find
+        // Scan for all databases
         let databases = scan_for_databases(&network_dir)?;
         
-        // Show summary table
-        println!("Found {} databases in {}", databases.len(), network_dir.display());
-        println!();
+        // Create output structure
+        let all_stats = AllDatabasesOutput {
+            component_databases: databases,
+            lmdb_details: None, // Will be populated below if include_detailed
+        };
         
-        let mut table_data = Table::new(&databases);
-        let table = table_data.with(Style::rounded());
-        println!("{}", table);
-        
-        // TODO: Add detailed LMDB analysis if requested
-        if self.include_detailed {
-            println!("\nDetailed LMDB analysis not yet implemented in network scan mode");
-        }
-
-        Ok(())
-    }
-
-    fn output_table(&self, stats: &DbStatsOutput) -> Result<()> {
-        println!("Environment Information:");
-        println!("  Map Size: {}", ByteSize(stats.environment.mapsize as u64));
-        println!("  Last Page: {}", stats.environment.last_pgno);
-        println!("  Last Transaction ID: {}", stats.environment.last_txnid);
-        println!("  Max Readers: {}", stats.environment.maxreaders);
-        println!("  Used Readers: {}", stats.environment.numreaders);
-        println!();
-
-        let mut databases = stats.databases.clone();
-        self.sort_databases(&mut databases);
-
-        if let Some(top) = self.top {
-            databases.truncate(top);
-        }
-
-        let mut binding = Table::new(&databases);
-        let table = binding.with(Style::rounded());
-        println!("Database Statistics:");
-        println!("{}", table);
-        println!();
-
-        println!("Summary:");
-        println!("  Total Databases: {}", stats.summary.total_databases);
-        println!("  Total Entries: {}", stats.summary.total_entries);
-        println!("  Total Size: {}", ByteSize(stats.summary.total_size as u64));
-        println!("  Largest Database: {}", stats.summary.largest_db);
-        println!("  Average Entries per DB: {}", stats.summary.avg_entries_per_db);
-
-        Ok(())
-    }
-
-    fn output_json(&self, stats: &DbStatsOutput) -> Result<()> {
-        let json = serde_json::to_string_pretty(stats)?;
-        println!("{}", json);
-        Ok(())
-    }
-
-    fn output_csv(&self, stats: &DbStatsOutput) -> Result<()> {
-        let mut wtr = csv::Writer::from_writer(std::io::stdout());
-
-        for db in &stats.databases {
-            wtr.serialize(db)?;
-        }
-
-        wtr.flush()?;
-        Ok(())
-    }
-
-    fn export_to_file(&self, stats: &DbStatsOutput, path: &PathBuf) -> Result<()> {
-        let content = match path.extension().and_then(|s| s.to_str()) {
-            Some("json") => serde_json::to_string_pretty(stats)?,
-            Some("csv") => {
-                let mut wtr = csv::Writer::from_writer(Vec::new());
-                for db in &stats.databases {
+        // Output in requested format
+        match self.format {
+            OutputFormat::Table => {
+                println!("Found {} databases in {}", all_stats.component_databases.len(), network_dir.display());
+                println!();
+                
+                let mut table_data = Table::new(&all_stats.component_databases);
+                let table = table_data.with(Style::rounded());
+                println!("{}", table);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&all_stats)?;
+                println!("{}", json);
+            }
+            OutputFormat::Csv => {
+                let mut wtr = csv::Writer::from_writer(std::io::stdout());
+                for db in &all_stats.component_databases {
                     wtr.serialize(db)?;
                 }
-                String::from_utf8(wtr.into_inner()?)?
-            },
-            _ => return Err(anyhow!("Unsupported export format. Use .json or .csv")),
-        };
+                wtr.flush()?;
+            }
+        }
+        
+        // Export to file if requested
+        if let Some(export_path) = &self.export {
+            let content = match export_path.extension().and_then(|s| s.to_str()) {
+                Some("json") => serde_json::to_string_pretty(&all_stats)?,
+                Some("csv") => {
+                    let mut buffer = Vec::new();
+                    {
+                        let mut wtr = csv::Writer::from_writer(&mut buffer);
+                        for db in &all_stats.component_databases {
+                            wtr.serialize(db)?;
+                        }
+                        wtr.flush()?;
+                    }
+                    String::from_utf8(buffer)?
+                }
+                _ => {
+                    // Default to JSON for unknown extensions
+                    serde_json::to_string_pretty(&all_stats)?
+                }
+            };
+            std::fs::write(export_path, content)?;
+            println!("Exported statistics to {}", export_path.display());
+        }
+        
+        // Add detailed LMDB analysis if requested
+        if self.include_detailed {
+            if let Some(base_node_lmdb) = find_base_node_lmdb_database(&all_stats.component_databases) {
+                println!("\n=== Detailed Base Node LMDB Analysis ===");
+                match collect_database_stats(Path::new(&base_node_lmdb.path)) {
+                    Ok(lmdb_stats) => {
+                        println!("\nEnvironment Information:");
+                        println!("  Map Size: {}", ByteSize(lmdb_stats.environment.mapsize as u64));
+                        println!("  Last Page: {}", lmdb_stats.environment.last_pgno);
+                        println!("  Last Transaction ID: {}", lmdb_stats.environment.last_txnid);
+                        println!("  Max Readers: {}", lmdb_stats.environment.maxreaders);
+                        println!("  Used Readers: {}", lmdb_stats.environment.numreaders);
+                        
+                        println!("\nDatabase Statistics:");
+                        let mut lmdb_databases = lmdb_stats.databases.clone();
+                        self.sort_lmdb_databases(&mut lmdb_databases);
+                        
+                        if let Some(top) = self.top {
+                            lmdb_databases.truncate(top);
+                        }
+                        
+                        let mut table_data = Table::new(&lmdb_databases);
+                        let table = table_data.with(Style::rounded());
+                        println!("{}", table);
+                        
+                        println!("\nSummary:");
+                        println!("  Total Databases: {}", lmdb_stats.summary.total_databases);
+                        println!("  Total Entries: {}", lmdb_stats.summary.total_entries);
+                        println!("  Total Size: {}", ByteSize(lmdb_stats.summary.total_size as u64));
+                        println!("  Largest Database: {}", lmdb_stats.summary.largest_db);
+                        println!("  Average Entries per DB: {}", lmdb_stats.summary.avg_entries_per_db);
+                    }
+                    Err(e) => {
+                        println!("Failed to analyze base node LMDB database: {}", e);
+                    }
+                }
+            } else {
+                println!("\nNo base node LMDB database found for detailed analysis");
+            }
+        }
 
-        std::fs::write(path, content)?;
-        println!("Stats exported to: {}", path.display());
         Ok(())
     }
 
-    fn sort_databases(&self, databases: &mut [DatabaseStats]) {
+    fn sort_lmdb_databases(&self, databases: &mut [DatabaseStats]) {
         match self.sort_by {
             SortField::Name => databases.sort_by(|a, b| a.name.cmp(&b.name)),
             SortField::Size => databases.sort_by(|a, b| b.total_size.cmp(&a.total_size)),
@@ -269,6 +283,16 @@ impl DbStatsArgs {
             SortField::Pages => databases.sort_by(|a, b| b.total_pages.cmp(&a.total_pages)),
         }
     }
+
+
+
+
+
+
+
+
+
+
 }
 
 fn scan_for_databases(network_dir: &Path) -> Result<Vec<ComponentDatabaseInfo>> {
@@ -364,6 +388,14 @@ fn get_directory_size(dir: &Path) -> Result<u64> {
     }
     
     Ok(total_size)
+}
+
+fn find_base_node_lmdb_database(databases: &[ComponentDatabaseInfo]) -> Option<&ComponentDatabaseInfo> {
+    databases.iter().find(|db| {
+        db.component == "Base Node" && 
+        db.db_type == "LMDB" && 
+        db.path.contains("data/base_node/db")
+    })
 }
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
