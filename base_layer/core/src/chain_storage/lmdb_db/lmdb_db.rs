@@ -3159,6 +3159,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
             
             info!(target: LOG_TARGET, "PayRef index rebuild completed: {} outputs indexed", rebuild_count);
+        }
 
         if migrate_from_version == 1 {
             let known_good_difficulties = get_correct_accumulated_difficulty();

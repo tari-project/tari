@@ -3682,7 +3682,7 @@ where
                     if let (Some(block_height), Some(timestamp)) = (output.mined_height, output.mined_timestamp) {
                         // Check if we already have this PayRef to avoid duplicates (O(1) lookup)
                         if !seen_payment_refs.contains(&payref) {
-                            seen_payment_refs.insert(payref.clone());
+                            seen_payment_refs.insert(payref);
                             payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
                                 payment_reference: payref,
                                 amount: output.wallet_output.value,

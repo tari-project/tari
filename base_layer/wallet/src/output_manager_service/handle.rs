@@ -1021,7 +1021,6 @@ impl OutputManagerHandle {
     }
 
     /// PayRef methods
-    
     /// Find payment details by PayRef
     pub async fn find_payment_by_reference(
         &mut self,
