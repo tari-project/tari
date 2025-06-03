@@ -272,7 +272,8 @@ impl Dht {
             .layer(ForwardLayer::new(
                 self.dht_requester(),
                 self.outbound_requester(),
-                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
+                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD) &&
+                    self.config.enable_forwarding,
             ))
             .layer(inbound::DhtHandlerLayer::new(
                 self.config.clone(),
@@ -532,6 +533,7 @@ mod test {
         // Send all outbound requests to the mock
         let dht = Dht::builder()
             .with_outbound_sender(oms_requester.get_mpsc_sender())
+            .with_config(DhtConfig::default_local_test())
             .build(
                 Arc::clone(&node_identity),
                 peer_manager,

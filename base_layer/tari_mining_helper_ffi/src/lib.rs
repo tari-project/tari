@@ -150,7 +150,7 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0u8;
     }
-    (*ptr).0[position as usize]
+    (&(*ptr).0)[position as usize]
 }
 
 /// Gets the number of elements in a ByteVector

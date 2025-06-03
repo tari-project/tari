@@ -22,9 +22,9 @@ The recommended running versions of each network are:
 
 | Network   | Version     |
 |-----------|-------------|
-| Mainnet   | 4.1.0       |
-| Nextnet   | 4.1.0-rc.0  |
-| Esmeralda | 4.1.0-pre.0 |
+| Mainnet   | 4.2.0       |
+| Nextnet   | 4.2.0-rc.0  |
+| Esmeralda | 4.2.0-pre.0 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
