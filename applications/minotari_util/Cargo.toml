@@ -17,8 +17,11 @@ tari_core = { workspace = true, features = ["base_node"] }
 tari_storage = { workspace = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
+tari_common_sqlite = { workspace = true }
 
 lmdb-zero = "0.4.4"
+rusqlite = "0.28"
+libsqlite3-sys = "0.25.1"
 
 clap = { version = "4.0", features = ["derive", "env"] }
 serde = { version = "1.0", features = ["derive"] }
