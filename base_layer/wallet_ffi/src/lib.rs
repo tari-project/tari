@@ -6608,6 +6608,16 @@ unsafe fn init_logging(
     }
 }
 
+/// Helper function to create the main wallet database path.
+/// Note: The peer database's name is just used to simplify the wallet create interface. It must not be the same as the
+///       peer database.
+pub(crate) fn get_wallet_database_path(config: TariCommsConfig) -> PathBuf {
+    config
+        .datastore_path
+        .join(config.peer_database_name.clone().to_owned() + "_main_wallet_database")
+        .with_extension("sqlite3")
+}
+
 /// Creates a TariWallet
 ///
 /// ## Arguments
@@ -6887,15 +6897,12 @@ pub unsafe extern "C" fn wallet_create(
     };
     let factories = CryptoFactories::default();
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("db");
+    let main_wallet_database_sql_database_path = get_wallet_database_path((*config).clone());
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
-        match initialize_sqlite_database_backends(sql_database_path, passphrase, 16) {
+        match initialize_sqlite_database_backends(main_wallet_database_sql_database_path, passphrase, 16) {
             Ok((w, t, o, c, x)) => (w, t, o, c, x),
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -7237,10 +7244,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
         return ptr::null_mut();
     }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("db");
+    let sql_database_path = get_wallet_database_path((*config).clone());
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(version)) => {
@@ -7278,10 +7282,7 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
         return ptr::null_mut();
     }
 
-    let sql_database_path = (*config)
-        .datastore_path
-        .join((*config).peer_database_name.clone())
-        .with_extension("db");
+    let sql_database_path = get_wallet_database_path((*config).clone());
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -10593,7 +10594,7 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {
-    use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
+    use std::{ffi::c_void, str::from_utf8, sync::Mutex};
 
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -11561,10 +11562,6 @@ mod test {
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
-            let sql_database_path = Path::new(alice_temp_dir.path().to_str().unwrap())
-                .join(db_name)
-                .with_extension("db");
-
             let alice_network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
 
@@ -11623,6 +11620,7 @@ mod test {
             assert_eq!(*error_ptr, 0, "No error expected");
             wallet_destroy(alice_wallet);
 
+            let sql_database_path = get_wallet_database_path((*alice_config).clone());
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(
@@ -13259,9 +13257,13 @@ mod test {
             }
 
             // obtaining network and version
-            let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
-            let _ = wallet_get_last_network(alice_config, &mut error as *mut c_int);
+            let version_ptr = wallet_get_last_version(alice_config, &mut error as *mut c_int);
+            assert!(!version_ptr.is_null(), "Failed to retrieve version.");
+            let network_ptr = wallet_get_last_network(alice_config, &mut error as *mut c_int);
+            assert!(!network_ptr.is_null(), "Failed to retrieve network.");
 
+            string_destroy(network_ptr);
+            string_destroy(version_ptr);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
