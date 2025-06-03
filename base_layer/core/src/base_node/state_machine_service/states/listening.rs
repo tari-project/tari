@@ -230,7 +230,6 @@ impl Listening {
             shared.set_state_info(StateInfo::Listening(current_listening_info));
         }
 
-
         let mut chain_metadata_events = shared.metadata_event_stream.resubscribe();
         let mut dht_events = shared.dht_event_stream.resubscribe();
         let mut time_since_better_block = None;

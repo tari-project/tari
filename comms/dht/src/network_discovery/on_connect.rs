@@ -158,14 +158,12 @@ impl OnConnect {
                                 if new_peer {
                                     debug!(target: LOG_TARGET, "Added new peer `{}` from `{}`", &pub_key, sync_peer);
                                     num_added += 1;
-                                } 
-                            }
+                                }
+                            },
                             Err(e) => {
                                 debug!(target: LOG_TARGET, "Failed to validate peer `{}` from `{}`: {}", pub_key, sync_peer, e);
-                            }
+                            },
                         }
-                            // num_added += 1;
-                        // }
                     },
                     None => {
                         debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
