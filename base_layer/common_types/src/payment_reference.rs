@@ -30,7 +30,7 @@
 //!
 //! PayRefs are generated using the formula:
 //! ```text
-//! PayRef = Blake2b_256(block_hash || commitment)
+//! PayRef = Blake2b_256(block_hash || output_hash)
 //! ```
 //!
 //! This approach ensures:
@@ -46,7 +46,7 @@ use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;
 use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::types::{BlockHash, CompressedCommitment};
+use crate::types::{BlockHash, HashOutput};
 
 /// A Payment Reference (PayRef) - a 32-byte globally unique identifier for transaction outputs
 pub type PaymentReference = [u8; 32];
@@ -79,7 +79,7 @@ pub enum PayRefError {
     DatabaseError(String),
 }
 
-/// Generate a Payment Reference from block hash and commitment
+/// Generate a Payment Reference from block hash and output hash
 ///
 /// This is the canonical PayRef generation function used throughout the Tari ecosystem.
 /// It uses domain-separated Blake2b hashing to ensure security and prevent hash collisions
@@ -87,7 +87,7 @@ pub enum PayRefError {
 ///
 /// # Arguments
 /// * `block_hash` - Hash of the block containing the output
-/// * `commitment` - Pedersen commitment of the output
+/// * `output_hash` - Hash of the transaction output
 ///
 /// # Returns
 /// A 32-byte Payment Reference that is globally unique and verifiable
@@ -95,17 +95,17 @@ pub enum PayRefError {
 /// # Example
 /// ```rust
 /// use tari_common_types::payment_reference::generate_payment_reference;
-/// use tari_common_types::types::{BlockHash, CompressedCommitment};
+/// use tari_common_types::types::{BlockHash, HashOutput};
 /// 
 /// let block_hash = BlockHash::from([1u8; 32]);
-/// let commitment = CompressedCommitment::from_bytes(&[2u8; 32]).unwrap();
-/// let payref = generate_payment_reference(&block_hash, &commitment);
+/// let output_hash = HashOutput::from([2u8; 32]);
+/// let payref = generate_payment_reference(&block_hash, &output_hash);
 /// println!("PayRef: {}", hex::encode(payref));
 /// ```
-pub fn generate_payment_reference(block_hash: &BlockHash, commitment: &CompressedCommitment) -> PaymentReference {
+pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutput) -> PaymentReference {
     let mut hasher = DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
     hasher.update(block_hash.as_slice());
-    hasher.update(commitment.as_bytes());
+    hasher.update(output_hash.as_slice());
     let mut output = [0u8; 32];
     hasher.finalize_into_reset(digest::generic_array::GenericArray::from_mut_slice(&mut output));
     output
