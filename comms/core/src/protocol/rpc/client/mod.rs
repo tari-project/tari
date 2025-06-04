@@ -816,7 +816,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     async fn premature_close(&mut self, request_id: u16, method: u32) -> Result<(), RpcError> {
-        warn!(
+        info!(
             target: LOG_TARGET,
             "(stream={}) Response receiver was dropped before the response/stream could complete for protocol {}, \
              interrupting the stream. ",
