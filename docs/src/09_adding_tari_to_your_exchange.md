@@ -472,7 +472,7 @@ Payment References (PayRefs) are globally unique identifiers for individual tran
 
 PayRefs are generated using the formula:
 ```
-PayRef = Blake2b_256(block_hash || commitment)
+PayRef = Blake2b_256(block_hash || output_hash)
 ```
 
 This ensures:

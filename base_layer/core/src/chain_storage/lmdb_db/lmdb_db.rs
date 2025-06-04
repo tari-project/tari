@@ -1032,7 +1032,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
+        self.delete_block_inputs_outputs(write_txn, block_hash)?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
@@ -1063,12 +1063,12 @@ impl LMDBDatabase {
     fn delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
-        block_hash: &[u8],
+        block_hash: &HashOutput,
         // output_smt: &mut OutputSmt,
     ) -> Result<(), ChainStorageError> {
-        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
+        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
-        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash)?;
+        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
 
         for (_, utxo) in &output_rows {
@@ -1081,6 +1081,23 @@ impl LMDBDatabase {
             )?;
 
             let output_hash = utxo.output.hash();
+            
+            // Clean up PayRef index for this output during reorg
+            // Only clean PayRef if output was actually created (not spent in same block, not burned)
+            let should_cleanup_payref = !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) 
+                && !utxo.output.is_burned();
+            
+            if should_cleanup_payref {
+                let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
+                // Delete the PayRef index entry (ignore errors in case it doesn't exist)
+                lmdb_delete(
+                    txn,
+                    &self.payref_to_output_index,
+                    &payref_bytes,
+                    "payref_to_output_index",
+                ).ok(); // Use .ok() to ignore errors - PayRef may not exist
+            }
+            
             // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
             // does not exist here
             if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {

@@ -1159,7 +1159,7 @@ service Wallet {
   // Gets payment details by payment reference (PayRef)
   //
   // The `GetPaymentByReference` call retrieves payment information using a 32-byte payment reference hash.
-  // PayRefs are generated as Blake2b_256(block_hash || commitment) and provide a stable way to look up
+  // PayRefs are generated as Blake2b_256(block_hash || output_hash) and provide a stable way to look up
   // payments even after outputs are spent.
   //
   // ### Request Parameters:

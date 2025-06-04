@@ -15,7 +15,7 @@ A Payment Reference (PayRef) is a globally unique identifier for individual tran
 
 PayRefs are generated using the formula:
 ```
-PayRef = Blake2b_256(block_hash || commitment)
+PayRef = Blake2b_256(block_hash || output_hash)
 ```
 
 This approach ensures:
@@ -218,7 +218,7 @@ PayRefs are designed to be privacy-preserving:
 ### PayRef Generation Algorithm
 
 ```
-Input: block_hash (32 bytes), commitment (32 bytes)
+Input: block_hash (32 bytes), output_hash (32 bytes)
 Output: payment_reference (32 bytes)
 
 1. Initialize Blake2b hasher with domain separation
