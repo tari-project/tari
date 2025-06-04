@@ -28,6 +28,7 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -592,7 +593,10 @@ where
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let completed_transaction = CompletedTransaction::new(
+        // Categorize outputs for PayRef functionality
+        let (sent_hashes, change_hashes) = self.categorize_output_hashes(&tx, &outbound_tx).await?;
+
+        let completed_transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             self.resources.interactive_tari_address.clone(),
             outbound_tx.destination_address,
@@ -605,6 +609,9 @@ where
             None,
             None,
             outbound_tx.payment_id.clone(),
+            sent_hashes,
+            Vec::new(), // No received outputs for outbound transactions
+            change_hashes,
         )
         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
@@ -985,6 +992,50 @@ where
             });
 
         Ok(())
+    }
+
+    /// Categorize transaction outputs into sent, change, and received hashes for PayRef functionality
+    async fn categorize_output_hashes(
+        &mut self,
+        tx: &tari_core::transactions::transaction_components::Transaction,
+        _outbound_tx: &OutboundTransaction,
+    ) -> Result<(Vec<HashOutput>, Vec<HashOutput>), TransactionServiceProtocolError<TxId>> {
+        let mut sent_hashes = Vec::new();
+        let mut change_hashes = Vec::new();
+
+        for output in tx.body.outputs() {
+            let output_hash = output.hash();
+            
+            // Check if this output belongs to our wallet using the output manager
+            match self.resources.output_manager_service.is_output_ours(output).await {
+                Ok(true) => {
+                    // This is our output, check if it's change
+                    match self.resources.output_manager_service.is_change_output(output).await {
+                        Ok(true) => change_hashes.push(output_hash),
+                        Ok(false) => {
+                            // It's ours but not change - could be a self-send, treat as sent
+                            sent_hashes.push(output_hash);
+                        },
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
+                            // Default to treating as sent to be safe
+                            sent_hashes.push(output_hash);
+                        }
+                    }
+                },
+                Ok(false) => {
+                    // Not ours, so it's being sent to recipient
+                    sent_hashes.push(output_hash);
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Error checking output ownership: {:?}", e);
+                    // Default to treating as sent to be safe
+                    sent_hashes.push(output_hash);
+                }
+            }
+        }
+
+        Ok((sent_hashes, change_hashes))
     }
 }
 

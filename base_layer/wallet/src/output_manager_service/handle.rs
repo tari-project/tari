@@ -158,6 +158,10 @@ pub enum OutputManagerRequest {
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
     GetOutputsByTxId(TxId),
+    /// Check if a transaction output belongs to this wallet
+    IsOutputOurs(Box<TransactionOutput>),
+    /// Check if this is a change output from our own transaction
+    IsChangeOutput(Box<TransactionOutput>),
     // PayRef operations
     FindPaymentByReference([u8; 32]),
     GetAvailablePaymentReferences,
@@ -294,6 +298,8 @@ impl fmt::Display for OutputManagerRequest {
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
             GetOutputsByTxId(t) => write!(f, "GetOutputsByTxId: {}", t),
+            IsOutputOurs(_) => write!(f, "IsOutputOurs"),
+            IsChangeOutput(_) => write!(f, "IsChangeOutput"),
             FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
             GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
@@ -352,6 +358,10 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    /// Response for output ownership check
+    OutputOwnership(bool),
+    /// Response for change output check  
+    ChangeOutput(bool),
     // PayRef responses
     PaymentDetails(Option<crate::output_manager_service::payment_reference::PaymentDetails>),
     PaymentReferences(Vec<crate::output_manager_service::payment_reference::PaymentRecord>),
@@ -1093,6 +1103,30 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::PaymentReferenceConfigSet => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Check if a transaction output belongs to this wallet
+    pub async fn is_output_ours(&mut self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::IsOutputOurs(Box::new(output.clone())))
+            .await??
+        {
+            OutputManagerResponse::OutputOwnership(is_ours) => Ok(is_ours),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Check if this is a change output from our own transaction
+    pub async fn is_change_output(&mut self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::IsChangeOutput(Box::new(output.clone())))
+            .await??
+        {
+            OutputManagerResponse::ChangeOutput(is_change) => Ok(is_change),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

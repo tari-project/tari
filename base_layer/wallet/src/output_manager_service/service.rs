@@ -544,6 +544,14 @@ where
                 let wallet_outputs: Vec<WalletOutput> = outputs.into_iter().map(|db_output| db_output.wallet_output).collect();
                 Ok(OutputManagerResponse::Outputs(wallet_outputs))
             },
+            OutputManagerRequest::IsOutputOurs(output) => {
+                let is_ours = self.is_output_ours(&output).await?;
+                Ok(OutputManagerResponse::OutputOwnership(is_ours))
+            },
+            OutputManagerRequest::IsChangeOutput(output) => {
+                let is_change = self.is_change_output(&output).await?;
+                Ok(OutputManagerResponse::ChangeOutput(is_change))
+            },
             // PayRef operations
             OutputManagerRequest::FindPaymentByReference(payref) => {
                 let payment_details = self.find_payment_by_reference(payref)?;

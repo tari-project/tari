@@ -211,6 +211,57 @@ impl CompletedTransaction {
             change_output_hashes: Vec::new(),
         })
     }
+
+    /// Create a CompletedTransaction with specified output hashes for PayRef functionality
+    pub fn new_with_output_hashes(
+        tx_id: TxId,
+        source_address: TariAddress,
+        destination_address: TariAddress,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
+        transaction: Transaction,
+        status: TransactionStatus,
+        timestamp: DateTime<Utc>,
+        direction: TransactionDirection,
+        mined_height: Option<u64>,
+        mined_timestamp: Option<DateTime<Utc>>,
+        payment_id: PaymentId,
+        sent_output_hashes: Vec<HashOutput>,
+        received_output_hashes: Vec<HashOutput>,
+        change_output_hashes: Vec<HashOutput>,
+    ) -> Result<Self, TransactionStorageError> {
+        if status == TransactionStatus::Coinbase {
+            return Err(TransactionStorageError::CoinbaseNotSupported);
+        }
+        let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
+            excess_sig.clone()
+        } else {
+            Signature::default()
+        };
+        Ok(Self {
+            tx_id,
+            source_address,
+            destination_address,
+            amount,
+            fee,
+            transaction,
+            status,
+            timestamp,
+            cancelled: None,
+            direction,
+            send_count: 0,
+            last_send_timestamp: None,
+            transaction_signature,
+            confirmations: None,
+            mined_height,
+            mined_in_block: None,
+            mined_timestamp,
+            payment_id,
+            sent_output_hashes,
+            received_output_hashes,
+            change_output_hashes,
+        })
+    }
 }
 
 impl From<CompletedTransaction> for InboundTransaction {
