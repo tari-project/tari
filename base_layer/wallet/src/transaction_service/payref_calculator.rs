@@ -147,7 +147,7 @@ fn create_payment_details(
 ) -> PaymentDetails {
     PaymentDetails {
         payment_reference: payref,
-        commitment: Default::default(), // TODO: We'll need to add commitment storage later if needed
+        commitment: Default::default(),
         amount: tx.amount,
         direction,
         status: OutputStatus::Spent, // Since this is a completed transaction, mark as spent

@@ -173,6 +173,10 @@ const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
+
+// PayRef migration optimization constants
+const MIGRATION_BATCH_SIZE: u64 = 100;
+const OUTPUT_CHUNK_SIZE: usize = 1000;
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
@@ -3117,52 +3121,62 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             
             info!(target: LOG_TARGET, "PayRef index is empty, rebuilding for existing outputs");
 
-            // Rebuild PayRef index by iterating through all existing outputs
+            // Rebuild PayRef index by iterating through all existing outputs with batching
             let mut rebuild_count = 0u64;
-            for height in 0..=chain_height {
-                let read_txn = db.read_transaction()?;
+            let mut batch_start = 0u64;
+            
+            while batch_start <= chain_height {
+                let batch_end = std::cmp::min(batch_start + MIGRATION_BATCH_SIZE - 1, chain_height);
+                let write_txn = db.write_transaction()?;
                 
-                // Get block header to get block hash
-                let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
-                if let Some(header) = header {
-                    let block_hash = header.hash();
+                info!(target: LOG_TARGET, "Processing PayRef rebuild batch: blocks {} to {}", batch_start, batch_end);
+                
+                for height in batch_start..=batch_end {
+                    let read_txn = db.read_transaction()?;
                     
-                    // Get all outputs for this block using the block hash
-                    let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
-                        &read_txn,
-                        &db.utxos_db,
-                        block_hash.as_slice(),
-                    )?;
-                    
-                    drop(read_txn);
-                    
-                    if !outputs.is_empty() {
-                        let write_txn = db.write_transaction()?;
+                    // Get block header to get block hash
+                    let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
+                    if let Some(header) = header {
+                        let block_hash = header.hash();
                         
-                        for (_, output_data) in outputs {
-                            // Generate PayRef and add to index
-                            let output_hash = &output_data.hash;
-                            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
-                            
-                            // Insert into PayRef index 
-                            lmdb_replace(
-                                &write_txn,
-                                &db.payref_to_output_index,
-                                &payref,
-                                output_hash,
-                                None,
-                            )?;
-                            
-                            rebuild_count += 1;
+                        // Get all outputs for this block
+                        let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
+                            &read_txn,
+                            &db.utxos_db,
+                            block_hash.as_slice(),
+                        )?;
+                        
+                        drop(read_txn);
+                        
+                        // Process outputs in chunks to manage memory usage
+                        for chunk in outputs.chunks(OUTPUT_CHUNK_SIZE) {
+                            for (_, output_data) in chunk {
+                                // Generate PayRef and add to index
+                                let output_hash = &output_data.hash;
+                                let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
+                                
+                                // Insert into PayRef index 
+                                lmdb_replace(
+                                    &write_txn,
+                                    &db.payref_to_output_index,
+                                    &payref,
+                                    output_hash,
+                                    None,
+                                )?;
+                                
+                                rebuild_count += 1;
+                            }
                         }
-                        
-                        write_txn.commit()?;
-                    }
-                    
-                    if height % 1000 == 0 {
-                        info!(target: LOG_TARGET, "PayRef rebuild progress: processed {} blocks, {} outputs", height, rebuild_count);
                     }
                 }
+                
+                // Commit the batch
+                write_txn.commit()?;
+                
+                info!(target: LOG_TARGET, "PayRef rebuild batch completed: processed blocks {} to {}, total outputs: {}", 
+                      batch_start, batch_end, rebuild_count);
+                
+                batch_start = batch_end + 1;
             }
             
             info!(target: LOG_TARGET, "PayRef index rebuild completed: {} outputs indexed", rebuild_count);
