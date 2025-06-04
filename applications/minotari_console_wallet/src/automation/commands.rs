@@ -2902,6 +2902,7 @@ pub async fn command_runner(
                             "broadcast-signed-one-sided-transaction concluded with tx_id {}", tx_id
                         );
                         println!("Transaction ID: {}", tx_id);
+                        tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("BroadcastSignedOneSidedTransaction error! {}", e),
                 }

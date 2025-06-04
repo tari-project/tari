@@ -530,6 +530,10 @@ where
         ))
     }
 
+    pub async fn fetch_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.get_private_key(key_id).await
+    }
+
     pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
         self.db.insert_imported_key(public_key.clone(), private_key)?;

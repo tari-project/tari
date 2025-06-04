@@ -78,7 +78,7 @@ pub struct LockOneSidedTransactionResult {
     pub payment_id: PaymentId,
     pub tx_id: TxId,
     pub stp: SenderTransactionProtocol,
-    pub commitment_mask_private_key: PrivateKey,
+    pub commitment_mask_keys: Vec<PrivateKey>,
 }
 
 impl TransactionResult for LockOneSidedTransactionResult {}
@@ -344,6 +344,10 @@ where
         stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
+        let commitment_mask_keys = stp
+            .get_input_keys(&self.resources.transaction_key_manager_service)
+            .await?;
+
         Ok(LockOneSidedTransactionResult {
             version: get_supported_version(),
             dest_address,
@@ -351,7 +355,7 @@ where
             payment_id,
             tx_id,
             stp,
-            commitment_mask_private_key,
+            commitment_mask_keys,
         })
     }
 
@@ -361,13 +365,17 @@ where
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         let mut stp = request.stp.clone();
 
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .import_key(request.commitment_mask_private_key.clone())
-            .await?;
+        let mut commitment_mask_key_ids = Vec::new();
+        for key in &request.commitment_mask_keys {
+            let key_id = self
+                .resources
+                .transaction_key_manager_service
+                .import_key(key.clone())
+                .await?;
+            commitment_mask_key_ids.push(key_id);
+        }
 
-        stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, Some(&spending_key_id))
+        stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, commitment_mask_key_ids)
             .await?;
         stp.persist_script_private_key(&self.resources.transaction_key_manager_service)
             .await?;

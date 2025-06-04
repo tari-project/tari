@@ -264,6 +264,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError>;
 
+    /// Gets private key
+    async fn fetch_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
+
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,

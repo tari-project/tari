@@ -156,6 +156,14 @@ where
             .await
     }
 
+    async fn fetch_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .fetch_private_key(key_id)
+            .await
+    }
+
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()

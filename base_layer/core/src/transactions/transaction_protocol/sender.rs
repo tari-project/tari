@@ -619,14 +619,14 @@ impl SenderTransactionProtocol {
     pub async fn persist_input_script_signatures<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
-        spending_key_id: Option<&TariKeyId>,
+        commitment_mask_key_ids: Vec<TariKeyId>,
     ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Finalizing(ref mut info) => {
-                for input in &mut info.inputs {
+                for (input, spending_key_id) in info.inputs.iter_mut().zip(commitment_mask_key_ids.into_iter()) {
                     let script_signature = input
                         .output
-                        .build_script_signature(key_manager, spending_key_id)
+                        .build_script_signature(key_manager, Some(&spending_key_id))
                         .await?;
                     input.output.script_signature = Some(script_signature);
                 }
@@ -921,6 +921,24 @@ impl SenderTransactionProtocol {
                         .clone()
                 })
                 .collect()),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    pub async fn get_input_keys<KM: TransactionKeyManagerInterface>(&self, km: &KM) -> Result<Vec<PrivateKey>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info)
+            | SenderState::Finalizing(info)
+            | SenderState::SingleRoundMessageReady(info)
+            | SenderState::CollectingSingleSignature(info) => {
+                let mut keys = Vec::new();
+                for input in &info.inputs {
+                    let key = km.fetch_private_key(&input.output.spending_key_id).await?;
+                    keys.push(key);
+                }
+                Ok(keys)
+            },
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
