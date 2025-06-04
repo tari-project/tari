@@ -117,7 +117,6 @@ use crate::{
         handle::{
             FeePerGramStatsResponse,
             PaymentDetails,
-            PaymentDirection,
             TransactionEvent,
             TransactionEventSender,
             TransactionServiceRequest,
@@ -3932,17 +3931,13 @@ where
         
         // Add sent output hashes as PayRefs
         for hash in &completed_transaction.sent_output_hashes {
-            let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
-                TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
-            })?;
+            let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
             payrefs.push(bytes);
         }
         
         // Add received output hashes as PayRefs (for incoming transactions)
         for hash in &completed_transaction.received_output_hashes {
-            let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
-                TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
-            })?;
+            let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
             payrefs.push(bytes);
         }
         
@@ -3955,19 +3950,19 @@ where
         let payref_hash = HashOutput::from(payref);
         
         for transaction in transactions {
-            let message = String::from_utf8(transaction.payment_id.user_data_as_bytes())
-                .unwrap_or_default();
+            let payment_id_bytes = transaction.payment_id.user_data_as_bytes();
             
             // Check if PayRef matches any sent output hash
             if transaction.sent_output_hashes.contains(&payref_hash) {
                 return Ok(Some(PaymentDetails {
                     tx_id: transaction.tx_id,
-                    payref,
+                    payment_reference: payref,
                     amount: transaction.amount,
-                    direction: PaymentDirection::Outbound,
-                    message,
-                    timestamp: transaction.timestamp,
-                    status: transaction.status,
+                    direction: transaction.direction,
+                    block_height: transaction.mined_height.unwrap_or(0),
+                    confirmations: transaction.confirmations.unwrap_or(0),
+                    timestamp: Some(transaction.timestamp),
+                    payment_id: Some(payment_id_bytes),
                 }));
             }
             
@@ -3975,12 +3970,13 @@ where
             if transaction.received_output_hashes.contains(&payref_hash) {
                 return Ok(Some(PaymentDetails {
                     tx_id: transaction.tx_id,
-                    payref,
+                    payment_reference: payref,
                     amount: transaction.amount,
-                    direction: PaymentDirection::Inbound,
-                    message,
-                    timestamp: transaction.timestamp,
-                    status: transaction.status,
+                    direction: transaction.direction,
+                    block_height: transaction.mined_height.unwrap_or(0),
+                    confirmations: transaction.confirmations.unwrap_or(0),
+                    timestamp: Some(transaction.timestamp),
+                    payment_id: Some(payment_id_bytes),
                 }));
             }
         }
@@ -3991,14 +3987,14 @@ where
     /// Get transactions that have PayRefs with filtering options
     fn get_transactions_with_payrefs(
         &self,
-        limit: Option<u32>,
-        offset: Option<u32>,
-        mined_only: bool,
+        limit: Option<u64>,
+        offset: Option<u64>,
+        mined_only: Option<bool>,
     ) -> Result<Vec<TransactionWithPayRefs>, TransactionServiceError> {
         let mut transactions = self.db.get_completed_transactions(None, None, None)?;
         
         // Filter to only mined transactions if requested
-        if mined_only {
+        if let Some(true) = mined_only {
             transactions.retain(|tx| tx.status == TransactionStatus::MinedUnconfirmed || 
                                     tx.status == TransactionStatus::MinedConfirmed);
         }
@@ -4014,7 +4010,7 @@ where
         let offset = offset.unwrap_or(0) as usize;
         let limit = limit.map(|l| l as usize);
         
-        let transactions = if let Some(limit) = limit {
+        let transactions: Vec<CompletedTransaction> = if let Some(limit) = limit {
             transactions.into_iter().skip(offset).take(limit).collect()
         } else {
             transactions.into_iter().skip(offset).collect()
@@ -4022,31 +4018,24 @@ where
         
         // Convert to TransactionWithPayRefs
         let mut result = Vec::new();
-        for tx in transactions {
-            let message = String::from_utf8(tx.payment_id.user_data_as_bytes())
-                .unwrap_or_default();
-            
-            let mut payrefs = Vec::new();
+        for tx in transactions.into_iter() {
+            let mut payment_references = Vec::new();
             for hash in &tx.sent_output_hashes {
-                let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
-                    TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
-                })?;
-                payrefs.push(bytes);
+                let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
+                payment_references.push(bytes);
             }
             for hash in &tx.received_output_hashes {
-                let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
-                    TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
-                })?;
-                payrefs.push(bytes);
+                let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
+                payment_references.push(bytes);
             }
             
+            // Calculate recipient count based on sent outputs (excluding change)
+            let recipient_count = tx.sent_output_hashes.len();
+            
             result.push(TransactionWithPayRefs {
-                tx_id: tx.tx_id,
-                amount: tx.amount,
-                message,
-                timestamp: tx.timestamp,
-                status: tx.status,
-                payrefs,
+                transaction: tx,
+                payment_references,
+                recipient_count,
             });
         }
         
