@@ -39,7 +39,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{
     payment_reference::{generate_payment_reference, parse_payment_reference_hex},
-    types::{BlockHash, CompressedCommitment},
+    types::{BlockHash, CompressedCommitment, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -91,7 +91,7 @@ async fn test_payref_generation_and_verification_workflow() {
     };
     
     // Test PayRef generation
-    let expected_payref = generate_payment_reference(&block_hash, &commitment);
+    let expected_payref = generate_payment_reference(&block_hash, &db_output.hash);
     let generated_payref = db_output.generate_payment_reference().unwrap();
     
     assert_eq!(expected_payref, generated_payref);
@@ -273,14 +273,14 @@ fn test_payref_collision_resistance() {
     let block_hash1 = BlockHash::from([1u8; 32]);
     let block_hash2 = BlockHash::from([2u8; 32]);
     
-    // Create dummy commitments
-    let commitment1 = CompressedCommitment::from_canonical_bytes(&[1u8; 32]).unwrap();
-    let commitment2 = CompressedCommitment::from_canonical_bytes(&[2u8; 32]).unwrap();
+    // Create dummy output hashes
+    let output_hash1 = HashOutput::from([1u8; 32]);
+    let output_hash2 = HashOutput::from([2u8; 32]);
     
-    let payref1 = generate_payment_reference(&block_hash1, &commitment1);
-    let payref2 = generate_payment_reference(&block_hash2, &commitment1);
-    let payref3 = generate_payment_reference(&block_hash1, &commitment2);
-    let payref4 = generate_payment_reference(&block_hash2, &commitment2);
+    let payref1 = generate_payment_reference(&block_hash1, &output_hash1);
+    let payref2 = generate_payment_reference(&block_hash2, &output_hash1);
+    let payref3 = generate_payment_reference(&block_hash1, &output_hash2);
+    let payref4 = generate_payment_reference(&block_hash2, &output_hash2);
     
     // All PayRefs should be different
     assert_ne!(payref1, payref2);
@@ -291,7 +291,7 @@ fn test_payref_collision_resistance() {
     assert_ne!(payref3, payref4);
     
     // Same inputs should produce same output (deterministic)
-    let payref1_again = generate_payment_reference(&block_hash1, &commitment1);
+    let payref1_again = generate_payment_reference(&block_hash1, &output_hash1);
     assert_eq!(payref1, payref1_again);
 }
 

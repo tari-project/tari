@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod payref_tests {
-    use crate::transaction_service::storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionDirection};
+    use crate::transaction_service::storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction};
+    use tari_common_types::transaction::TransactionDirection;
     use chrono::Utc;
     use tari_common_types::{
         tari_address::TariAddress,
