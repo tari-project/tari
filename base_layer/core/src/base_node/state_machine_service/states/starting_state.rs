@@ -50,7 +50,6 @@ impl Starting {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Starting node.");
-
         // Check for DHT bootstrap completion first
         info!(target: LOG_TARGET, "[BN STARTING] Checking DHT bootstrap status before proceeding");
         let mut dht_events = shared.dht_event_stream.resubscribe();
@@ -60,6 +59,10 @@ impl Starting {
         // Check for any recent DHT bootstrap events
         let mut bootstrap_events_found = 0;
         loop {
+            if shared.is_primary_bootstrap_complete {
+                info!(target: LOG_TARGET, "[BN STARTING] Primary bootstrap already complete - skipping DHT event processing");
+                break;
+            }
             tokio::select! {
                 result = dht_events.recv() => {
                     match result {
