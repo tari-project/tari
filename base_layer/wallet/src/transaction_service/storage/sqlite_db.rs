@@ -2541,6 +2541,8 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
+            received_output_hashes: vec![],
         };
         let address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2560,6 +2562,7 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
 
         InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
@@ -2622,6 +2625,7 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
@@ -2654,6 +2658,7 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
@@ -2826,6 +2831,7 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
         let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone(), &cipher).unwrap();
         inbound_tx_sql.commit(&mut conn).unwrap();
@@ -2855,6 +2861,7 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -2897,6 +2904,7 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
             transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
@@ -2973,6 +2981,7 @@ mod test {
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+            received_output_hashes: vec![],
             };
             let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx, &cipher).unwrap();
 
@@ -2997,6 +3006,7 @@ mod test {
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+            received_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 
@@ -3033,6 +3043,7 @@ mod test {
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
                 last_send_timestamp: None,
+            received_output_hashes: vec![],
                 transaction_signature: Signature::default(),
                 confirmations: None,
                 mined_height: None,
