@@ -40,7 +40,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -67,6 +67,20 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
+
+/// Serialize a vector of HashOutput for database storage
+fn serialize_output_hashes(hashes: &[HashOutput]) -> Result<Vec<u8>, TransactionStorageError> {
+    bincode::serialize(hashes).map_err(|e| TransactionStorageError::ConversionError(e.to_string()))
+}
+
+/// Deserialize a vector of HashOutput from database storage
+fn deserialize_output_hashes(data: Option<Vec<u8>>) -> Result<Vec<HashOutput>, TransactionStorageError> {
+    match data {
+        Some(bytes) => bincode::deserialize(&bytes)
+            .map_err(|e| TransactionStorageError::ConversionError(e.to_string())),
+        None => Ok(Vec::new()),
+    }
+}
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -1672,8 +1686,8 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: None, // TODO: Serialize o.sent_output_hashes 
-            change_output_hashes: None, // TODO: Serialize o.change_output_hashes
+            sent_output_hashes: Some(serialize_output_hashes(&o.sent_output_hashes)?),
+            change_output_hashes: Some(serialize_output_hashes(&o.change_output_hashes)?),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2104,9 +2118,9 @@ impl CompletedTransactionSql {
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: None, // TODO: Serialize c.sent_output_hashes
-            received_output_hashes: None, // TODO: Serialize c.received_output_hashes  
-            change_output_hashes: None, // TODO: Serialize c.change_output_hashes
+            sent_output_hashes: Some(serialize_output_hashes(&c.sent_output_hashes)?),
+            received_output_hashes: Some(serialize_output_hashes(&c.received_output_hashes)?),
+            change_output_hashes: Some(serialize_output_hashes(&c.change_output_hashes)?),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2542,7 +2556,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             received_output_hashes: vec![],
-            received_output_hashes: vec![],
         };
         let address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2625,7 +2638,9 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
             received_output_hashes: vec![],
+            change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
@@ -2658,7 +2673,9 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
             received_output_hashes: vec![],
+            change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
