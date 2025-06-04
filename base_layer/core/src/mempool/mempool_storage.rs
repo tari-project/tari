@@ -124,7 +124,9 @@ impl MempoolStorage {
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                warn!(target: LOG_TARGET, "Validation failed due to already spent input");
+                // This can happen if we get a transaction after it has been mined, but before the block has been
+                // published. In this case, we do not want to store the transaction in the mempool.
+                info!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
@@ -140,8 +142,7 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::NotStoredAlreadyMined)
             },
             Err(e) => {
-                eprintln!("Validation failed due to error: {}", e);
-                warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
+                info!(target: LOG_TARGET, "Validation failed due to error: {}", e);
                 Ok(TxStorageResponse::NotStored)
             },
         }

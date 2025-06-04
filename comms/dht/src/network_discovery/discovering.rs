@@ -246,9 +246,9 @@ impl Discovering {
                 Ok(())
             },
             Err(err) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
-                    "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
+                    "Received invalid peer from sync peer '{}': {}.", sync_peer, err
                 );
                 Err(err.into())
             },

@@ -386,7 +386,7 @@ impl AggregateBody {
     pub fn check_utxo_rules(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs() {
             if input.features()?.maturity > height {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input
                 );

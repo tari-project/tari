@@ -754,7 +754,7 @@ impl ConnectivityManagerActor {
             },
             PeerConnectFailed(node_id, ConnectionManagerError::NoiseHandshakeError(msg)) => {
                 if let Some(conn) = self.pool.get_connection(node_id) {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Handshake error to peer '{}', disconnecting for a fresh retry ({})",
                         node_id,
@@ -873,7 +873,7 @@ impl ConnectivityManagerActor {
                     return TieBreak::UseNew;
                 };
                 if self.tie_break_existing_connection(existing_conn, new_conn) {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \
                          connection (id: {}, peer: {}, direction: {})",

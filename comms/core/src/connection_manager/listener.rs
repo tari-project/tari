@@ -359,7 +359,7 @@ where
             .upgrade_socket(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Listen - failed to upgrade noise: {} on address: {} ({})",
                     node_identity.node_id(),
