@@ -25,17 +25,17 @@
 //! This module provides efficient PayRef calculation for transactions using stored output hashes.
 //! This enables super fast PayRef generation without scanning full transaction outputs.
 
-use chrono::{DateTime, Utc};
 use tari_common_types::{
     payment_reference::{generate_payment_reference, PaymentReference},
     transaction::{TransactionDirection, TxId},
-    types::{BlockHash, HashOutput},
 };
-use tari_core::transactions::tari_amount::MicroMinotari;
 
 use crate::{
-    output_manager_service::payment_reference::{PaymentDetails, PaymentDirection},
-    transaction_service::{error::TransactionServiceError, storage::models::CompletedTransaction},
+    output_manager_service::{
+        payment_reference::{PaymentDetails, PaymentDirection},
+        storage::OutputStatus,
+    },
+    transaction_service::storage::models::CompletedTransaction,
 };
 
 /// Calculate PayRefs for a transaction using stored output hashes (FAST)
@@ -100,7 +100,7 @@ pub fn find_payment_by_reference(
                 for output_hash in &tx.sent_output_hashes {
                     let tx_payref = generate_payment_reference(block_hash, output_hash);
                     if tx_payref == payref {
-                        return Some(create_payment_details(tx, payref, PaymentDirection::Outbound));
+                        return Some(create_payment_details(tx, payref, PaymentDirection::Sent));
                     }
                 }
             }
@@ -110,7 +110,7 @@ pub fn find_payment_by_reference(
                 for output_hash in &tx.received_output_hashes {
                     let tx_payref = generate_payment_reference(block_hash, output_hash);
                     if tx_payref == payref {
-                        return Some(create_payment_details(tx, payref, PaymentDirection::Inbound));
+                        return Some(create_payment_details(tx, payref, PaymentDirection::Received));
                     }
                 }
             }
@@ -147,13 +147,15 @@ fn create_payment_details(
 ) -> PaymentDetails {
     PaymentDetails {
         payment_reference: payref,
+        commitment: Default::default(), // TODO: We'll need to add commitment storage later if needed
         amount: tx.amount,
         direction,
+        status: OutputStatus::Spent, // Since this is a completed transaction, mark as spent
         block_height: tx.mined_height.unwrap_or(0),
         block_hash: tx.mined_in_block.unwrap_or_default(),
-        mined_timestamp: tx.mined_timestamp.unwrap_or_else(|| tx.timestamp),
+        mined_timestamp: tx.mined_timestamp,
         confirmations: tx.confirmations.unwrap_or(0),
-        tx_id: Some(tx.tx_id),
+        payment_id: Some(tx.payment_id.to_bytes().to_vec()),
     }
 }
 
@@ -171,7 +173,7 @@ mod tests {
     use super::*;
     use tari_common_types::{
         transaction::TransactionStatus,
-        types::{HashOutput, PrivateKey, Signature},
+        types::{BlockHash, HashOutput, PrivateKey, Signature},
     };
     use tari_core::transactions::{
         transaction_components::{encrypted_data::PaymentId, Transaction},

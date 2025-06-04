@@ -1459,6 +1459,7 @@ impl InboundTransaction {
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
+            received_output_hashes: Vec::new(), // TODO: Add database column and deserialization
         })
     }
 }
@@ -1719,6 +1720,8 @@ impl OutboundTransaction {
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
+            sent_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            change_output_hashes: Vec::new(), // TODO: Add database column and deserialization
         };
 
         // zeroize decrypted data
@@ -2186,6 +2189,9 @@ impl CompletedTransaction {
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
+            sent_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            received_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            change_output_hashes: Vec::new(), // TODO: Add database column and deserialization
         };
 
         // zeroize sensitive data

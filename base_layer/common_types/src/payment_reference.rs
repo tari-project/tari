@@ -44,7 +44,7 @@ use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::hex::Hex;
 
 use crate::types::{BlockHash, HashOutput};
 
