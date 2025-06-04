@@ -878,12 +878,24 @@ impl LMDBDatabase {
             let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_hash);
 
             // Delete the PayRef index entry
-            lmdb_delete(
+            match lmdb_delete(
                 txn,
                 &self.payref_to_output_index,
                 &payref_bytes,
                 "payref_to_output_index",
-            ).ok(); // Ignore errors in case the PayRef doesn't exist
+            ) {
+                Ok(()) => {
+                    debug!(target: LOG_TARGET, "Successfully deleted PayRef for output {}", output_hash.to_hex());
+                },
+                Err(ChainStorageError::ValueNotFound(_)) => {
+                    // PayRef not found - this is acceptable as it might not have been created in older versions
+                    debug!(target: LOG_TARGET, "PayRef not found for output {} - likely from older version", output_hash.to_hex());
+                },
+                Err(e) => {
+                    // Actual database error - log warning but don't fail the transaction
+                    warn!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
+                }
+            }
         }
 
         Ok(())
