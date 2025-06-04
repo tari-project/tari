@@ -1720,9 +1720,10 @@ message GetPaymentByReferenceRequest {
   bytes payment_reference = 1;
 }
 
-// Response message containing payment details for a payment reference
+// Response message containing transaction information for a payment reference
 message GetPaymentByReferenceResponse {
   // The transaction information if PayRef is found (optional).
+  // Returns full transaction details rather than summary PaymentDetails.
   TransactionInfo transaction = 1;
 }
 
