@@ -1216,6 +1216,7 @@ struct InboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
+    received_output_hashes: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1409,6 +1410,7 @@ impl InboundTransactionSql {
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
+            received_output_hashes: None, // TODO: Serialize i.received_output_hashes
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1490,6 +1492,8 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
+    sent_output_hashes: Option<Vec<u8>>,
+    change_output_hashes: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1668,6 +1672,8 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
+            sent_output_hashes: None, // TODO: Serialize o.sent_output_hashes 
+            change_output_hashes: None, // TODO: Serialize o.change_output_hashes
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1765,6 +1771,9 @@ pub struct CompletedTransactionSql {
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
+    sent_output_hashes: Option<Vec<u8>>,
+    received_output_hashes: Option<Vec<u8>>,
+    change_output_hashes: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -2095,6 +2104,9 @@ impl CompletedTransactionSql {
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
             user_payment_id,
+            sent_output_hashes: None, // TODO: Serialize c.sent_output_hashes
+            received_output_hashes: None, // TODO: Serialize c.received_output_hashes  
+            change_output_hashes: None, // TODO: Serialize c.change_output_hashes
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
