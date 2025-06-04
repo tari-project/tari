@@ -521,7 +521,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                             if let Err(err) = self.handle_request(req).await {
                                 #[cfg(feature = "metrics")]
                                 metrics::client_errors(&self.protocol_id).inc();
-                                error!(
+                                info!(
                                     target: LOG_TARGET,
                                     "(stream={}) Unexpected error: {}. Worker is terminating.",
                                     self.stream_id(), err

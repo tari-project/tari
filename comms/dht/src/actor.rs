@@ -632,7 +632,7 @@ impl DhtActor {
                     .collect::<Vec<_>>();
 
                 if candidates.is_empty() {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Broadcast requested but there are no node peer connections available"
                     );

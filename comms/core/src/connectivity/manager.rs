@@ -479,7 +479,7 @@ impl ConnectivityManagerActor {
                     if len > 0 {
                         for node_id in deleted {
                             if let Some(removed) = self.pool.remove(&node_id) {
-                                warn!(
+                                info!(
                                     target: LOG_TARGET,
                                     "Stale connection {} encountered - removed",
                                     removed.peer_node_id()
