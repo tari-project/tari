@@ -4943,6 +4943,17 @@ void payment_reference_destroy(unsigned char *payment_reference);
 /**
  * Generate PayRef from block hash and commitment (for external use)
  * Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
+ *
+ * ## Arguments
+ * `block_hash` - Pointer to a 32-byte block hash array
+ * `commitment` - Pointer to a 32-byte commitment array  
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null
+ *
+ * ## Returns
+ * `*mut unsigned char` - Returns a pointer to a 32-byte payment reference array, or null on error
+ *
+ * # Safety
+ * The `payment_reference_destroy` method must be called when finished with the returned array to prevent memory leaks
  */
 unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
                                                            const unsigned char *commitment,
