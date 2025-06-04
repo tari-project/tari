@@ -1998,30 +1998,52 @@ impl CompletedTransactionSql {
         conn: &mut SqliteConnection,
         cipher: &XChaCha20Poly1305,
     ) -> Result<(), TransactionStorageError> {
-        // First, get the existing transaction to extract output hashes
+        // First, get the existing transaction
         let existing_tx = completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
             .first::<CompletedTransactionSql>(conn)?;
 
         let existing_tx_data = existing_tx.decrypt(cipher)
             .map_err(TransactionStorageError::AeadError)?;
-        let transaction: tari_core::transactions::transaction_components::Transaction = 
-            bincode::deserialize(&existing_tx_data.transaction_protocol)
-                .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?;
 
-        // Extract output hashes from the transaction
-        let output_hashes: Vec<tari_common_types::types::HashOutput> = transaction
-            .body()
-            .outputs()
-            .iter()
-            .map(|output| output.hash())
-            .collect();
-
-        // For now, we'll put all outputs in sent_output_hashes
-        // TODO: Need to properly categorize as sent/received/change based on wallet state
-        let sent_output_hashes = serialize_output_hashes(&output_hashes)?;
-        let received_output_hashes = serialize_output_hashes(&[])?; // Empty for now
-        let change_output_hashes = serialize_output_hashes(&[])?;    // Empty for now
+        // Only update output hashes if they're not already set to preserve proper categorization
+        // Output hashes should have been categorized correctly during transaction creation
+        let (sent_hashes, received_hashes, change_hashes) = if existing_tx_data.sent_output_hashes.is_none() ||
+            existing_tx_data.received_output_hashes.is_none() ||
+            existing_tx_data.change_output_hashes.is_none() {
+            
+            // If output hashes are missing, extract them from the transaction
+            // Note: This loses proper categorization but is better than completely wrong data
+            let transaction: tari_core::transactions::transaction_components::Transaction = 
+                bincode::deserialize(&existing_tx_data.transaction_protocol)
+                    .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?;
+            
+            let output_hashes: Vec<tari_common_types::types::HashOutput> = transaction
+                .body()
+                .outputs()
+                .iter()
+                .map(|output| output.hash())
+                .collect();
+            
+            warn!(
+                target: LOG_TARGET,
+                "Output hashes not found for tx_id {}, extracting from transaction (categorization may be incorrect)",
+                tx_id
+            );
+            
+            (
+                serialize_output_hashes(&output_hashes)?,
+                serialize_output_hashes(&[])?,
+                serialize_output_hashes(&[])?
+            )
+        } else {
+            // Preserve existing categorized values
+            (
+                existing_tx_data.sent_output_hashes.unwrap_or_default(),
+                existing_tx_data.received_output_hashes.unwrap_or_default(),
+                existing_tx_data.change_output_hashes.unwrap_or_default()
+            )
+        };
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
                 "Could not create timestamp mined_timestamp: {}",
@@ -2048,10 +2070,10 @@ impl CompletedTransactionSql {
                 mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
-                // Update output hashes now that transaction is mined
-                sent_output_hashes: Some(Some(sent_output_hashes)),
-                received_output_hashes: Some(Some(received_output_hashes)),
-                change_output_hashes: Some(Some(change_output_hashes)),
+                // Update output hashes (preserve existing categorization)
+                sent_output_hashes: Some(Some(sent_hashes)),
+                received_output_hashes: Some(Some(received_hashes)),
+                change_output_hashes: Some(Some(change_hashes)),
                 ..Default::default()
             })
             .execute(conn)
