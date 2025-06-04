@@ -3970,24 +3970,15 @@ where
             }
         }
         
-        // For MinedConfirmed status, confirmations are already verified
-        // For other mined statuses, we accept them as valid PayRef sources
-        match transaction.status {
-            TransactionStatus::MinedConfirmed |
-            TransactionStatus::OneSidedConfirmed => {
-                // These have sufficient confirmations
-            },
-            TransactionStatus::MinedUnconfirmed => {
-                // Accept as valid but note it may not have enough confirmations
-                debug!(
-                    target: LOG_TARGET,
-                    "PayRef requested for transaction {} with MinedUnconfirmed status", 
-                    transaction.tx_id
-                );
-            },
-            _ => {
-                // Already handled above
-            }
+        // Enforce minimum confirmation requirement (default: 5 confirmations)
+        let required_confirmations = self.config.num_confirmations_required;
+        let confirmations = transaction.confirmations.unwrap_or(0);
+        
+        if confirmations < required_confirmations {
+            return Err(TransactionServiceError::ValidationError(
+                format!("Transaction requires {} confirmations for PayRef stability, only has {}", 
+                        required_confirmations, confirmations)
+            ));
         }
         
         Ok(())
