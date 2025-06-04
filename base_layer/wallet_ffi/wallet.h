@@ -4968,6 +4968,20 @@ struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *
 
 /**
  * Format PayRef for display according to config
+ *
+ * ## Arguments
+ * `payment_reference` - Pointer to a 32-byte payment reference array
+ * `format_type` - Display format type:
+ *   0 = Full (complete 64-character hex string)
+ *   1 = Shortened (abbreviated format)  
+ *   2 = Custom (8 prefix + 8 suffix characters with ellipsis)
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null
+ *
+ * ## Returns
+ * `*mut c_char` - Returns formatted payment reference string, or null on error
+ *
+ * # Safety
+ * The `string_destroy` method must be called when finished with the returned string to prevent memory leaks
  */
 char *wallet_format_payment_reference(const unsigned char *payment_reference,
                                       unsigned int format_type,
