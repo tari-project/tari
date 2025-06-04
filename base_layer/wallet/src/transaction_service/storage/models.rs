@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, PrivateKey, Signature},
+    types::{BlockHash, HashOutput, PrivateKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -54,6 +54,8 @@ pub struct InboundTransaction {
     pub direct_send_success: bool,
     pub send_count: u32,
     pub last_send_timestamp: Option<DateTime<Utc>>,
+    /// Hashes of outputs received from others (excluding change)
+    pub received_output_hashes: Vec<HashOutput>,
 }
 
 impl InboundTransaction {
@@ -78,6 +80,7 @@ impl InboundTransaction {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: Vec::new(),
         }
     }
 }
@@ -96,6 +99,10 @@ pub struct OutboundTransaction {
     pub direct_send_success: bool,
     pub send_count: u32,
     pub last_send_timestamp: Option<DateTime<Utc>>,
+    /// Hashes of outputs being sent to others (excluding change)
+    pub sent_output_hashes: Vec<HashOutput>,
+    /// Hashes of change outputs (for reference)
+    pub change_output_hashes: Vec<HashOutput>,
 }
 
 impl OutboundTransaction {
@@ -123,6 +130,8 @@ impl OutboundTransaction {
             direct_send_success,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: Vec::new(),
+            change_output_hashes: Vec::new(),
         }
     }
 }
@@ -147,6 +156,12 @@ pub struct CompletedTransaction {
     pub mined_in_block: Option<BlockHash>,
     pub mined_timestamp: Option<DateTime<Utc>>,
     pub payment_id: PaymentId,
+    /// Hashes of outputs being sent to others (excluding change)
+    pub sent_output_hashes: Vec<HashOutput>,
+    /// Hashes of outputs received from others (excluding change)
+    pub received_output_hashes: Vec<HashOutput>,
+    /// Hashes of change outputs (for reference)
+    pub change_output_hashes: Vec<HashOutput>,
 }
 
 impl CompletedTransaction {
@@ -191,6 +206,9 @@ impl CompletedTransaction {
             mined_in_block: None,
             mined_timestamp,
             payment_id,
+            sent_output_hashes: Vec::new(),
+            received_output_hashes: Vec::new(),
+            change_output_hashes: Vec::new(),
         })
     }
 }
@@ -209,6 +227,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: ct.received_output_hashes,
         }
     }
 }
@@ -228,6 +247,8 @@ impl From<CompletedTransaction> for OutboundTransaction {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: ct.sent_output_hashes,
+            change_output_hashes: ct.change_output_hashes,
         }
     }
 }
@@ -270,6 +291,9 @@ impl From<OutboundTransaction> for CompletedTransaction {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: tx.payment_id,
+            sent_output_hashes: tx.sent_output_hashes,
+            received_output_hashes: Vec::new(),
+            change_output_hashes: tx.change_output_hashes,
         }
     }
 }
@@ -299,6 +323,9 @@ impl From<InboundTransaction> for CompletedTransaction {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: tx.payment_id,
+            sent_output_hashes: Vec::new(),
+            received_output_hashes: tx.received_output_hashes,
+            change_output_hashes: Vec::new(),
         }
     }
 }
