@@ -431,7 +431,10 @@ where
                 },
             }
 
-            let completed_transaction = CompletedTransaction::new(
+            // Categorize outputs for PayRef functionality
+            let received_hashes = self.categorize_received_output_hashes(&finalized_transaction, &inbound_tx).await?;
+
+            let completed_transaction = CompletedTransaction::new_with_output_hashes(
                 self.id,
                 self.source_address.clone(),
                 self.resources.interactive_tari_address.clone(),
@@ -447,6 +450,9 @@ where
                 None,
                 None,
                 inbound_tx.payment_id.clone(),
+                Vec::new(), // sent_output_hashes: empty for inbound transactions
+                received_hashes, // received_output_hashes: the outputs we received
+                Vec::new(), // change_output_hashes: empty for inbound transactions
             )
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
@@ -473,6 +479,56 @@ where
             break;
         }
         Ok(())
+    }
+
+    /// Categorize transaction outputs for PayRef functionality (receiver perspective)
+    async fn categorize_received_output_hashes(
+        &mut self,
+        tx: &Transaction,
+        _inbound_tx: &InboundTransaction,
+    ) -> Result<Vec<tari_common_types::types::HashOutput>, TransactionServiceProtocolError<TxId>> {
+        let mut received_hashes = Vec::new();
+
+        for output in tx.body.outputs() {
+            let output_hash = output.hash();
+            
+            // Check if this output belongs to our wallet and is not change
+            match self.resources.output_manager_service.is_output_ours(output).await {
+                Ok(true) => {
+                    // This is our output, check if it's change (unlikely for inbound transactions)
+                    match self.resources.output_manager_service.is_change_output(output).await {
+                        Ok(false) => {
+                            // This is a received output (not change)
+                            received_hashes.push(output_hash);
+                        },
+                        Ok(true) => {
+                            // This is change - skip for received hashes as we're focusing on received payments
+                            debug!(target: LOG_TARGET, "Skipping change output in received transaction: {}", output_hash);
+                        },
+                        Err(e) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error checking if output is change for TxId {}: {:?}", self.id, e
+                            );
+                            // Assume it's a received output if we can't determine otherwise
+                            received_hashes.push(output_hash);
+                        }
+                    }
+                },
+                Ok(false) => {
+                    // This output doesn't belong to us - skip
+                    debug!(target: LOG_TARGET, "Skipping output not belonging to us: {}", output_hash);
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error checking output ownership for TxId {}: {:?}", self.id, e
+                    );
+                }
+            }
+        }
+
+        Ok(received_hashes)
     }
 
     async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
