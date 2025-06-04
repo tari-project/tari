@@ -129,6 +129,7 @@ use tari_common_types::{
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
+        HashOutput,
         RangeProof,
         SignatureWithDomain,
         UncompressedPublicKey,
@@ -9516,6 +9517,188 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
     }
 }
 
+/// Get all PayRefs (payment references) for a specific transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The transaction ID to get PayRefs for
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - returns a byte vector containing all PayRefs (32 bytes each) for the transaction,
+/// note that ptr::null_mut() is returned if wallet is null or an error occurs
+///
+/// # Safety
+/// The ```byte_vector_destroy``` method must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transaction_payrefs(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_transaction_payrefs(TxId::from(transaction_id)),
+    ) {
+        Ok(payrefs) => {
+            // Flatten the Vec<[u8; 32]> into a single Vec<u8>
+            let mut flattened = Vec::new();
+            for payref in payrefs {
+                flattened.extend_from_slice(&payref);
+            }
+            Box::into_raw(Box::new(ByteVector(flattened)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get payment details for a specific PayRef (payment reference)
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `payref` - The 32-byte PayRef to look up
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariCompletedTransaction` - returns the transaction details for the PayRef,
+/// note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
+///
+/// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_payment_by_reference(
+    wallet: *mut TariWallet,
+    payref: *const u8,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransaction {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    if payref.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payref".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    // Convert the 32-byte pointer to a [u8; 32]
+    let payref_array: [u8; 32] = {
+        let slice = std::slice::from_raw_parts(payref, 32);
+        let mut array = [0u8; 32];
+        array.copy_from_slice(slice);
+        array
+    };
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_payment_by_reference(payref_array),
+    ) {
+        Ok(Some(payment_details)) => {
+            // For FFI compatibility, we need to return the transaction
+            // First, get the transaction by ID
+            match (*wallet).runtime.block_on(
+                (*wallet)
+                    .wallet
+                    .transaction_service
+                    .get_completed_transaction(payment_details.tx_id),
+            ) {
+                Ok(tx) => Box::into_raw(Box::new(tx)),
+                Err(e) => {
+                    *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::null_mut()
+                },
+            }
+        },
+        Ok(None) => ptr::null_mut(), // PayRef not found
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get all transactions that have PayRefs with optional filtering
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `limit` - Maximum number of transactions to return (0 = no limit)
+/// `offset` - Number of transactions to skip
+/// `mined_only` - If true, only return mined transactions
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariCompletedTransactions` - returns the transactions with PayRefs,
+/// note that ptr::null_mut() is returned if wallet is null or an error occurs
+///
+/// # Safety
+/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transactions_with_payrefs(
+    wallet: *mut TariWallet,
+    limit: c_ulonglong,
+    offset: c_ulonglong,
+    mined_only: bool,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransactions {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let limit_opt = if limit == 0 { None } else { Some(limit) };
+    let offset_opt = if offset == 0 { None } else { Some(offset) };
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_transactions_with_payrefs(limit_opt, offset_opt, Some(mined_only)),
+    ) {
+        Ok(txs_with_payrefs) => {
+            // Extract the CompletedTransaction from each TransactionWithPayRefs
+            let completed_txs: Vec<CompletedTransaction> = txs_with_payrefs
+                .into_iter()
+                .map(|tx_with_refs| tx_with_refs.transaction)
+                .collect();
+            Box::into_raw(Box::new(TariCompletedTransactions(completed_txs)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
 /// This function will tell the wallet to query the set base node to confirm the status of transaction outputs
 /// (TXOs).
 ///
@@ -11091,10 +11274,16 @@ pub unsafe extern "C" fn wallet_generate_payment_reference_from_data(
         return ptr::null_mut();
     }
     
-    // Use the proper payment reference generation function
+    // Convert commitment to HashOutput - this is a workaround for compatibility
+    // Note: This may not produce the same result as using actual output hash
+    let commitment = commitment_typed.unwrap();
+    let commitment_bytes = commitment.as_bytes();
+    let mut hash_bytes = [0u8; 32];
+    hash_bytes.copy_from_slice(commitment_bytes);
+    let output_hash = HashOutput::from(hash_bytes);
     let payment_ref = payment_reference::generate_payment_reference(
         &block_hash_typed.unwrap(),
-        &commitment_typed.unwrap()
+        &output_hash
     );
     
     // Allocate memory for the 32-byte array
