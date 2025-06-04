@@ -3547,6 +3547,54 @@ where
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
 
+    /// Check if a transaction output belongs to this wallet
+    pub async fn is_output_ours(&self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
+        // Check if we can decrypt the output with our view key
+        let view_key = self.resources.key_manager.get_view_key().await?;
+        
+        // Try to decrypt using our view key and the sender offset public key
+        let shared_secret = self
+            .resources
+            .key_manager
+            .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
+            .await?;
+        
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        
+        // If we can decrypt, it's ours
+        match EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+    
+    /// Check if this is a change output from our own transaction
+    pub async fn is_change_output(&self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
+        // Check if this output hash exists in our database as a known output
+        let output_hash = output.hash();
+        
+        // First try to find it as an unspent output
+        match self.resources.db.get_unspent_output(output_hash) {
+            Ok(db_output) => {
+                // If it's in our database and has no received_in_tx_id, it's likely change
+                Ok(db_output.received_in_tx_id.is_none())
+            },
+            Err(_) => {
+                // Try to find it by commitment in case it's spent
+                match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
+                    Ok(db_output) => {
+                        // If it's in our database and has no received_in_tx_id, it's likely change
+                        Ok(db_output.received_in_tx_id.is_none())
+                    },
+                    Err(_) => {
+                        // Not in our database, so not our change
+                        Ok(false)
+                    }
+                }
+            }
+        }
+    }
+
     // PayRef methods
     
     /// Find payment details by PayRef
