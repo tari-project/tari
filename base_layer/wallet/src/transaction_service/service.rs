@@ -116,10 +116,13 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{
             FeePerGramStatsResponse,
+            PaymentDetails,
+            PaymentDirection,
             TransactionEvent,
             TransactionEventSender,
             TransactionServiceRequest,
             TransactionServiceResponse,
+            TransactionWithPayRefs,
         },
         protocols::{
             check_transaction_size,
@@ -1013,6 +1016,18 @@ where
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
+            },
+            TransactionServiceRequest::GetTransactionPayRefs(tx_id) => {
+                self.get_transaction_payrefs(tx_id)
+                    .map(TransactionServiceResponse::TransactionPayRefs)
+            },
+            TransactionServiceRequest::GetPaymentByReference(payref) => {
+                self.get_payment_by_reference(payref)
+                    .map(TransactionServiceResponse::PaymentDetails)
+            },
+            TransactionServiceRequest::GetTransactionsWithPayRefs { limit, offset, mined_only } => {
+                self.get_transactions_with_payrefs(limit, offset, mined_only)
+                    .map(TransactionServiceResponse::TransactionsWithPayRefs)
             },
         };
 
@@ -3907,6 +3922,135 @@ where
             ));
         }
         Ok(())
+    }
+
+    /// Get PayRefs for a specific transaction
+    fn get_transaction_payrefs(&self, tx_id: TxId) -> Result<Vec<[u8; 32]>, TransactionServiceError> {
+        let completed_transaction = self.db.get_completed_transaction(tx_id)?;
+        
+        let mut payrefs = Vec::new();
+        
+        // Add sent output hashes as PayRefs
+        for hash in &completed_transaction.sent_output_hashes {
+            let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
+                TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
+            })?;
+            payrefs.push(bytes);
+        }
+        
+        // Add received output hashes as PayRefs (for incoming transactions)
+        for hash in &completed_transaction.received_output_hashes {
+            let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
+                TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
+            })?;
+            payrefs.push(bytes);
+        }
+        
+        Ok(payrefs)
+    }
+
+    /// Get payment details by PayRef (output hash)
+    fn get_payment_by_reference(&self, payref: [u8; 32]) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        let transactions = self.db.get_completed_transactions(None, None, None)?;
+        let payref_hash = HashOutput::from(payref);
+        
+        for transaction in transactions {
+            let message = String::from_utf8(transaction.payment_id.user_data_as_bytes())
+                .unwrap_or_default();
+            
+            // Check if PayRef matches any sent output hash
+            if transaction.sent_output_hashes.contains(&payref_hash) {
+                return Ok(Some(PaymentDetails {
+                    tx_id: transaction.tx_id,
+                    payref,
+                    amount: transaction.amount,
+                    direction: PaymentDirection::Outbound,
+                    message,
+                    timestamp: transaction.timestamp,
+                    status: transaction.status,
+                }));
+            }
+            
+            // Check if PayRef matches any received output hash
+            if transaction.received_output_hashes.contains(&payref_hash) {
+                return Ok(Some(PaymentDetails {
+                    tx_id: transaction.tx_id,
+                    payref,
+                    amount: transaction.amount,
+                    direction: PaymentDirection::Inbound,
+                    message,
+                    timestamp: transaction.timestamp,
+                    status: transaction.status,
+                }));
+            }
+        }
+        
+        Ok(None)
+    }
+
+    /// Get transactions that have PayRefs with filtering options
+    fn get_transactions_with_payrefs(
+        &self,
+        limit: Option<u32>,
+        offset: Option<u32>,
+        mined_only: bool,
+    ) -> Result<Vec<TransactionWithPayRefs>, TransactionServiceError> {
+        let mut transactions = self.db.get_completed_transactions(None, None, None)?;
+        
+        // Filter to only mined transactions if requested
+        if mined_only {
+            transactions.retain(|tx| tx.status == TransactionStatus::MinedUnconfirmed || 
+                                    tx.status == TransactionStatus::MinedConfirmed);
+        }
+        
+        // Filter to only transactions that have PayRefs (output hashes)
+        transactions.retain(|tx| !tx.sent_output_hashes.is_empty() || 
+                                 !tx.received_output_hashes.is_empty());
+        
+        // Sort by timestamp (most recent first)
+        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        
+        // Apply pagination
+        let offset = offset.unwrap_or(0) as usize;
+        let limit = limit.map(|l| l as usize);
+        
+        let transactions = if let Some(limit) = limit {
+            transactions.into_iter().skip(offset).take(limit).collect()
+        } else {
+            transactions.into_iter().skip(offset).collect()
+        };
+        
+        // Convert to TransactionWithPayRefs
+        let mut result = Vec::new();
+        for tx in transactions {
+            let message = String::from_utf8(tx.payment_id.user_data_as_bytes())
+                .unwrap_or_default();
+            
+            let mut payrefs = Vec::new();
+            for hash in &tx.sent_output_hashes {
+                let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
+                    TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
+                })?;
+                payrefs.push(bytes);
+            }
+            for hash in &tx.received_output_hashes {
+                let bytes: [u8; 32] = hash.as_slice().try_into().map_err(|_| {
+                    TransactionServiceError::ConversionError("Failed to convert HashOutput to [u8; 32]".to_string())
+                })?;
+                payrefs.push(bytes);
+            }
+            
+            result.push(TransactionWithPayRefs {
+                tx_id: tx.tx_id,
+                amount: tx.amount,
+                message,
+                timestamp: tx.timestamp,
+                status: tx.status,
+                payrefs,
+            });
+        }
+        
+        Ok(result)
     }
 }
 
