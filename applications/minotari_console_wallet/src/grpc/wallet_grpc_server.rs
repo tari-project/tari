@@ -1202,6 +1202,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
         let transactions = completed_transactions
             .into_iter()
+            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status.clone() as u32))) != 0)
             .skip(offset)
             .take(limit)
             .map(|txn| {

@@ -69,7 +69,9 @@ pub async fn register_merge_mining_proxy_process(
 
 impl MergeMiningProxyProcess {
     pub async fn start(&self, world: &mut TariWorld) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let temp_dir = tempdir().unwrap();

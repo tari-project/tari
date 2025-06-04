@@ -224,12 +224,22 @@ impl PeerConnection {
         protocol_id: &ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.request_tx
+        let _unused = self
+            .request_tx
             .send(PeerConnectionRequest::OpenSubstream {
                 protocol_id: protocol_id.clone(),
                 reply_tx,
             })
-            .await?;
+            .await
+            .inspect_err(|e| {
+                info!(
+                    target: LOG_TARGET,
+                    "Failed to send OpenSubstream request for protocol `{}` to peer `{}`: {}",
+                    String::from_utf8_lossy(protocol_id),
+                    self.peer_node_id,
+                    e
+                );
+            });
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
@@ -291,9 +301,18 @@ impl PeerConnection {
     /// is shut down (and the peer is already disconnected)
     pub async fn disconnect(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.request_tx
+        let _unused = self
+            .request_tx
             .send(PeerConnectionRequest::Disconnect(false, reply_tx, minimized))
-            .await?;
+            .await
+            .inspect_err(|e| {
+                info!(
+                    target: LOG_TARGET,
+                    "Failed to send Disconnect request to peer `{}`: {}",
+                    self.peer_node_id,
+                    e
+                );
+            });
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
@@ -301,9 +320,18 @@ impl PeerConnection {
 
     pub(crate) async fn disconnect_silent(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.request_tx
+        let _unused = self
+            .request_tx
             .send(PeerConnectionRequest::Disconnect(true, reply_tx, minimized))
-            .await?;
+            .await
+            .inspect_err(|e| {
+                info!(
+                    target: LOG_TARGET,
+                    "Failed to send Disconnect request to peer `{}`: {}",
+                    self.peer_node_id,
+                    e
+                );
+            });
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?

@@ -1045,6 +1045,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
+
+        let mut not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        coinbases.append(&mut not_validated);
         Ok(coinbases)
     }
 
@@ -1817,6 +1825,43 @@ impl CompletedTransactionSql {
         Ok(query
             .filter(completed_transactions::status.eq(status as i32))
             .filter(completed_transactions::mined_height.ge(block_height))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
+    /// Fetches completed transactions that have a mismatched mined status.
+    ///
+    /// This method finds transactions that have been marked as confirmed or unconfirmed
+    /// but are missing their mined height information, indicating a mismatch between
+    /// the transaction status and mining data.
+    ///
+    /// # Arguments
+    /// * `cancelled` - Whether to fetch cancelled (true) or non-cancelled (false) transactions
+    /// * `conn` - Database connection
+    ///
+    /// # Returns
+    /// Vector of transactions with mismatched mined status
+    pub fn fetch_transactions_with_not_mined_height(
+        cancelled: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        let mut query = completed_transactions::table.into_boxed();
+        query = if cancelled {
+            query.filter(completed_transactions::cancelled.is_not_null())
+        } else {
+            query.filter(completed_transactions::cancelled.is_null())
+        };
+
+        Ok(query
+            .filter(
+                completed_transactions::status
+                    // Include transactions with confirmed/unconfirmed statuses that may have mismatched mined data
+                    .eq(TransactionStatus::Imported as i32)
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedConfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
+            )
+            .filter(completed_transactions::mined_height.is_null())
             .load::<CompletedTransactionSql>(conn)?)
     }
 

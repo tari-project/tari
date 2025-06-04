@@ -150,10 +150,19 @@ impl OnConnect {
         let mut num_added = 0;
         while let Some(resp) = peer_stream.next().await {
             match resp {
-                Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
+                Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
                     Some(peer) => {
-                        if self.validate_and_add_peer(peer).await? {
-                            num_added += 1;
+                        let pub_key = peer.public_key.clone();
+                        match self.validate_and_add_peer(peer).await {
+                            Ok(new_peer) => {
+                                if new_peer {
+                                    debug!(target: LOG_TARGET, "Added new peer `{}` from `{}`", &pub_key, sync_peer);
+                                    num_added += 1;
+                                }
+                            },
+                            Err(e) => {
+                                debug!(target: LOG_TARGET, "Failed to validate peer `{}` from `{}`: {}", pub_key, sync_peer, e);
+                            },
                         }
                     },
                     None => {

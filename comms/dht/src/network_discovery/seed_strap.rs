@@ -25,14 +25,14 @@ use std::{cmp, collections::HashSet, convert::TryInto, time::Duration};
 use futures::StreamExt;
 use log::*;
 use rand::seq::IteratorRandom;
-use tari_comms::{peer_manager::NodeId, peer_validator::PeerValidatorError, Minimized, PeerConnection};
+use tari_comms::{peer_manager::NodeId, Minimized, PeerConnection};
 
 use crate::{
     network_discovery::{
         error::NetworkDiscoveryError,
         state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
-    peer_validator::{DhtPeerValidatorError, PeerValidator},
+    peer_validator::PeerValidator,
     proto::rpc::GetPeersRequest,
     rpc::{DhtClient, UnvalidatedPeerInfo},
     DhtConfig,
@@ -280,7 +280,7 @@ impl SeedStrap {
 
             let mut new_peers_this_seed = 0;
             let mut duplicates_this_seed = 0;
-            let mut ban_this_seed_peer = false;
+            let ban_this_seed_peer = false;
 
             let peers_count = peers_from_seed.len();
             debug!(
@@ -387,22 +387,6 @@ impl SeedStrap {
                                 );
                             },
                         }
-                    },
-                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })) |
-                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityNoAddresses {
-                        ..
-                    })) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Ban-worthy invalid peer data for peer {} received from seed peer '{}'. Will ban seed peer and stop processing its list.",
-                            seed_peer_node_id_str,
-                            peer_idx_loop + 1,
-                            peers_count,
-                            candidate_node_id,
-                            seed_peer_node_id_str,
-                        );
-                        ban_this_seed_peer = true;
-                        break;
                     },
                     Err(e) => {
                         warn!(
