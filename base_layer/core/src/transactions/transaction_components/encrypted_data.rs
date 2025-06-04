@@ -134,7 +134,7 @@ impl TxType {
         }
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(self) -> Vec<u8> {
         vec![self.as_u8()]
     }
 }
@@ -253,7 +253,7 @@ impl PaymentId {
         match self {
             PaymentId::Open { tx_type, .. } |
             PaymentId::AddressAndData { tx_type, .. } |
-            PaymentId::TransactionInfo { tx_type, .. } => tx_type.clone(),
+            PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -1209,7 +1209,7 @@ mod test {
             TxType::Coinbase,
         ] {
             let payment_id = PaymentId::Open {
-                tx_type: tx_type.clone(),
+                tx_type,
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             };
             let payment_id_bytes = payment_id.to_bytes();
@@ -1218,7 +1218,7 @@ mod test {
 
             let payment_id = PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                tx_type: tx_type.clone(),
+                tx_type,
                 sender_one_sided: false,
                 amount: MicroMinotari::from(123456),
                 fee: MicroMinotari::from(123),
