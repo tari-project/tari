@@ -23,6 +23,7 @@
 use std::{convert::TryFrom, io::BufRead, ptr::null, time::Duration};
 
 use cucumber::{given, then, when};
+use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::transaction_components::encrypted_data::{PaymentId, TxType};
 use tari_integration_tests::{
@@ -145,6 +146,24 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
         ffi_balance.get_available(),
         ffi_balance.get_pending_incoming(),
         ffi_balance.get_time_locked()
+    );
+}
+
+#[then(expr = "ffi wallet {word} balance is {word}")]
+async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: String) {
+    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
+    let ffi_balance = ffi_wallet.get_balance();
+    let ffi_wallet_balance = GetBalanceResponse {
+        available_balance: ffi_balance.get_available(),
+        pending_incoming_balance: ffi_balance.get_pending_incoming(),
+        timelocked_balance: ffi_balance.get_time_locked(),
+        pending_outgoing_balance: ffi_balance.get_pending_outgoing(),
+    };
+    let balance = world.balance.get(&balance_key).unwrap();
+    assert_eq!(
+        balance, &ffi_wallet_balance,
+        "Wallet {}:{} doesn't have the correct balance: expected {:?} current {:?}",
+        ffi_wallet.name, ffi_wallet.port, balance, ffi_wallet_balance
     );
 }
 
@@ -533,7 +552,7 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
     let seed_words_file = std::fs::File::open(seed_words_path).unwrap();
     let reader = std::io::BufReader::new(seed_words_file);
     let line = reader.lines().next().unwrap().unwrap();
-    let words = line.split_whitespace().collect();
+    let words = line.split_whitespace().collect::<Vec<&str>>();
     let seed_words = create_seed_words(words);
 
     spawn_wallet_ffi(world, ffi_wallet_name.clone(), seed_words.get_ptr());

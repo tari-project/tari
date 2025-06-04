@@ -28,6 +28,7 @@ use std::{
 
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
+use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use rand::rngs::OsRng;
 use serde_json::Value;
 use tari_common::configuration::Network;
@@ -86,6 +87,7 @@ pub struct TariWorld {
     pub miners: IndexMap<String, MinerProcess>,
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
+    pub balance: IndexMap<String, GetBalanceResponse>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -128,6 +130,7 @@ impl Default for TariWorld {
             miners: Default::default(),
             ffi_wallets: Default::default(),
             wallets: Default::default(),
+            balance: Default::default(),
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
             wallet_addresses: Default::default(),

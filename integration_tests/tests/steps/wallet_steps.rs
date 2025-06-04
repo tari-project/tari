@@ -132,6 +132,27 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
     );
 }
 
+#[when(expr = "I remember wallet {word} balance {word}")]
+#[then(expr = "I remember wallet {word} balance {word}")]
+async fn remember_wallet_balance(world: &mut TariWorld, wallet: String, balance_key: String) {
+    let wallet_ps = world.wallets.get(&wallet).unwrap();
+
+    let mut client = wallet_ps.get_grpc_client().await.unwrap();
+    println!("remember_wallet_balance - 0");
+
+    let _result = client.validate_all_transactions(ValidateRequest {}).await;
+    println!("remember_wallet_balance - 1");
+    let balance = client
+        .get_balance(GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+    println!("remember_wallet_balance - 2: {:?}", balance);
+    world.balance.insert(balance_key, balance);
+    // world.balance.insert(balance_key, GetBalanceResponse::default());
+    println!("remember_wallet_balance - 3");
+}
+
 #[when(expr = "I have wallet {word} connected to base node {word}")]
 async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
     let bn = world.base_nodes.get(&base_node).unwrap();

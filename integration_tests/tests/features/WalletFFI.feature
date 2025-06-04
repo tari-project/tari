@@ -10,6 +10,7 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         When I have wallet SPECTATOR connected to base node BASE
@@ -18,6 +19,30 @@ Feature: Wallet FFI
         Then I wait for wallet SPECTATOR to have at least 1000000 uT
         Then I recover wallet SPECTATOR into ffi wallet FFI_WALLET from seed words on node BASE
         And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        And I stop ffi wallet FFI_WALLET
+
+    @critical
+    Scenario: As a client I want to be able to check my balance from restored wallets
+        Given I have a seed node SEED
+        When I have a base node BASE connected to all seed nodes
+
+        When I have wallet WALLET1 connected to base node BASE
+        When I have mining node MINER1 connected to base node BASE and wallet WALLET1
+
+        When I have wallet WALLET2 connected to base node BASE
+        When I have mining node MINER2 connected to base node BASE and wallet WALLET2
+
+        When mining node MINER2 mines 12 blocks
+        Then all nodes are at height 12
+        Then all nodes are at height 12
+        When mining node MINER1 mines 1 blocks
+        Then all nodes are at height 13
+        Then I wait for wallet WALLET2 to have at least 184620500000 uT
+        Then I remember wallet WALLET2 balance BALANCE
+
+        Then I recover wallet WALLET2 into ffi wallet FFI_WALLET from seed words on node BASE
+        And I wait for ffi wallet FFI_WALLET to have at least 184620500000 uT
+        Then ffi wallet FFI_WALLET balance is BALANCE
         And I stop ffi wallet FFI_WALLET
 
     @critical
