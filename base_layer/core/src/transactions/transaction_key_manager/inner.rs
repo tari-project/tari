@@ -1656,7 +1656,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn try_output_key_recovery(
         &self,
-        output: &TransactionOutput,
+        // output: &TransactionOutput,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
@@ -1665,9 +1667,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
             self.get_private_view_key().await?
         };
         let (value, private_key, payment_id) =
-            EncryptedData::decrypt_data(&recovery_key, output.commitment(), output.encrypted_data())?;
+            EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
         self.crypto_factories.range_proof.verify_mask(
-            &output.commitment().to_commitment()?,
+            &commitment.to_commitment()?,
             &private_key,
             value.into(),
         )?;

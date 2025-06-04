@@ -6,6 +6,7 @@ use tari_core::base_node::rpc::{
     models,
     models::{BlockHeader, SyncUtxosByBlockResponse},
 };
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
 use crate::error::ClientError;
@@ -23,5 +24,6 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         &self,
         start_header_hash: Vec<u8>,
         end_header_hash: Vec<u8>,
+        shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, ClientError>>, ClientError>;
 }

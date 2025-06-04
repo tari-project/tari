@@ -25,7 +25,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_key_manager::key_manager, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -52,7 +52,7 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
-pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
+pub struct UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
     pub(crate) retry_limit: usize,
     pub(crate) mode: UtxoScannerMode,
@@ -61,9 +61,10 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
     pub(crate) base_node_service: BaseNodeServiceHandle,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
+    key_manager: TKeyManagerInterface
 }
 
-impl<TBackend, TWalletConnectivity> UtxoScannerService<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface> UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -77,6 +78,7 @@ where
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
+        key_manager: TKeyManagerInterface,
     ) -> Self {
         Self {
             resources,
@@ -87,6 +89,7 @@ where
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
+            key_manager
         }
     }
 

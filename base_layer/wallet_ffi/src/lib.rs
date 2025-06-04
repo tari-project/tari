@@ -80,10 +80,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
-    error::{WalletError, WalletStorageError},
-    output_manager_service::{
+    base_node_service::config::BaseNodeServiceConfig, connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface}, error::{WalletError, WalletStorageError}, output_manager_service::{
         error::OutputManagerError,
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
@@ -91,25 +88,18 @@ use minotari_wallet::{
             OutputStatus,
         },
         UtxoSelectionCriteria,
-    },
-    storage::{
+    }, storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
-    },
-    transaction_service::{
+    }, transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
-    },
-    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
-    Wallet,
-    WalletConfig,
-    WalletSqlite,
+    }, utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY}, wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain}, Wallet, WalletConfig, WalletKeyManager, WalletSqlite
 };
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
@@ -10000,7 +9990,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     } else {
         (*base_node_public_keys).0.clone()
     };
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {

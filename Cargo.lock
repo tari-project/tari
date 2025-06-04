@@ -4433,12 +4433,13 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "3.0.0-pre.2"
+version = "4.3.1-pre.0"
 dependencies = [
  "async-trait",
  "log",
  "reqwest 0.12.17",
  "tari_core",
+ "tari_shutdown",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",

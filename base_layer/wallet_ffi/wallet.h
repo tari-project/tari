@@ -4399,6 +4399,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
                            struct TariPublicKeys *base_node_public_keys,
+                           const char *http_base_node,
                            void (*recovery_progress_callback)(void *context,
                                                               uint8_t,
                                                               uint64_t,

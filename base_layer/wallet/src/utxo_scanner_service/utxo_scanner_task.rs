@@ -441,6 +441,13 @@ where
         end_header_hash: HashOutput,
         tip_height: u64,
     ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
+        info!(
+            target: LOG_TARGET,
+            "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
+            start_header_hash.to_hex(),
+            end_header_hash.to_hex(),
+            tip_height
+        );
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 100;
 
@@ -450,7 +457,7 @@ where
 
         let start = Instant::now();
         let mut utxo_stream = client
-            .sync_utxos_by_block(start_header_hash.to_vec(), end_header_hash.to_vec())
+            .sync_utxos_by_block(start_header_hash.to_vec(), end_header_hash.to_vec(), self.shutdown_signal.clone())
             .await?;
         trace!(
             target: LOG_TARGET,

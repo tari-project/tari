@@ -43,7 +43,7 @@ use crate::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
-    },
+    }, WalletKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
@@ -128,7 +128,7 @@ where
             )
             .expect("Could not create one-sided Tari address");
 
-            let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle>::builder()
+            let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle, TKeyManagerInterface>::builder()
             .with_http_node_url(node_url)
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
@@ -146,6 +146,7 @@ where
                     one_sided_message_watch_receiver,
                     recovery_message_watch_receiver,
                     birthday_offset,
+                    key_manager
                 )
                 .await.expect("Failed to build UTXO scanner service")
                 .run();

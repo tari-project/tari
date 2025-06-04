@@ -21,5 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod standard_outputs_recoverer;
+mod output_recovery_info;
 
 pub(crate) use standard_outputs_recoverer::StandardUtxoRecoverer;
+
+pub(crate) use output_recovery_info::OutputRecoveryInfo;

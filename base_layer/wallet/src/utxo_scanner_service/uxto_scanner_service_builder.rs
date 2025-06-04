@@ -33,19 +33,13 @@ use tokio::sync::{broadcast, watch};
 use url::Url;
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
-    output_manager_service::handle::OutputManagerHandle,
-    storage::{
+    base_node_service::handle::BaseNodeServiceHandle, connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface}, output_manager_service::handle::OutputManagerHandle, schema::client_key_values::key, storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::wallet::WalletSqliteDatabase,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{
+    }, transaction_service::handle::TransactionServiceHandle, utxo_scanner_service::{
         handle::UtxoScannerEvent,
         service::{UtxoScannerResources, UtxoScannerService},
-    },
-    WalletSqlite,
+    }, WalletKeyManager, WalletSqlite
 };
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -108,7 +102,7 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, anyhow::Error> {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>, anyhow::Error> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
         let http_client_url = match &self.node_url {
             Some(url) => url.clone(),
@@ -126,7 +120,7 @@ impl UtxoScannerServiceBuilder {
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
-            http_client_url
+            http_client_url,
         };
 
         let (event_sender, _) = broadcast::channel(200);
@@ -140,13 +134,14 @@ impl UtxoScannerServiceBuilder {
             wallet.base_node_service.clone(),
             wallet.utxo_scanner_service.get_one_sided_payment_message_watcher(),
             wallet.utxo_scanner_service.get_recovery_message_watcher(),
+            wallet.key_manager_service.clone()
         ))
     }
 
     pub async fn build_with_resources<
         TBackend: WalletBackend + 'static,
         TWalletConnectivity: WalletConnectivityInterface,
-        TKeyManagerInterface: TransactionKeyManagerInterface,
+        TKeyManager: TransactionKeyManagerInterface + 'static,
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
@@ -162,7 +157,8 @@ impl UtxoScannerServiceBuilder {
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
-    ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity>, anyhow::Error> {
+        key_manager: TKeyManager,
+    ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity, TKeyManager>, anyhow::Error> {
           let http_client_url = match &self.node_url {
             Some(url) => url.clone(),
             None => return Err(anyhow::anyhow!("Node URL must be set before building the UTXO scanner service.")),
@@ -192,6 +188,7 @@ impl UtxoScannerServiceBuilder {
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
+            key_manager
         ))
     }
 }

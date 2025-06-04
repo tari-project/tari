@@ -387,7 +387,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn try_output_key_recovery(
         &self,
-        output: &TransactionOutput,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
 

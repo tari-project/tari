@@ -1,8 +1,9 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 use async_trait::async_trait;
-use log::error;
-use tari_core::base_node::rpc::models::{BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse};
+use log::{error, info};
+use tari_core::base_node::{rpc::models::{BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse}, state_machine_service::states::Shutdown};
+use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
@@ -61,6 +62,7 @@ impl BaseNodeWalletClient for Client {
         &self,
         start_header_hash: Vec<u8>,
         end_header_hash: Vec<u8>,
+        shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, ClientError>>, ClientError> {
         let mut target_url = self.api_address.join("/sync_utxos_by_block")?;
         let (resp_tx, resp_rx) = mpsc::channel(5);
@@ -72,6 +74,10 @@ impl BaseNodeWalletClient for Client {
             let mut page = 0;
             let mut has_next_page = true;
             while has_next_page {
+                if shutdown.is_triggered() {
+                    info!(target: LOG_TARGET, "UTXO sync task shutdown triggered, exiting loop");
+                    break;
+                }
                 target_url.set_query(Some(
                     format!(
                         "start_header_hash={}&end_header_hash={}&limit=5&page={}",
