@@ -820,6 +820,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             status.mined_unconfirm()
         };
 
+        let cipher = acquire_read_lock!(self.cipher);
         match CompletedTransactionSql::update_mined_height(
             tx_id,
             num_confirmations,
@@ -828,6 +829,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             mined_in_block,
             mined_timestamp,
             &mut conn,
+            &cipher,
         ) {
             Ok(_) => {},
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -1994,7 +1996,32 @@ impl CompletedTransactionSql {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         conn: &mut SqliteConnection,
+        cipher: &XChaCha20Poly1305,
     ) -> Result<(), TransactionStorageError> {
+        // First, get the existing transaction to extract output hashes
+        let existing_tx = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .first::<CompletedTransactionSql>(conn)?;
+
+        let existing_tx_data = existing_tx.decrypt(cipher)
+            .map_err(TransactionStorageError::AeadError)?;
+        let transaction: tari_core::transactions::transaction_components::Transaction = 
+            bincode::deserialize(&existing_tx_data.transaction_protocol)
+                .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?;
+
+        // Extract output hashes from the transaction
+        let output_hashes: Vec<tari_common_types::types::HashOutput> = transaction
+            .body()
+            .outputs()
+            .iter()
+            .map(|output| output.hash())
+            .collect();
+
+        // For now, we'll put all outputs in sent_output_hashes
+        // TODO: Need to properly categorize as sent/received/change based on wallet state
+        let sent_output_hashes = serialize_output_hashes(&output_hashes)?;
+        let received_output_hashes = serialize_output_hashes(&[])?; // Empty for now
+        let change_output_hashes = serialize_output_hashes(&[])?;    // Empty for now
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
                 "Could not create timestamp mined_timestamp: {}",
@@ -2021,6 +2048,10 @@ impl CompletedTransactionSql {
                 mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: None,
+                // Update output hashes now that transaction is mined
+                sent_output_hashes: Some(Some(sent_output_hashes)),
+                received_output_hashes: Some(Some(received_output_hashes)),
+                change_output_hashes: Some(Some(change_output_hashes)),
                 ..Default::default()
             })
             .execute(conn)
@@ -2246,6 +2277,9 @@ pub struct UpdateCompletedTransactionSql {
     mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Option<Vec<u8>>,
     transaction_signature_key: Option<Vec<u8>>,
+    sent_output_hashes: Option<Option<Vec<u8>>>,
+    received_output_hashes: Option<Option<Vec<u8>>>,
+    change_output_hashes: Option<Option<Vec<u8>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
