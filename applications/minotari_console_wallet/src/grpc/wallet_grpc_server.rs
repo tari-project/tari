@@ -2050,6 +2050,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         
         let mut transaction_service = self.get_transaction_service();
+        let mined_only = req.mined_only;
         
         // Get completed transactions from the service
         match transaction_service.get_completed_transactions(None, None, None).await {
@@ -2057,9 +2058,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let stream = futures::stream::iter(
                     transactions
                         .into_iter()
-                        .filter(|tx| {
+                        .filter(move |tx| {
                             // Filter based on mined_only flag
-                            if req.mined_only {
+                            if mined_only {
                                 tx.mined_in_block.is_some()
                             } else {
                                 true
@@ -2094,20 +2095,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             // Convert to gRPC response
                             let transaction_info = TransactionInfo {
                                 tx_id: completed_tx.tx_id.as_u64(),
-                                source_address: completed_tx.source_address.to_bytes().to_vec(),
-                                dest_address: completed_tx.destination_address.to_bytes().to_vec(),
+                                source_address: completed_tx.source_address.to_vec(),
+                                dest_address: completed_tx.destination_address.to_vec(),
                                 status: completed_tx.status as i32,
                                 amount: completed_tx.amount.into(),
                                 is_cancelled: completed_tx.cancelled.is_some(),
-                                direction: match completed_tx.direction {
-                                    minotari_wallet::transaction_service::storage::models::TransactionDirection::Inbound => {
-                                        minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionInbound as i32
-                                    },
-                                    minotari_wallet::transaction_service::storage::models::TransactionDirection::Outbound => {
-                                        minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionOutbound as i32
-                                    },
-                                    _ => minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionUnknown as i32,
-                                },
+                                direction: TransactionDirection::from(completed_tx.direction.clone()) as i32,
                                 fee: completed_tx.fee.into(),
                                 timestamp: completed_tx.timestamp.timestamp() as u64,
                                 excess_sig: completed_tx.transaction_signature.get_signature().to_vec(),
@@ -2119,7 +2112,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 payment_reference: String::new(), // Not used in this context
                             };
                             
-                            let recipient_count = payment_references.len() as u32;
+                            let recipient_count = payment_references.len() as u64;
                             
                             Ok(GetTransactionsWithPayRefsResponse {
                                 transaction: Some(transaction_info),
