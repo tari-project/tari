@@ -701,7 +701,7 @@ impl LMDBDatabase {
                     for (_, output_data) in chunk {
                         // Generate PayRef and add to index
                         let output_hash = &output_data.hash;
-                        let payref = Self::generate_payment_reference_for_output(&block_hash, output_hash);
+                        let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
                         
                         // Insert into PayRef index 
                         lmdb_replace(
@@ -735,7 +735,7 @@ impl LMDBDatabase {
             &db.migration_state,
             migration_key,
             &migration_state,
-            "migration_state",
+            None,
         )?;
         
         // Commit the batch
@@ -887,7 +887,7 @@ impl LMDBDatabase {
                 Ok(()) => {
                     debug!(target: LOG_TARGET, "Successfully deleted PayRef for output {}", output_hash.to_hex());
                 },
-                Err(ChainStorageError::ValueNotFound(_)) => {
+                Err(ChainStorageError::ValueNotFound { .. }) => {
                     // PayRef not found - this is acceptable as it might not have been created in older versions
                     debug!(target: LOG_TARGET, "PayRef not found for output {} - likely from older version", output_hash.to_hex());
                 },
@@ -3255,7 +3255,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 const MAX_RETRIES: u32 = 3;
                 
                 let batch_result = loop {
-                    match Self::process_payref_migration_batch(&db, batch_start, batch_end, &mut rebuild_count, migration_key) {
+                    match LMDBDatabase::process_payref_migration_batch(&db, batch_start, batch_end, &mut rebuild_count, migration_key) {
                         Ok(()) => break Ok(()),
                         Err(e) if retry_count < MAX_RETRIES => {
                             // Only retry for specific error types
