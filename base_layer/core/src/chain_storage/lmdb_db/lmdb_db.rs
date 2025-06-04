@@ -173,10 +173,20 @@ const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_UTXO_SMT: &str = "utxo_smt";
 const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
+const LMDB_DB_MIGRATION_STATE: &str = "migration_state";
 
 // PayRef migration optimization constants
 const MIGRATION_BATCH_SIZE: u64 = 100;
 const OUTPUT_CHUNK_SIZE: usize = 1000;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PayRefMigrationState {
+    version: u64,
+    last_processed_height: u64,
+    total_outputs_processed: u64,
+    migration_phase: String,
+    start_timestamp: u64,
+}
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
@@ -234,6 +244,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_JMT_VALUE_DATA, flags )
         .add_database(LMDB_DB_JMT_NODE_DATA, flags)
         .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
+        .add_database(LMDB_DB_MIGRATION_STATE, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -305,6 +316,8 @@ pub struct LMDBDatabase {
     jmt_value_data: DatabaseRef,
     jmt_node_data: DatabaseRef,
     jmt_unique_key_data: DatabaseRef,
+    /// Migration state tracking
+    migration_state: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
 }
@@ -349,6 +362,7 @@ impl LMDBDatabase {
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
             jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
+            migration_state: get_database(store, LMDB_DB_MIGRATION_STATE)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -3096,7 +3110,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             txn.commit()?;
         }
         if migrate_from_version == 2 {
-            // Migration v1 -> v2: Rebuild PayRef index for existing nodes
+            // Migration v1 -> v2: Rebuild PayRef index for existing nodes with checkpointing
             info!(target: LOG_TARGET, "Migrating to v2: Checking if PayRef index needs rebuilding");
             
             let read_txn = db.read_transaction()?;
@@ -3109,21 +3123,34 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 },
             };
             
-            // Check if PayRef index is empty by trying to get the first entry
-            let payref_entries: Vec<(Vec<u8>, HashOutput)> = lmdb_fetch_matching_after(&read_txn, &db.payref_to_output_index, &[])?;
-            let payref_index_empty = payref_entries.is_empty();
+            // Check migration state for resume capability
+            let migration_key = "payref_v2_migration";
+            let existing_state: Option<PayRefMigrationState> = lmdb_get(&read_txn, &db.migration_state, migration_key)?;
+            
+            let (start_height, rebuild_count) = if let Some(state) = existing_state {
+                info!(target: LOG_TARGET, "Resuming PayRef migration from height {}, {} outputs already processed", 
+                      state.last_processed_height + 1, state.total_outputs_processed);
+                (state.last_processed_height + 1, state.total_outputs_processed)
+            } else {
+                // Check if PayRef index is empty by trying to get the first entry
+                let payref_entries: Vec<(Vec<u8>, HashOutput)> = lmdb_fetch_matching_after(&read_txn, &db.payref_to_output_index, &[])?;
+                let payref_index_empty = payref_entries.is_empty();
+                
+                if !payref_index_empty {
+                    info!(target: LOG_TARGET, "PayRef index already populated, skipping rebuild");
+                    drop(read_txn);
+                    continue;
+                }
+                
+                info!(target: LOG_TARGET, "PayRef index is empty, starting new migration");
+                (0u64, 0u64)
+            };
+            
             drop(read_txn);
 
-            if !payref_index_empty {
-                info!(target: LOG_TARGET, "PayRef index already populated, skipping rebuild");
-                continue;
-            }
-            
-            info!(target: LOG_TARGET, "PayRef index is empty, rebuilding for existing outputs");
-
             // Rebuild PayRef index by iterating through all existing outputs with batching
-            let mut rebuild_count = 0u64;
-            let mut batch_start = 0u64;
+            let mut rebuild_count = rebuild_count;
+            let mut batch_start = start_height;
             
             while batch_start <= chain_height {
                 let batch_end = std::cmp::min(batch_start + MIGRATION_BATCH_SIZE - 1, chain_height);
@@ -3170,6 +3197,26 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     }
                 }
                 
+                // Save migration checkpoint
+                let migration_state = PayRefMigrationState {
+                    version: 2,
+                    last_processed_height: batch_end,
+                    total_outputs_processed: rebuild_count,
+                    migration_phase: "payref_index_rebuild".to_string(),
+                    start_timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                };
+                
+                lmdb_replace(
+                    &write_txn,
+                    &db.migration_state,
+                    migration_key,
+                    &migration_state,
+                    "migration_state",
+                )?;
+                
                 // Commit the batch
                 write_txn.commit()?;
                 
@@ -3178,6 +3225,11 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 
                 batch_start = batch_end + 1;
             }
+            
+            // Clean up migration state on successful completion
+            let cleanup_txn = db.write_transaction()?;
+            lmdb_delete(&cleanup_txn, &db.migration_state, migration_key, "migration_state").unwrap_or(());
+            cleanup_txn.commit()?;
             
             info!(target: LOG_TARGET, "PayRef index rebuild completed: {} outputs indexed", rebuild_count);
         }
