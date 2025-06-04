@@ -22,7 +22,7 @@
 
 use std::{collections::HashSet, convert::TryInto};
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use tari_common_types::types::{
     CommitmentFactory,
     CompressedCommitment,
@@ -363,7 +363,7 @@ fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Resul
 fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
     for input in inputs {
         if !input.is_mature_at(height)? {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Input found that has not yet matured to spending height: {}", input
             );
