@@ -1976,11 +1976,66 @@ impl wallet_server::Wallet for WalletGrpcServer {
             req.transaction_id
         );
         
-        // TODO: Implement actual PayRef retrieval from transaction service
-        // For now, return empty list
-        Ok(Response::new(GetTransactionPayRefsResponse {
-            payment_references: vec![],
-        }))
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = TxId::from(req.transaction_id);
+        
+        match transaction_service.get_completed_transaction(tx_id).await {
+            Ok(completed_tx) => {
+                // Only return PayRefs if transaction is mined and has block hash
+                if let Some(block_hash) = &completed_tx.mined_in_block {
+                    let mut payment_references = Vec::new();
+                    
+                    // Generate PayRefs from sent output hashes
+                    for output_hash in &completed_tx.sent_output_hashes {
+                        let payref = tari_common_types::payment_reference::generate_payment_reference(
+                            block_hash, 
+                            output_hash
+                        );
+                        payment_references.push(payref.to_vec());
+                    }
+                    
+                    // Generate PayRefs from received output hashes  
+                    for output_hash in &completed_tx.received_output_hashes {
+                        let payref = tari_common_types::payment_reference::generate_payment_reference(
+                            block_hash,
+                            output_hash
+                        );
+                        payment_references.push(payref.to_vec());
+                    }
+                    
+                    // Note: We don't include change output PayRefs for external APIs
+                    
+                    debug!(
+                        target: LOG_TARGET, 
+                        "get_transaction_pay_refs: Generated {} PayRefs for transaction {}",
+                        payment_references.len(),
+                        req.transaction_id
+                    );
+                    
+                    Ok(Response::new(GetTransactionPayRefsResponse {
+                        payment_references,
+                    }))
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "get_transaction_pay_refs: Transaction {} is not mined yet",
+                        req.transaction_id
+                    );
+                    Ok(Response::new(GetTransactionPayRefsResponse {
+                        payment_references: vec![],
+                    }))
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_transaction_pay_refs: Failed to get transaction {}: {}",
+                    req.transaction_id,
+                    e
+                );
+                Err(Status::not_found(format!("Transaction {} not found", req.transaction_id)))
+            }
+        }
     }
 
     async fn get_transactions_with_pay_refs(
@@ -1994,10 +2049,97 @@ impl wallet_server::Wallet for WalletGrpcServer {
             req.limit, req.offset, req.mined_only
         );
         
-        // TODO: Implement actual transaction retrieval with PayRefs
-        // For now, return empty stream
-        let empty_stream = futures::stream::empty();
-        Ok(Response::new(Box::pin(empty_stream)))
+        let mut transaction_service = self.get_transaction_service();
+        
+        // Get completed transactions from the service
+        match transaction_service.get_completed_transactions(None, None, None).await {
+            Ok(transactions) => {
+                let stream = futures::stream::iter(
+                    transactions
+                        .into_iter()
+                        .filter(|tx| {
+                            // Filter based on mined_only flag
+                            if req.mined_only {
+                                tx.mined_in_block.is_some()
+                            } else {
+                                true
+                            }
+                        })
+                        .skip(req.offset as usize)
+                        .take(req.limit as usize)
+                        .map(|completed_tx| {
+                            let mut payment_references = Vec::new();
+                            
+                            // Only generate PayRefs if transaction is mined
+                            if let Some(block_hash) = &completed_tx.mined_in_block {
+                                // Generate PayRefs from sent output hashes
+                                for output_hash in &completed_tx.sent_output_hashes {
+                                    let payref = tari_common_types::payment_reference::generate_payment_reference(
+                                        block_hash, 
+                                        output_hash
+                                    );
+                                    payment_references.push(payref.to_vec());
+                                }
+                                
+                                // Generate PayRefs from received output hashes  
+                                for output_hash in &completed_tx.received_output_hashes {
+                                    let payref = tari_common_types::payment_reference::generate_payment_reference(
+                                        block_hash,
+                                        output_hash
+                                    );
+                                    payment_references.push(payref.to_vec());
+                                }
+                            }
+                            
+                            // Convert to gRPC response
+                            let transaction_info = TransactionInfo {
+                                tx_id: completed_tx.tx_id.as_u64(),
+                                source_address: completed_tx.source_address.to_bytes().to_vec(),
+                                dest_address: completed_tx.destination_address.to_bytes().to_vec(),
+                                status: completed_tx.status as i32,
+                                amount: completed_tx.amount.into(),
+                                is_cancelled: completed_tx.cancelled.is_some(),
+                                direction: match completed_tx.direction {
+                                    minotari_wallet::transaction_service::storage::models::TransactionDirection::Inbound => {
+                                        minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionInbound as i32
+                                    },
+                                    minotari_wallet::transaction_service::storage::models::TransactionDirection::Outbound => {
+                                        minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionOutbound as i32
+                                    },
+                                    _ => minotari_app_grpc::tari_rpc::TransactionDirection::TransactionDirectionUnknown as i32,
+                                },
+                                fee: completed_tx.fee.into(),
+                                timestamp: completed_tx.timestamp.timestamp() as u64,
+                                excess_sig: completed_tx.transaction_signature.get_signature().to_vec(),
+                                raw_payment_id: completed_tx.payment_id.to_bytes(),
+                                user_payment_id: vec![],
+                                mined_in_block_height: completed_tx.mined_height.unwrap_or(0),
+                                output_commitments: vec![], // Could be populated if needed
+                                input_commitments: vec![], // Could be populated if needed
+                                payment_reference: String::new(), // Not used in this context
+                            };
+                            
+                            let recipient_count = payment_references.len() as u32;
+                            
+                            Ok(GetTransactionsWithPayRefsResponse {
+                                transaction: Some(transaction_info),
+                                payment_references,
+                                recipient_count,
+                            })
+                        })
+                );
+                
+                Ok(Response::new(Box::pin(stream) as Self::GetTransactionsWithPayRefsStream))
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_transactions_with_pay_refs: Failed to get transactions: {}",
+                    e
+                );
+                Err(Status::internal(format!("Failed to get transactions: {}", e)))
+            }
+        }
     }
 }
 
