@@ -3933,7 +3933,7 @@ where
         
         // Get the block hash where the transaction was mined
         let block_hash = completed_transaction.mined_in_block
-            .ok_or_else(|| TransactionServiceError::ValidationError(
+            .ok_or_else(|| TransactionServiceError::InvalidMessageError(
                 "Transaction must be mined to generate PayRefs".to_string()
             ))?;
         
@@ -3964,7 +3964,7 @@ where
                 // Transaction is mined, check confirmations
             },
             _ => {
-                return Err(TransactionServiceError::ValidationError(
+                return Err(TransactionServiceError::InvalidMessageError(
                     "Transaction is not mined".to_string()
                 ));
             }
@@ -3975,7 +3975,7 @@ where
         let confirmations = transaction.confirmations.unwrap_or(0);
         
         if confirmations < required_confirmations {
-            return Err(TransactionServiceError::ValidationError(
+            return Err(TransactionServiceError::InvalidMessageError(
                 format!("Transaction requires {} confirmations for PayRef stability, only has {}", 
                         required_confirmations, confirmations)
             ));
