@@ -182,7 +182,7 @@ mod tests {
 
     fn create_test_transaction() -> CompletedTransaction {
         CompletedTransaction {
-            tx_id: 1,
+            tx_id: TxId::from(1u64),
             source_address: Default::default(),
             destination_address: Default::default(),
             amount: MicroMinotari::from(1000),

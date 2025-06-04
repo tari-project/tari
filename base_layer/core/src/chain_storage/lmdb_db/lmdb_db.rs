@@ -610,7 +610,7 @@ impl LMDBDatabase {
         }
 
         // Generate PayRef and add to index
-        let payref = Self::generate_payment_reference_for_output(header_hash, &output.commitment);
+        let payref = Self::generate_payment_reference_for_output(header_hash, &output_hash);
         lmdb_insert(
             txn,
             &self.payref_to_output_index,
@@ -644,9 +644,9 @@ impl LMDBDatabase {
     }
 
     /// Generate payment reference (PayRef) for an output using shared utility
-    /// PayRef = Blake2b_256(block_hash || commitment) using domain separation
-    fn generate_payment_reference_for_output(header_hash: &HashOutput, commitment: &CompressedCommitment) -> [u8; 32] {
-        generate_payment_reference(&(*header_hash).into(), commitment)
+    /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
+    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> [u8; 32] {
+        generate_payment_reference(&(*header_hash).into(), output_hash)
     }
 
     fn insert_kernel(
@@ -780,7 +780,7 @@ impl LMDBDatabase {
         // We need to find where this output was mined to calculate its PayRef
         if let Ok(Some(output_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
             // Generate the PayRef using the same method as in generate_payment_reference
-            let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_info.output.commitment);
+            let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_hash);
 
             // Delete the PayRef index entry
             lmdb_delete(
@@ -3124,8 +3124,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         
                         for (_, output_data) in outputs {
                             // Generate PayRef and add to index
-                            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.output.commitment);
                             let output_hash = &output_data.hash;
+                            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
                             
                             // Insert into PayRef index 
                             lmdb_replace(
