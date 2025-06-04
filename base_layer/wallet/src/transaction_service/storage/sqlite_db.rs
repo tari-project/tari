@@ -1424,7 +1424,7 @@ impl InboundTransactionSql {
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
-            received_output_hashes: None, // TODO: Serialize i.received_output_hashes
+            received_output_hashes: Some(serialize_output_hashes(&i.received_output_hashes)?),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1475,7 +1475,7 @@ impl InboundTransaction {
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
-            received_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            received_output_hashes: deserialize_output_hashes(i.received_output_hashes)?,
         })
     }
 }
@@ -1740,8 +1740,8 @@ impl OutboundTransaction {
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
-            sent_output_hashes: Vec::new(), // TODO: Add database column and deserialization
-            change_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            sent_output_hashes: deserialize_output_hashes(o.sent_output_hashes)?,
+            change_output_hashes: deserialize_output_hashes(o.change_output_hashes)?,
         };
 
         // zeroize decrypted data
@@ -2215,9 +2215,12 @@ impl CompletedTransaction {
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
-            sent_output_hashes: Vec::new(), // TODO: Add database column and deserialization
-            received_output_hashes: Vec::new(), // TODO: Add database column and deserialization
-            change_output_hashes: Vec::new(), // TODO: Add database column and deserialization
+            sent_output_hashes: deserialize_output_hashes(c.sent_output_hashes)
+                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
+            received_output_hashes: deserialize_output_hashes(c.received_output_hashes)
+                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
+            change_output_hashes: deserialize_output_hashes(c.change_output_hashes)
+                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
         };
 
         // zeroize sensitive data
@@ -2878,7 +2881,8 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
-            received_output_hashes: vec![],
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -3023,7 +3027,8 @@ mod test {
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
-            received_output_hashes: vec![],
+                sent_output_hashes: vec![],
+                change_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 
