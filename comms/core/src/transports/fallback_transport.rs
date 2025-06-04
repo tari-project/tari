@@ -44,6 +44,9 @@ use crate::{
     transports::HiddenServiceTransport,
 };
 
+// Type alias to simplify complex types
+type TorTransport = HiddenServiceTransport<Box<dyn Fn(TorIdentity) + Send + Sync>>;
+
 const LOG_TARGET: &str = "comms::transports::fallback";
 
 #[derive(Debug, Error)]
@@ -94,7 +97,7 @@ impl Default for FallbackConfig {
 /// Transport state shared between the transport and its components
 pub struct TransportState {
     pub mode: TransportMode,
-    pub tor_transport: Option<Arc<HiddenServiceTransport<Box<dyn Fn(TorIdentity) + Send + Sync>>>>,
+    pub tor_transport: Option<Arc<TorTransport>>,
     pub tcp_transport: TcpTransport,
     pub last_tor_attempt: Option<std::time::Instant>,
 }
@@ -110,7 +113,7 @@ pub struct FallbackTransport {
 impl FallbackTransport {
     pub fn new(
         config: FallbackConfig,
-        tor_transport: Option<HiddenServiceTransport<Box<dyn Fn(TorIdentity) + Send + Sync>>>,
+        tor_transport: Option<TorTransport>,
         tcp_transport: TcpTransport,
     ) -> Self {
         let (mode_notifier, _) = broadcast::channel(16);
@@ -245,7 +248,7 @@ impl FallbackTransport {
 
 /// Listener that can handle both Tor and TCP connections
 pub enum FallbackListener {
-    Tor(<HiddenServiceTransport<Box<dyn Fn(TorIdentity) + Send + Sync>> as Transport>::Listener),
+    Tor(<TorTransport as Transport>::Listener),
     Tcp(<TcpTransport as Transport>::Listener),
 }
 
