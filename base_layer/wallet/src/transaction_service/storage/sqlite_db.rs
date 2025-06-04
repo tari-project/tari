@@ -70,14 +70,14 @@ const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
 /// Serialize a vector of HashOutput for database storage
 fn serialize_output_hashes(hashes: &[HashOutput]) -> Result<Vec<u8>, TransactionStorageError> {
-    bincode::serialize(hashes).map_err(|e| TransactionStorageError::ConversionError(e.to_string()))
+    bincode::serialize(hashes).map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))
 }
 
 /// Deserialize a vector of HashOutput from database storage
 fn deserialize_output_hashes(data: Option<Vec<u8>>) -> Result<Vec<HashOutput>, TransactionStorageError> {
     match data {
         Some(bytes) => bincode::deserialize(&bytes)
-            .map_err(|e| TransactionStorageError::ConversionError(e.to_string())),
+            .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string())),
         None => Ok(Vec::new()),
     }
 }
@@ -2216,11 +2216,11 @@ impl CompletedTransaction {
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
             sent_output_hashes: deserialize_output_hashes(c.sent_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
+                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             received_output_hashes: deserialize_output_hashes(c.received_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
+                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             change_output_hashes: deserialize_output_hashes(c.change_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::ConversionError(e.to_string()))?,
+                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
         };
 
         // zeroize sensitive data
