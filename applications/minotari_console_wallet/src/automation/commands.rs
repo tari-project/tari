@@ -33,6 +33,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tari_utilities::hex;
+
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
@@ -2740,21 +2742,24 @@ pub async fn command_runner(
                             },
                         };
                         
-                        // Try to find associated payment references
-                        match output_service.get_all_payment_references().await {
-                            Ok(payment_refs) => {
-                                if payment_refs.is_empty() {
-                                    println!("\nNo payment references are available yet.");
+                        // Get PayRefs for this specific transaction using our new method
+                        match transaction_service.get_transaction_payrefs(args.transaction_id.into()).await {
+                            Ok(payrefs) => {
+                                if payrefs.is_empty() {
+                                    println!("\nNo PayRefs found for this transaction.");
                                     println!("This may happen if:");
-                                    println!("- No transactions have been mined and confirmed");
-                                    println!("- Payment reference generation is not enabled");
+                                    println!("- Transaction has not been mined yet");
+                                    println!("- Transaction has no outputs that generate PayRefs");
                                 } else {
-                                    println!("\nNote: Payment reference correlation with specific transactions");
-                                    println!("requires additional implementation. Use 'list-payrefs' to see all available");
-                                    println!("payment references and correlate manually based on amount and timestamp.");
+                                    println!("\nPayRefs for this transaction:");
+                                    println!("{}", "=".repeat(80));
+                                    for (i, payref) in payrefs.iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, hex::encode(payref));
+                                    }
+                                    println!("\nTotal PayRefs: {}", payrefs.len());
                                 }
                             },
-                            Err(e) => eprintln!("Error getting payment references: {}", e),
+                            Err(e) => eprintln!("Error getting PayRefs for transaction: {}", e),
                         }
                     },
                     Ok(None) => {
@@ -2767,56 +2772,79 @@ pub async fn command_runner(
                 use minotari_wallet::output_manager_service::payment_reference::parse_payref_hex;
                 match parse_payref_hex(&args.payment_reference_hex) {
                     Ok(payref) => {
-                        match output_service.find_payment_by_reference(payref).await {
+                        match transaction_service.get_payment_by_reference(payref).await {
                             Ok(Some(payment_details)) => {
-                                println!("Found payment reference: {}", args.payment_reference_hex);
+                                println!("Found PayRef: {}", args.payment_reference_hex);
+                                println!("Transaction ID: {}", payment_details.tx_id);
                                 println!("Amount: {}", payment_details.amount);
                                 println!("Direction: {:?}", payment_details.direction);
                                 println!("Block height: {}", payment_details.block_height);
                                 println!("Confirmations: {}", payment_details.confirmations);
-                                println!("Status: {:?}", payment_details.status);
-                                if let Some(timestamp) = payment_details.mined_timestamp {
-                                    println!("Mined timestamp: {}", timestamp);
+                                if let Some(timestamp) = payment_details.timestamp {
+                                    println!("Timestamp: {}", timestamp);
+                                }
+                                if let Some(payment_id) = &payment_details.payment_id {
+                                    println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
                                 }
                             },
                             Ok(None) => {
-                                println!("No payment found for payment reference: {}", args.payment_reference_hex);
+                                println!("No payment found for PayRef: {}", args.payment_reference_hex);
                             },
                             Err(e) => eprintln!("FindPayRef error! {}", e),
                         }
                     },
                     Err(e) => {
-                        eprintln!("FindPayRef error! Invalid payment reference format: {}", e);
+                        eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
                     },
                 }
             },
             ListPayRefs(args) => {
                 debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command starting execution");
-                match output_service.get_all_payment_references().await {
-                    Ok(payment_refs) => {
-                        debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command got {} payment_refs from output_service", payment_refs.len());
-                        // Apply limit filter
-                        let limit = args.limit.unwrap_or(usize::MAX);
-                        let limited_refs: Vec<_> = payment_refs.into_iter().take(limit).collect();
+                
+                // Apply status filter to determine mined_only
+                let mined_only = match args.status_filter.as_deref() {
+                    Some("available") => Some(true),
+                    Some("pending") => Some(false), 
+                    Some("all") | None => None,
+                    _ => {
+                        eprintln!("Invalid status filter. Use 'available', 'pending', or 'all'");
+                        return Ok(false);
+                    }
+                };
+                
+                let limit = args.limit.map(|l| l as u64);
+                
+                match transaction_service.get_transactions_with_payrefs(limit, None, mined_only).await {
+                    Ok(txs_with_payrefs) => {
+                        debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command got {} transactions with PayRefs", txs_with_payrefs.len());
                         
-                        if limited_refs.is_empty() {
-                            println!("No payment references found.");
+                        if txs_with_payrefs.is_empty() {
+                            println!("No transactions with PayRefs found.");
                         } else {
-                            println!("Found {} payment reference(s):", limited_refs.len());
+                            println!("Found {} transaction(s) with PayRefs:", txs_with_payrefs.len());
                             println!("{}", "=".repeat(80));
-                            for (i, payment_ref) in limited_refs.iter().enumerate() {
-
-                                println!("{}. Payment Reference: {}", i + 1, payment_ref.payref_hex());
-                                println!("   Amount: {}", payment_ref.amount);
-                                println!("   Direction: {:?}", payment_ref.direction);
-                                println!("   Block height: {}", payment_ref.block_height);
-                                println!("   Confirmations: {}", payment_ref.confirmations);
-                                if let Some(timestamp) = payment_ref.timestamp {
-                                    println!("   Timestamp: {}", timestamp);
+                            
+                            for (i, tx_with_refs) in txs_with_payrefs.iter().enumerate() {
+                                println!("{}. Transaction ID: {}", i + 1, tx_with_refs.transaction.tx_id);
+                                println!("   Amount: {}", tx_with_refs.transaction.amount);
+                                println!("   Direction: {:?}", tx_with_refs.transaction.direction);
+                                println!("   Status: {:?}", tx_with_refs.transaction.status);
+                                if let Some(height) = tx_with_refs.transaction.mined_height {
+                                    println!("   Mined at height: {}", height);
                                 }
-                                if let Some(payment_id) = &payment_ref.payment_id {
-                                    println!("   Payment ID: {}", String::from_utf8_lossy(payment_id));
+                                if let Some(timestamp) = tx_with_refs.transaction.mined_timestamp {
+                                    println!("   Mined timestamp: {}", timestamp);
                                 }
+                                
+                                println!("   PayRefs ({}):", tx_with_refs.payment_references.len());
+                                for (j, payref) in tx_with_refs.payment_references.iter().enumerate() {
+                                    if args.show_private_info {
+                                        println!("     {}. {}", j + 1, hex::encode(payref));
+                                    } else {
+                                        println!("     {}. {}...{}", j + 1, &hex::encode(payref)[..8], &hex::encode(payref)[56..]);
+                                    }
+                                }
+                                println!("   Recipients: {}", tx_with_refs.recipient_count);
                                 println!();
                             }
                         }

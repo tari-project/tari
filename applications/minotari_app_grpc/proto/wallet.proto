@@ -471,59 +471,6 @@ service Wallet {
   // ```
   rpc GetTransactionPayRefs (GetTransactionPayRefsRequest) returns (GetTransactionPayRefsResponse);
 
-  // Returns payment details for a specific PayRef (payment reference).
-  //
-  // The `GetPaymentByReference` call retrieves transaction information using a PayRef
-  // as the lookup key. This allows verification and lookup of payments using only
-  // the PayRef without requiring knowledge of transaction IDs or other details.
-  //
-  // ### Request Parameters:
-  //
-  // - `payment_reference` (required):
-  //   - **Type**: `bytes` (32 bytes)
-  //   - **Description**: The PayRef to look up payment details for.
-  //   - **Restrictions**:
-  //     - Must be exactly 32 bytes.
-  //     - Must be a valid PayRef that exists in the wallet's transaction history.
-  //     - If the PayRef is not found, the response will indicate no matching payment.
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const payRef = Buffer.from('1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef', 'hex');
-  // const request = {
-  //   payment_reference: payRef
-  // };
-  // const response = await client.getPaymentByReference(request);
-  // if (response.transaction) {
-  //   console.log("Found payment:", response.transaction);
-  // } else {
-  //   console.log("PayRef not found");
-  // }
-  // ```
-  //
-  // ### Sample JSON Response:
-  //
-  // ```json
-  // {
-  //   "transaction": {
-  //     "tx_id": 12345,
-  //     "source_address": "0x1234abcd...",
-  //     "dest_address": "0x5678efgh...",
-  //     "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
-  //     "direction": "TRANSACTION_DIRECTION_INBOUND",
-  //     "amount": 500000,
-  //     "fee": 20,
-  //     "is_cancelled": false,
-  //     "excess_sig": "0xabcdef...",
-  //     "timestamp": 1681234567,
-  //     "payment_id": "0xdeadbeef...",
-  //     "mined_in_block_height": 1523493
-  //   }
-  // }
-  // ```
-  rpc GetPaymentByReference (GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
-
   // Returns all transactions that have PayRefs with optional filtering.
   //
   // The `GetTransactionsWithPayRefs` call streams all wallet transactions that have
