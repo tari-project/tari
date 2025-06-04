@@ -33,7 +33,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_utilities::hex::{self, Hex};
+use tari_utilities::hex::Hex;
 
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
@@ -118,7 +118,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
-use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
+use tari_utilities::{encoding::MBase58, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},

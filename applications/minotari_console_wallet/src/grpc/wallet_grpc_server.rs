@@ -22,6 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    pin::Pin,
     str::FromStr,
     sync::Arc,
 };
@@ -30,6 +31,7 @@ use futures::{
     channel::mpsc::{self, Sender},
     future,
     SinkExt,
+    Stream,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
@@ -72,6 +74,10 @@ use minotari_app_grpc::tari_rpc::{
     GetStateResponse,
     GetTransactionInfoRequest,
     GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
+    GetTransactionsWithPayRefsRequest,
+    GetTransactionsWithPayRefsResponse,
     GetUnspentAmountsResponse,
     GetVersionRequest,
     GetVersionResponse,
@@ -142,6 +148,7 @@ use tokio::{
     sync::{broadcast, Mutex},
     task,
 };
+
 use tonic::{Request, Response, Status};
 
 use crate::{
@@ -323,6 +330,7 @@ async fn calculate_payment_references_impl(
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
     type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
+    type GetTransactionsWithPayRefsStream = Pin<Box<dyn Stream<Item = Result<GetTransactionsWithPayRefsResponse, Status>> + Send>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
@@ -1800,20 +1808,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 // Calculate status based on confirmations since PaymentDetails doesn't have a status field
                 let status = calculate_payref_status(payment_details.confirmations, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS);
                 
-                let grpc_payment_details = PaymentDetails {
-                    payment_reference: payment_details.payment_reference.to_hex(),
-                    tx_id: 0, // PaymentDetails from wallet doesn't have tx_id - would need to be added
+                // TODO: Convert payment_details to TransactionInfo
+                // For now, return a basic TransactionInfo with available data
+                let transaction_info = TransactionInfo {
+                    tx_id: 0, // PaymentDetails doesn't contain tx_id
+                    source_address: vec![],
+                    dest_address: vec![],
+                    status: status,
                     amount: payment_details.amount.into(),
+                    is_cancelled: false,
                     direction,
-                    status,
-                    mined_height: payment_details.block_height,
-                    confirmations: payment_details.confirmations,
-                    message: String::new(), // PaymentDetails from wallet doesn't have message field
-                    payment_id: payment_details.payment_id.unwrap_or_default(),
+                    fee: 0,
+                    timestamp: 0,
+                    excess_sig: vec![],
+                    raw_payment_id: payment_details.payment_id.unwrap_or_default(),
+                    user_payment_id: vec![],
+                    mined_in_block_height: payment_details.block_height,
+                    output_commitments: vec![],
+                    input_commitments: vec![],
+                    payment_reference: payment_details.payment_reference.to_hex(),
                 };
                 
                 Ok(Response::new(GetPaymentByReferenceResponse {
-                    payment_details: Some(grpc_payment_details),
+                    transaction: Some(transaction_info),
                 }))
             },
             Ok(None) => {
@@ -1946,7 +1963,43 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(Status::internal(format!("Error retrieving all payment references: {}", e)))
             },
         }
-    }}
+    }
+
+    async fn get_transaction_pay_refs(
+        &self,
+        request: Request<GetTransactionPayRefsRequest>,
+    ) -> Result<Response<GetTransactionPayRefsResponse>, Status> {
+        let req = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_transaction_pay_refs: Getting PayRefs for transaction ID: {}",
+            req.transaction_id
+        );
+        
+        // TODO: Implement actual PayRef retrieval from transaction service
+        // For now, return empty list
+        Ok(Response::new(GetTransactionPayRefsResponse {
+            payment_references: vec![],
+        }))
+    }
+
+    async fn get_transactions_with_pay_refs(
+        &self,
+        request: Request<GetTransactionsWithPayRefsRequest>,
+    ) -> Result<Response<Self::GetTransactionsWithPayRefsStream>, Status> {
+        let req = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_transactions_with_pay_refs: Getting transactions with PayRefs (limit: {}, offset: {}, mined_only: {})",
+            req.limit, req.offset, req.mined_only
+        );
+        
+        // TODO: Implement actual transaction retrieval with PayRefs
+        // For now, return empty stream
+        let empty_stream = futures::stream::empty();
+        Ok(Response::new(Box::pin(empty_stream)))
+    }
+}
 
 async fn handle_completed_tx(
     tx_id: TxId,
