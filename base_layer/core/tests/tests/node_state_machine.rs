@@ -326,7 +326,6 @@ async fn test_event_channel() {
     state_machine.set_primary_bootstrap_complete(true);
     task::spawn(state_machine.run());
 
-
     let node_identity = random_node_identity();
     let block_hash = Blake2b::<U32>::digest(node_identity.node_id().as_bytes()).into();
     let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000.into(), 0).unwrap();
@@ -345,10 +344,7 @@ async fn test_event_channel() {
         .await
         .expect("Could not publish metadata");
     }
-    // sleep(Duration::from_secs(30)).await;
-    // panic!("hi");
     let event = state_change_event_subscriber.recv().await;
-
     let event = event.unwrap();
     unpack_enum!(StateEvent::Initialized(_) = &*event);
 }
