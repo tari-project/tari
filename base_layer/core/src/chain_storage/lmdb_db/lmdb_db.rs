@@ -667,6 +667,83 @@ impl LMDBDatabase {
         generate_payment_reference(&(*header_hash).into(), output_hash)
     }
 
+    /// Process a batch of blocks for PayRef migration with error handling
+    fn process_payref_migration_batch(
+        db: &LMDBDatabase,
+        batch_start: u64,
+        batch_end: u64,
+        rebuild_count: &mut u64,
+        migration_key: &str,
+    ) -> Result<(), ChainStorageError> {
+        let write_txn = db.write_transaction()?;
+        
+        info!(target: LOG_TARGET, "Processing PayRef rebuild batch: blocks {} to {}", batch_start, batch_end);
+        
+        for height in batch_start..=batch_end {
+            let read_txn = db.read_transaction()?;
+            
+            // Get block header to get block hash
+            let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
+            if let Some(header) = header {
+                let block_hash = header.hash();
+                
+                // Get all outputs for this block
+                let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
+                    &read_txn,
+                    &db.utxos_db,
+                    block_hash.as_slice(),
+                )?;
+                
+                drop(read_txn);
+                
+                // Process outputs in chunks to manage memory usage
+                for chunk in outputs.chunks(OUTPUT_CHUNK_SIZE) {
+                    for (_, output_data) in chunk {
+                        // Generate PayRef and add to index
+                        let output_hash = &output_data.hash;
+                        let payref = Self::generate_payment_reference_for_output(&block_hash, output_hash);
+                        
+                        // Insert into PayRef index 
+                        lmdb_replace(
+                            &write_txn,
+                            &db.payref_to_output_index,
+                            &payref,
+                            output_hash,
+                            None,
+                        )?;
+                        
+                        *rebuild_count += 1;
+                    }
+                }
+            }
+        }
+        
+        // Save migration checkpoint
+        let migration_state = PayRefMigrationState {
+            version: 2,
+            last_processed_height: batch_end,
+            total_outputs_processed: *rebuild_count,
+            migration_phase: "payref_index_rebuild".to_string(),
+            start_timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        };
+        
+        lmdb_replace(
+            &write_txn,
+            &db.migration_state,
+            migration_key,
+            &migration_state,
+            "migration_state",
+        )?;
+        
+        // Commit the batch
+        write_txn.commit()?;
+        
+        Ok(())
+    }
+
     fn insert_kernel(
         &self,
         txn: &WriteTransaction<'_>,
@@ -3154,76 +3231,39 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             
             while batch_start <= chain_height {
                 let batch_end = std::cmp::min(batch_start + MIGRATION_BATCH_SIZE - 1, chain_height);
-                let write_txn = db.write_transaction()?;
                 
-                info!(target: LOG_TARGET, "Processing PayRef rebuild batch: blocks {} to {}", batch_start, batch_end);
+                // Wrap batch processing in retry logic for transient errors
+                let mut retry_count = 0;
+                const MAX_RETRIES: u32 = 3;
                 
-                for height in batch_start..=batch_end {
-                    let read_txn = db.read_transaction()?;
-                    
-                    // Get block header to get block hash
-                    let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
-                    if let Some(header) = header {
-                        let block_hash = header.hash();
-                        
-                        // Get all outputs for this block
-                        let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
-                            &read_txn,
-                            &db.utxos_db,
-                            block_hash.as_slice(),
-                        )?;
-                        
-                        drop(read_txn);
-                        
-                        // Process outputs in chunks to manage memory usage
-                        for chunk in outputs.chunks(OUTPUT_CHUNK_SIZE) {
-                            for (_, output_data) in chunk {
-                                // Generate PayRef and add to index
-                                let output_hash = &output_data.hash;
-                                let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
-                                
-                                // Insert into PayRef index 
-                                lmdb_replace(
-                                    &write_txn,
-                                    &db.payref_to_output_index,
-                                    &payref,
-                                    output_hash,
-                                    None,
-                                )?;
-                                
-                                rebuild_count += 1;
+                let batch_result = loop {
+                    match Self::process_payref_migration_batch(&db, batch_start, batch_end, &mut rebuild_count, migration_key) {
+                        Ok(()) => break Ok(()),
+                        Err(e) => {
+                            retry_count += 1;
+                            if retry_count <= MAX_RETRIES {
+                                warn!(target: LOG_TARGET, "PayRef migration batch failed (attempt {}), retrying: {}", retry_count, e);
+                                std::thread::sleep(std::time::Duration::from_secs(1));
+                            } else {
+                                error!(target: LOG_TARGET, "PayRef migration batch failed after {} attempts: {}", MAX_RETRIES, e);
+                                break Err(e);
                             }
                         }
                     }
-                }
-                
-                // Save migration checkpoint
-                let migration_state = PayRefMigrationState {
-                    version: 2,
-                    last_processed_height: batch_end,
-                    total_outputs_processed: rebuild_count,
-                    migration_phase: "payref_index_rebuild".to_string(),
-                    start_timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
                 };
                 
-                lmdb_replace(
-                    &write_txn,
-                    &db.migration_state,
-                    migration_key,
-                    &migration_state,
-                    "migration_state",
-                )?;
-                
-                // Commit the batch
-                write_txn.commit()?;
-                
-                info!(target: LOG_TARGET, "PayRef rebuild batch completed: processed blocks {} to {}, total outputs: {}", 
-                      batch_start, batch_end, rebuild_count);
-                
-                batch_start = batch_end + 1;
+                // Handle batch processing result
+                match batch_result {
+                    Ok(()) => {
+                        info!(target: LOG_TARGET, "PayRef rebuild batch completed: processed blocks {} to {}, total outputs: {}", 
+                              batch_start, batch_end, rebuild_count);
+                        batch_start = batch_end + 1;
+                    },
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "PayRef migration failed at batch {}-{}: {}", batch_start, batch_end, e);
+                        return Err(e);
+                    }
+                }
             }
             
             // Clean up migration state on successful completion
