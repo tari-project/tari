@@ -818,12 +818,12 @@ impl AppStateInner {
                 
                 let (payref_hex_opt, status_text) = match status {
                     PayRefStatus::Available(payref, confirmations) => {
-                        let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
-                        (Some(payref_hex), format!("Available ({} confirmations)", confirmations))
+                    let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
+                    (Some(payref_hex), format!("Available ({} confs)", confirmations))
                     },
                     PayRefStatus::Pending(current_confs, blocks_remaining) => {
-                        (None, format!("Pending {}/{} confirmations ({} blocks remaining)", 
-                                     current_confs, current_confs + blocks_remaining, blocks_remaining))
+                    (None, format!("Pending {}/{} confs ({} blocks remaining)", 
+                    current_confs, current_confs + blocks_remaining, blocks_remaining))
                     },
                     PayRefStatus::NotMined => {
                         (None, "Not mined".to_string())

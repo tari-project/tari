@@ -523,10 +523,10 @@ impl TransactionsTab {
 
             let payment_ref_content = {
                 let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
-                    (Some(hex), Some(status)) => format!("{}\nStatus: {}", hex, status),
-                    (None, Some(status)) => format!("PayRef: N/A\nStatus: {}", status),
-                    (Some(hex), None) => hex.clone(),
-                    (None, None) => "N/A".to_string(),
+                (Some(hex), Some(status)) => format!("{} Status: {}", hex, status),
+                (None, Some(status)) => format!("PayRef: N/A Status: {}", status),
+                (Some(hex), None) => hex.clone(),
+                (None, None) => "N/A".to_string(),
                 };
                 
                 // Color code based on status

@@ -4216,15 +4216,15 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet,
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `*mut TariByteVector` - returns a byte vector containing all PayRefs (32 bytes each) for the transaction,
+ * `*mut ByteVector` - returns a byte vector containing all PayRefs (32 bytes each) for the transaction,
  * note that ptr::null_mut() is returned if wallet is null or an error occurs
  *
  * # Safety
- * The ```byte_vector_destroy``` method must be called when finished with a TariByteVector to prevent a memory leak
+ * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to prevent a memory leak
  */
-TariByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
-                                               unsigned long long transaction_id,
-                                               int *error_out);
+struct ByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
+                                                  unsigned long long transaction_id,
+                                                  int *error_out);
 
 /**
  * Get payment details for a specific PayRef (payment reference)
