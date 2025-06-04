@@ -33,7 +33,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_utilities::hex;
+use tari_utilities::hex::{self, Hex};
 
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
@@ -2754,7 +2754,7 @@ pub async fn command_runner(
                                     println!("\nPayRefs for this transaction:");
                                     println!("{}", "=".repeat(80));
                                     for (i, payref) in payrefs.iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, hex::encode(payref));
+                                        println!("{}. PayRef: {}", i + 1, payref.to_hex());
                                     }
                                     println!("\nTotal PayRefs: {}", payrefs.len());
                                 }
@@ -2839,9 +2839,10 @@ pub async fn command_runner(
                                 println!("   PayRefs ({}):", tx_with_refs.payment_references.len());
                                 for (j, payref) in tx_with_refs.payment_references.iter().enumerate() {
                                     if args.show_private_info {
-                                        println!("     {}. {}", j + 1, hex::encode(payref));
+                                        println!("     {}. {}", j + 1, payref.to_hex());
                                     } else {
-                                        println!("     {}. {}...{}", j + 1, &hex::encode(payref)[..8], &hex::encode(payref)[56..]);
+                                        let hex_payref = payref.to_hex();
+                                        println!("     {}. {}...{}", j + 1, &hex_payref[..8], &hex_payref[56..]);
                                     }
                                 }
                                 println!("   Recipients: {}", tx_with_refs.recipient_count);
