@@ -2450,6 +2450,8 @@ mod test {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2470,6 +2472,8 @@ mod test {
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+                sent_output_hashes: vec![],
+                change_output_hashes: vec![],
             },
             &cipher,
         )
