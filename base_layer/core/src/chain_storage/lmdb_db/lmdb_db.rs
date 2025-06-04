@@ -3244,6 +3244,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             while batch_start <= chain_height {
                 let batch_end = std::cmp::min(batch_start + MIGRATION_BATCH_SIZE - 1, chain_height);
                 
+                // Check available disk space before processing large batches
+                let (_, _, size_left_bytes) = LMDBStore::get_stats(&db.env)?;
+                if size_left_bytes < 100 * BYTES_PER_MB {
+                    warn!(target: LOG_TARGET, "Low disk space detected during PayRef migration: {} MB remaining", size_left_bytes / BYTES_PER_MB);
+                }
+                
                 // Wrap batch processing in retry logic for transient errors
                 let mut retry_count = 0;
                 const MAX_RETRIES: u32 = 3;
@@ -3251,15 +3257,21 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 let batch_result = loop {
                     match Self::process_payref_migration_batch(&db, batch_start, batch_end, &mut rebuild_count, migration_key) {
                         Ok(()) => break Ok(()),
-                        Err(e) => {
-                            retry_count += 1;
-                            if retry_count <= MAX_RETRIES {
+                        Err(e) if retry_count < MAX_RETRIES => {
+                            // Only retry for specific error types
+                            if matches!(e, ChainStorageError::DbResizeRequired(_) | ChainStorageError::AccessError(_)) {
+                                retry_count += 1;
                                 warn!(target: LOG_TARGET, "PayRef migration batch failed (attempt {}), retrying: {}", retry_count, e);
                                 std::thread::sleep(std::time::Duration::from_secs(1));
                             } else {
-                                error!(target: LOG_TARGET, "PayRef migration batch failed after {} attempts: {}", MAX_RETRIES, e);
+                                // Don't retry for logical errors
+                                error!(target: LOG_TARGET, "PayRef migration batch failed with non-retryable error: {}", e);
                                 break Err(e);
                             }
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "PayRef migration batch failed after {} attempts: {}", MAX_RETRIES, e);
+                            break Err(e);
                         }
                     }
                 };
