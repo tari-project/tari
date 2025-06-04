@@ -91,9 +91,9 @@ impl DbWalletOutput {
     }
 
     /// Generate a Payment Reference (PayRef) for this output if it has been mined
-    /// PayRef = Blake2b_256(block_hash || commitment)
+    /// PayRef = Blake2b_256(block_hash || output_hash)
     pub fn generate_payment_reference(&self) -> Option<PaymentReference> {
-        self.mined_in_block.as_ref().map(|block_hash| generate_payment_reference(block_hash, &self.commitment))
+        self.mined_in_block.as_ref().map(|block_hash| generate_payment_reference(block_hash, &self.hash))
     }
 
     /// Get the PayRef status based on confirmation requirements
