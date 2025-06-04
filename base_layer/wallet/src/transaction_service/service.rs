@@ -37,6 +37,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{
@@ -3930,20 +3931,24 @@ where
         // Verify transaction is mined and has sufficient confirmations
         self.verify_transaction_mined_and_confirmed(&completed_transaction)?;
         
+        // Get the block hash where the transaction was mined
+        let block_hash = completed_transaction.mined_in_block
+            .ok_or_else(|| TransactionServiceError::ValidationError(
+                "Transaction must be mined to generate PayRefs".to_string()
+            ))?;
+        
         let mut payrefs = Vec::new();
         
-        // Add sent output hashes as PayRefs
-        for hash in &completed_transaction.sent_output_hashes {
-            let bytes: [u8; 32] = hash.as_slice().try_into()
-                .map_err(|_| TransactionServiceError::ConversionError("HashOutput conversion to [u8; 32] failed".to_string()))?;
-            payrefs.push(bytes);
+        // Generate proper PayRefs for sent output hashes using Blake2b_256(block_hash || output_hash)
+        for output_hash in &completed_transaction.sent_output_hashes {
+            let payref = generate_payment_reference(&block_hash.into(), output_hash);
+            payrefs.push(payref);
         }
         
-        // Add received output hashes as PayRefs (for incoming transactions)
-        for hash in &completed_transaction.received_output_hashes {
-            let bytes: [u8; 32] = hash.as_slice().try_into()
-                .map_err(|_| TransactionServiceError::ConversionError("HashOutput conversion to [u8; 32] failed".to_string()))?;
-            payrefs.push(bytes);
+        // Generate proper PayRefs for received output hashes (for incoming transactions)
+        for output_hash in &completed_transaction.received_output_hashes {
+            let payref = generate_payment_reference(&block_hash.into(), output_hash);
+            payrefs.push(payref);
         }
         
         Ok(payrefs)
@@ -3988,40 +3993,51 @@ where
         Ok(())
     }
 
-    /// Get payment details by PayRef (output hash)
+    /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: [u8; 32]) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         let transactions = self.db.get_completed_transactions(None, None, None)?;
-        let payref_hash = HashOutput::from(payref);
         
         for transaction in transactions {
+            // Skip transactions that are not mined (no block hash available)
+            let block_hash = match transaction.mined_in_block {
+                Some(hash) => hash,
+                None => continue,
+            };
+            
             let payment_id_bytes = transaction.payment_id.user_data_as_bytes();
             
-            // Check if PayRef matches any sent output hash
-            if transaction.sent_output_hashes.contains(&payref_hash) {
-                return Ok(Some(PaymentDetails {
-                    tx_id: transaction.tx_id,
-                    payment_reference: payref,
-                    amount: transaction.amount,
-                    direction: transaction.direction,
-                    block_height: transaction.mined_height.unwrap_or(0),
-                    confirmations: transaction.confirmations.unwrap_or(0),
-                    timestamp: Some(transaction.timestamp),
-                    payment_id: Some(payment_id_bytes),
-                }));
+            // Check if PayRef matches any sent output by generating proper PayRef
+            for output_hash in &transaction.sent_output_hashes {
+                let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
+                if generated_payref == payref {
+                    return Ok(Some(PaymentDetails {
+                        tx_id: transaction.tx_id,
+                        payment_reference: payref,
+                        amount: transaction.amount,
+                        direction: transaction.direction,
+                        block_height: transaction.mined_height.unwrap_or(0),
+                        confirmations: transaction.confirmations.unwrap_or(0),
+                        timestamp: Some(transaction.timestamp),
+                        payment_id: Some(payment_id_bytes),
+                    }));
+                }
             }
             
-            // Check if PayRef matches any received output hash
-            if transaction.received_output_hashes.contains(&payref_hash) {
-                return Ok(Some(PaymentDetails {
-                    tx_id: transaction.tx_id,
-                    payment_reference: payref,
-                    amount: transaction.amount,
-                    direction: transaction.direction,
-                    block_height: transaction.mined_height.unwrap_or(0),
-                    confirmations: transaction.confirmations.unwrap_or(0),
-                    timestamp: Some(transaction.timestamp),
-                    payment_id: Some(payment_id_bytes),
-                }));
+            // Check if PayRef matches any received output by generating proper PayRef
+            for output_hash in &transaction.received_output_hashes {
+                let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
+                if generated_payref == payref {
+                    return Ok(Some(PaymentDetails {
+                        tx_id: transaction.tx_id,
+                        payment_reference: payref,
+                        amount: transaction.amount,
+                        direction: transaction.direction,
+                        block_height: transaction.mined_height.unwrap_or(0),
+                        confirmations: transaction.confirmations.unwrap_or(0),
+                        timestamp: Some(transaction.timestamp),
+                        payment_id: Some(payment_id_bytes),
+                    }));
+                }
             }
         }
         
@@ -4063,14 +4079,24 @@ where
         // Convert to TransactionWithPayRefs
         let mut result = Vec::new();
         for tx in transactions.into_iter() {
+            // Skip transactions that are not mined (no block hash available for PayRef generation)
+            let block_hash = match tx.mined_in_block {
+                Some(hash) => hash,
+                None => continue,
+            };
+            
             let mut payment_references = Vec::new();
-            for hash in &tx.sent_output_hashes {
-                let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
-                payment_references.push(bytes);
+            
+            // Generate proper PayRefs for sent output hashes
+            for output_hash in &tx.sent_output_hashes {
+                let payref = generate_payment_reference(&block_hash.into(), output_hash);
+                payment_references.push(payref);
             }
-            for hash in &tx.received_output_hashes {
-                let bytes: [u8; 32] = hash.as_slice().try_into().expect("HashOutput is 32 bytes");
-                payment_references.push(bytes);
+            
+            // Generate proper PayRefs for received output hashes
+            for output_hash in &tx.received_output_hashes {
+                let payref = generate_payment_reference(&block_hash.into(), output_hash);
+                payment_references.push(payref);
             }
             
             // Calculate recipient count based on sent outputs (excluding change)
