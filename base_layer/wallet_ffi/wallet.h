@@ -243,6 +243,26 @@ typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
 
+/**
+ * Individual output with its PayRef
+ */
+struct TariOutputWithPayRef {
+  unsigned char output_hash[32];
+  unsigned char payment_reference[32];
+  int has_payment_reference;
+  unsigned int output_type;
+  unsigned long long amount;
+  unsigned int status;
+};
+
+/**
+ * Collection of outputs with PayRefs
+ */
+struct TariOutputsWithPayRefs {
+  struct TariOutputWithPayRef *outputs;
+  unsigned int length;
+};
+
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
@@ -4245,6 +4265,64 @@ struct ByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
 TariCompletedTransaction *wallet_get_payment_by_reference(struct TariWallet *wallet,
                                                           const uint8_t *payref,
                                                           int *error_out);
+
+/**
+ * Get PayRefs for a specific output hash
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `output_hash` - The 32-byte output hash to look up
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur
+ *
+ * ## Returns
+ * `*mut TariOutputWithPayRef` - returns the output with its PayRef, null if not found
+ *
+ * # Safety
+ * The caller must call output_with_payref_destroy when finished with the result
+ */
+struct TariOutputWithPayRef *wallet_get_payref_for_output_hash(struct TariWallet *wallet,
+                                                               const uint8_t *output_hash,
+                                                               int *error_out);
+
+/**
+ * Get per-output PayRefs for a specific transaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `transaction_id` - The transaction ID to get outputs for
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur
+ *
+ * ## Returns
+ * `*mut TariOutputsWithPayRefs` - Collection of outputs with their PayRefs
+ *
+ * # Safety
+ * The caller must call outputs_with_payrefs_destroy when finished with the result
+ */
+struct TariOutputsWithPayRefs *wallet_get_output_payrefs_for_transaction(struct TariWallet *wallet,
+                                                                         unsigned long long transaction_id,
+                                                                         int *error_out);
+
+/**
+ * Destroy a TariOutputWithPayRef
+ */
+void output_with_payref_destroy(struct TariOutputWithPayRef *ptr);
+
+/**
+ * Destroy a TariOutputsWithPayRefs
+ */
+void outputs_with_payrefs_destroy(struct TariOutputsWithPayRefs *ptr);
+
+/**
+ * Get length of TariOutputsWithPayRefs
+ */
+unsigned int outputs_with_payrefs_get_length(struct TariOutputsWithPayRefs *ptr);
+
+/**
+ * Get output at index from TariOutputsWithPayRefs
+ */
+struct TariOutputWithPayRef *outputs_with_payrefs_get_at(struct TariOutputsWithPayRefs *ptr,
+                                                         unsigned int index,
+                                                         int *error_out);
 
 /**
  * Get all transactions that have PayRefs with optional filtering

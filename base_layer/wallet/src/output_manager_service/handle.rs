@@ -376,7 +376,7 @@ pub enum OutputManagerResponse {
     /// Response for batch commitment queries
     OutputsByCommitments(Vec<DbWalletOutput>),
     /// Response for output by hash query
-    OutputByHash(Option<DbWalletOutput>),
+    OutputByHash(Box<Option<DbWalletOutput>>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1160,7 +1160,7 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::GetOutputByHash(hash))
             .await??
         {
-            OutputManagerResponse::OutputByHash(output) => Ok(output),
+            OutputManagerResponse::OutputByHash(output) => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

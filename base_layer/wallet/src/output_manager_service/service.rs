@@ -579,7 +579,7 @@ where
             },
             OutputManagerRequest::GetOutputByHash(hash) => {
                 let output = self.get_output_by_hash(hash)?;
-                Ok(OutputManagerResponse::OutputByHash(output))
+                Ok(OutputManagerResponse::OutputByHash(Box::new(output)))
             },
         }
     }
