@@ -4177,6 +4177,11 @@ where
         let tx = stp
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        if let Err(e) = check_transaction_size(&tx, tx_id) {
+            self.cancel_transaction(tx_id, TxCancellationReason::Oversized).await;
+            return Err(e.into());
+        }
+
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
