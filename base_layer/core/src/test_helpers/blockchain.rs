@@ -314,7 +314,7 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    fn fetch_output_by_payref(&self, payref: &[u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_output_by_payref(payref)
     }
 
