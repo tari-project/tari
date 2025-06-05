@@ -123,7 +123,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
-        BlockHash, ComAndPubSignature, CompressedCommitment, CompressedPublicKey, HashOutput, RangeProof,
+        BlockHash, ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, RangeProof,
         SignatureWithDomain, UncompressedPublicKey,
     },
     wallet_types::WalletType,
@@ -9607,19 +9607,19 @@ pub unsafe extern "C" fn wallet_get_payment_by_reference(
         return ptr::null_mut();
     }
 
-    // Convert the 32-byte pointer to a [u8; 32]
-    let payref_array: [u8; 32] = {
+    // Convert the 32-byte pointer to a FixedHash
+    let payref_fixedhash = {
         let slice = std::slice::from_raw_parts(payref, 32);
         let mut array = [0u8; 32];
         array.copy_from_slice(slice);
-        array
+        FixedHash::from(array)
     };
 
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .transaction_service
-            .get_payment_by_reference(payref_array.into()),
+            .get_payment_by_reference(payref_fixedhash),
     ) {
         Ok(Some(payment_details)) => {
             // For FFI compatibility, we need to return the transaction
