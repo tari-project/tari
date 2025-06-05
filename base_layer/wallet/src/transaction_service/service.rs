@@ -118,6 +118,9 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{
             FeePerGramStatsResponse,
+            OutputStatus,
+            OutputType,
+            OutputWithPayRef,
             PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
@@ -4037,6 +4040,52 @@ where
     }
 
     /// Get transactions that have PayRefs with filtering options
+    fn generate_outputs_with_payrefs(
+        &self,
+        tx: &CompletedTransaction,
+        block_hash: &FixedHash,
+    ) -> Result<Vec<OutputWithPayRef>, TransactionServiceError> {
+        let mut outputs = Vec::new();
+        
+        // Process sent outputs
+        for output_hash in &tx.sent_output_hashes {
+            let payref = generate_payment_reference(block_hash, output_hash);
+            outputs.push(OutputWithPayRef {
+                output_hash: *output_hash,
+                payment_reference: Some(payref),
+                output_type: OutputType::Sent,
+                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
+                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+            });
+        }
+        
+        // Process received outputs
+        for output_hash in &tx.received_output_hashes {
+            let payref = generate_payment_reference(block_hash, output_hash);
+            outputs.push(OutputWithPayRef {
+                output_hash: *output_hash,
+                payment_reference: Some(payref),
+                output_type: OutputType::Received,
+                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
+                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+            });
+        }
+        
+        // Process change outputs
+        for output_hash in &tx.change_output_hashes {
+            let payref = generate_payment_reference(block_hash, output_hash);
+            outputs.push(OutputWithPayRef {
+                output_hash: *output_hash,
+                payment_reference: Some(payref),
+                output_type: OutputType::Change,
+                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
+                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+            });
+        }
+        
+        Ok(outputs)
+    }
+
     fn get_transactions_with_payrefs(
         &self,
         limit: Option<u64>,
@@ -4077,26 +4126,14 @@ where
                 None => continue,
             };
             
-            let mut payment_references = Vec::new();
-            
-            // Generate proper PayRefs for sent output hashes
-            for output_hash in &tx.sent_output_hashes {
-                let payref = generate_payment_reference(&block_hash.into(), output_hash);
-                payment_references.push(payref);
-            }
-            
-            // Generate proper PayRefs for received output hashes
-            for output_hash in &tx.received_output_hashes {
-                let payref = generate_payment_reference(&block_hash.into(), output_hash);
-                payment_references.push(payref);
-            }
+            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash.into())?;
             
             // Calculate recipient count based on sent outputs (excluding change)
             let recipient_count = tx.sent_output_hashes.len();
             
             result.push(TransactionWithPayRefs {
                 transaction: tx,
-                payment_references,
+                outputs_with_payrefs,
                 recipient_count,
             });
         }
