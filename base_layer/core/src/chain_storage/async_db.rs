@@ -437,9 +437,7 @@ mod tests {
 }
 
 impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
-    /// Fetch output information by PayRef
     make_async_fn!(fetch_output_by_payref(payref: &[u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
 
-    /// Check if an output is spent and return spent information
     make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
 }
