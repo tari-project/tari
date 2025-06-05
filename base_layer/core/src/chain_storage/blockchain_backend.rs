@@ -3,7 +3,7 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 
 use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
@@ -111,7 +111,7 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetch output by PayRef (Payment Reference)
     /// Returns the OutputMinedInfo if found, None if PayRef doesn't exist
-    fn fetch_output_by_payref(&self, payref: &[u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
+    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
     /// Check if an output is spent and return spent information
     fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
