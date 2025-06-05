@@ -1196,13 +1196,19 @@ impl LMDBDatabase {
             
             if should_cleanup_payref {
                 let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
-                // Delete the PayRef index entry (ignore errors in case it doesn't exist)
-                lmdb_delete(
+                // Delete the PayRef index entry with proper error handling
+                match lmdb_delete(
                     txn,
                     &self.payref_to_output_index,
                     &payref_bytes,
                     "payref_to_output_index",
-                ).ok(); // Use .ok() to ignore errors - PayRef may not exist
+                ) {
+                    Ok(()) => debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex()),
+                    Err(ChainStorageError::ValueNotFound { .. }) => {
+                        // Expected case for outputs that didn't have PayRefs
+                    },
+                    Err(e) => warn!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e),
+                }
             }
             
             // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
