@@ -232,4 +232,3 @@ pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
     }
     seed_words
 }
-

@@ -49,6 +49,8 @@ pub struct WalletProcess {
     pub name: String,
     pub port: u64,
     pub temp_dir_path: PathBuf,
+    pub base_node_name: Option<String>,
+    pub peer_seeds: Vec<String>,
 }
 
 impl Drop for WalletProcess {
@@ -99,7 +101,7 @@ pub async fn spawn_wallet(
             .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
-    let base_node = base_node_name.map(|name| {
+    let base_node = base_node_name.clone().map(|name| {
         let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
         let port = world.base_nodes.get(&name).unwrap().port;
         let set_base_node_request = SetBaseNodeRequest {
@@ -192,7 +194,9 @@ pub async fn spawn_wallet(
         port,
         grpc_port,
         temp_dir_path: temp_dir,
+        base_node_name,
         kill_signal: shutdown,
+        peer_seeds,
     });
 
     tokio::time::sleep(Duration::from_secs(5)).await;

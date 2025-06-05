@@ -72,7 +72,15 @@ use tari_integration_tests::{
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
-use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
+use crate::steps::{
+    cucumber_steps_log,
+    mining_steps::create_miner,
+    CONFIRMATION_PERIOD,
+    HALF_SECOND,
+    TWO_MINUTES_WITH_HALF_SECOND_SLEEP,
+};
+
+pub const LOG_TARGET: &str = "cucumber::wallet_steps";
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
 async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
@@ -719,8 +727,12 @@ async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, 
     }
 }
 
-#[when(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
-#[then(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
+#[when(
+    expr = "I send {int} uT one-sided without waiting for broadcast from wallet {word} to wallet {word} at fee {int}"
+)]
+#[then(
+    expr = "I send {int} uT one-sided without waiting for broadcast from wallet {word} to wallet {word} at fee {int}"
+)]
 async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     world: &mut TariWorld,
     amount: u64,
@@ -737,7 +749,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
         address: dest_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
-        payment_type: 0, // normal mimblewimble payment type
+        payment_type: 1, // one sided transaction
         raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
@@ -785,7 +797,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     );
 }
 
-#[then(expr = "I send a one-sided transaction of {int} uT from {word} to {word} at fee {int}")]
+#[then(expr = "I send a one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     world: &mut TariWorld,
     amount: u64,
@@ -888,9 +900,9 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     );
 }
 
-#[then(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
-#[when(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
-async fn send_amount_from_wallet_to_wallet_at_fee(
+#[then(expr = "I send an interactive transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(expr = "I send an interactive transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+async fn send_interactive_amount_from_wallet_to_wallet_at_fee(
     world: &mut TariWorld,
     amount: u64,
     sender: String,
@@ -900,6 +912,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
     let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+    cucumber_steps_log(" - here 1");
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
@@ -922,12 +935,16 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
     };
+    cucumber_steps_log(" - here 2");
     let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+    cucumber_steps_log(" - here 3");
     let tx_res = tx_res.results;
+    cucumber_steps_log(format!("Transaction results: {:?}", tx_res));
 
     assert_eq!(tx_res.len(), 1usize);
 
     let tx_res = tx_res.first().unwrap();
+    cucumber_steps_log(format!("Transaction 1 result: {:?}", tx_res));
     assert!(
         tx_res.is_success,
         "Transaction with amount {} from wallet {} to {} at fee {} failed",
@@ -1333,8 +1350,11 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
     }
 }
 
-#[when(expr = "I send {int} transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram {int}")]
-async fn send_num_transactions_to_wallets_at_fee(
+#[when(
+    expr = "I send {int} one-sided transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram \
+            {int}"
+)]
+async fn send_num_one_sided_transactions_to_wallets_at_fee(
     world: &mut TariWorld,
     num_txs: u64,
     amount: u64,
@@ -1352,7 +1372,7 @@ async fn send_num_transactions_to_wallets_at_fee(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            payment_type: 0, // standard mimblewimble transaction
+            payment_type: 1, // one sided transaction
             raw_payment_id: PaymentId::open_from_string(
                 &format!(
                     "transfer amount {} from {} to {}",
@@ -1488,7 +1508,7 @@ async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wa
     );
 }
 
-#[when(expr = "I transfer {int}T from {word} to {word}")]
+#[when(expr = "I transfer {int}T one-sided from {word} to {word}")]
 async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
@@ -1498,7 +1518,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
         address: receiver_wallet_address.clone(),
         amount: amount * 1_000_000_u64, // 1T = 1_000_000uT
         fee_per_gram: 10,               // as in the js cucumber tests
-        payment_type: 0,                // normal mimblewimble payment type
+        payment_type: 1,                // one sided transaction
         raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
@@ -1679,9 +1699,9 @@ async fn wallet_with_tari_connected_to_base_node(
     panic!("Wallet {} failed to have at least {}T", wallet, amount);
 }
 
-#[when(expr = "I transfer {int} uT from {word} to {word} and {word} at fee {int}")]
+#[when(expr = "I transfer {int} uT one-sided from {word} to {word} and {word} at fee {int}")]
 #[allow(clippy::too_many_lines)]
-async fn transfer_from_wallet_to_two_recipients_at_fee(
+async fn transfer_one_sided_from_wallet_to_two_recipients_at_fee(
     world: &mut TariWorld,
     amount: u64,
     sender: String,
@@ -1698,7 +1718,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         address: receiver1_address.clone(),
         amount,
         fee_per_gram,
-        payment_type: 0, // normal mimblewimble payment type
+        payment_type: 1, // one sided transaction
         raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
@@ -1716,7 +1736,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
         address: receiver2_address.clone(),
         amount,
         fee_per_gram,
-        payment_type: 0, // normal mimblewimble payment type
+        payment_type: 1, // one sided transaction
         raw_payment_id: PaymentId::open_from_string(
             &format!(
                 "transfer amount {} from {} to {}",
@@ -2186,7 +2206,7 @@ async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet:
     );
 }
 
-#[then(expr = "I send a one-sided stealth transaction of {int} uT from {word} to {word} at fee {int}")]
+#[then(expr = "I send a one-sided stealth transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_stealth_transaction(
     world: &mut TariWorld,
     amount: u64,
@@ -2722,7 +2742,7 @@ async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: Str
     );
 }
 
-#[when(expr = "I multi-send {int} transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(expr = "I multi-send {int} one-sided transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn multi_send_txs_from_wallet(
     world: &mut TariWorld,
     num_txs: u64,
@@ -2756,7 +2776,7 @@ async fn multi_send_txs_from_wallet(
             address: receiver_wallet_address.clone(),
             amount,
             fee_per_gram,
-            payment_type: 0, // mimblewimble transaction
+            payment_type: 1, // one sided transaction
             raw_payment_id: PaymentId::open_from_string(
                 &format!(
                     "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
@@ -2965,4 +2985,20 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
          (TRANSACTION_STATUS_UNCONFIRMED), or 6 (TRANSACTION_STATUS_CONFIRMED)",
         last_status
     )
+}
+
+#[then(expr = "wallet {word} balance is {word}")]
+async fn wallet_has_balance(world: &mut TariWorld, wallet_name: String, balance_key: String) {
+    let mut wallet_client = world.get_wallet_client(&wallet_name).await.unwrap();
+    let wallet_balance = wallet_client
+        .get_balance(GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+    let balance = world.balance.get(&balance_key).unwrap();
+    assert_eq!(
+        balance, &wallet_balance,
+        "Wallet {} doesn't have the correct balance: expected {:?} current {:?}",
+        wallet_name, balance, wallet_balance
+    );
 }

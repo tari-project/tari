@@ -7495,6 +7495,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_key_manager",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",

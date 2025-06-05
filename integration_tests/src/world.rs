@@ -88,6 +88,7 @@ pub struct TariWorld {
     pub ffi_wallets: IndexMap<String, WalletFFI>,
     pub wallets: IndexMap<String, WalletProcess>,
     pub balance: IndexMap<String, GetBalanceResponse>,
+    pub view_and_spend_keys: IndexMap<String, PathBuf>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
@@ -131,6 +132,7 @@ impl Default for TariWorld {
             ffi_wallets: Default::default(),
             wallets: Default::default(),
             balance: Default::default(),
+            view_and_spend_keys: Default::default(),
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
             wallet_addresses: Default::default(),

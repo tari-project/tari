@@ -830,7 +830,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_any_transaction(tx_id)
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?
-                        .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
+                        .ok_or_else(|| {
+                            error!(target: LOG_TARGET, "Transaction {} not found", tx_id);
+                            Status::not_found(format!("Transaction {} not found", tx_id))
+                        })?;
                     let final_tx = convert_wallet_transaction_into_transaction_info(
                         wallet_tx,
                         &wallet_address,

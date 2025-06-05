@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{fs::OpenOptions, io::Write, path::PathBuf, time::Duration};
 
 use cucumber::{then, when};
 use tari_integration_tests::TariWorld;
@@ -53,4 +53,10 @@ async fn receive_an_error(world: &mut TariWorld, error: String) {
 
     // assert!(world.errors.len() > 1);
     // assert!(world.errors.pop_front().unwrap().contains(&error))
+}
+
+pub fn cucumber_steps_log<S: AsRef<str>>(log_message: S) {
+    let log_file = PathBuf::from("./log/steps.log");
+    let mut file = OpenOptions::new().create(true).append(true).open(log_file).unwrap();
+    writeln!(file, "{}", log_message.as_ref()).unwrap();
 }

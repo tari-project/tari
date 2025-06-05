@@ -17,6 +17,7 @@ tari_common_sqlite = { path = "../common_sqlite" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
+tari_key_manager = { path = "../base_layer/key_manager" }
 minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = ["grpc"] }
 tari_core = { path = "../base_layer/core" }
 minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }

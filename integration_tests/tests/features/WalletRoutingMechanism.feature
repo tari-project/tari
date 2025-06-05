@@ -52,7 +52,7 @@ Feature: Wallet Routing Mechanism
       When I have mining node MINE connected to base node BASE and wallet SENDER
       #   And mining node MINE mines 5 blocks
       #   Then I wait for wallet SENDER to have at least 1000000 uT
-      #   And I send 1000000 uT from wallet SENDER to wallet RECEIVER at fee 100
+      #   And I send a one-sided transaction of 1000000 uT from wallet SENDER to wallet RECEIVER at fee 100
   #
   #
   # 10 minutes of waiting...
