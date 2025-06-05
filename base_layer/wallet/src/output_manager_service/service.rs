@@ -3614,15 +3614,30 @@ where
         &self,
         payref: [u8; 32],
     ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
-        // Get all unspent outputs
-        let outputs = self.resources.db.fetch_all_unspent_outputs()?;
+        use crate::output_manager_service::storage::database::OutputBackendQuery;
+        use crate::output_manager_service::storage::OutputStatus;
         
         // Get current chain tip height and confirmation requirements for calculation
         let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
         
+        // Query only outputs that could potentially have PayRefs (mined outputs)
+        // This is more efficient than fetching ALL outputs
+        let query = OutputBackendQuery {
+            tip_height: current_tip_height as i64,
+            status: vec![OutputStatus::Unspent, OutputStatus::Spent], // Include both for comprehensive search
+            commitments: vec![], // No commitment filter needed
+            pagination: None,
+            value_min: None,
+            value_max: None,
+            sorting: vec![],
+        };
+        
+        let outputs = self.resources.db.fetch_outputs_by_query(query)?;
+        
         // Check each output to see if it matches the PayRef
+        // Only process outputs that have mined_in_block (required for PayRef calculation)
         for output in outputs {
-            if output.matches_payment_reference(&payref) {
+            if output.mined_in_block.is_some() && output.matches_payment_reference(&payref) {
                 if let Some(payment_details) = output.get_payment_details(current_tip_height, required_confirmations) {
                     return Ok(Some(payment_details));
                 }
