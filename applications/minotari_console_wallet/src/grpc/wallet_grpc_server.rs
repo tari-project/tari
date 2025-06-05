@@ -2046,7 +2046,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 tx_id: completed_tx.tx_id.as_u64(),
                                 source_address: completed_tx.source_address.to_vec(),
                                 dest_address: completed_tx.destination_address.to_vec(),
-                                status: completed_tx.status as i32,
+                                status: completed_tx.status.clone() as i32,
                                 amount: completed_tx.amount.into(),
                                 is_cancelled: completed_tx.cancelled.is_some(),
                                 direction: TransactionDirection::from(completed_tx.direction.clone()) as i32,

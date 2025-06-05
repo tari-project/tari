@@ -9722,7 +9722,12 @@ pub unsafe extern "C" fn wallet_get_output_payrefs_for_transaction(
                 
                 for output in &tx_with_payrefs.outputs_with_payrefs {
                     let ffi_output = TariOutputWithPayRef {
-                        output_hash: output.output_hash.to_fixed_bytes(),
+                        output_hash: {
+                            let bytes = output.output_hash.as_bytes();
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(bytes);
+                            array
+                        },
                         payment_reference: output.payment_reference.unwrap_or([0u8; 32]),
                         has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
                         output_type: match output.output_type {
