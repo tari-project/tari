@@ -30,7 +30,7 @@ use std::{
     time::Instant,
 };
 
-// Blake2b and digest removed - using shared PayRef utility
+
 
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
@@ -59,7 +59,7 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
-// PayRef generation moved to shared utility crate
+
 
 use super::{
     cursors::KeyPrefixCursor,
