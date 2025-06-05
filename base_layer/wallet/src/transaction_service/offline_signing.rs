@@ -154,7 +154,7 @@ where
 
     /// Creates and locks a one sided transaction for offline signing
     /// After the transaction is signed it will be broadcasted using ``
-    pub async fn lock_one_sided_transaction(
+    pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
         dest_address: TariAddress,
         amount: MicroMinotari,

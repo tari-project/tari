@@ -769,7 +769,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn lock_one_sided_transaction(
+    pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
         destination: TariAddress,
         amount: MicroMinotari,

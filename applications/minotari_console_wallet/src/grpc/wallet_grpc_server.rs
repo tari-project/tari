@@ -733,10 +733,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn lock_one_sided_transaction(
+    async fn prepare_one_sided_transaction_for_signing(
         &self,
-        request: Request<LockOneSidedTransactionRequest>,
-    ) -> Result<Response<LockOneSidedTransactionResponse>, Status> {
+        request: Request<PrepareOneSidedTransactionForSigningRequest>,
+    ) -> Result<Response<PrepareOneSidedTransactionForSigningResponse>, Status> {
         let message = request.into_inner();
 
         let recipient = message.recipient.ok_or(Status::invalid_argument("Missing recipient"))?;
@@ -770,7 +770,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let response = match transaction_service
-            .lock_one_sided_transaction(
+            .prepare_one_sided_transaction_for_signing(
                 address.clone(),
                 recipient.amount.into(),
                 UtxoSelectionCriteria::default(),
@@ -780,7 +780,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             )
             .await
         {
-            Ok(result) => LockOneSidedTransactionResponse {
+            Ok(result) => PrepareOneSidedTransactionForSigningResponse {
                 is_success: false,
                 lock_details: result,
                 failure_message: Default::default(),
@@ -790,9 +790,38 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     target: LOG_TARGET,
                     "Failed to lock transaction for address `{}`: {}", address, err
                 );
-                LockOneSidedTransactionResponse {
+                PrepareOneSidedTransactionForSigningResponse {
                     is_success: false,
                     lock_details: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn broadcast_signed_one_sided_transaction(
+        &self,
+        request: Request<BroadcastSignedOneSidedTransactionRequest>,
+    ) -> Result<Response<BroadcastSignedOneSidedTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service.broadcast_signed_transaction(message.request).await {
+            Ok(result) => BroadcastSignedOneSidedTransactionResponse {
+                is_success: false,
+                transaction_id: result.as_u64(),
+                failure_message: Default::default(),
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to broadcast a signed transaction: {}", err
+                );
+                BroadcastSignedOneSidedTransactionResponse {
+                    is_success: false,
+                    transaction_id: Default::default(),
                     failure_message: err.to_string(),
                 }
             },

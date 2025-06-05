@@ -2843,7 +2843,7 @@ pub async fn command_runner(
                     PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
-                    .lock_one_sided_transaction(
+                    .prepare_one_sided_transaction_for_signing(
                         destination,
                         args.amount,
                         UtxoSelectionCriteria::default(),

@@ -677,7 +677,7 @@ where
                     self.last_seen_tip_height,
                 );
                 offline_signing
-                    .lock_one_sided_transaction(
+                    .prepare_one_sided_transaction_for_signing(
                         destination,
                         amount,
                         selection_criteria,
