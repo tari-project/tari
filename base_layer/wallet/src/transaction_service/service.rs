@@ -1030,7 +1030,7 @@ where
                     .map(TransactionServiceResponse::PaymentDetails)
             },
             TransactionServiceRequest::GetTransactionsWithPayRefs { limit, offset, mined_only } => {
-                self.get_transactions_with_payrefs(limit, offset, mined_only)
+                self.get_transactions_with_payrefs(limit, offset, mined_only).await
                     .map(TransactionServiceResponse::TransactionsWithPayRefs)
             },
         };
@@ -4039,8 +4039,38 @@ where
         Ok(None)
     }
 
+    /// Get output details (amount and status) by hash from output manager
+    async fn get_output_details_by_hash(
+        &self,
+        output_hash: &HashOutput,
+    ) -> Result<Option<(MicroMinotari, OutputStatus)>, TransactionServiceError> {
+        match self.resources.output_manager_service.clone().get_output_by_hash(*output_hash).await {
+            Ok(Some(output)) => {
+                let amount = output.wallet_output.value;
+                let status = match output.status {
+                    // Map from output manager status to our OutputStatus enum
+                    crate::output_manager_service::storage::OutputStatus::Unspent => OutputStatus::Available,
+                    crate::output_manager_service::storage::OutputStatus::Spent => OutputStatus::Spent,
+                    crate::output_manager_service::storage::OutputStatus::EncumberedToBeReceived => OutputStatus::Pending,
+                    crate::output_manager_service::storage::OutputStatus::EncumberedToBeSpent => OutputStatus::Pending,
+                    crate::output_manager_service::storage::OutputStatus::Invalid => OutputStatus::NotMined,
+                    crate::output_manager_service::storage::OutputStatus::CancelledInbound => OutputStatus::NotMined,
+                    crate::output_manager_service::storage::OutputStatus::UnspentMinedUnconfirmed => OutputStatus::Pending,
+                    crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeReceived => OutputStatus::Pending,
+                    crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeSpent => OutputStatus::Pending,
+                    crate::output_manager_service::storage::OutputStatus::SpentMinedUnconfirmed => OutputStatus::Spent,
+                    crate::output_manager_service::storage::OutputStatus::AbandonedCoinbase => OutputStatus::NotMined,
+                    crate::output_manager_service::storage::OutputStatus::NotStored => OutputStatus::NotMined,
+                };
+                Ok(Some((amount, status)))
+            },
+            Ok(None) => Ok(None),
+            Err(e) => Err(TransactionServiceError::OutputManagerError(e)),
+        }
+    }
+
     /// Get transactions that have PayRefs with filtering options
-    fn generate_outputs_with_payrefs(
+    async fn generate_outputs_with_payrefs(
         &self,
         tx: &CompletedTransaction,
         block_hash: &FixedHash,
@@ -4050,43 +4080,52 @@ where
         // Process sent outputs
         for output_hash in &tx.sent_output_hashes {
             let payref = generate_payment_reference(block_hash, output_hash);
+            let (amount, status) = self.get_output_details_by_hash(output_hash).await?
+                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
+            
             outputs.push(OutputWithPayRef {
                 output_hash: *output_hash,
                 payment_reference: Some(payref),
                 output_type: OutputType::Sent,
-                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
-                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+                amount,
+                status,
             });
         }
         
         // Process received outputs
         for output_hash in &tx.received_output_hashes {
             let payref = generate_payment_reference(block_hash, output_hash);
+            let (amount, status) = self.get_output_details_by_hash(output_hash).await?
+                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
+            
             outputs.push(OutputWithPayRef {
                 output_hash: *output_hash,
                 payment_reference: Some(payref),
                 output_type: OutputType::Received,
-                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
-                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+                amount,
+                status,
             });
         }
         
         // Process change outputs
         for output_hash in &tx.change_output_hashes {
             let payref = generate_payment_reference(block_hash, output_hash);
+            let (amount, status) = self.get_output_details_by_hash(output_hash).await?
+                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
+            
             outputs.push(OutputWithPayRef {
                 output_hash: *output_hash,
                 payment_reference: Some(payref),
                 output_type: OutputType::Change,
-                amount: MicroMinotari::from(0), // TODO: Get actual amount from output manager
-                status: OutputStatus::NotMined, // TODO: Get actual status from output manager
+                amount,
+                status,
             });
         }
         
         Ok(outputs)
     }
 
-    fn get_transactions_with_payrefs(
+    async fn get_transactions_with_payrefs(
         &self,
         limit: Option<u64>,
         offset: Option<u64>,
@@ -4126,7 +4165,7 @@ where
                 None => continue,
             };
             
-            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash.into())?;
+            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash.into()).await?;
             
             // Calculate recipient count based on sent outputs (excluding change)
             let recipient_count = tx.sent_output_hashes.len();
