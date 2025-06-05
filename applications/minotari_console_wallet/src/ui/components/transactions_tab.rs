@@ -227,7 +227,7 @@ impl TransactionsTab {
                     TransactionStatus::OneSidedConfirmed => transaction_status = TransactionStatus::MinedConfirmed,
                     _ => {},
                 }
-                transaction_type = tx_type.clone();
+                transaction_type = tx_type;
             };
 
             if let Some(PaymentId::Open { .. } | PaymentId::AddressAndData { .. }) = tx.payment_id.clone() {

@@ -1862,6 +1862,7 @@ impl CompletedTransactionSql {
                     .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
             )
             .filter(completed_transactions::mined_height.is_null())
+            .filter(completed_transactions::mined_height.eq::<Option<i64>>(None))
             .load::<CompletedTransactionSql>(conn)?)
     }
 

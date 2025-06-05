@@ -1561,8 +1561,7 @@ where
         let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
             amount,
@@ -1785,9 +1784,8 @@ where
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
             payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
-        let payment_id = match payment_id.clone() {
-            PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
-                payment_id,
+        let payment_id = match payment_id {
+            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 amount,
@@ -2283,8 +2281,7 @@ where
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
             amount,

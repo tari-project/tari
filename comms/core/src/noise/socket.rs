@@ -540,7 +540,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         match self.handshake_1_5rtt().await {
             Ok(_) => self.build(),
             Err(err) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
                     "Noise handshake failed because '{:?}'. Closing socket.", err
                 );

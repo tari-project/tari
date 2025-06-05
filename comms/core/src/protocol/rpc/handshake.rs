@@ -24,6 +24,7 @@ use std::{io, time::Duration};
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
+use log::info;
 use prost::{DecodeError, Message};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -106,15 +107,15 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                error!(target: LOG_TARGET, "Error during handshake: {}", err);
+                info!(target: LOG_TARGET, "Error during handshake: {}", err);
                 Err(err.into())
             },
             Ok(None) => {
-                error!(target: LOG_TARGET, "Error during handshake, client closed connection");
+                info!(target: LOG_TARGET, "Error during handshake, client closed connection");
                 Err(RpcHandshakeError::ClientClosed)
             },
             Err(_) => {
-                error!(target: LOG_TARGET, "Error during handshake, timed out");
+                info!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }

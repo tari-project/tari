@@ -143,7 +143,7 @@ impl SoftwareUpdaterService {
             self.config.update_uris.as_slice().join(", ")
         );
         if !self.config.is_update_enabled() {
-            warn!(
+            info!(
                 target: LOG_TARGET,
                 "Check for updates has been called but auto update has been disabled in the config"
             );
