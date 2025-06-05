@@ -781,7 +781,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok(result) => PrepareOneSidedTransactionForSigningResponse {
-                is_success: false,
+                is_success: true,
                 lock_details: result,
                 failure_message: Default::default(),
             },
@@ -813,7 +813,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok(result) => BroadcastSignedOneSidedTransactionResponse {
-                is_success: false,
+                is_success: true,
                 transaction_id: result.as_u64(),
                 failure_message: Default::default(),
             },
