@@ -26,7 +26,7 @@ use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -437,7 +437,7 @@ mod tests {
 }
 
 impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
-    make_async_fn!(fetch_output_by_payref(payref: &[u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
+    make_async_fn!(fetch_output_by_payref(payref: [u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
 
     make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
 }

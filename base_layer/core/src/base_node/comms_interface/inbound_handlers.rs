@@ -455,7 +455,7 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
             NodeCommsRequest::FetchOutputByPayRef(payref) => {
-                let output_info = self.blockchain_db.fetch_output_by_payref(payref).await?;
+                let output_info = self.blockchain_db.fetch_output_by_payref(*payref).await?;
                 Ok(NodeCommsResponse::OutputMinedInfo(output_info))
             },
             NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {

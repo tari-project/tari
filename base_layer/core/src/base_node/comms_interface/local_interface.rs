@@ -364,7 +364,7 @@ impl LocalNodeCommsInterface {
     ) -> Result<Option<OutputMinedInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchOutputByPayRef(*payref))
+            .call(NodeCommsRequest::FetchOutputByPayRef((*payref).into()))
             .await??
         {
             NodeCommsResponse::OutputMinedInfo(output_info) => Ok(output_info),
