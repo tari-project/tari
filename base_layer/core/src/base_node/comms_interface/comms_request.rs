@@ -83,7 +83,7 @@ pub enum NodeCommsRequest {
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
-    FetchOutputByPayRef([u8; 32]),
+    FetchOutputByPayRef(FixedHash),
     CheckOutputSpentStatus(HashOutput),
 }
 
