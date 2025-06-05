@@ -1220,7 +1220,7 @@ struct InboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    received_output_hashes: Option<Vec<u8>>,
+    received_output_hashes: Option<Vec<FixedHash>>,
 }
 
 impl InboundTransactionSql {
@@ -1414,7 +1414,7 @@ impl InboundTransactionSql {
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
-            received_output_hashes: Some(i.received_output_hashes.to_vec()),
+            received_output_hashes: Some(i.received_output_hashes),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1496,8 +1496,8 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    sent_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
+    sent_output_hashes: Option<Vec<FixedHash>>,
+    change_output_hashes: Option<Vec<FixedHash>>,
 }
 
 impl OutboundTransactionSql {
@@ -1676,8 +1676,8 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(o.sent_output_hashes.to_vec()),
-            change_output_hashes: Some(o.change_output_hashes.to_vec()),
+            sent_output_hashes: Some(o.sent_output_hashes),
+            change_output_hashes: Some(o.change_output_hashes),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1775,9 +1775,9 @@ pub struct CompletedTransactionSql {
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    sent_output_hashes: Option<Vec<u8>>,
-    received_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
+    sent_output_hashes: Option<Vec<FixedHash>>,
+    received_output_hashes: Option<Vec<FixedHash>>,
+    change_output_hashes: Option<Vec<FixedHash>>,
 }
 
 impl CompletedTransactionSql {
@@ -2020,7 +2020,7 @@ impl CompletedTransactionSql {
             );
             
             (
-                output_hashes.to_vec(),
+                output_hashes.into_iter().map(|h| h.into()).collect(),
                 Vec::new(),
                 Vec::new()
             )
@@ -2159,9 +2159,9 @@ impl CompletedTransactionSql {
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(c.sent_output_hashes.to_vec()),
-            received_output_hashes: Some(c.received_output_hashes.to_vec()),
-            change_output_hashes: Some(c.change_output_hashes.to_vec()),
+            sent_output_hashes: Some(c.sent_output_hashes),
+            received_output_hashes: Some(c.received_output_hashes),
+            change_output_hashes: Some(c.change_output_hashes),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
