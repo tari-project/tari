@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{BlockHash, FixedHash, PrivateKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,

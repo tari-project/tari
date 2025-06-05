@@ -874,7 +874,6 @@ impl AppStateInner {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
         
         use tari_common_types::payment_reference::generate_payment_reference;
-        use minotari_wallet::output_manager_service::payment_reference::PayRefStatus;
         
         // Get current tip height for confirmation calculations
         let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
@@ -902,7 +901,7 @@ impl AppStateInner {
                 // For each output in the transaction, calculate PayRef directly
                 for output in completed_transaction.transaction.body.outputs() {
                     let output_hash = &output.hash();
-                    let payref = generate_payment_reference(&block_hash.into(), output_hash);
+                    let payref = generate_payment_reference(&(*block_hash).into(), output_hash);
                     let payref_hex = payref.to_hex();
                     
                     // Determine status based on confirmations

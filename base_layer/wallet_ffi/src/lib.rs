@@ -9554,10 +9554,10 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
             .get_transaction_payrefs(TxId::from(transaction_id)),
     ) {
         Ok(payrefs) => {
-            // Flatten the Vec<[u8; 32]> into a single Vec<u8>
+            // Flatten the Vec<FixedHash> into a single Vec<u8>
             let mut flattened = Vec::new();
             for payref in payrefs {
-                flattened.extend_from_slice(&payref);
+                flattened.extend_from_slice(payref.as_slice());
             }
             Box::into_raw(Box::new(ByteVector(flattened)))
         },
@@ -9615,7 +9615,7 @@ pub unsafe extern "C" fn wallet_get_payment_by_reference(
         (*wallet)
             .wallet
             .transaction_service
-            .get_payment_by_reference(payref_array),
+            .get_payment_by_reference(payref_array.into()),
     ) {
         Ok(Some(payment_details)) => {
             // For FFI compatibility, we need to return the transaction

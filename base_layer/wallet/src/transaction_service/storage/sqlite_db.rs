@@ -51,7 +51,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -2002,7 +2002,8 @@ impl CompletedTransactionSql {
             .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
             .first::<CompletedTransactionSql>(conn)?;
 
-        let existing_tx_data = existing_tx.decrypt(cipher)
+        let existing_tx_clone = existing_tx.clone();
+        let existing_tx_data = existing_tx_clone.decrypt(cipher)
             .map_err(TransactionStorageError::AeadError)?;
 
         // Only update output hashes if they're not already set to preserve proper categorization
