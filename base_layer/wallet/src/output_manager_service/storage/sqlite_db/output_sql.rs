@@ -754,6 +754,15 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    pub fn find_by_hash_any_status(
+        hash: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::hash.eq(hash))
+            .first::<OutputSql>(conn)?)
+    }
+
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;

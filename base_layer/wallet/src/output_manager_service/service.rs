@@ -577,6 +577,10 @@ where
                 let outputs = self.get_outputs_by_commitments(commitments)?;
                 Ok(OutputManagerResponse::OutputsByCommitments(outputs))
             },
+            OutputManagerRequest::GetOutputByHash(hash) => {
+                let output = self.get_output_by_hash(hash)?;
+                Ok(OutputManagerResponse::OutputByHash(output))
+            },
         }
     }
 
@@ -3812,6 +3816,10 @@ where
         };
         
         Ok(self.resources.db.fetch_outputs_by_query(query)?)
+    }
+
+    fn get_output_by_hash(&self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_by_hash(hash)?)
     }
 }
 

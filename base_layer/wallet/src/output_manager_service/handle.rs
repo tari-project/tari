@@ -170,6 +170,8 @@ pub enum OutputManagerRequest {
     SetPaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
     /// Batch query outputs by commitments for efficient PayRef calculation
     GetOutputsByCommitments(Vec<CompressedCommitment>),
+    /// Get output by hash (any status - unspent, spent, invalid)
+    GetOutputByHash(HashOutput),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -308,6 +310,7 @@ impl fmt::Display for OutputManagerRequest {
             GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
             SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
             GetOutputsByCommitments(commitments) => write!(f, "GetOutputsByCommitments({})", commitments.len()),
+            GetOutputByHash(hash) => write!(f, "GetOutputByHash({})", hash),
         }
     }
 }
@@ -372,6 +375,8 @@ pub enum OutputManagerResponse {
     PaymentReferenceConfigSet,
     /// Response for batch commitment queries
     OutputsByCommitments(Vec<DbWalletOutput>),
+    /// Response for output by hash query
+    OutputByHash(Option<DbWalletOutput>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1144,6 +1149,18 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputsByCommitments(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get output by hash (any status - unspent, spent, invalid)
+    pub async fn get_output_by_hash(&mut self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputByHash(hash))
+            .await??
+        {
+            OutputManagerResponse::OutputByHash(output) => Ok(output),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
