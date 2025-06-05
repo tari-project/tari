@@ -30,6 +30,7 @@ use tari_common_types::types::{
     BlockHash,
     CompressedCommitment,
     CompressedPublicKey,
+    FixedHash,
     HashOutput,
     PrivateKey,
     Signature,

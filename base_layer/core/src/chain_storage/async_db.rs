@@ -26,7 +26,7 @@ use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
