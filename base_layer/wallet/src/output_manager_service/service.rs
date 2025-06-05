@@ -34,6 +34,7 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         HashOutput,
         PrivateKey,
         UncompressedCommitment,
@@ -3616,7 +3617,7 @@ where
     /// Find payment details by PayRef
     fn find_payment_by_reference(
         &self,
-        payref: [u8; 32],
+        payref: FixedHash,
     ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
         use crate::output_manager_service::storage::database::OutputBackendQuery;
         use crate::output_manager_service::storage::OutputStatus;
