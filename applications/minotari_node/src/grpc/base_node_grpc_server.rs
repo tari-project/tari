@@ -2975,12 +2975,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     continue;
                 }
 
-                // Convert hex to bytes
+                // Convert hex to FixedHash
                 let payref_bytes = match Vec::<u8>::from_hex(&payref_hex) {
                     Ok(bytes) if bytes.len() == 32 => {
                         let mut arr = [0u8; 32];
                         arr.copy_from_slice(&bytes);
-                        arr
+                        FixedHash::from(arr)
                     },
                     _ => {
                         let error = obscure_error_if_true(
@@ -3064,12 +3064,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             ));
         }
 
-        // Convert hex to bytes
+        // Convert hex to FixedHash
         let payref_bytes = match Vec::<u8>::from_hex(&request.payment_reference_hex) {
             Ok(bytes) if bytes.len() == 32 => {
                 let mut arr = [0u8; 32];
                 arr.copy_from_slice(&bytes);
-                arr
+                FixedHash::from(arr)
             },
             _ => {
                 return Err(obscure_error_if_true(

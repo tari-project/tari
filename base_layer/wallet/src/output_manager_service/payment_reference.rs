@@ -77,7 +77,7 @@ pub enum PayRefDisplayFormat {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PayRefStatus {
     /// PayRef is available with the specified number of confirmations
-    Available([u8; 32], u64),
+    Available(FixedHash, u64),
     /// PayRef is pending more confirmations
     Pending(u64, u64), // current_confirmations, blocks_remaining
     /// Output has not been mined yet
