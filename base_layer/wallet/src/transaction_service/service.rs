@@ -3925,7 +3925,7 @@ where
     }
 
     /// Get PayRefs for a specific transaction with verification
-    fn get_transaction_payrefs(&self, tx_id: TxId) -> Result<Vec<[u8; 32]>, TransactionServiceError> {
+    fn get_transaction_payrefs(&self, tx_id: TxId) -> Result<Vec<FixedHash>, TransactionServiceError> {
         let completed_transaction = self.db.get_completed_transaction(tx_id)?;
         
         // Verify transaction is mined and has sufficient confirmations
