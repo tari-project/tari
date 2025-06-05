@@ -783,25 +783,18 @@ impl AppStateInner {
     }
 
     async fn calculate_payment_references_for_transactions(&mut self) -> Result<(), UiError> {
-        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_transactions() called using canonical approach");
+        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_transactions() called using transaction service");
 
-        // Use the canonical approach: get all outputs directly and use received_in_tx_id as the link
-        // This matches the approach used by the working gRPC and ListPayRefs implementations
-        let unspent_outputs = self
+        // Get completed transactions from transaction service (faster than OMS output scanning)
+        let completed_transactions = self
             .wallet
-            .output_manager_service
-            .get_unspent_outputs()
+            .transaction_service
+            .get_completed_transactions()
             .await
-            .map_err(UiError::OutputManager)?;
-        let spent_outputs = self
-            .wallet
-            .output_manager_service
-            .get_spent_outputs()
-            .await
-            .map_err(UiError::OutputManager)?;
+            .map_err(UiError::TransactionServiceError)?;
 
-        debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
-               unspent_outputs.len(), spent_outputs.len());
+        debug!(target: LOG_TARGET, "payref_debug: Found {} completed transactions", 
+               completed_transactions.len());
 
         // Create lookup maps: TxId -> Vec<PayRef hex> for per-output PayRefs and status
         let mut payrefs_by_tx_id = std::collections::HashMap::new();
@@ -813,41 +806,34 @@ impl AppStateInner {
             _ => 0, // Default to 0 if we can't get chain height
         };
 
-        // Process all outputs (unspent and spent) to build the lookup map
-        for output in unspent_outputs.into_iter().chain(spent_outputs.into_iter()) {
-            // Only include outputs that are linked to transactions
-            if let Some(tx_id) = output.received_in_tx_id {
-                use minotari_wallet::output_manager_service::payment_reference::PayRefStatus;
-
-                // Get PayRef status
-                let status = output.get_payment_reference_status(current_tip_height, 5); // Default 5 confirmations
-
-                let (payref_hex_opt, status_text) = match status {
-                    PayRefStatus::Available(payref, confirmations) => {
-                        let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
-                        (Some(payref_hex), format!("Available ({} confs)", confirmations))
-                    },
-                    PayRefStatus::Pending(current_confs, blocks_remaining) => (
-                        None,
-                        format!(
-                            "Pending {}/{} confs ({} blocks remaining)",
-                            current_confs,
-                            current_confs + blocks_remaining,
-                            blocks_remaining
-                        ),
-                    ),
-                    PayRefStatus::NotMined => (None, "Not mined".to_string()),
-                    PayRefStatus::InvalidOutput => (None, "Invalid output".to_string()),
+        // Use payref_calculator to efficiently generate PayRefs from transaction data
+        use minotari_wallet::transaction_service::payref_calculator;
+        
+        for tx in &completed_transactions {
+            let payrefs = payref_calculator::calculate_transaction_payrefs(tx);
+            
+            if !payrefs.is_empty() {
+                let payref_hexes: Vec<String> = payrefs.iter()
+                    .map(|pr| tari_utilities::hex::Hex::to_hex(pr))
+                    .collect();
+                
+                payrefs_by_tx_id.insert(tx.tx_id, payref_hexes.clone());
+                
+                debug!(target: LOG_TARGET, "payref_debug: Generated {} PayRefs for tx {}: {:?}", 
+                       payref_hexes.len(), tx.tx_id, payref_hexes);
+                
+                // Calculate status based on transaction confirmations
+                let status_text = if let Some(confirmations) = tx.confirmations {
+                    format!("Available ({} confs)", confirmations)
+                } else if tx.mined_in_block.is_some() {
+                    "Available (confirmations unknown)".to_string()
+                } else {
+                    "Not mined".to_string()
                 };
-
-                if let Some(payref_hex) = payref_hex_opt {
-                    // Store per-output PayRefs in a vector for the transaction
-                    payrefs_by_tx_id.entry(tx_id).or_insert_with(Vec::new).push(payref_hex.clone());
-                    debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {} output: {}", 
-                           tx_id, payref_hex);
-                }
-
-                payref_status_by_tx_id.insert(tx_id, status_text);
+                
+                payref_status_by_tx_id.insert(tx.tx_id, status_text);
+            } else if tx.mined_in_block.is_none() {
+                payref_status_by_tx_id.insert(tx.tx_id, "Not mined".to_string());
             }
         }
 
