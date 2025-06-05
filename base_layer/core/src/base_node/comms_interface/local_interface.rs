@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -360,11 +360,11 @@ impl LocalNodeCommsInterface {
     /// Fetch output by PayRef (Payment Reference)
     pub async fn fetch_output_by_payref(
         &mut self,
-        payref: &[u8; 32],
+        payref: &FixedHash,
     ) -> Result<Option<OutputMinedInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchOutputByPayRef((*payref).into()))
+            .call(NodeCommsRequest::FetchOutputByPayRef(*payref))
             .await??
         {
             NodeCommsResponse::OutputMinedInfo(output_info) => Ok(output_info),
