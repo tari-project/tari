@@ -623,6 +623,13 @@ impl SenderTransactionProtocol {
     ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Finalizing(ref mut info) => {
+                if info.inputs.len() != commitment_mask_key_ids.len() {
+                    return Err(TPE::ValidationError(format!(
+                        "Mismatch between inputs count ({}) and commitment mask key IDs count ({})",
+                        info.inputs.len(),
+                        commitment_mask_key_ids.len()
+                    )));
+                }
                 for (input, spending_key_id) in info.inputs.iter_mut().zip(commitment_mask_key_ids.into_iter()) {
                     let script_signature = input
                         .output
