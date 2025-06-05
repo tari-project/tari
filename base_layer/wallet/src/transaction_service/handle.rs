@@ -613,7 +613,7 @@ impl From<proto::base_node::GetMempoolFeePerGramStatsResponse> for FeePerGramSta
 /// Enhanced payment details for PayRef functionality
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaymentDetails {
-    pub payment_reference: [u8; 32],
+    pub payment_reference: FixedHash,
     pub amount: MicroMinotari,
     pub direction: TransactionDirection,
     pub block_height: u64,
@@ -627,7 +627,7 @@ pub struct PaymentDetails {
 #[derive(Debug, Clone)]
 pub struct OutputWithPayRef {
     pub output_hash: HashOutput,
-    pub payment_reference: Option<[u8; 32]>,
+    pub payment_reference: Option<FixedHash>,
     pub output_type: OutputType,
     pub amount: MicroMinotari,
     pub status: OutputStatus,
