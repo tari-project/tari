@@ -777,8 +777,11 @@ impl AppStateInner {
                     .map_err(|e| UiError::TransactionError(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        // Calculate payment references for completed transactions using canonical approach
-        self.calculate_payment_references_for_transactions().await?;
+        // Calculate payment references for completed transactions using optimized approach
+        let transaction_ids: Vec<u64> = self.data.completed_txs.iter()
+            .map(|tx| tx.tx_id.as_u64())
+            .collect();
+        self.calculate_payment_references_for_specific_transactions(&transaction_ids).await?;
         
         self.updated = true;
         Ok(())
@@ -867,6 +870,131 @@ impl AppStateInner {
         }
         
         debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using canonical approach");
+        Ok(())
+    }
+
+    async fn calculate_payment_references_for_specific_transactions(&mut self, transaction_ids: &[u64]) -> Result<(), UiError> {
+        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", transaction_ids.len());
+        
+        // Get all output commitments for the specific transactions
+        let mut all_output_commitments = Vec::new();
+        for completed_tx in &self.data.completed_txs {
+            if transaction_ids.contains(&completed_tx.tx_id.as_u64()) {
+                // Get output commitments from the transaction if available
+                if let Some(transaction) = &completed_tx.transaction {
+                    for output in transaction.body.outputs() {
+                        all_output_commitments.push(output.commitment().as_bytes().to_vec());
+                    }
+                }
+            }
+        }
+        
+        if all_output_commitments.is_empty() {
+            debug!(target: LOG_TARGET, "payref_debug: No output commitments found for the specified transactions");
+            return Ok(());
+        }
+        
+        debug!(target: LOG_TARGET, "payref_debug: Found {} output commitments for batch lookup", all_output_commitments.len());
+        
+        // Use the optimized batch query to get outputs by commitments
+        use minotari_wallet::output_manager_service::handle::OutputManagerRequest;
+        use tari_common_types::types::CompressedCommitment;
+        
+        let compressed_commitments: Vec<CompressedCommitment> = all_output_commitments
+            .iter()
+            .filter_map(|bytes| {
+                if bytes.len() == 32 {
+                    Some(CompressedCommitment::from_canonical_bytes(bytes.as_slice()).ok()?)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        let outputs = match self.wallet.output_manager_service
+            .call(OutputManagerRequest::GetOutputsByCommitments(compressed_commitments))
+            .await
+        {
+            Ok(minotari_wallet::output_manager_service::handle::OutputManagerResponse::OutputsByCommitments(outputs)) => outputs,
+            Ok(_) => {
+                warn!(target: LOG_TARGET, "payref_debug: Unexpected response from GetOutputsByCommitments");
+                return Ok(());
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "payref_debug: Failed to get outputs by commitments: {}", e);
+                return Ok(());
+            }
+        };
+        
+        debug!(target: LOG_TARGET, "payref_debug: Retrieved {} outputs from batch query", outputs.len());
+        
+        // Get current tip height for confirmation calculations
+        let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
+            Ok(Some(metadata)) => metadata.best_block_height(),
+            _ => 0, // Default to 0 if we can't get chain height
+        };
+        
+        // Create lookup maps: TxId -> (PayRef hex, status)
+        let mut payref_by_tx_id = std::collections::HashMap::new();
+        let mut payref_status_by_tx_id = std::collections::HashMap::new();
+        
+        // Process outputs to build the lookup map
+        for output in outputs {
+            // Only include outputs that are linked to transactions
+            if let Some(tx_id) = output.received_in_tx_id {
+                use minotari_wallet::output_manager_service::payment_reference::PayRefStatus;
+                
+                // Get PayRef status
+                let status = output.get_payment_reference_status(current_tip_height, 5); // Default 5 confirmations
+                
+                let (payref_hex_opt, status_text) = match status {
+                    PayRefStatus::Available(payref, confirmations) => {
+                        (Some(payref.to_hex()), format!("Available ({} confirmations)", confirmations))
+                    },
+                    PayRefStatus::Pending(confirmations) => {
+                        (None, format!("Pending ({} confirmations)", confirmations))
+                    },
+                    PayRefStatus::NotMined => {
+                        (None, "Not Mined".to_string())
+                    },
+                };
+                
+                if let Some(payref_hex) = payref_hex_opt {
+                    payref_by_tx_id.insert(tx_id.as_u64(), payref_hex.clone());
+                    debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
+                           tx_id, payref_hex);
+                }
+                
+                payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
+            }
+        }
+        
+        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
+               payref_by_tx_id.len());
+        
+        // Update completed transactions with their payment references
+        for tx in &mut self.data.completed_txs {
+            if transaction_ids.contains(&tx.tx_id.as_u64()) {
+                // Look up payment reference by transaction ID
+                if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
+                    tx.payment_reference_hex = Some(payref_hex.clone());
+                    debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
+                           tx.tx_id, payref_hex);
+                } else {
+                    debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
+                           tx.tx_id);
+                }
+                
+                // Always set the status, regardless of whether PayRef is available
+                if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
+                    tx.payment_reference_status = Some(status.clone());
+                    debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}", 
+                           tx.tx_id, status);
+                }
+            }
+        }
+        
+        debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using optimized batch approach");
         Ok(())
     }
 
