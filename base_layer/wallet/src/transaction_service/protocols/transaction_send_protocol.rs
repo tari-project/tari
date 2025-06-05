@@ -1017,9 +1017,8 @@ where
                             sent_hashes.push(output_hash);
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
-                            // Default to treating as sent to be safe
-                            sent_hashes.push(output_hash);
+                            error!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
+                            return Err(TransactionServiceError::OutputManagerError(e));
                         }
                     }
                 },
