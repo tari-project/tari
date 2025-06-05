@@ -728,7 +728,7 @@ impl LMDBDatabase {
                                   size_left_bytes / BYTES_PER_MB, height);
                             // Consider pausing migration if space gets too low
                             if size_left_bytes < 200 * BYTES_PER_MB {
-                                return Err(ChainStorageError::OutOfMemory);
+                                return Err(ChainStorageError::CriticalError("Insufficient disk space for PayRef migration".to_string()));
                             }
                         }
                     }

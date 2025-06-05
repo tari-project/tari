@@ -123,7 +123,7 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -1281,6 +1281,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         output_commitments,
                         input_commitments,
                         payment_reference,
+                        payment_references: vec![payment_reference.clone()],
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1838,6 +1839,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     output_commitments: vec![],
                     input_commitments: vec![],
                     payment_reference: payment_details.payment_reference.to_hex(),
+                    payment_references: vec![payment_details.payment_reference.to_hex()],
                 };
                 
                 Ok(Response::new(GetPaymentByReferenceResponse {
@@ -2121,7 +2123,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 output_commitments: vec![], // Could be populated if needed
                                 input_commitments: vec![], // Could be populated if needed
                                 payment_reference: String::new(), // Deprecated field - not used in this context
-                                payment_references: payment_references.iter().map(|pr| hex::encode(pr)).collect(),
+                                payment_references: payment_references.iter().map(|pr| to_hex(pr)).collect(),
                             };
                             
                             let recipient_count = payment_references.len() as u64;
@@ -2230,6 +2232,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 output_commitments,
                 input_commitments: vec![],
                 payment_reference: String::new(), // Payment references not available for pending inbound transactions
+                payment_references: vec![],
             }
         },
         PendingOutbound(tx) => {
@@ -2264,6 +2267,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 output_commitments,
                 input_commitments,
                 payment_reference: String::new(), // Payment references not available for pending outbound transactions
+                payment_references: vec![],
             }
         },
         Completed(tx) => {
@@ -2317,14 +2321,28 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                             )
                             .await;
                         
-                        // Use the first non-empty payment reference found
+                        // Use the first non-empty payment reference found (for backwards compatibility)
                         payment_refs
-                            .into_iter()
-                            .find(|pr| !pr.is_empty())
-                            .map(|pr| to_hex(&pr))
+                            .first()
+                            .map(|pr| to_hex(pr))
                             .unwrap_or_default()
                     } else {
                         String::new()
+                    }
+                },
+                payment_references: {
+                    // Calculate all payment references for completed transactions
+                    if tx.mined_height.is_some() && !output_commitments.is_empty() {
+                        let payment_refs = wallet_grpc_server
+                            .calculate_payment_references_for_transaction(
+                                &output_commitments,
+                                tx.mined_height.unwrap_or(0),
+                            )
+                            .await;
+                        
+                        payment_refs.iter().map(|pr| to_hex(pr)).collect()
+                    } else {
+                        vec![]
                     }
                 },
             }

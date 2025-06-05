@@ -778,10 +778,7 @@ impl AppStateInner {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // Calculate payment references for completed transactions using optimized approach
-        let transaction_ids: Vec<u64> = self.data.completed_txs.iter()
-            .map(|tx| tx.tx_id.as_u64())
-            .collect();
-        self.calculate_payment_references_for_specific_transactions(&transaction_ids).await?;
+        self.calculate_payment_references_for_specific_transactions(&completed_transactions).await?;
         
         self.updated = true;
         Ok(())
@@ -873,19 +870,15 @@ impl AppStateInner {
         Ok(())
     }
 
-    async fn calculate_payment_references_for_specific_transactions(&mut self, transaction_ids: &[u64]) -> Result<(), UiError> {
-        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", transaction_ids.len());
+    async fn calculate_payment_references_for_specific_transactions(&mut self, completed_transactions: &[minotari_wallet::transaction_service::storage::models::CompletedTransaction]) -> Result<(), UiError> {
+        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
         
         // Get all output commitments for the specific transactions
         let mut all_output_commitments = Vec::new();
-        for completed_tx in &self.data.completed_txs {
-            if transaction_ids.contains(&completed_tx.tx_id.as_u64()) {
-                // Get output commitments from the transaction if available
-                if let Some(transaction) = &completed_tx.transaction {
-                    for output in transaction.body.outputs() {
-                        all_output_commitments.push(output.commitment().as_bytes().to_vec());
-                    }
-                }
+        for completed_tx in completed_transactions {
+            // Get output commitments from the transaction
+            for output in completed_tx.transaction.body.outputs() {
+                all_output_commitments.push(output.commitment().as_bytes().to_vec());
             }
         }
         
@@ -897,14 +890,15 @@ impl AppStateInner {
         debug!(target: LOG_TARGET, "payref_debug: Found {} output commitments for batch lookup", all_output_commitments.len());
         
         // Use the optimized batch query to get outputs by commitments
-        use minotari_wallet::output_manager_service::handle::OutputManagerRequest;
         use tari_common_types::types::CompressedCommitment;
+        
+        use tari_utilities::ByteArray;
         
         let compressed_commitments: Vec<CompressedCommitment> = all_output_commitments
             .iter()
             .filter_map(|bytes| {
                 if bytes.len() == 32 {
-                    Some(CompressedCommitment::from_canonical_bytes(bytes.as_slice()).ok()?)
+                    CompressedCommitment::from_canonical_bytes(bytes.as_slice()).ok()
                 } else {
                     None
                 }
@@ -912,14 +906,10 @@ impl AppStateInner {
             .collect();
         
         let outputs = match self.wallet.output_manager_service
-            .call(OutputManagerRequest::GetOutputsByCommitments(compressed_commitments))
+            .get_outputs_by_commitments(compressed_commitments)
             .await
         {
-            Ok(minotari_wallet::output_manager_service::handle::OutputManagerResponse::OutputsByCommitments(outputs)) => outputs,
-            Ok(_) => {
-                warn!(target: LOG_TARGET, "payref_debug: Unexpected response from GetOutputsByCommitments");
-                return Ok(());
-            },
+            Ok(outputs) => outputs,
             Err(e) => {
                 warn!(target: LOG_TARGET, "payref_debug: Failed to get outputs by commitments: {}", e);
                 return Ok(());
@@ -951,7 +941,7 @@ impl AppStateInner {
                     PayRefStatus::Available(payref, confirmations) => {
                         (Some(payref.to_hex()), format!("Available ({} confirmations)", confirmations))
                     },
-                    PayRefStatus::Pending(confirmations) => {
+                    PayRefStatus::Pending(confirmations, _blocks_remaining) => {
                         (None, format!("Pending ({} confirmations)", confirmations))
                     },
                     PayRefStatus::NotMined => {
@@ -974,23 +964,21 @@ impl AppStateInner {
         
         // Update completed transactions with their payment references
         for tx in &mut self.data.completed_txs {
-            if transaction_ids.contains(&tx.tx_id.as_u64()) {
-                // Look up payment reference by transaction ID
-                if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
-                    tx.payment_reference_hex = Some(payref_hex.clone());
-                    debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
-                           tx.tx_id, payref_hex);
-                } else {
-                    debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
-                           tx.tx_id);
-                }
-                
-                // Always set the status, regardless of whether PayRef is available
-                if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
-                    tx.payment_reference_status = Some(status.clone());
-                    debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}", 
-                           tx.tx_id, status);
-                }
+            // Look up payment reference by transaction ID
+            if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
+                tx.payment_reference_hex = Some(payref_hex.clone());
+                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
+                       tx.tx_id, payref_hex);
+            } else {
+                debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
+                       tx.tx_id);
+            }
+            
+            // Always set the status, regardless of whether PayRef is available
+            if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
+                tx.payment_reference_status = Some(status.clone());
+                debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}", 
+                       tx.tx_id, status);
             }
         }
         
