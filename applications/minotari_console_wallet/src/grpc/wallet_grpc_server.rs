@@ -1967,11 +1967,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         payment_references.push(payref.to_vec());
                     }
 
-                    // Note: We don't include change output PayRefs for external APIs
+                    // Generate PayRefs from change output hashes (per-output approach)
+                    for output_hash in &completed_tx.change_output_hashes {
+                        let payref =
+                            tari_common_types::payment_reference::generate_payment_reference(block_hash, output_hash);
+                        payment_references.push(payref.to_vec());
+                    }
 
                     debug!(
                         target: LOG_TARGET,
-                        "get_transaction_pay_refs: Generated {} PayRefs for transaction {}",
+                        "get_transaction_pay_refs: Generated {} PayRefs for transaction {} (including change outputs)",
                         payment_references.len(),
                         req.transaction_id
                     );
@@ -2017,45 +2022,24 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
         let mined_only = req.mined_only;
 
-        // Get completed transactions from the service
-        match transaction_service.get_completed_transactions(None, None, None).await {
-            Ok(transactions) => {
+        // Use the new per-output PayRef service method
+        match transaction_service.get_transactions_with_payrefs(
+            Some(req.limit),
+            Some(req.offset),
+            Some(mined_only),
+        ).await {
+            Ok(transactions_with_payrefs) => {
                 let stream = futures::stream::iter(
-                    transactions
+                    transactions_with_payrefs
                         .into_iter()
-                        .filter(move |tx| {
-                            // Filter based on mined_only flag
-                            if mined_only {
-                                tx.mined_in_block.is_some()
-                            } else {
-                                true
-                            }
-                        })
-                        .skip(req.offset as usize)
-                        .take(req.limit as usize)
-                        .map(|completed_tx| {
-                            let mut payment_references = Vec::new();
-
-                            // Only generate PayRefs if transaction is mined
-                            if let Some(block_hash) = &completed_tx.mined_in_block {
-                                // Generate PayRefs from sent output hashes
-                                for output_hash in &completed_tx.sent_output_hashes {
-                                    let payref = tari_common_types::payment_reference::generate_payment_reference(
-                                        block_hash,
-                                        output_hash,
-                                    );
-                                    payment_references.push(payref.to_vec());
-                                }
-
-                                // Generate PayRefs from received output hashes
-                                for output_hash in &completed_tx.received_output_hashes {
-                                    let payref = tari_common_types::payment_reference::generate_payment_reference(
-                                        block_hash,
-                                        output_hash,
-                                    );
-                                    payment_references.push(payref.to_vec());
-                                }
-                            }
+                        .map(|tx_with_payrefs| {
+                            let completed_tx = &tx_with_payrefs.transaction;
+                            
+                            // Extract PayRefs from the per-output structure
+                            let payment_references: Vec<Vec<u8>> = tx_with_payrefs.outputs_with_payrefs
+                                .iter()
+                                .filter_map(|output| output.payment_reference.map(|pr| pr.to_vec()))
+                                .collect();
 
                             // Convert to gRPC response
                             let transaction_info = TransactionInfo {
@@ -2077,12 +2061,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 payment_references: payment_references.iter().map(|pr| to_hex(pr)).collect(),
                             };
 
-                            let recipient_count = payment_references.len() as u64;
-
                             Ok(GetTransactionsWithPayRefsResponse {
                                 transaction: Some(transaction_info),
                                 payment_references,
-                                recipient_count,
+                                recipient_count: tx_with_payrefs.recipient_count as u64,
                             })
                         }),
                 );
