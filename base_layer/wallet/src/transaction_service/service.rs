@@ -45,6 +45,7 @@ use tari_common_types::{
         CommitmentFactory,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         HashOutput,
         PrivateKey,
         Signature,
@@ -3942,13 +3943,13 @@ where
         // Generate proper PayRefs for sent output hashes using Blake2b_256(block_hash || output_hash)
         for output_hash in &completed_transaction.sent_output_hashes {
             let payref = generate_payment_reference(&block_hash.into(), output_hash);
-            payrefs.push(payref);
+            payrefs.push(payref.into());
         }
         
         // Generate proper PayRefs for received output hashes (for incoming transactions)
         for output_hash in &completed_transaction.received_output_hashes {
             let payref = generate_payment_reference(&block_hash.into(), output_hash);
-            payrefs.push(payref);
+            payrefs.push(payref.into());
         }
         
         Ok(payrefs)
@@ -3985,7 +3986,7 @@ where
     }
 
     /// Get payment details by PayRef
-    fn get_payment_by_reference(&self, payref: [u8; 32]) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+    fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         let transactions = self.db.get_completed_transactions(None, None, None)?;
         
         for transaction in transactions {

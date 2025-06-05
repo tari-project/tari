@@ -1018,7 +1018,7 @@ where
                         },
                         Err(e) => {
                             error!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
-                            return Err(TransactionServiceError::OutputManagerError(e));
+                            return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::OutputManagerError(e)));
                         }
                     }
                 },

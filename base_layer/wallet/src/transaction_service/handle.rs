@@ -460,7 +460,7 @@ pub enum TransactionServiceResponse {
     ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
     /// Response containing PayRefs for a transaction
-    TransactionPayRefs(Vec<[u8; 32]>),
+    TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
     /// Response containing transactions with their PayRefs
@@ -1299,7 +1299,7 @@ impl TransactionServiceHandle {
     pub async fn get_payment_by_reference(&mut self, payref: [u8; 32]) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetPaymentByReference(payref))
+            .call(TransactionServiceRequest::GetPaymentByReference(payref.into()))
             .await??
         {
             TransactionServiceResponse::PaymentDetails(details) => Ok(details),
