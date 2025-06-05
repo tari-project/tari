@@ -6609,12 +6609,14 @@ unsafe fn init_logging(
 }
 
 /// Helper function to create the main wallet database path.
-/// Note: The peer database's name is just used to simplify the wallet create interface. It must not be the same as the
-///       peer database.
+/// Note: The wallet database name is derived from the TariCommsConfig data store path and peer database name due to
+///       legacy implementation. It must not be the same as the peer database, hence the peer database name must be
+///       changed in the 'wallet_create' method before use.
 pub(crate) fn get_wallet_database_path(config: TariCommsConfig) -> PathBuf {
     config
         .datastore_path
-        .join(config.peer_database_name.clone().to_owned() + "_main_wallet_database")
+        .join(config.peer_database_name.clone())
+        // This extention is used in the mobile wallet code - do not change it without updating the mobile code
         .with_extension("sqlite3")
 }
 
@@ -6920,6 +6922,9 @@ pub unsafe extern "C" fn wallet_create(
     if let TransportType::Tor = comms_config.transport.transport_type {
         comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
     }
+    //The wallet database name is derived from the TariCommsConfig data store path and peer database name due to legacy
+    // implementation. It must not be the same as the peer database, hence the latter is changed here before use.
+    comms_config.peer_database_name = comms_config.peer_database_name.to_owned() + "_peers";
 
     let result = runtime.block_on(async {
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
@@ -6983,9 +6988,9 @@ pub unsafe extern "C" fn wallet_create(
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig {
         override_from: None,
-        p2p: comms_config,
+        p2p: comms_config.clone(),
         transaction_service_config: TransactionServiceConfig {
-            direct_send_timeout: (*config).dht.discovery_request_timeout,
+            direct_send_timeout: comms_config.dht.discovery_request_timeout,
             ..Default::default()
         },
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
