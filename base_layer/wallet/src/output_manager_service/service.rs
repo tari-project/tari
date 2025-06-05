@@ -3620,13 +3620,13 @@ where
         payref: FixedHash,
     ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
         // Get current chain tip height for confirmation calculations
-        let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
+        let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
         
         // Get completed transactions from transaction service (faster than OMS output scanning)
-        let handle = self.resources.transaction_service_handle.clone();
+        let mut handle = self.resources.transaction_service_handle.clone();
         let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions().await
-        }).map_err(|e| OutputManagerError::InvalidConfigError(format!("Transaction service error: {}", e)))?;
+            handle.get_completed_transactions(None, None, None).await
+        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
         
         // Use payref_calculator to efficiently find PayRef in transaction data
         use crate::transaction_service::payref_calculator;
@@ -3702,13 +3702,13 @@ where
         &self,
     ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
         // Get current blockchain state for confirmations
-        let (current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
+        let (_current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
         
         // Get completed transactions from transaction service (faster than OMS output scanning)
-        let handle = self.resources.transaction_service_handle.clone();
+        let mut handle = self.resources.transaction_service_handle.clone();
         let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions().await
-        }).map_err(|e| OutputManagerError::InvalidConfigError(format!("Transaction service error: {}", e)))?;
+            handle.get_completed_transactions(None, None, None).await
+        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
         
         let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
         let mut seen_payrefs = std::collections::HashSet::new();
@@ -3767,10 +3767,10 @@ where
         let (current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
         
         // Get completed transactions from transaction service (faster than OMS output scanning)
-        let handle = self.resources.transaction_service_handle.clone();
+        let mut handle = self.resources.transaction_service_handle.clone();
         let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions().await
-        }).map_err(|e| OutputManagerError::InvalidConfigError(format!("Transaction service error: {}", e)))?;
+            handle.get_completed_transactions(None, None, None).await
+        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
         
         // Use payref_calculator to generate PayRefs from transaction data
         use crate::transaction_service::payref_calculator;

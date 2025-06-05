@@ -789,9 +789,9 @@ impl AppStateInner {
         let completed_transactions = self
             .wallet
             .transaction_service
-            .get_completed_transactions()
+            .get_completed_transactions(None, None, None)
             .await
-            .map_err(UiError::TransactionServiceError)?;
+            .map_err(UiError::TransactionService)?;
 
         debug!(target: LOG_TARGET, "payref_debug: Found {} completed transactions", 
                completed_transactions.len());
@@ -801,7 +801,7 @@ impl AppStateInner {
         let mut payref_status_by_tx_id = std::collections::HashMap::new();
 
         // Get current tip height for confirmation calculations
-        let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
+        let _current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
             Ok(Some(metadata)) => metadata.best_block_height(),
             _ => 0, // Default to 0 if we can't get chain height
         };
