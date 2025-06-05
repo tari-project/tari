@@ -46,10 +46,10 @@ use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;
 use tari_utilities::hex::Hex;
 
-use crate::types::{BlockHash, HashOutput};
+use crate::types::{BlockHash, HashOutput, FixedHash};
 
 /// A Payment Reference (PayRef) - a 32-byte globally unique identifier for transaction outputs
-pub type PaymentReference = [u8; 32];
+pub type PaymentReference = FixedHash;
 
 /// Errors that can occur during PayRef operations
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -108,7 +108,7 @@ pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutp
     hasher.update(output_hash.as_slice());
     let mut output = [0u8; 32];
     hasher.finalize_into_reset(digest::generic_array::GenericArray::from_mut_slice(&mut output));
-    output
+    FixedHash::from(output)
 }
 
 /// Parse a Payment Reference from a hexadecimal string
@@ -147,7 +147,7 @@ pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, Pa
     
     let mut payref = [0u8; 32];
     payref.copy_from_slice(&bytes);
-    Ok(payref)
+    Ok(FixedHash::from(payref))
 }
 
 /// Validate the format of a Payment Reference hex string
@@ -185,7 +185,7 @@ pub fn is_valid_payment_reference_format(hex_str: &str) -> bool {
 /// ```rust
 /// use tari_common_types::payment_reference::payment_reference_to_hex;
 /// 
-/// let payref = [1u8; 32];
+/// let payref = FixedHash::from([1u8; 32]);
 /// let hex_str = payment_reference_to_hex(&payref);
 /// assert_eq!(hex_str.len(), 64);
 /// ```
@@ -282,10 +282,10 @@ mod tests {
 
     #[test]
     fn test_payment_reference_to_hex() {
-        let payref = [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef];
+        let payref = FixedHash::from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]);
         
         let hex_str = payment_reference_to_hex(&payref);
         assert_eq!(hex_str, "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
@@ -293,10 +293,10 @@ mod tests {
 
     #[test]
     fn test_format_payment_reference() {
-        let payref = [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef];
+        let payref = FixedHash::from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]);
         
         // Test full format
         let full = format_payment_reference(&payref, &PayRefDisplayFormat::Full);
