@@ -225,7 +225,7 @@ pub fn run_wallet_with_cli(
     }
 
     // Check if there is an in progress recovery in the wallet's database
-    if wallet.is_recovery_in_progress()? {
+    if !cli.skip_recovery && wallet.is_recovery_in_progress()? {
         println!("A Wallet Recovery was found to be in progress, continuing.");
         boot_mode = WalletBoot::Recovery;
     }
