@@ -3674,6 +3674,7 @@ where
     /// DEPRECATED: This method was primarily used for PayRef operations. 
     /// PayRef operations now use transaction service + payref_calculator for better performance.
     #[deprecated(note = "Use transaction service + payref_calculator instead for PayRef operations")]
+    #[allow(dead_code)]
     fn collect_transaction_linked_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         let all_unspent_outputs = self.resources.db.fetch_all_unspent_outputs()?;
         let all_spent_outputs = self.resources.db.fetch_spent_outputs()?;
@@ -3764,7 +3765,7 @@ where
     ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
         let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
         let mut seen_payment_refs = std::collections::HashSet::new();
-        let (current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
+        let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
         
         // Get completed transactions from transaction service (faster than OMS output scanning)
         let mut handle = self.resources.transaction_service_handle.clone();

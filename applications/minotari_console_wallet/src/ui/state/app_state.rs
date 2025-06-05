@@ -782,6 +782,7 @@ impl AppStateInner {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn calculate_payment_references_for_transactions(&mut self) -> Result<(), UiError> {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_transactions() called using transaction service");
 
