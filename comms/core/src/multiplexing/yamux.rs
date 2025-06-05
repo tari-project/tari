@@ -465,7 +465,7 @@ mod test {
             .incoming
             .next()
             .await
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no substream"))?;
+            .ok_or_else(|| io::Error::other("no substream"))?;
 
         let mut buf = Vec::new();
         substream.read_to_end(&mut buf).await?;

@@ -594,7 +594,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         // Categorize outputs for PayRef functionality
-        let (sent_hashes, change_hashes) = self.categorize_output_hashes(&tx, &outbound_tx).await?;
+        let (sent_hashes, change_hashes) = self.categorize_output_hashes(tx, &outbound_tx).await?;
 
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,

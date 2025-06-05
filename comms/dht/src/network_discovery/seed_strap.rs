@@ -389,9 +389,7 @@ impl SeedStrap {
                         }
                     },
                     Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })) |
-                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityNoAddresses {
-                        ..
-                    })) => {
+                    Err(DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityNoAddresses)) => {
                         warn!(
                             target: LOG_TARGET,
                             "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Ban-worthy invalid peer data for peer {} received from seed peer '{}'. Will ban seed peer and stop processing its list.",

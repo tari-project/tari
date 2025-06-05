@@ -3945,13 +3945,13 @@ where
         
         // Generate proper PayRefs for sent output hashes using Blake2b_256(block_hash || output_hash)
         for output_hash in &completed_transaction.sent_output_hashes {
-            let payref = generate_payment_reference(&block_hash.into(), output_hash);
+            let payref = generate_payment_reference(&block_hash, output_hash);
             payrefs.push(payref.into());
         }
         
         // Generate proper PayRefs for received output hashes (for incoming transactions)
         for output_hash in &completed_transaction.received_output_hashes {
-            let payref = generate_payment_reference(&block_hash.into(), output_hash);
+            let payref = generate_payment_reference(&block_hash, output_hash);
             payrefs.push(payref.into());
         }
         
@@ -4003,7 +4003,7 @@ where
             
             // Check if PayRef matches any sent output by generating proper PayRef
             for output_hash in &transaction.sent_output_hashes {
-                let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
+                let generated_payref = generate_payment_reference(&block_hash, output_hash);
                 if generated_payref == *payref {
                     return Ok(Some(PaymentDetails {
                         tx_id: transaction.tx_id,
@@ -4020,7 +4020,7 @@ where
             
             // Check if PayRef matches any received output by generating proper PayRef
             for output_hash in &transaction.received_output_hashes {
-                let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
+                let generated_payref = generate_payment_reference(&block_hash, output_hash);
                 if generated_payref == *payref {
                     return Ok(Some(PaymentDetails {
                         tx_id: transaction.tx_id,
@@ -4164,7 +4164,7 @@ where
                 None => continue,
             };
             
-            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash.into()).await?;
+            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash).await?;
             
             // Calculate recipient count based on sent outputs (excluding change)
             let recipient_count = tx.sent_output_hashes.len();

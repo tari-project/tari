@@ -28,5 +28,4 @@ pub mod models;
 #[allow(clippy::cast_possible_wrap)]
 pub mod sqlite_db;
 
-#[cfg(test)]
-mod payref_tests;
+

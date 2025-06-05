@@ -11565,15 +11565,12 @@ pub unsafe extern "C" fn wallet_get_payment_reference_status(
     ) {
         Ok(Some(payment_details)) => {
             // Get config to check required confirmations
-            let config = match (*wallet)
+            let config = (*wallet)
                 .runtime
-                .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config())
-            {
-                Ok(cfg) => cfg,
-                Err(_) => PayRefConfig::default(),
-            };
+                .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config()).unwrap_or_default();
 
-            let status = if payment_details.confirmations >= config.required_confirmations {
+            
+            if payment_details.confirmations >= config.required_confirmations {
                 // Available
                 Box::into_raw(Box::new(TariPayRefStatus {
                     status_type: 0, // Available
@@ -11590,8 +11587,7 @@ pub unsafe extern "C" fn wallet_get_payment_reference_status(
                     confirmations: payment_details.confirmations,
                     blocks_remaining: remaining,
                 }))
-            };
-            status
+            }
         },
         Ok(None) => {
             // PayRef not found - could be not mined yet or invalid

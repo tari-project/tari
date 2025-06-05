@@ -39,7 +39,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{
     payment_reference::{generate_payment_reference, parse_payment_reference_hex},
-    types::{BlockHash, CompressedCommitment, HashOutput},
+    types::{BlockHash, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -50,7 +50,7 @@ use tari_core::transactions::{
     },
 };
 use tari_script::TariScript;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::hex::Hex;
 
 /// Test the complete PayRef generation and verification workflow
 #[tokio::test]

@@ -664,7 +664,7 @@ impl LMDBDatabase {
     /// Generate payment reference (PayRef) for an output using shared utility
     /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
     fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> [u8; 32] {
-        generate_payment_reference(&(*header_hash).into(), output_hash)
+        generate_payment_reference(header_hash, output_hash)
     }
 
     /// Process a batch of blocks for PayRef migration with error handling
@@ -3303,7 +3303,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 const MAX_RETRIES: u32 = 3;
                 
                 let batch_result = loop {
-                    match LMDBDatabase::process_payref_migration_batch(&db, batch_start, batch_end, &mut rebuild_count, migration_key) {
+                    match LMDBDatabase::process_payref_migration_batch(db, batch_start, batch_end, &mut rebuild_count, migration_key) {
                         Ok(()) => break Ok(()),
                         Err(e) if retry_count < MAX_RETRIES => {
                             // Only retry for specific error types

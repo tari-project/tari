@@ -1324,7 +1324,7 @@ impl TransactionServiceHandle {
     pub async fn get_payment_by_reference(&mut self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetPaymentByReference(payref.into()))
+            .call(TransactionServiceRequest::GetPaymentByReference(payref))
             .await??
         {
             TransactionServiceResponse::PaymentDetails(details) => Ok(details),

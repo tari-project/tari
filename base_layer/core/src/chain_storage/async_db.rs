@@ -405,6 +405,12 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     }
 }
 
+impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
+    make_async_fn!(fetch_output_by_payref(payref: [u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
+
+    make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,10 +440,4 @@ mod tests {
         obj.fetch_total_size_stats().await.unwrap();
         let _trans = obj.write_transaction();
     }
-}
-
-impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
-    make_async_fn!(fetch_output_by_payref(payref: [u8; 32]) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
-
-    make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
 }

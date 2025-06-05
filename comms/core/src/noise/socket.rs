@@ -233,8 +233,7 @@ where
         let prev_rem = read_buf.remaining();
         ready!(socket.as_mut().poll_read(context, &mut read_buf))?;
         let n = prev_rem.checked_sub(read_buf.remaining()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "buffer underflow: prev_rem < read_buf.remaining()",
             )
         })?;
@@ -412,7 +411,7 @@ where TSocket: AsyncWrite + Unpin
                         ) {
                             Ok(encrypted_len) => {
                                 let frame_len = encrypted_len.try_into().map_err(|_| {
-                                    io::Error::new(io::ErrorKind::Other, "offset should be able to fit in u16")
+                                    io::Error::other("offset should be able to fit in u16")
                                 })?;
                                 self.write_state = WriteState::WriteFrameLen {
                                     frame_len,
@@ -597,7 +596,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .socket
             .state
             .into_transport_mode()
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Invalid snow state: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Invalid snow state: {}", err)))?;
 
         Ok(NoiseSocket {
             state: transport_state,
