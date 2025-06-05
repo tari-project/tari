@@ -2826,24 +2826,36 @@ pub async fn command_runner(
                                     println!("   Mined timestamp: {}", timestamp);
                                 }
 
-                                println!("   PayRefs ({}):", tx_with_refs.payment_references.len());
-                                for (j, payref) in tx_with_refs.payment_references.iter().enumerate() {
-                                    if args.show_private_info {
-                                        println!("     {}. {}", j + 1, payref.to_hex());
-                                    } else {
-                                        let hex_payref = payref.to_hex();
-                                        if hex_payref.len() >= 64 {
-                                            println!("     {}. {}...{}", j + 1, &hex_payref[..8], &hex_payref[56..]);
+                                println!("   PayRefs ({}):", tx_with_refs.outputs_with_payrefs.len());
+                                for (j, output_with_payref) in tx_with_refs.outputs_with_payrefs.iter().enumerate() {
+                                    if let Some(payref) = &output_with_payref.payment_reference {
+                                        let output_type_str = match output_with_payref.output_type {
+                                            minotari_wallet::transaction_service::handle::OutputType::Sent => "Sent",
+                                            minotari_wallet::transaction_service::handle::OutputType::Received => "Received", 
+                                            minotari_wallet::transaction_service::handle::OutputType::Change => "Change",
+                                        };
+                                        
+                                        if args.show_private_info {
+                                            println!("     {}. {} ({}) - {}", j + 1, payref.to_hex(), output_type_str, output_with_payref.amount);
                                         } else {
-                                            // Fallback for shorter hex strings
-                                            let end_start = hex_payref.len().saturating_sub(8);
-                                            println!(
-                                                "     {}. {}...{}",
-                                                j + 1,
-                                                &hex_payref[..8.min(hex_payref.len())],
-                                                &hex_payref[end_start..]
-                                            );
+                                            let hex_payref = payref.to_hex();
+                                            if hex_payref.len() >= 64 {
+                                                println!("     {}. {}...{} ({}) - {}", j + 1, &hex_payref[..8], &hex_payref[56..], output_type_str, output_with_payref.amount);
+                                            } else {
+                                                // Fallback for shorter hex strings
+                                                let end_start = hex_payref.len().saturating_sub(8);
+                                                println!(
+                                                    "     {}. {}...{} ({}) - {}",
+                                                    j + 1,
+                                                    &hex_payref[..8.min(hex_payref.len())],
+                                                    &hex_payref[end_start..],
+                                                    output_type_str,
+                                                    output_with_payref.amount
+                                                );
+                                            }
                                         }
+                                    } else {
+                                        println!("     {}. No PayRef (not mined)", j + 1);
                                     }
                                 }
                                 println!("   Recipients: {}", tx_with_refs.recipient_count);

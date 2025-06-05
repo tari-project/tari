@@ -803,8 +803,8 @@ impl AppStateInner {
         debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
                unspent_outputs.len(), spent_outputs.len());
 
-        // Create lookup maps: TxId -> (PayRef hex, status) using the canonical transaction ID link
-        let mut payref_by_tx_id = std::collections::HashMap::new();
+        // Create lookup maps: TxId -> Vec<PayRef hex> for per-output PayRefs and status
+        let mut payrefs_by_tx_id = std::collections::HashMap::new();
         let mut payref_status_by_tx_id = std::collections::HashMap::new();
 
         // Get current tip height for confirmation calculations
@@ -841,8 +841,9 @@ impl AppStateInner {
                 };
 
                 if let Some(payref_hex) = payref_hex_opt {
-                    payref_by_tx_id.insert(tx_id, payref_hex.clone());
-                    debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
+                    // Store per-output PayRefs in a vector for the transaction
+                    payrefs_by_tx_id.entry(tx_id).or_insert_with(Vec::new).push(payref_hex.clone());
+                    debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {} output: {}", 
                            tx_id, payref_hex);
                 }
 
@@ -850,18 +851,20 @@ impl AppStateInner {
             }
         }
 
-        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
-               payref_by_tx_id.len());
+        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} transactions having payment references", 
+               payrefs_by_tx_id.len());
 
         // Update completed transactions with their payment references using the canonical TxId link
         for tx in &mut self.data.completed_txs {
-            // Look up payment reference by transaction ID (canonical approach)
-            if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id) {
-                tx.payment_reference_hex = Some(payref_hex.clone());
-                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
-                       tx.tx_id, payref_hex);
+            // Look up payment references by transaction ID (per-output approach)
+            if let Some(payrefs) = payrefs_by_tx_id.get(&tx.tx_id) {
+                // For UI display, concatenate all PayRefs for the transaction with a separator
+                let concatenated_payrefs = payrefs.join(", ");
+                tx.payment_reference_hex = Some(concatenated_payrefs.clone());
+                debug!(target: LOG_TARGET, "payref_debug: Matched {} payment references for tx {}: {}", 
+                       payrefs.len(), tx.tx_id, concatenated_payrefs);
             } else {
-                debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
+                debug!(target: LOG_TARGET, "payref_debug: No payment references found for tx {} (not mined or no outputs)", 
                        tx.tx_id);
             }
 
