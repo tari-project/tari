@@ -11391,7 +11391,8 @@ pub unsafe extern "C" fn wallet_format_payment_reference(
                 hex_string
             }
         },
-        2 => { // Custom (8...8)
+        2 => { // Custom - for now using same as shortened, but should accept custom lengths
+            // TODO: Accept prefix_chars and suffix_chars as parameters
             if hex_string.len() >= 16 {
                 format!("{}...{}", &hex_string[0..8], &hex_string[hex_string.len()-8..])
             } else {
