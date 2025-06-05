@@ -632,7 +632,7 @@ impl LMDBDatabase {
         lmdb_insert(
             txn,
             &self.payref_to_output_index,
-            &payref,
+            payref.as_slice(),
             &output_hash,
             "payref_to_output_index",
         )?;
@@ -663,7 +663,7 @@ impl LMDBDatabase {
 
     /// Generate payment reference (PayRef) for an output using shared utility
     /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
-    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> [u8; 32] {
+    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> FixedHash {
         generate_payment_reference(header_hash, output_hash)
     }
 
@@ -707,7 +707,7 @@ impl LMDBDatabase {
                         match lmdb_replace(
                             &write_txn,
                             &db.payref_to_output_index,
-                            &payref,
+                            payref.as_slice(),
                             output_hash,
                             None,
                         ) {
@@ -901,7 +901,7 @@ impl LMDBDatabase {
             match lmdb_delete(
                 txn,
                 &self.payref_to_output_index,
-                &payref_bytes,
+                payref_bytes.as_slice(),
                 "payref_to_output_index",
             ) {
                 Ok(()) => {
@@ -1221,7 +1221,7 @@ impl LMDBDatabase {
                 match lmdb_delete(
                     txn,
                     &self.payref_to_output_index,
-                    &payref_bytes,
+                    payref_bytes.as_slice(),
                     "payref_to_output_index",
                 ) {
                     Ok(()) => debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex()),
@@ -2041,10 +2041,10 @@ impl LMDBDatabase {
     fn fetch_output_by_payref_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
-        payref: &[u8; 32],
+        payref: &FixedHash,
     ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         // Look up output hash by PayRef
-        if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref)? {
+        if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
             // Use existing fetch_output_in_txn method to get the full output info
             self.fetch_output_in_txn(txn, output_hash.as_slice())
         } else {
@@ -2474,7 +2474,7 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
     }
 
-    fn fetch_output_by_payref(&self, payref: &[u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         self.fetch_output_by_payref_in_txn(&txn, payref)
     }
