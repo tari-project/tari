@@ -168,6 +168,8 @@ pub enum OutputManagerRequest {
     GetAllPaymentReferences,
     GetPaymentReferenceConfig,
     SetPaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
+    /// Batch query outputs by commitments for efficient PayRef calculation
+    GetOutputsByCommitments(Vec<CompressedCommitment>),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -305,6 +307,7 @@ impl fmt::Display for OutputManagerRequest {
             GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
             GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
             SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
+            GetOutputsByCommitments(commitments) => write!(f, "GetOutputsByCommitments({})", commitments.len()),
         }
     }
 }
@@ -367,6 +370,8 @@ pub enum OutputManagerResponse {
     PaymentReferences(Vec<crate::output_manager_service::payment_reference::PaymentRecord>),
     PaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
     PaymentReferenceConfigSet,
+    /// Response for batch commitment queries
+    OutputsByCommitments(Vec<DbWalletOutput>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1127,6 +1132,18 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::ChangeOutput(is_change) => Ok(is_change),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Batch query outputs by commitments for efficient PayRef calculation
+    pub async fn get_outputs_by_commitments(&mut self, commitments: Vec<CompressedCommitment>) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputsByCommitments(commitments))
+            .await??
+        {
+            OutputManagerResponse::OutputsByCommitments(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

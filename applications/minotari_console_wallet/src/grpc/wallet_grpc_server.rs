@@ -261,35 +261,46 @@ async fn calculate_payment_references_impl(
     // Note: Don't skip based on transaction mined_height for restored wallets
     // Individual outputs may have mining data even if transaction doesn't
     debug!(target: LOG_TARGET, "PayRef calculation: Processing {} commitments (tx mined_height={})", output_commitments.len(), mined_height);
-    debug!(target: LOG_TARGET, "PayRef calculation: Looking up {} output commitments for mined transaction at height {}", output_commitments.len(), mined_height);
     
-    // Get ALL wallet outputs (both spent and unspent) from output manager
-    let unspent_outputs = match output_manager.get_unspent_outputs().await {
+    if output_commitments.is_empty() {
+        return payment_refs;
+    }
+    
+    // Convert commitment bytes to CompressedCommitment for database query
+    let mut commitments = Vec::new();
+    for commitment_bytes in output_commitments {
+        match tari_core::transactions::tari_amount::CompressedCommitment::from_canonical_bytes(commitment_bytes) {
+            Ok(commitment) => commitments.push(commitment),
+            Err(e) => {
+                warn!(target: LOG_TARGET, "PayRef calculation: Invalid commitment bytes: {}", e);
+                payment_refs.push(vec![]);
+                continue;
+            }
+        }
+    }
+    
+    // Use batch query instead of fetching all outputs - this is the key optimization
+    let matched_outputs = match output_manager.get_outputs_by_commitments(commitments).await {
         Ok(outputs) => outputs,
         Err(e) => {
-            warn!(target: LOG_TARGET, "Failed to get unspent outputs for PayRef calculation: {}", e);
-            Vec::new()
+            warn!(target: LOG_TARGET, "Failed to fetch outputs by commitments for PayRef calculation: {}", e);
+            // Return empty PayRefs for all commitments
+            return output_commitments.iter().map(|_| vec![]).collect();
         }
     };
     
-    let spent_outputs = match output_manager.get_spent_outputs().await {
-        Ok(outputs) => outputs,
-        Err(e) => {
-            warn!(target: LOG_TARGET, "Failed to get spent outputs for PayRef calculation: {}", e);
-            Vec::new()
-        }
-    };
+    debug!(target: LOG_TARGET, "PayRef calculation: Found {} outputs from batch query", matched_outputs.len());
     
-    // Combine both spent and unspent outputs
-    let all_outputs: Vec<_> = unspent_outputs.into_iter().chain(spent_outputs.into_iter()).collect();
+    // Create a HashMap for O(1) lookup instead of O(n) search
+    use std::collections::HashMap;
+    let output_map: HashMap<Vec<u8>, &minotari_wallet::output_manager_service::storage::models::DbWalletOutput> = 
+        matched_outputs.iter()
+            .map(|output| (output.commitment.as_bytes().to_vec(), output))
+            .collect();
     
-    debug!(target: LOG_TARGET, "PayRef calculation: Found {} total wallet outputs to search", all_outputs.len());
-    
+    // Process each commitment in order
     for (i, commitment_bytes) in output_commitments.iter().enumerate() {
-        // Find matching DbWalletOutput by commitment
-        if let Some(db_output) = all_outputs.iter()
-            .find(|o| o.commitment.as_bytes() == commitment_bytes) 
-        {
+        if let Some(db_output) = output_map.get(commitment_bytes) {
             // Check if output has mining data (mined_height and mined_in_block)
             if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
                 // Use existing PayRef generation method - it will check the output's mining data

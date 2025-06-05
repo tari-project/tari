@@ -573,6 +573,10 @@ where
                 self.set_payment_reference_config(config)?;
                 Ok(OutputManagerResponse::PaymentReferenceConfigSet)
             },
+            OutputManagerRequest::GetOutputsByCommitments(commitments) => {
+                let outputs = self.get_outputs_by_commitments(commitments)?;
+                Ok(OutputManagerResponse::OutputsByCommitments(outputs))
+            },
         }
     }
 
@@ -3775,6 +3779,24 @@ where
     ) -> Result<(), OutputManagerError> {
         // Note: This method is designed not to persist config - it operates as transient configuration
         Ok(())
+    }
+
+    /// Batch query outputs by commitments for efficient PayRef calculation
+    fn get_outputs_by_commitments(&self, commitments: Vec<CompressedCommitment>) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        use crate::output_manager_service::storage::database::OutputBackendQuery;
+        use crate::output_manager_service::storage::OutputStatus;
+        
+        let query = OutputBackendQuery {
+            tip_height: i64::MAX,
+            status: vec![OutputStatus::Unspent, OutputStatus::Spent], // Include both spent and unspent
+            commitments,
+            pagination: None,
+            value_min: None,
+            value_max: None,
+            sorting: vec![],
+        };
+        
+        Ok(self.resources.db.fetch_outputs_by_query(query)?)
     }
 }
 
