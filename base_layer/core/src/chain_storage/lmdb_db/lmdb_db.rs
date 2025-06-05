@@ -696,25 +696,41 @@ impl LMDBDatabase {
                 
                 drop(read_txn);
                 
-                // Process outputs in chunks to manage memory usage
-                for chunk in outputs.chunks(OUTPUT_CHUNK_SIZE) {
-                    for (_, output_data) in chunk {
+                // Process outputs in chunks to manage memory usage with better error handling
+                for (chunk_idx, chunk) in outputs.chunks(OUTPUT_CHUNK_SIZE).enumerate() {
+                    for (output_idx, (_, output_data)) in chunk.iter().enumerate() {
                         // Generate PayRef and add to index
                         let output_hash = &output_data.hash;
                         let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
                         
-                        // Insert into PayRef index 
-                        lmdb_replace(
+                        // Insert into PayRef index with granular error handling
+                        match lmdb_replace(
                             &write_txn,
                             &db.payref_to_output_index,
                             &payref,
                             output_hash,
                             None,
-                        )?;
-                        
-                        *rebuild_count += 1;
+                        ) {
+                            Ok(()) => *rebuild_count += 1,
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "Failed to insert PayRef for output {} at height {} (chunk {}, item {}): {}", 
+                                       output_hash.to_hex(), height, chunk_idx, output_idx, e);
+                                return Err(e);
+                            }
+                        }
+                    }
+                    
+                    // Periodically check disk space within batch processing
+                    if chunk_idx % 10 == 0 {
+                        let (_, _, size_left_bytes) = LMDBStore::get_stats(&db.env)?;
+                        if size_left_bytes < 50 * BYTES_PER_MB {
+                            warn!(target: LOG_TARGET, "Critical disk space during PayRef migration: {} MB remaining at height {}", 
+                                  size_left_bytes / BYTES_PER_MB, height);
+                        }
                     }
                 }
+            } else {
+                debug!(target: LOG_TARGET, "No header found for height {} during PayRef migration", height);
             }
         }
         
