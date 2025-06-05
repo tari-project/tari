@@ -109,7 +109,7 @@ use crate::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
-        storage::models::{DbWalletOutput, SpendingPriority},
+        storage::models::SpendingPriority,
         UtxoSelectionCriteria,
     },
     storage::database::{WalletBackend, WalletDatabase},
@@ -4059,7 +4059,6 @@ where
                     crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeReceived => OutputStatus::Pending,
                     crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeSpent => OutputStatus::Pending,
                     crate::output_manager_service::storage::OutputStatus::SpentMinedUnconfirmed => OutputStatus::Spent,
-                    crate::output_manager_service::storage::OutputStatus::AbandonedCoinbase => OutputStatus::NotMined,
                     crate::output_manager_service::storage::OutputStatus::NotStored => OutputStatus::NotMined,
                 };
                 Ok(Some((amount, status)))
