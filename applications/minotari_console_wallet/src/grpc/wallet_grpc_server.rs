@@ -1379,9 +1379,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 })
                 .collect();
             
-            // Calculate PayRef for this transaction's first output (if mined)
+            // Calculate PayRefs for all outputs in this transaction (if mined)
             let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
-            let payment_reference = payment_refs.first().cloned().unwrap_or_default();
             
             transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
@@ -1404,7 +1403,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference: payment_reference.to_hex(),
+                payment_reference: payment_refs.first().map(|pr| pr.to_hex()).unwrap_or_default(),
+                payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
             });
         }
 
@@ -1464,9 +1464,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 })
                 .collect();
             
-            // Calculate PayRef for this transaction's first output (if mined)
+            // Calculate PayRefs for all outputs in this transaction (if mined)
             let payment_refs = self.calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0)).await;
-            let payment_reference = payment_refs.first().cloned().unwrap_or_default();
             
             result_transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
@@ -1489,7 +1488,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference: payment_reference.to_hex(),
+                payment_reference: payment_refs.first().map(|pr| pr.to_hex()).unwrap_or_default(),
+                payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
             });
         }
 
@@ -2120,7 +2120,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 mined_in_block_height: completed_tx.mined_height.unwrap_or(0),
                                 output_commitments: vec![], // Could be populated if needed
                                 input_commitments: vec![], // Could be populated if needed
-                                payment_reference: String::new(), // Not used in this context
+                                payment_reference: String::new(), // Deprecated field - not used in this context
+                                payment_references: payment_references.iter().map(|pr| hex::encode(pr)).collect(),
                             };
                             
                             let recipient_count = payment_references.len() as u64;
