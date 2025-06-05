@@ -168,14 +168,7 @@ impl DbWalletOutput {
             OutputSource::AtomicSwap => PaymentDirection::Received,
             OutputSource::Standard => {
                 // For standard outputs, distinguish between received payments and change outputs
-                if self.received_in_tx_id.is_some() {
-                    // Standard outputs with received_in_tx_id are typically change outputs from our own
-                    // transactions. This is because:
-                    // 1. Genuine received payments usually use OneSided or StealthOneSided sources
-                    // 2. Change outputs are created with Standard source during transaction building
-                    //
-                    // TODO: For better accuracy, we could check if received_in_tx_id corresponds to
-                    // an outbound transaction we initiated by querying the outbound_transactions table.
+                if matches!(self.payment_id, PaymentId::TransactionInfo { .. }) {
                     PaymentDirection::SentChange
                 } else {
                     PaymentDirection::Sent
