@@ -264,9 +264,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError>;
 
-    /// Gets private key
-    async fn fetch_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError>;
-
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,
@@ -480,6 +477,12 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError>;
+
+    async fn encrypt_key(&self, key: PrivateKey) -> Result<Vec<u8>, KeyManagerServiceError>;
+
+    async fn get_encrypted_key(&self, key_id: &TariKeyId) -> Result<Vec<u8>, KeyManagerServiceError>;
+
+    async fn decrypt_key(&self, encrypted: Vec<u8>) -> Result<PrivateKey, KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

@@ -156,14 +156,6 @@ where
             .await
     }
 
-    async fn fetch_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .fetch_private_key(key_id)
-            .await
-    }
-
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
@@ -613,6 +605,26 @@ where
             .read()
             .await
             .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
+            .await
+    }
+
+    async fn encrypt_key(&self, key: PrivateKey) -> Result<Vec<u8>, KeyManagerServiceError> {
+        self.transaction_key_manager_inner.read().await.encrypt_key(key).await
+    }
+
+    async fn get_encrypted_key(&self, key_id: &TariKeyId) -> Result<Vec<u8>, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .get_encrypted_key(key_id)
+            .await
+    }
+
+    async fn decrypt_key(&self, encrypted: Vec<u8>) -> Result<PrivateKey, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .decrypt_key(encrypted)
             .await
     }
 }

@@ -5,7 +5,6 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::PrivateKey,
     wallet_types::WalletType,
 };
 use tari_core::{
@@ -78,7 +77,7 @@ pub struct LockOneSidedTransactionResult {
     pub payment_id: PaymentId,
     pub tx_id: TxId,
     pub stp: SenderTransactionProtocol,
-    pub commitment_mask_keys: Vec<PrivateKey>,
+    pub encrypted_commitment_mask_keys: Vec<Vec<u8>>,
 }
 
 impl TransactionResult for LockOneSidedTransactionResult {}
@@ -344,8 +343,8 @@ where
         stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let commitment_mask_keys = stp
-            .get_input_keys(&self.resources.transaction_key_manager_service)
+        let encrypted_commitment_mask_keys = stp
+            .get_encrypted_input_keys(&self.resources.transaction_key_manager_service)
             .await?;
 
         Ok(LockOneSidedTransactionResult {
@@ -355,7 +354,7 @@ where
             payment_id,
             tx_id,
             stp,
-            commitment_mask_keys,
+            encrypted_commitment_mask_keys,
         })
     }
 
@@ -366,12 +365,13 @@ where
         let mut stp = request.stp.clone();
 
         let mut commitment_mask_key_ids = Vec::new();
-        for key in &request.commitment_mask_keys {
-            let key_id = self
+        for encrypted_key in &request.encrypted_commitment_mask_keys {
+            let key = self
                 .resources
                 .transaction_key_manager_service
-                .import_key(key.clone())
+                .decrypt_key(encrypted_key.clone())
                 .await?;
+            let key_id = self.resources.transaction_key_manager_service.import_key(key).await?;
             commitment_mask_key_ids.push(key_id);
         }
 

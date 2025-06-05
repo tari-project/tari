@@ -96,8 +96,8 @@ pub(super) struct RawTransactionInfo {
     pub payment_id: PaymentId,
     /// The senders address
     pub sender_address: TariAddress,
-    /// Precomputed script private key
-    pub script_private_key: Option<PrivateKey>,
+    /// Encrypted precomputed script private key
+    pub encrypted_script_private_key: Option<Vec<u8>>,
 }
 
 impl RawTransactionInfo {
@@ -645,7 +645,8 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(ref mut info) => {
                 let script_private_key =
                     SenderTransactionProtocol::calculate_script_private_key(info, key_manager).await?;
-                info.script_private_key = Some(script_private_key);
+                let encrypted_script_private_key = key_manager.encrypt_key(script_private_key).await?;
+                info.encrypted_script_private_key = Some(encrypted_script_private_key);
                 Ok(())
             },
             _ => Err(TPE::InvalidStateError),
@@ -788,10 +789,11 @@ impl SenderTransactionProtocol {
         if let Some(received_output) = &info.recipient_output {
             tx_builder.add_output(received_output.clone());
         }
-        let script_offset = match &info.script_private_key {
-            Some(key) => {
+        let script_offset = match &info.encrypted_script_private_key {
+            Some(encrypted_key) => {
+                let key = key_manager.decrypt_key(encrypted_key.clone()).await?;
                 key_manager
-                    .get_script_offset_from_private_key(key.clone(), &sender_offset_keys)
+                    .get_script_offset_from_private_key(key, &sender_offset_keys)
                     .await?
             },
             None => key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?,
@@ -925,7 +927,10 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub async fn get_input_keys<KM: TransactionKeyManagerInterface>(&self, km: &KM) -> Result<Vec<PrivateKey>, TPE> {
+    pub async fn get_encrypted_input_keys<KM: TransactionKeyManagerInterface>(
+        &self,
+        km: &KM,
+    ) -> Result<Vec<Vec<u8>>, TPE> {
         match &self.state {
             SenderState::Initializing(info)
             | SenderState::Finalizing(info)
@@ -933,7 +938,7 @@ impl SenderTransactionProtocol {
             | SenderState::CollectingSingleSignature(info) => {
                 let mut keys = Vec::new();
                 for input in &info.inputs {
-                    let key = km.fetch_private_key(&input.output.spending_key_id).await?;
+                    let key = km.get_encrypted_key(&input.output.spending_key_id).await?;
                     keys.push(key);
                 }
                 Ok(keys)
