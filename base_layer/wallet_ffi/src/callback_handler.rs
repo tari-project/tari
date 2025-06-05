@@ -73,7 +73,8 @@ unsafe impl Send for Context {}
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
 pub struct CallbackHandler<TBackend>
-where TBackend: TransactionBackend + 'static
+where
+    TBackend: TransactionBackend + 'static,
 {
     pub context: Context,
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut InboundTransaction),
@@ -109,7 +110,8 @@ where TBackend: TransactionBackend + 'static
 }
 
 impl<TBackend> CallbackHandler<TBackend>
-where TBackend: TransactionBackend + 'static
+where
+    TBackend: TransactionBackend + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]

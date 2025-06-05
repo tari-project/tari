@@ -40,8 +40,7 @@ use minotari_wallet::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig,
-    WalletSqlite,
+    WalletConfig, WalletSqlite,
 };
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
@@ -62,9 +61,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         encrypted_data::{PaymentId, TxType},
-        OutputFeatures,
-        TemplateType,
-        TransactionError,
+        OutputFeatures, TemplateType, TransactionError,
     },
     weight::TransactionWeight,
 };
@@ -214,8 +211,8 @@ impl AppState {
     }
 
     pub async fn check_connectivity(&mut self) {
-        if self.get_custom_base_node().is_none() &&
-            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
+        if self.get_custom_base_node().is_none()
+            && self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
@@ -778,74 +775,84 @@ impl AppStateInner {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // Calculate payment references for completed transactions using optimized approach
-        self.calculate_payment_references_for_specific_transactions(&completed_transactions).await?;
-        
+        self.calculate_payment_references_for_specific_transactions(&completed_transactions)
+            .await?;
+
         self.updated = true;
         Ok(())
     }
 
     async fn calculate_payment_references_for_transactions(&mut self) -> Result<(), UiError> {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_transactions() called using canonical approach");
-        
+
         // Use the canonical approach: get all outputs directly and use received_in_tx_id as the link
         // This matches the approach used by the working gRPC and ListPayRefs implementations
-        let unspent_outputs = self.wallet.output_manager_service.get_unspent_outputs().await
+        let unspent_outputs = self
+            .wallet
+            .output_manager_service
+            .get_unspent_outputs()
+            .await
             .map_err(UiError::OutputManager)?;
-        let spent_outputs = self.wallet.output_manager_service.get_spent_outputs().await
+        let spent_outputs = self
+            .wallet
+            .output_manager_service
+            .get_spent_outputs()
+            .await
             .map_err(UiError::OutputManager)?;
-        
+
         debug!(target: LOG_TARGET, "payref_debug: Found {} unspent outputs, {} spent outputs", 
                unspent_outputs.len(), spent_outputs.len());
-        
+
         // Create lookup maps: TxId -> (PayRef hex, status) using the canonical transaction ID link
         let mut payref_by_tx_id = std::collections::HashMap::new();
         let mut payref_status_by_tx_id = std::collections::HashMap::new();
-        
+
         // Get current tip height for confirmation calculations
         let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
             Ok(Some(metadata)) => metadata.best_block_height(),
             _ => 0, // Default to 0 if we can't get chain height
         };
-        
+
         // Process all outputs (unspent and spent) to build the lookup map
         for output in unspent_outputs.into_iter().chain(spent_outputs.into_iter()) {
             // Only include outputs that are linked to transactions
             if let Some(tx_id) = output.received_in_tx_id {
                 use minotari_wallet::output_manager_service::payment_reference::PayRefStatus;
-                
+
                 // Get PayRef status
                 let status = output.get_payment_reference_status(current_tip_height, 5); // Default 5 confirmations
-                
+
                 let (payref_hex_opt, status_text) = match status {
                     PayRefStatus::Available(payref, confirmations) => {
-                    let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
-                    (Some(payref_hex), format!("Available ({} confs)", confirmations))
+                        let payref_hex = tari_utilities::hex::Hex::to_hex(&payref);
+                        (Some(payref_hex), format!("Available ({} confs)", confirmations))
                     },
-                    PayRefStatus::Pending(current_confs, blocks_remaining) => {
-                    (None, format!("Pending {}/{} confs ({} blocks remaining)", 
-                    current_confs, current_confs + blocks_remaining, blocks_remaining))
-                    },
-                    PayRefStatus::NotMined => {
-                        (None, "Not mined".to_string())
-                    },
-                    PayRefStatus::InvalidOutput => {
-                        (None, "Invalid output".to_string())
-                    },
+                    PayRefStatus::Pending(current_confs, blocks_remaining) => (
+                        None,
+                        format!(
+                            "Pending {}/{} confs ({} blocks remaining)",
+                            current_confs,
+                            current_confs + blocks_remaining,
+                            blocks_remaining
+                        ),
+                    ),
+                    PayRefStatus::NotMined => (None, "Not mined".to_string()),
+                    PayRefStatus::InvalidOutput => (None, "Invalid output".to_string()),
                 };
-                
+
                 if let Some(payref_hex) = payref_hex_opt {
                     payref_by_tx_id.insert(tx_id, payref_hex.clone());
                     debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
                            tx_id, payref_hex);
                 }
-                
+
                 payref_status_by_tx_id.insert(tx_id, status_text);
             }
         }
-        
+
         debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
                payref_by_tx_id.len());
-        
+
         // Update completed transactions with their payment references using the canonical TxId link
         for tx in &mut self.data.completed_txs {
             // Look up payment reference by transaction ID (canonical approach)
@@ -857,7 +864,7 @@ impl AppStateInner {
                 debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
                        tx.tx_id);
             }
-            
+
             // Always set the status, regardless of whether PayRef is available
             if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id) {
                 tx.payment_reference_status = Some(status.clone());
@@ -865,30 +872,33 @@ impl AppStateInner {
                        tx.tx_id, status);
             }
         }
-        
+
         debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using canonical approach");
         Ok(())
     }
 
-    async fn calculate_payment_references_for_specific_transactions(&mut self, completed_transactions: &[minotari_wallet::transaction_service::storage::models::CompletedTransaction]) -> Result<(), UiError> {
+    async fn calculate_payment_references_for_specific_transactions(
+        &mut self,
+        completed_transactions: &[minotari_wallet::transaction_service::storage::models::CompletedTransaction],
+    ) -> Result<(), UiError> {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
-        
+
         use tari_common_types::payment_reference::generate_payment_reference;
-        
+
         // Get current tip height for confirmation calculations
         let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
             Ok(Some(metadata)) => metadata.best_block_height(),
             _ => 0, // Default to 0 if we can't get chain height
         };
-        
+
         // Create lookup maps: TxId -> (PayRef hex, status)
         let mut payref_by_tx_id = std::collections::HashMap::new();
         let mut payref_status_by_tx_id = std::collections::HashMap::new();
-        
+
         // Process each completed transaction directly
         for completed_transaction in completed_transactions {
             let tx_id = completed_transaction.tx_id;
-            
+
             // Check if transaction has been mined
             if let Some(block_hash) = &completed_transaction.mined_in_block {
                 let mined_height = completed_transaction.mined_height.unwrap_or(0);
@@ -897,28 +907,37 @@ impl AppStateInner {
                 } else {
                     0
                 };
-                
+
                 // For the first output in the transaction, calculate PayRef directly
                 if let Some(output) = completed_transaction.transaction.body.outputs().iter().next() {
                     let output_hash = &output.hash();
                     let payref = generate_payment_reference(&(*block_hash), output_hash);
                     let payref_hex = payref.to_hex();
-                    
+
                     // Determine status based on confirmations
                     let required_confirmations = 5; // Default confirmation requirement
                     let (payref_hex_opt, status_text) = if confirmations >= required_confirmations {
-                        (Some(payref_hex.clone()), format!("Available ({} confirmations)", confirmations))
+                        (
+                            Some(payref_hex.clone()),
+                            format!("Available ({} confirmations)", confirmations),
+                        )
                     } else {
                         let remaining = required_confirmations - confirmations;
-                        (None, format!("Pending ({}/{} confirmations, {} blocks remaining)", confirmations, required_confirmations, remaining))
+                        (
+                            None,
+                            format!(
+                                "Pending ({}/{} confirmations, {} blocks remaining)",
+                                confirmations, required_confirmations, remaining
+                            ),
+                        )
                     };
-                    
+
                     if let Some(payref_hex) = payref_hex_opt {
                         payref_by_tx_id.insert(tx_id.as_u64(), payref_hex.clone());
                         debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
                                tx_id, payref_hex);
                     }
-                    
+
                     payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
                     // Only process first output for PayRef (all outputs in same block have same PayRef)
                 }
@@ -928,10 +947,10 @@ impl AppStateInner {
                 debug!(target: LOG_TARGET, "payref_debug: Transaction {} not mined yet", tx_id);
             }
         }
-        
+
         debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
                payref_by_tx_id.len());
-        
+
         // Update completed transactions with their payment references
         for tx in &mut self.data.completed_txs {
             // Look up payment reference by transaction ID
@@ -943,7 +962,7 @@ impl AppStateInner {
                 debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
                        tx.tx_id);
             }
-            
+
             // Always set the status, regardless of whether PayRef is available
             if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
                 tx.payment_reference_status = Some(status.clone());
@@ -951,7 +970,7 @@ impl AppStateInner {
                        tx.tx_id, status);
             }
         }
-        
+
         debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using direct transaction approach");
         Ok(())
     }
@@ -1394,9 +1413,9 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        } else if let PaymentId::Open { tx_type, .. }
+        | PaymentId::AddressAndData { tx_type, .. }
+        | PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
         {
             tx_type == TxType::Burn
         } else {
@@ -1429,7 +1448,7 @@ impl CompletedTransactionInfo {
             payment_id: Some(tx.payment_id),
             coinbase,
             burn,
-            payment_reference_hex: None, // Will be populated when transactions are loaded
+            payment_reference_hex: None,    // Will be populated when transactions are loaded
             payment_reference_status: None, // Will be populated when transactions are loaded
         })
     }

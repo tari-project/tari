@@ -4837,72 +4837,24 @@ struct TariPaymentDetails *wallet_find_payment_by_reference(struct TariWallet *w
 
 /**
  * Get available payment references
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariPaymentRecords` - Returns available payment references, note that it returns ptr::null_mut() if
- * wallet is null or an error is encountered
- *
- * # Safety
- * The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory leak
  */
 struct TariPaymentRecords *wallet_get_available_payment_references(struct TariWallet *wallet,
                                                                    int *error_out);
 
 /**
  * Get all payment references
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariPaymentRecords` - Returns all payment references, note that it returns ptr::null_mut() if
- * wallet is null or an error is encountered
- *
- * # Safety
- * The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory leak
  */
 struct TariPaymentRecords *wallet_get_all_payment_references(struct TariWallet *wallet,
                                                              int *error_out);
 
 /**
  * Get PayRef configuration
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariPayRefConfig` - Returns the current PayRef configuration, note that it returns ptr::null_mut() if
- * wallet is null or an error is encountered
- *
- * # Safety
- * The ```payref_config_destroy``` method must be called when finished with a TariPayRefConfig to prevent a memory leak
  */
 struct TariPayRefConfig *wallet_get_payment_reference_config(struct TariWallet *wallet,
                                                              int *error_out);
 
 /**
  * Set PayRef configuration
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `config` - The TariPayRefConfig pointer containing the new configuration
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns true if the configuration was set successfully, false otherwise
- *
- * # Safety
- * None
  */
 bool wallet_set_payment_reference_config(struct TariWallet *wallet,
                                          struct TariPayRefConfig *config,
@@ -4910,35 +4862,11 @@ bool wallet_set_payment_reference_config(struct TariWallet *wallet,
 
 /**
  * Parse payment reference from hex string
- *
- * ## Arguments
- * `hex_str` - The pointer to a char array containing the hexadecimal representation of the payment reference
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut unsigned char` - Returns a pointer to the 32-byte payment reference, note that it returns ptr::null_mut() if
- * hex_str is null, invalid, or an error is encountered
- *
- * # Safety
- * The ```payment_reference_destroy``` method must be called when finished with the returned payment reference to prevent a memory leak
  */
 unsigned char *parse_payment_reference_hex(const char *hex_str, int *error_out);
 
 /**
  * Convert payment reference to hex string
- *
- * ## Arguments
- * `payment_reference` - The pointer to a 32-byte payment reference
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut c_char` - Returns a pointer to a char array containing the hexadecimal representation of the payment reference,
- * note that it returns ptr::null_mut() if payment_reference is null or an error is encountered
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
 char *payment_reference_to_hex(const unsigned char *payment_reference, int *error_out);
 
@@ -4964,35 +4892,11 @@ void payref_status_destroy(struct TariPayRefStatus *status);
 
 /**
  * Get length of TariPaymentRecords
- *
- * ## Arguments
- * `records` - The pointer to a TariPaymentRecords
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns 0 if any pointer argument is null.
- *
- * ## Returns
- * `c_uint` - Returns the number of payment records in the collection, 0 if records is null
- *
- * # Safety
- * None
  */
 unsigned int payment_records_get_length(const struct TariPaymentRecords *records, int *error_out);
 
 /**
  * Get TariPaymentRecord at index
- *
- * ## Arguments
- * `records` - The pointer to a TariPaymentRecords
- * `index` - The integer index position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariPaymentRecord` - Returns a TariPaymentRecord at the specified index, note that it returns ptr::null_mut() if
- * records is null or index is invalid
- *
- * # Safety
- * The ```payment_record_destroy``` method must be called when finished with a TariPaymentRecord to prevent a memory leak
  */
 struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords *records,
                                                  unsigned int index,
@@ -5011,19 +4915,6 @@ void payment_reference_destroy(unsigned char *payment_reference);
 /**
  * Generate PayRef from block hash and commitment (for external use)
  * Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
- *
- * ## Arguments
- * `block_hash` - The pointer to a 32-byte block hash
- * `commitment` - The pointer to a commitment value
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut unsigned char` - Returns a pointer to the generated 32-byte payment reference, note that it returns ptr::null_mut() if
- * any argument is null or an error is encountered
- *
- * # Safety
- * The ```payment_reference_destroy``` method must be called when finished with the returned payment reference to prevent a memory leak
  */
 unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
                                                            const unsigned char *commitment,
@@ -5031,19 +4922,6 @@ unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *
 
 /**
  * Get PayRef status by checking confirmations
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `payment_reference` - The pointer to a 32-byte payment reference
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariPayRefStatus` - Returns the status of the payment reference, note that it returns ptr::null_mut() if
- * any argument is null or an error is encountered
- *
- * # Safety
- * The ```payref_status_destroy``` method must be called when finished with a TariPayRefStatus to prevent a memory leak
  */
 struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *wallet,
                                                              const unsigned char *payment_reference,
@@ -5051,19 +4929,6 @@ struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *
 
 /**
  * Format PayRef for display according to config
- *
- * ## Arguments
- * `payment_reference` - The pointer to a 32-byte payment reference
- * `format_type` - The format type: 0=Full, 1=Shortened, 2=Custom
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut c_char` - Returns a pointer to a char array containing the formatted payment reference,
- * note that it returns ptr::null_mut() if payment_reference is null or an error is encountered
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
 char *wallet_format_payment_reference(const unsigned char *payment_reference,
                                       unsigned int format_type,
@@ -5071,36 +4936,11 @@ char *wallet_format_payment_reference(const unsigned char *payment_reference,
 
 /**
  * Validate PayRef hex format
- *
- * ## Arguments
- * `payref_hex` - The pointer to a char array containing the hexadecimal payment reference
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns true if the PayRef hex format is valid, false otherwise
- *
- * # Safety
- * None
  */
 bool wallet_validate_payment_reference_format(const char *payref_hex, int *error_out);
 
 /**
  * Get PayRef verification result for exchanges/merchants
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `payment_reference` - The pointer to a 32-byte payment reference
- * `required_confirmations` - The number of confirmations required for verification
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut c_char` - Returns a pointer to a char array containing the verification result,
- * note that it returns ptr::null_mut() if any argument is null or an error is encountered
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
 char *wallet_verify_payment_reference(struct TariWallet *wallet,
                                       const unsigned char *payment_reference,

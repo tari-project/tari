@@ -29,8 +29,7 @@ use minotari_console_wallet::{run_wallet_with_cli, ApplicationConfig, Cli};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::ExitError,
-    initialize_logging,
-    load_configuration,
+    initialize_logging, load_configuration,
 };
 use tari_shutdown::Shutdown;
 #[cfg(feature = "dhat-heap")]

@@ -24,7 +24,9 @@ impl Menu {
 
 impl<B: Backend> Component<B> for Menu {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(

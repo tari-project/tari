@@ -61,7 +61,9 @@ impl NetworkTab {
     }
 
     pub fn draw_base_node_selection<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Base Node Selection",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -128,7 +130,9 @@ impl NetworkTab {
     }
 
     fn draw_detailed_base_node<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Base Node Detail",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -177,7 +181,9 @@ impl NetworkTab {
     }
 
     pub fn draw_connected_peers_list<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Connected Peers",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -208,7 +214,9 @@ impl NetworkTab {
     }
 
     pub fn draw_base_node_peer<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Base Node Peer",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),

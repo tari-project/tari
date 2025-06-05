@@ -60,7 +60,9 @@ impl TransactionsTab {
     // casting here is okay the max value is 7
     #[allow(clippy::cast_possible_truncation)]
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {
             self.selected_tx_list = SelectedTransactionList::CompletedTxs;
             (Constraint::Max(3), Constraint::Min(4))
@@ -79,7 +81,9 @@ impl TransactionsTab {
     }
 
     fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
         } else {
@@ -174,7 +178,9 @@ impl TransactionsTab {
 
     #[allow(clippy::too_many_lines)]
     fn draw_completed_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         //  Completed Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
@@ -221,9 +227,9 @@ impl TransactionsTab {
             let mut transaction_status = tx.status.clone();
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
             if let Some(
-                PaymentId::Open { tx_type, .. } |
-                PaymentId::AddressAndData { tx_type, .. } |
-                PaymentId::TransactionInfo { tx_type, .. },
+                PaymentId::Open { tx_type, .. }
+                | PaymentId::AddressAndData { tx_type, .. }
+                | PaymentId::TransactionInfo { tx_type, .. },
             ) = tx.payment_id.clone()
             {
                 match tx.status {
@@ -322,7 +328,9 @@ impl TransactionsTab {
 
     #[allow(clippy::too_many_lines)]
     fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Transaction Details",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -486,16 +494,16 @@ impl TransactionsTab {
             );
 
             let confirmation_count = app_state.get_confirmations(tx.tx_id);
-            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed ||
-                tx.status == TransactionStatus::OneSidedConfirmed ||
-                tx.status == TransactionStatus::CoinbaseConfirmed) &&
-                tx.cancelled.is_none()
+            let confirmations_msg = if (tx.status == TransactionStatus::MinedConfirmed
+                || tx.status == TransactionStatus::OneSidedConfirmed
+                || tx.status == TransactionStatus::CoinbaseConfirmed)
+                && tx.cancelled.is_none()
             {
                 format!("{} required confirmations met", required_confirmations)
-            } else if (tx.status == TransactionStatus::MinedUnconfirmed ||
-                tx.status == TransactionStatus::OneSidedUnconfirmed ||
-                tx.status == TransactionStatus::CoinbaseUnconfirmed) &&
-                tx.cancelled.is_none()
+            } else if (tx.status == TransactionStatus::MinedUnconfirmed
+                || tx.status == TransactionStatus::OneSidedUnconfirmed
+                || tx.status == TransactionStatus::CoinbaseUnconfirmed)
+                && tx.cancelled.is_none()
             {
                 if let Some(count) = confirmation_count {
                     format!("{} of {} required confirmations met", count, required_confirmations)
@@ -523,12 +531,12 @@ impl TransactionsTab {
 
             let payment_ref_content = {
                 let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
-                (Some(hex), Some(status)) => format!("{} Status: {}", hex, status),
-                (None, Some(status)) => format!("PayRef: N/A Status: {}", status),
-                (Some(hex), None) => hex.clone(),
-                (None, None) => "N/A".to_string(),
+                    (Some(hex), Some(status)) => format!("{} Status: {}", hex, status),
+                    (None, Some(status)) => format!("PayRef: N/A Status: {}", status),
+                    (Some(hex), None) => hex.clone(),
+                    (None, None) => "N/A".to_string(),
                 };
-                
+
                 // Color code based on status
                 let color = match &tx.payment_reference_status {
                     Some(status) if status.starts_with("Available") => Color::Green,
@@ -536,7 +544,7 @@ impl TransactionsTab {
                     Some(status) if status.contains("Not mined") => Color::Gray,
                     _ => Color::White,
                 };
-                
+
                 Span::styled(payref_text, Style::default().fg(color))
             };
 
@@ -573,7 +581,7 @@ impl TransactionsTab {
 
     fn search_by_payref(&mut self, app_state: &AppState) {
         let search_term = self.payref_search.trim().replace(' ', "").to_lowercase();
-        
+
         // Search in completed transactions
         let completed_txs = app_state.get_completed_txs();
         for (index, tx) in completed_txs.iter().enumerate() {
@@ -588,7 +596,7 @@ impl TransactionsTab {
                 }
             }
         }
-        
+
         // If no match found, show error
         self.error_message = Some(format!(
             "No transaction found with PayRef containing '{}'\nPress Enter to continue.",
@@ -663,10 +671,18 @@ impl<B: Backend> Component<B> for TransactionsTab {
         // Draw PayRef search input if active
         if self.payref_search_active {
             let search_prompt = format!(
-                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel", 
+                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel",
                 self.payref_search
             );
-            draw_dialog(f, area, "PayRef Search".to_string(), search_prompt, Color::Yellow, 120, 9);
+            draw_dialog(
+                f,
+                area,
+                "PayRef Search".to_string(),
+                search_prompt,
+                Color::Yellow,
+                120,
+                9,
+            );
         }
     }
 
@@ -725,7 +741,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 },
                 _ => {
                     // Ignore other characters
-                }
+                },
             }
             return;
         }

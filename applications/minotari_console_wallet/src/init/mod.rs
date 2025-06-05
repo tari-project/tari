@@ -39,9 +39,7 @@ use minotari_wallet::{
         sqlite_utilities::initialize_sqlite_database_backends,
     },
     wallet::{derive_comms_secret_key, read_or_create_master_seed, read_or_create_wallet_type},
-    Wallet,
-    WalletConfig,
-    WalletSqlite,
+    Wallet, WalletConfig, WalletSqlite,
 };
 use rand::prelude::SliceRandom;
 use rpassword::prompt_password_stdout;
@@ -49,8 +47,7 @@ use rustyline::Editor;
 use tari_common::{
     configuration::{
         bootstrap::{grpc_default_port, prompt, ApplicationType},
-        MultiaddrList,
-        Network,
+        MultiaddrList, Network,
     },
     exit_codes::{ExitCode, ExitError},
 };

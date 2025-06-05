@@ -33,8 +33,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::automation::{
     commands::{FILE_EXTENSION, SPEND_SESSION_INFO},
     error::CommandError,
-    PreMineSpendStep1SessionInfo,
-    SessionId,
+    PreMineSpendStep1SessionInfo, SessionId,
 };
 
 #[derive(Debug)]

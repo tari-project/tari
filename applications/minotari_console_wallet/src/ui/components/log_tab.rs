@@ -54,7 +54,9 @@ impl LogTab {
     }
 
     fn draw_logs<B>(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         // First render the border and calculate the inner area
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "StdOut log",
