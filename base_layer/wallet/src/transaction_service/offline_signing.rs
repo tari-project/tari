@@ -362,6 +362,14 @@ where
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
+        if request.encrypted_commitment_mask_keys.is_empty() {
+            return Err(TransactionServiceError::NotSupported(
+                "No encrypted commitment mask keys found in the request".to_string(),
+            ));
+        }
+        debug!(target: LOG_TARGET, "Signing transaction {} with {} encrypted keys", 
+           request.tx_id, request.encrypted_commitment_mask_keys.len());
+
         let mut stp = request.stp.clone();
 
         let mut commitment_mask_key_ids = Vec::new();
