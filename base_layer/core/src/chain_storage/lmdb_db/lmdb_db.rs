@@ -723,9 +723,13 @@ impl LMDBDatabase {
                     // Periodically check disk space within batch processing
                     if chunk_idx % 10 == 0 {
                         let (_, _, size_left_bytes) = LMDBStore::get_stats(&db.env)?;
-                        if size_left_bytes < 50 * BYTES_PER_MB {
+                        if size_left_bytes < 500 * BYTES_PER_MB {
                             warn!(target: LOG_TARGET, "Critical disk space during PayRef migration: {} MB remaining at height {}", 
                                   size_left_bytes / BYTES_PER_MB, height);
+                            // Consider pausing migration if space gets too low
+                            if size_left_bytes < 200 * BYTES_PER_MB {
+                                return Err(ChainStorageError::OutOfMemory);
+                            }
                         }
                     }
                 }
