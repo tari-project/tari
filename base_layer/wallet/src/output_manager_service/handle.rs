@@ -163,7 +163,7 @@ pub enum OutputManagerRequest {
     /// Check if this is a change output from our own transaction
     IsChangeOutput(Box<TransactionOutput>),
     // PayRef operations
-    FindPaymentByReference([u8; 32]),
+    FindPaymentByReference(FixedHash),
     GetAvailablePaymentReferences,
     GetAllPaymentReferences,
     GetPaymentReferenceConfig,
@@ -1044,7 +1044,7 @@ impl OutputManagerHandle {
     /// Find payment details by PayRef
     pub async fn find_payment_by_reference(
         &mut self,
-        payref: [u8; 32],
+        payref: FixedHash,
     ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
         match self
             .handle
