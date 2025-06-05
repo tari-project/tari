@@ -4862,20 +4862,6 @@ bool wallet_set_payment_reference_config(struct TariWallet *wallet,
 
 /**
  * Parse payment reference from hex string
- * 
- * @param hex_str - Hex string representation of payment reference (64 hex characters for 32 bytes)
- * @param error_out - Pointer to integer that will be set to error code if parsing fails
- * @return unsigned char* - Pointer to 32-byte array containing the payment reference.
- *                         The caller is responsible for freeing this memory using 
- *                         payment_reference_destroy() to avoid memory leaks.
- *                         Returns NULL if parsing fails.
- * 
- * Example usage:
- *   unsigned char* payref = parse_payment_reference_hex("abc123...", &error);
- *   if (payref != NULL) {
- *       // Use payref...
- *       payment_reference_destroy(payref);
- *   }
  */
 unsigned char *parse_payment_reference_hex(const char *hex_str, int *error_out);
 
@@ -4923,37 +4909,12 @@ void payment_record_destroy(struct TariPaymentRecord *record);
 
 /**
  * Free payment reference memory allocated by parse_payment_reference_hex
- * 
- * @param payment_reference - Pointer to the 32-byte payment reference array to be freed.
- *                           This must be a pointer previously returned by parse_payment_reference_hex.
- *                           Passing NULL is safe and will be ignored.
- * 
- * IMPORTANT: Always call this function to free memory allocated by parse_payment_reference_hex
- * to prevent memory leaks. After calling this function, the pointer becomes invalid and should
- * not be used again.
- * 
- * Example usage:
- *   unsigned char* payref = parse_payment_reference_hex("abc123...", &error);
- *   // ... use payref ...
- *   payment_reference_destroy(payref);  // Free the memory
- *   payref = NULL;  // Good practice to set to NULL after freeing
  */
 void payment_reference_destroy(unsigned char *payment_reference);
 
 /**
  * Generate PayRef from block hash and commitment (for external use)
  * Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
- *
- * ## Arguments
- * `block_hash` - Pointer to a 32-byte block hash array
- * `commitment` - Pointer to a 32-byte commitment array  
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null
- *
- * ## Returns
- * `*mut unsigned char` - Returns a pointer to a 32-byte payment reference array, or null on error
- *
- * # Safety
- * The `payment_reference_destroy` method must be called when finished with the returned array to prevent memory leaks
  */
 unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
                                                            const unsigned char *commitment,
@@ -4968,20 +4929,6 @@ struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *
 
 /**
  * Format PayRef for display according to config
- *
- * ## Arguments
- * `payment_reference` - Pointer to a 32-byte payment reference array
- * `format_type` - Display format type:
- *   0 = Full (complete 64-character hex string)
- *   1 = Shortened (abbreviated format)  
- *   2 = Custom (8 prefix + 8 suffix characters with ellipsis)
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null
- *
- * ## Returns
- * `*mut c_char` - Returns formatted payment reference string, or null on error
- *
- * # Safety
- * The `string_destroy` method must be called when finished with the returned string to prevent memory leaks
  */
 char *wallet_format_payment_reference(const unsigned char *payment_reference,
                                       unsigned int format_type,

@@ -898,10 +898,10 @@ impl AppStateInner {
                     0
                 };
                 
-                // For each output in the transaction, calculate PayRef directly
-                for output in completed_transaction.transaction.body.outputs() {
+                // For the first output in the transaction, calculate PayRef directly
+                if let Some(output) = completed_transaction.transaction.body.outputs().iter().next() {
                     let output_hash = &output.hash();
-                    let payref = generate_payment_reference(&(*block_hash).into(), output_hash);
+                    let payref = generate_payment_reference(&(*block_hash), output_hash);
                     let payref_hex = payref.to_hex();
                     
                     // Determine status based on confirmations
@@ -920,7 +920,7 @@ impl AppStateInner {
                     }
                     
                     payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
-                    break; // Only process first output for PayRef (all outputs in same block have same PayRef)
+                    // Only process first output for PayRef (all outputs in same block have same PayRef)
                 }
             } else {
                 // Transaction not mined yet
