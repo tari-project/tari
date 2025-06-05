@@ -85,7 +85,7 @@ use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
-        payment_reference::{PayRefConfig, PayRefDisplayFormat, PaymentDirection},
+        payment_reference::{PayRefConfig, PayRefDisplayFormat, PaymentDirection, PaymentRecord},
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
             models::DbWalletOutput,
@@ -10881,12 +10881,34 @@ pub unsafe extern "C" fn wallet_find_payment_by_reference(
     }
 }
 
-/// Get available payment references
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_available_payment_references(
+/// Helper function to convert payment records to FFI format
+unsafe fn convert_payment_records_to_ffi(payment_records: Vec<PaymentRecord>) -> *mut TariPaymentRecords {
+    let mut ffi_records = Vec::new();
+    for record in payment_records {
+        ffi_records.push(TariPaymentRecord {
+            payment_reference: record.payment_reference,
+            amount: record.amount.as_u64(),
+            block_height: record.block_height,
+            mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+            direction: match record.direction {
+                PaymentDirection::Received => 0,
+                PaymentDirection::Sent => 1,
+                PaymentDirection::SentChange => 2,
+            },
+        });
+    }
+    Box::into_raw(Box::new(TariPaymentRecords(ffi_records)))
+}
+
+/// Helper function to handle payment reference retrieval with shared error checking and conversion logic
+unsafe fn get_payment_references_with_method<F>(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariPaymentRecords {
+    method: F,
+) -> *mut TariPaymentRecords
+where
+    F: FnOnce(&TariWallet) -> Result<Vec<PaymentRecord>, OutputManagerError>,
+{
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -10897,31 +10919,26 @@ pub unsafe extern "C" fn wallet_get_available_payment_references(
         return ptr::null_mut();
     }
 
-    match (*wallet).runtime.block_on(
-        (*wallet).wallet.output_manager_service.get_available_payment_references()
-    ) {
-        Ok(payment_records) => {
-            let mut ffi_records = Vec::new();
-            for record in payment_records {
-                ffi_records.push(TariPaymentRecord {
-                    payment_reference: record.payment_reference,
-                    amount: record.amount.as_u64(),
-                    block_height: record.block_height,
-                    mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
-                    direction: match record.direction {
-                        PaymentDirection::Received => 0,
-                        PaymentDirection::Sent => 1,
-                        PaymentDirection::SentChange => 2,
-                    },
-                });
-            }
-            Box::into_raw(Box::new(TariPaymentRecords(ffi_records)))
-        },
+    match (*wallet).runtime.block_on(async {
+        method(&(*wallet).wallet).await
+    }) {
+        Ok(payment_records) => convert_payment_records_to_ffi(payment_records),
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             ptr::null_mut()
         }
     }
+}
+
+/// Get available payment references
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_available_payment_references(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecords {
+    get_payment_references_with_method(wallet, error_out, |w| {
+        w.output_manager_service.get_available_payment_references()
+    })
 }
 
 /// Get all payment references
@@ -10930,41 +10947,9 @@ pub unsafe extern "C" fn wallet_get_all_payment_references(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
 ) -> *mut TariPaymentRecords {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    match (*wallet).runtime.block_on(
-        (*wallet).wallet.output_manager_service.get_all_payment_references()
-    ) {
-        Ok(payment_records) => {
-            let mut ffi_records = Vec::new();
-            for record in payment_records {
-                ffi_records.push(TariPaymentRecord {
-                    payment_reference: record.payment_reference,
-                    amount: record.amount.as_u64(),
-                    block_height: record.block_height,
-                    mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
-                    direction: match record.direction {
-                        PaymentDirection::Received => 0,
-                        PaymentDirection::Sent => 1,
-                        PaymentDirection::SentChange => 2,
-                    },
-                });
-            }
-            Box::into_raw(Box::new(TariPaymentRecords(ffi_records)))
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::null_mut()
-        }
-    }
+    get_payment_references_with_method(wallet, error_out, |w| {
+        w.output_manager_service.get_all_payment_references()
+    })
 }
 
 /// Get PayRef configuration
