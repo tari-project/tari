@@ -2842,7 +2842,13 @@ pub async fn command_runner(
                                         println!("     {}. {}", j + 1, payref.to_hex());
                                     } else {
                                         let hex_payref = payref.to_hex();
-                                        println!("     {}. {}...{}", j + 1, &hex_payref[..8], &hex_payref[56..]);
+                                        if hex_payref.len() >= 64 {
+                                            println!("     {}. {}...{}", j + 1, &hex_payref[..8], &hex_payref[56..]);
+                                        } else {
+                                            // Fallback for shorter hex strings
+                                            let end_start = hex_payref.len().saturating_sub(8);
+                                            println!("     {}. {}...{}", j + 1, &hex_payref[..8.min(hex_payref.len())], &hex_payref[end_start..]);
+                                        }
                                     }
                                 }
                                 println!("   Recipients: {}", tx_with_refs.recipient_count);
