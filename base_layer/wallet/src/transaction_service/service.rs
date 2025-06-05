@@ -125,7 +125,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
-        offline_signing::{LockOneSidedTransactionResult, OfflineSigning, TransactionResult},
+        offline_signing::{OfflineSigning, PrepareOneSidedTransactionForSigningResult, TransactionResult},
         protocols::{
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -662,7 +662,7 @@ where
                 .await?;
                 return Ok(());
             },
-            TransactionServiceRequest::LockOneSidedTransaction {
+            TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
                 selection_criteria,
@@ -688,10 +688,10 @@ where
                     )
                     .await
                     .and_then(|result| result.to_string())
-                    .map(TransactionServiceResponse::OneSidedTransactionLocked)
+                    .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
-                let lock_request = LockOneSidedTransactionResult::from_string(&request)?;
+                let lock_request = PrepareOneSidedTransactionForSigningResult::from_string(&request)?;
                 let offline_signing = OfflineSigning::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
@@ -701,9 +701,9 @@ where
                     .sign_locked_transaction(lock_request)
                     .await
                     .and_then(|result| result.to_string())
-                    .map(TransactionServiceResponse::SignedSidedTransaction)
+                    .map(TransactionServiceResponse::SignedOneSidedTransaction)
             },
-            TransactionServiceRequest::BroadcastSignedTransaction { request } => {
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => {
                 let signed_request = SignedOneSidedTransactionResult::from_string(&request)?;
                 self.submit_signed_one_sided_transaction(signed_request, transaction_broadcast_join_handles)
                     .await

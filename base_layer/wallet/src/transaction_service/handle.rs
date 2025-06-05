@@ -157,7 +157,7 @@ pub enum TransactionServiceRequest {
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
     },
-    LockOneSidedTransaction {
+    PrepareOneSidedTransactionForSigning {
         destination: TariAddress,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
@@ -168,7 +168,7 @@ pub enum TransactionServiceRequest {
     SignOneSidedTransaction {
         request: String,
     },
-    BroadcastSignedTransaction {
+    BroadcastSignedOneSidedTransaction {
         request: String,
     },
     SendOneSidedTransaction {
@@ -360,19 +360,19 @@ impl fmt::Display for TransactionServiceRequest {
                 payment_id,
                 ..
             } => write!(f, "Registering VN ({}, {})", validator_node_public_key, payment_id),
-            Self::LockOneSidedTransaction {
+            Self::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
                 payment_id,
                 ..
             } => write!(
                 f,
-                "LockOneSidedTransaction (to {}, {}, {})",
+                "PrepareOneSidedTransactionForSigning (to {}, {}, {})",
                 destination, amount, payment_id
             ),
             Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {})", request,),
-            Self::BroadcastSignedTransaction { request } => {
-                write!(f, "BroadcastSignedTransaction (request {})", request,)
+            Self::BroadcastSignedOneSidedTransaction { request } => {
+                write!(f, "BroadcastSignedOneSidedTransaction (request {})", request,)
             },
             Self::SendOneSidedTransaction {
                 destination,
@@ -780,7 +780,7 @@ impl TransactionServiceHandle {
     ) -> Result<String, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::LockOneSidedTransaction {
+            .call(TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
                 selection_criteria,
@@ -790,7 +790,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::OneSidedTransactionLocked(result) => Ok(result),
+            TransactionServiceResponse::OneSidedTransactionPreparedForSigning(result) => Ok(result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -801,15 +801,18 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SignOneSidedTransaction { request })
             .await??
         {
-            TransactionServiceResponse::SignedSidedTransaction(result) => Ok(result),
+            TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
 
-    pub async fn broadcast_signed_transaction(&mut self, request: String) -> Result<TxId, TransactionServiceError> {
+    pub async fn broadcast_signed_one_sided_transaction(
+        &mut self,
+        request: String,
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::BroadcastSignedTransaction { request })
+            .call(TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),

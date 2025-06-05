@@ -70,7 +70,7 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct LockOneSidedTransactionResult {
+pub struct PrepareOneSidedTransactionForSigningResult {
     pub version: Version,
     pub dest_address: TariAddress,
     pub amount: MicroMinotari,
@@ -80,9 +80,9 @@ pub struct LockOneSidedTransactionResult {
     pub encrypted_commitment_mask_keys: Vec<Vec<u8>>,
 }
 
-impl TransactionResult for LockOneSidedTransactionResult {}
+impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
 
-impl HasVersion for LockOneSidedTransactionResult {
+impl HasVersion for PrepareOneSidedTransactionForSigningResult {
     fn get_version(&self) -> &Version {
         &self.version
     }
@@ -91,7 +91,7 @@ impl HasVersion for LockOneSidedTransactionResult {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedOneSidedTransactionResult {
     pub version: Version,
-    pub request: LockOneSidedTransactionResult,
+    pub request: PrepareOneSidedTransactionForSigningResult,
     pub stp: SenderTransactionProtocol,
 }
 
@@ -163,7 +163,7 @@ where
         fee_per_gram: MicroMinotari,
         recipient_script: Option<TariScript>,
         mut payment_id: PaymentId,
-    ) -> Result<LockOneSidedTransactionResult, TransactionServiceError> {
+    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Locking one sided transaction to {} with {}", dest_address, amount);
         let tx_id = TxId::new_random();
 
@@ -347,7 +347,7 @@ where
             .get_encrypted_input_keys(&self.resources.transaction_key_manager_service)
             .await?;
 
-        Ok(LockOneSidedTransactionResult {
+        Ok(PrepareOneSidedTransactionForSigningResult {
             version: get_supported_version(),
             dest_address,
             amount,
@@ -360,7 +360,7 @@ where
 
     pub async fn sign_locked_transaction(
         &self,
-        request: LockOneSidedTransactionResult,
+        request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         let mut stp = request.stp.clone();
 

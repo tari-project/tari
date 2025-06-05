@@ -2892,7 +2892,7 @@ pub async fn command_runner(
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
-                    .broadcast_signed_transaction(request)
+                    .broadcast_signed_one_sided_transaction(request)
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {

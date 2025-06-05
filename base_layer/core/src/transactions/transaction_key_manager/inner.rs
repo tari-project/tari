@@ -1050,7 +1050,7 @@ where
                 Ok(total_script_private_key)
             },
             WalletType::Ledger(ledger) => Err(TransactionError::LedgerNotSupported(format!(
-                "{} 'get_script_offset' was called. ({})",
+                "{} 'get_script_private_key' was called. ({})",
                 LEDGER_NOT_SUPPORTED, ledger
             ))),
         }
@@ -1072,7 +1072,7 @@ where
                 Ok(script_offset)
             },
             WalletType::Ledger(ledger) => Err(TransactionError::LedgerNotSupported(format!(
-                "{} 'get_script_offset' was called. ({})",
+                "{} 'get_script_offset_from_private_key' was called. ({})",
                 LEDGER_NOT_SUPPORTED, ledger
             ))),
         }

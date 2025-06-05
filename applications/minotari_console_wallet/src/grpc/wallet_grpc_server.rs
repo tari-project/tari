@@ -808,7 +808,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
-        let response = match transaction_service.broadcast_signed_transaction(message.request).await {
+        let response = match transaction_service
+            .broadcast_signed_one_sided_transaction(message.request)
+            .await
+        {
             Ok(result) => BroadcastSignedOneSidedTransactionResponse {
                 is_success: false,
                 transaction_id: result.as_u64(),
