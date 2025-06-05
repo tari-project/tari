@@ -670,6 +670,7 @@ where
                 fee_per_gram,
                 payment_id,
             } => {
+                self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
                 let dest_pubkey = destination.public_spend_key().clone();
                 let mut offline_signing = OfflineSigning::new(
                     self.resources.clone(),
