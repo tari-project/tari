@@ -1280,7 +1280,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
-                        payment_reference: payment_reference.clone(),
                         payment_references: vec![payment_reference],
                     }),
                 };
@@ -1404,7 +1403,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference: payment_refs.first().map(|pr| pr.to_hex()).unwrap_or_default(),
                 payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
             });
         }
@@ -1489,7 +1487,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_reference: payment_refs.first().map(|pr| pr.to_hex()).unwrap_or_default(),
                 payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
             });
         }
@@ -1838,7 +1835,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     mined_in_block_height: payment_details.block_height,
                     output_commitments: vec![],
                     input_commitments: vec![],
-                    payment_reference: payment_details.payment_reference.to_hex(),
                     payment_references: vec![payment_details.payment_reference.to_hex()],
                 };
                 
@@ -2122,7 +2118,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 mined_in_block_height: completed_tx.mined_height.unwrap_or(0),
                                 output_commitments: vec![], // Could be populated if needed
                                 input_commitments: vec![], // Could be populated if needed
-                                payment_reference: String::new(), // Deprecated field - not used in this context
                                 payment_references: payment_references.iter().map(|pr| to_hex(pr)).collect(),
                             };
                             
@@ -2231,7 +2226,6 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
-                payment_reference: String::new(), // Payment references not available for pending inbound transactions
                 payment_references: vec![],
             }
         },
@@ -2266,7 +2260,6 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
-                payment_reference: String::new(), // Payment references not available for pending outbound transactions
                 payment_references: vec![],
             }
         },
@@ -2311,25 +2304,6 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments: output_commitments.clone(),
                 input_commitments,
-                payment_reference: {
-                    // Calculate payment reference for completed transactions
-                    if tx.mined_height.is_some() && !output_commitments.is_empty() {
-                        let payment_refs = wallet_grpc_server
-                            .calculate_payment_references_for_transaction(
-                                &output_commitments,
-                                tx.mined_height.unwrap_or(0),
-                            )
-                            .await;
-                        
-                        // Use the first non-empty payment reference found (for backwards compatibility)
-                        payment_refs
-                            .first()
-                            .map(|pr| to_hex(pr))
-                            .unwrap_or_default()
-                    } else {
-                        String::new()
-                    }
-                },
                 payment_references: {
                     // Calculate all payment references for completed transactions
                     if tx.mined_height.is_some() && !output_commitments.is_empty() {
