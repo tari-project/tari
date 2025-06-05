@@ -912,8 +912,9 @@ impl LMDBDatabase {
                     debug!(target: LOG_TARGET, "PayRef not found for output {} - likely from older version", output_hash.to_hex());
                 },
                 Err(e) => {
-                    // Actual database error - log warning but don't fail the transaction
-                    warn!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
+                    // Actual database error - must fail the transaction
+                    error!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
+                    return Err(e);
                 }
             }
         }
@@ -1227,7 +1228,10 @@ impl LMDBDatabase {
                     Err(ChainStorageError::ValueNotFound { .. }) => {
                         // Expected case for outputs that didn't have PayRefs
                     },
-                    Err(e) => warn!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e),
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
+                        return Err(e);
+                    },
                 }
             }
             
