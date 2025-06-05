@@ -947,6 +947,9 @@ impl AppStateInner {
                     PayRefStatus::NotMined => {
                         (None, "Not Mined".to_string())
                     },
+                    PayRefStatus::InvalidOutput => {
+                        (None, "Invalid Output".to_string())
+                    },
                 };
                 
                 if let Some(payref_hex) = payref_hex_opt {

@@ -269,7 +269,7 @@ async fn calculate_payment_references_impl(
     // Convert commitment bytes to CompressedCommitment for database query
     let mut commitments = Vec::new();
     for commitment_bytes in output_commitments {
-        match tari_core::transactions::tari_amount::CompressedCommitment::from_canonical_bytes(commitment_bytes) {
+        match CompressedCommitment::from_canonical_bytes(commitment_bytes) {
             Ok(commitment) => commitments.push(commitment),
             Err(e) => {
                 warn!(target: LOG_TARGET, "PayRef calculation: Invalid commitment bytes: {}", e);
@@ -1280,8 +1280,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
-                        payment_reference,
-                        payment_references: vec![payment_reference.clone()],
+                        payment_reference: payment_reference.clone(),
+                        payment_references: vec![payment_reference],
                     }),
                 };
                 match sender.send(Ok(response)).await {
