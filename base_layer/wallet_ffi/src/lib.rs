@@ -9703,7 +9703,11 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
                                 array.copy_from_slice(bytes);
                                 array
                             },
-                            payment_reference: output.payment_reference.unwrap_or([0u8; 32]),
+                            payment_reference: output.payment_reference.map(|p| {
+                                let mut array = [0u8; 32];
+                                array.copy_from_slice(p.as_slice());
+                                array
+                            }).unwrap_or([0u8; 32]),
                             has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
                             output_type: match output.output_type {
                                 minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
@@ -9784,7 +9788,11 @@ pub unsafe extern "C" fn wallet_get_output_payrefs_for_transaction(
                             array.copy_from_slice(bytes);
                             array
                         },
-                        payment_reference: output.payment_reference.unwrap_or([0u8; 32]),
+                        payment_reference: output.payment_reference.map(|p| {
+                            let mut array = [0u8; 32];
+                            array.copy_from_slice(p.as_slice());
+                            array
+                        }).unwrap_or([0u8; 32]),
                         has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
                         output_type: match output.output_type {
                             minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
@@ -11090,16 +11098,17 @@ pub unsafe extern "C" fn wallet_find_payment_by_reference(
         return ptr::null_mut();
     }
 
-    // Convert C array to Rust array
+    // Convert C array to FixedHash
     let mut payref = [0u8; 32];
     payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+    let payref_fixedhash = FixedHash::from(payref);
 
     // Call wallet service method
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .output_manager_service
-            .find_payment_by_reference(payref),
+            .find_payment_by_reference(payref_fixedhash),
     ) {
         Ok(Some(payment_details)) => {
             // Convert to FFI type and return
@@ -11108,7 +11117,11 @@ pub unsafe extern "C" fn wallet_find_payment_by_reference(
                 .into_raw();
 
             Box::into_raw(Box::new(TariPaymentDetails {
-                payment_reference: payment_details.payment_reference,
+                payment_reference: {
+                    let mut array = [0u8; 32];
+                    array.copy_from_slice(payment_details.payment_reference.as_slice());
+                    array
+                },
                 commitment: commitment_hex,
                 amount: payment_details.amount.as_u64(),
                 block_height: payment_details.block_height,
@@ -11132,7 +11145,11 @@ unsafe fn convert_payment_records_to_ffi(payment_records: Vec<PaymentRecord>) ->
     let mut ffi_records = Vec::new();
     for record in payment_records {
         ffi_records.push(TariPaymentRecord {
-            payment_reference: record.payment_reference,
+            payment_reference: {
+                let mut array = [0u8; 32];
+                array.copy_from_slice(record.payment_reference.as_slice());
+                array
+            },
             amount: record.amount.as_u64(),
             block_height: record.block_height,
             mined_timestamp: record.timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
@@ -11552,16 +11569,17 @@ pub unsafe extern "C" fn wallet_get_payment_reference_status(
         return ptr::null_mut();
     }
 
-    // Convert C array to Rust array
+    // Convert C array to FixedHash
     let mut payref = [0u8; 32];
     payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+    let payref_fixedhash = FixedHash::from(payref);
 
     // Find the output with this PayRef
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .output_manager_service
-            .find_payment_by_reference(payref),
+            .find_payment_by_reference(payref_fixedhash),
     ) {
         Ok(Some(payment_details)) => {
             // Get config to check required confirmations
@@ -11713,15 +11731,16 @@ pub unsafe extern "C" fn wallet_verify_payment_reference(
         return ptr::null_mut();
     }
 
-    // Convert C array to Rust array
+    // Convert C array to FixedHash
     let mut payref = [0u8; 32];
     payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
+    let payref_fixedhash = FixedHash::from(payref);
 
     let verification_result = match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .output_manager_service
-            .find_payment_by_reference(payref),
+            .find_payment_by_reference(payref_fixedhash),
     ) {
         Ok(Some(payment_details)) => {
             let sufficient = payment_details.confirmations >= required_confirmations;
