@@ -211,7 +211,7 @@ pub enum TransactionServiceRequest {
     /// Get all PayRefs for a specific transaction
     GetTransactionPayRefs(TxId),
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
-    GetPaymentByReference([u8; 32]),
+    GetPaymentByReference(FixedHash),
     /// Get all transactions with their PayRefs (for listing/filtering)
     GetTransactionsWithPayRefs {
         limit: Option<u64>,
