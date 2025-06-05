@@ -1284,7 +1284,7 @@ impl TransactionServiceHandle {
     }
 
     /// Get all PayRefs for a specific transaction
-    pub async fn get_transaction_payrefs(&mut self, tx_id: TxId) -> Result<Vec<[u8; 32]>, TransactionServiceError> {
+    pub async fn get_transaction_payrefs(&mut self, tx_id: TxId) -> Result<Vec<FixedHash>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetTransactionPayRefs(tx_id))
@@ -1296,7 +1296,7 @@ impl TransactionServiceHandle {
     }
 
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
-    pub async fn get_payment_by_reference(&mut self, payref: [u8; 32]) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+    pub async fn get_payment_by_reference(&mut self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPaymentByReference(payref.into()))

@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, HashOutput, PrivateKey, Signature},
+    types::{BlockHash, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -55,7 +55,7 @@ pub struct InboundTransaction {
     pub send_count: u32,
     pub last_send_timestamp: Option<DateTime<Utc>>,
     /// Hashes of outputs received from others (excluding change)
-    pub received_output_hashes: Vec<HashOutput>,
+    pub received_output_hashes: Vec<FixedHash>,
 }
 
 impl InboundTransaction {
@@ -100,9 +100,9 @@ pub struct OutboundTransaction {
     pub send_count: u32,
     pub last_send_timestamp: Option<DateTime<Utc>>,
     /// Hashes of outputs being sent to others (excluding change)
-    pub sent_output_hashes: Vec<HashOutput>,
+    pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of change outputs (for reference)
-    pub change_output_hashes: Vec<HashOutput>,
+    pub change_output_hashes: Vec<FixedHash>,
 }
 
 impl OutboundTransaction {
@@ -157,11 +157,11 @@ pub struct CompletedTransaction {
     pub mined_timestamp: Option<DateTime<Utc>>,
     pub payment_id: PaymentId,
     /// Hashes of outputs being sent to others (excluding change)
-    pub sent_output_hashes: Vec<HashOutput>,
+    pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of outputs received from others (excluding change)
-    pub received_output_hashes: Vec<HashOutput>,
+    pub received_output_hashes: Vec<FixedHash>,
     /// Hashes of change outputs (for reference)
-    pub change_output_hashes: Vec<HashOutput>,
+    pub change_output_hashes: Vec<FixedHash>,
 }
 
 impl CompletedTransaction {
@@ -226,9 +226,9 @@ impl CompletedTransaction {
         mined_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         payment_id: PaymentId,
-        sent_output_hashes: Vec<HashOutput>,
-        received_output_hashes: Vec<HashOutput>,
-        change_output_hashes: Vec<HashOutput>,
+        sent_output_hashes: Vec<FixedHash>,
+        received_output_hashes: Vec<FixedHash>,
+        change_output_hashes: Vec<FixedHash>,
     ) -> Result<Self, TransactionStorageError> {
         if status == TransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);

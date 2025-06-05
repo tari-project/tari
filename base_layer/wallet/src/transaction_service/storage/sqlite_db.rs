@@ -2036,11 +2036,11 @@ impl CompletedTransactionSql {
                 Vec::new()
             )
         } else {
-            // Preserve existing categorized values (these are already Vec<FixedHash> from decryption)
+            // Preserve existing categorized values (just use the bytes directly)
             (
-                fixedhash_vec_to_bytes(&existing_tx_data.sent_output_hashes.unwrap_or_default()),
-                fixedhash_vec_to_bytes(&existing_tx_data.received_output_hashes.unwrap_or_default()),
-                fixedhash_vec_to_bytes(&existing_tx_data.change_output_hashes.unwrap_or_default())
+                existing_tx.sent_output_hashes.unwrap_or_default(),
+                existing_tx.received_output_hashes.unwrap_or_default(),
+                existing_tx.change_output_hashes.unwrap_or_default()
             )
         };
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {

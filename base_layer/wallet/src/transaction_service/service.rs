@@ -4001,10 +4001,10 @@ where
             // Check if PayRef matches any sent output by generating proper PayRef
             for output_hash in &transaction.sent_output_hashes {
                 let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
-                if generated_payref == payref {
+                if generated_payref == *payref {
                     return Ok(Some(PaymentDetails {
                         tx_id: transaction.tx_id,
-                        payment_reference: payref,
+                        payment_reference: *payref,
                         amount: transaction.amount,
                         direction: transaction.direction,
                         block_height: transaction.mined_height.unwrap_or(0),
@@ -4018,10 +4018,10 @@ where
             // Check if PayRef matches any received output by generating proper PayRef
             for output_hash in &transaction.received_output_hashes {
                 let generated_payref = generate_payment_reference(&block_hash.into(), output_hash);
-                if generated_payref == payref {
+                if generated_payref == *payref {
                     return Ok(Some(PaymentDetails {
                         tx_id: transaction.tx_id,
-                        payment_reference: payref,
+                        payment_reference: *payref,
                         amount: transaction.amount,
                         direction: transaction.direction,
                         block_height: transaction.mined_height.unwrap_or(0),
