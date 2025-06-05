@@ -3946,13 +3946,13 @@ where
         // Generate proper PayRefs for sent output hashes using Blake2b_256(block_hash || output_hash)
         for output_hash in &completed_transaction.sent_output_hashes {
             let payref = generate_payment_reference(&block_hash, output_hash);
-            payrefs.push(payref.into());
+            payrefs.push(payref);
         }
         
         // Generate proper PayRefs for received output hashes (for incoming transactions)
         for output_hash in &completed_transaction.received_output_hashes {
             let payref = generate_payment_reference(&block_hash, output_hash);
-            payrefs.push(payref.into());
+            payrefs.push(payref);
         }
         
         Ok(payrefs)

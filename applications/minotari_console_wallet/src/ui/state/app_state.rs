@@ -914,7 +914,7 @@ impl AppStateInner {
                 // For the first output in the transaction, calculate PayRef directly
                 if let Some(output) = completed_transaction.transaction.body.outputs().iter().next() {
                     let output_hash = &output.hash();
-                    let payref = generate_payment_reference(&(*block_hash), output_hash);
+                    let payref = generate_payment_reference(block_hash, output_hash);
                     let payref_hex = payref.to_hex();
 
                     // Determine status based on confirmations

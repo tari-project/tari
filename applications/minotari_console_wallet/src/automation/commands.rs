@@ -2760,7 +2760,7 @@ pub async fn command_runner(
             FindPayRef(args) => {
                 use minotari_wallet::output_manager_service::payment_reference::parse_payref_hex;
                 match parse_payref_hex(&args.payment_reference_hex) {
-                    Ok(payref) => match transaction_service.get_payment_by_reference(payref.into()).await {
+                    Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
                         Ok(Some(payment_details)) => {
                             println!("Found PayRef: {}", args.payment_reference_hex);
                             println!("Transaction ID: {}", payment_details.tx_id);

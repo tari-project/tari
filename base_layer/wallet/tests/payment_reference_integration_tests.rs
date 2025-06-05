@@ -39,7 +39,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{
     payment_reference::{generate_payment_reference, parse_payment_reference_hex},
-    types::{BlockHash, HashOutput},
+    types::{BlockHash, FixedHash, HashOutput},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -124,7 +124,7 @@ async fn test_payref_generation_and_verification_workflow() {
     assert!(db_output.matches_payment_reference(&expected_payref));
     
     // Test with wrong PayRef
-    let wrong_payref = [0u8; 32];
+    let wrong_payref = FixedHash::from([0u8; 32]);
     assert!(!db_output.matches_payment_reference(&wrong_payref));
     
     // Test payment details generation
