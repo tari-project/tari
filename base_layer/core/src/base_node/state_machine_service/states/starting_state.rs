@@ -19,12 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{ops::Deref, time::Duration};
 
-use std::ops::Deref;
-
+use futures::FutureExt;
 use log::*;
 use tari_comms_dht::event::DhtEvent;
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, time::sleep};
 
 use crate::{
     base_node::{
@@ -44,6 +44,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 pub struct Starting;
 
 impl Starting {
+    #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
@@ -53,42 +54,50 @@ impl Starting {
         // Check for DHT bootstrap completion first
         info!(target: LOG_TARGET, "[BN STARTING] Checking DHT bootstrap status before proceeding");
         let mut dht_events = shared.dht_event_stream.resubscribe();
-
+        let bootstrap_timeout = sleep(Duration::from_secs(120));
+        tokio::pin!(bootstrap_timeout);
+        let mut timeout = bootstrap_timeout.fuse();
         // Check for any recent DHT bootstrap events
         let mut bootstrap_events_found = 0;
         loop {
-            match dht_events.try_recv() {
-                Ok(event_arc) => {
-                    bootstrap_events_found += 1;
-                    let event = event_arc.deref();
-                    match event {
-                        DhtEvent::BootstrapMethodDetermined(method) => {
-                            let method_str = format!("{}", method);
-                            info!(target: LOG_TARGET, "[BN STARTING] Found DHT BootstrapMethodDetermined event: {}", method_str);
-                            if method_str == "ExistingPeers" {
-                                info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
-                                shared.set_primary_bootstrap_complete(true);
+            tokio::select! {
+                result = dht_events.recv() => {
+                    match result {
+                        Ok(event_arc) => {
+                            bootstrap_events_found += 1;
+                            let event = event_arc.deref();
+                            match event {
+                                DhtEvent::BootstrapMethodDetermined(method) => {
+                                    let method_str = format!("{}", method);
+                                    info!(target: LOG_TARGET, "[BN STARTING] Found DHT BootstrapMethodDetermined event: {}", method_str);
+                                    if method_str == "ExistingPeers" {
+                                        info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
+                                        shared.set_primary_bootstrap_complete(true);
+                                        break;
+                                    }
+                                },
+                                DhtEvent::PrimaryBootstrapComplete => {
+                                    info!(target: LOG_TARGET, "[BN STARTING] Found DHT PrimaryBootstrapComplete event - marking primary bootstrap complete");
+                                    shared.set_primary_bootstrap_complete(true);
+                                    break;
+                                },
+                                _ => {},
                             }
                         },
-                        DhtEvent::PrimaryBootstrapComplete => {
-                            info!(target: LOG_TARGET, "[BN STARTING] Found DHT PrimaryBootstrapComplete event - marking primary bootstrap complete");
-                            shared.set_primary_bootstrap_complete(true);
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream lagged by {} events during startup", n);
+                            // Continue processing in case there are still events available
                         },
-                        _ => {},
+                        Err(broadcast::error::RecvError::Closed) => {
+                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream closed during startup check");
+                            break;
+                        },
                     }
-                },
-                Err(broadcast::error::TryRecvError::Empty) => {
-                    // No more events to process
+                }
+                () = &mut timeout => {
+                    warn!(target: LOG_TARGET, "[BN STARTING] Timeout while waiting for bootstrap events");
                     break;
-                },
-                Err(broadcast::error::TryRecvError::Lagged(n)) => {
-                    warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream lagged by {} events during startup", n);
-                    // Continue processing in case there are still events available
-                },
-                Err(broadcast::error::TryRecvError::Closed) => {
-                    warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream closed during startup check");
-                    break;
-                },
+                }
             }
         }
 

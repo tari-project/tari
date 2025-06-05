@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, task::Poll};
+use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::InboundMessage, pipeline::PipelineError, OrNotFound, PeerManager};
+use tari_comms::{message::InboundMessage, pipeline::PipelineError, PeerManager};
 use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
@@ -84,23 +84,43 @@ where
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    let source_peer = peer_manager
-                        .find_by_node_id(&source_peer)
-                        .await
-                        .or_not_found(&source_peer)
-                        .map(Arc::new)?;
+                    let res;
+                    if let Some(source_peer) = peer_manager.find_by_node_id(&source_peer).await? {
+                        // .or_not_found(&source_peer)
+                        // .map(Arc::new)?;
 
-                    let inbound_msg =
-                        DhtInboundMessage::new(tag, dht_envelope.header.try_into()?, source_peer, dht_envelope.body);
-                    trace!(
-                        target: LOG_TARGET,
-                        "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
-                        tag,
-                        inbound_msg.dht_header.message_tag
-                    );
+                        let inbound_msg = DhtInboundMessage::new(
+                            tag,
+                            dht_envelope.header.try_into()?,
+                            Arc::new(source_peer),
+                            dht_envelope.body,
+                        );
+                        trace!(
+                            target: LOG_TARGET,
+                            "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
+                            tag,
+                            inbound_msg.dht_header.message_tag
+                        );
 
-                    let next_service = next_service.ready_oneshot().await?;
-                    next_service.oneshot(inbound_msg).await
+                        let next_service = next_service.ready_oneshot().await?;
+                        res = next_service.oneshot(inbound_msg).await;
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Received message from unknown peer '{}'. Message tag: {}",
+                            source_peer,
+                            tag
+                        );
+                        peer_manager
+                            .ban_peer_by_node_id(
+                                &source_peer,
+                                Duration::from_secs(60 * 5),
+                                "Received message from unknown peer".to_string(),
+                            )
+                            .await?;
+                        res = Err(anyhow::anyhow!("Received message from unknown peer '{}'", source_peer));
+                    }
+                    res
                 },
                 Err(err) => {
                     error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);

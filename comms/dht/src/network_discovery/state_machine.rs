@@ -368,6 +368,7 @@ impl DhtNetworkDiscovery {
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
                 self.context.increment_num_rounds();
+                self.context.set_bootstrap_method(BootstrapMethod::SeedStrap).await;
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {

@@ -166,7 +166,7 @@ impl From<SeedPeer> for Peer {
             seed.public_key,
             node_id,
             MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
-            PeerFlags::SEED,
+            PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
             Default::default(),

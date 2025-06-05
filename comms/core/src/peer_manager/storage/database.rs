@@ -26,7 +26,6 @@ use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
 use diesel::{
     self,
-    dsl::now,
     prelude::*,
     r2d2::{ConnectionManager, PooledConnection},
     ExpressionMethods,
@@ -798,12 +797,20 @@ impl PeerDatabaseSql {
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
                     peers::banned_until.eq(banned_until),
-                    peers::banned_reason.eq(banned_reason),
+                    peers::banned_reason.eq(banned_reason.clone()),
                 ))
                 .execute(conn)?;
             if affected > 0 {
                 Ok(Some(node_id.clone()))
             } else {
+                // Insert a node id to ban. This allows us to ban a peer that does not exist in the database.
+                // diesel::insert_into(peers::table)
+                //     .values((
+                //         peers::node_id.eq(node_id.to_string()),
+                //         peers::banned_until.eq(banned_until),
+                //         peers::banned_reason.eq(banned_reason),
+                //     ))
+                //     .execute(conn)?;
                 Ok(None)
             }
         })
@@ -1121,7 +1128,11 @@ impl PeerDatabaseSql {
         // Perform a join query to fetch peers and their addresses
         let results = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::banned_until.is_null())
+            .filter(
+                peers::banned_until
+                    .is_null()
+                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+            )
             .filter(peers::deleted_at.is_null())
             .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
@@ -1198,7 +1209,11 @@ impl PeerDatabaseSql {
         // Perform a join query to fetch peers and their addresses
         let results = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::banned_until.is_not_null())
+            .filter(
+                peers::banned_until
+                    .is_not_null()
+                    .and(peers::banned_until.gt(chrono::Utc::now().naive_utc())),
+            )
             .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
         PeerDatabaseSql::peers_from_join_query(results)
@@ -1257,7 +1272,11 @@ impl PeerDatabaseSql {
                     .eq(peers::peer_id)
                     .and(multi_addresses::last_failed_reason.is_null())),
             )
-            .filter(peers::banned_until.is_null())
+            .filter(
+                peers::banned_until
+                    .is_null()
+                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+            )
             .filter(peers::deleted_at.is_null())
             .distinct()
             .into_boxed();
@@ -1349,7 +1368,11 @@ impl PeerDatabaseSql {
         // Step 1: Retrieve relevant node_ids
         let mut query = peers::table
             .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::banned_until.is_null())
+            .filter(
+                peers::banned_until
+                    .is_null()
+                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+            )
             .filter(peers::deleted_at.is_null())
             .filter(peers::node_id.ne_all(excluded_node_ids_hex))
             .distinct()
@@ -1673,7 +1696,11 @@ impl PeerDatabaseSql {
             let node_ids: Vec<String> = peers::table
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::deleted_at.is_null())
-                .filter(peers::banned_until.is_null().or(peers::banned_until.lt(now.nullable())))
+                .filter(
+                    peers::banned_until
+                        .is_null()
+                        .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+                )
                 .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
                     "features & {} != 0",
                     PeerFeatures::COMMUNICATION_NODE.to_i32()

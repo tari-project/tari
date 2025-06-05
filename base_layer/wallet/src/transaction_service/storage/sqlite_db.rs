@@ -1046,14 +1046,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         coinbases.append(&mut one_sided);
 
-        let mut mismatched_tx =
-            CompletedTransactionSql::fetch_transactions_with_mismatched_mined_status(false, &mut conn)?
-                .into_iter()
-                .map(|ct: CompletedTransactionSql| {
-                    CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
-                })
-                .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        coinbases.append(&mut mismatched_tx);
+        let mut not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        coinbases.append(&mut not_validated);
         Ok(coinbases)
     }
 
@@ -1841,7 +1840,7 @@ impl CompletedTransactionSql {
     ///
     /// # Returns
     /// Vector of transactions with mismatched mined status
-    pub fn fetch_transactions_with_mismatched_mined_status(
+    pub fn fetch_transactions_with_not_mined_height(
         cancelled: bool,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
@@ -1862,7 +1861,7 @@ impl CompletedTransactionSql {
                     .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
                     .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
             )
-            .filter(completed_transactions::mined_height.eq::<Option<i64>>(None))
+            .filter(completed_transactions::mined_height.is_null())
             .load::<CompletedTransactionSql>(conn)?)
     }
 
