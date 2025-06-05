@@ -25,6 +25,17 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+// Helper functions for FixedHash <-> Vec<u8> conversion
+fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
+    hashes.iter().flat_map(|h| h.as_slice().iter().cloned()).collect()
+}
+
+fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
+    bytes.chunks_exact(32)
+        .filter_map(|chunk| FixedHash::try_from(chunk).ok())
+        .collect()
+}
+
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError};
@@ -1220,7 +1231,7 @@ struct InboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    received_output_hashes: Option<Vec<FixedHash>>,
+    received_output_hashes: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1414,7 +1425,7 @@ impl InboundTransactionSql {
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
-            received_output_hashes: Some(i.received_output_hashes),
+            received_output_hashes: Some(fixedhash_vec_to_bytes(&i.received_output_hashes)),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1465,7 +1476,7 @@ impl InboundTransaction {
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
-            received_output_hashes: i.received_output_hashes.unwrap_or_default(),
+            received_output_hashes: bytes_to_fixedhash_vec(&i.received_output_hashes.unwrap_or_default()),
         })
     }
 }
@@ -1496,8 +1507,8 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    sent_output_hashes: Option<Vec<FixedHash>>,
-    change_output_hashes: Option<Vec<FixedHash>>,
+    sent_output_hashes: Option<Vec<u8>>,
+    change_output_hashes: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1676,8 +1687,8 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(o.sent_output_hashes),
-            change_output_hashes: Some(o.change_output_hashes),
+            sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
+            change_output_hashes: Some(fixedhash_vec_to_bytes(&o.change_output_hashes)),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1730,8 +1741,8 @@ impl OutboundTransaction {
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
-            sent_output_hashes: o.sent_output_hashes.unwrap_or_default(),
-            change_output_hashes: o.change_output_hashes.unwrap_or_default(),
+            sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
+            change_output_hashes: bytes_to_fixedhash_vec(&o.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -1775,9 +1786,9 @@ pub struct CompletedTransactionSql {
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    sent_output_hashes: Option<Vec<FixedHash>>,
-    received_output_hashes: Option<Vec<FixedHash>>,
-    change_output_hashes: Option<Vec<FixedHash>>,
+    sent_output_hashes: Option<Vec<u8>>,
+    received_output_hashes: Option<Vec<u8>>,
+    change_output_hashes: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -2020,16 +2031,16 @@ impl CompletedTransactionSql {
             );
             
             (
-                output_hashes.into_iter().map(|h| h.into()).collect(),
+                fixedhash_vec_to_bytes(&output_hashes.into_iter().map(|h| h.into()).collect::<Vec<FixedHash>>()),
                 Vec::new(),
                 Vec::new()
             )
         } else {
-            // Preserve existing categorized values
+            // Preserve existing categorized values (these are already Vec<FixedHash> from decryption)
             (
-                existing_tx_data.sent_output_hashes.unwrap_or_default(),
-                existing_tx_data.received_output_hashes.unwrap_or_default(),
-                existing_tx_data.change_output_hashes.unwrap_or_default()
+                fixedhash_vec_to_bytes(&existing_tx_data.sent_output_hashes.unwrap_or_default()),
+                fixedhash_vec_to_bytes(&existing_tx_data.received_output_hashes.unwrap_or_default()),
+                fixedhash_vec_to_bytes(&existing_tx_data.change_output_hashes.unwrap_or_default())
             )
         };
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
@@ -2159,9 +2170,9 @@ impl CompletedTransactionSql {
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(c.sent_output_hashes),
-            received_output_hashes: Some(c.received_output_hashes),
-            change_output_hashes: Some(c.change_output_hashes),
+            sent_output_hashes: Some(fixedhash_vec_to_bytes(&c.sent_output_hashes)),
+            received_output_hashes: Some(fixedhash_vec_to_bytes(&c.received_output_hashes)),
+            change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2256,9 +2267,9 @@ impl CompletedTransaction {
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
-            sent_output_hashes: c.sent_output_hashes.unwrap_or_default(),
-            received_output_hashes: c.received_output_hashes.unwrap_or_default(),
-            change_output_hashes: c.change_output_hashes.unwrap_or_default(),
+            sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
+            received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
+            change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize sensitive data
