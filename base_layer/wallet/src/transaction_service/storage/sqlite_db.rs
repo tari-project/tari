@@ -2032,7 +2032,7 @@ impl CompletedTransactionSql {
             );
             
             (
-                fixedhash_vec_to_bytes(&output_hashes.into_iter().map(|h| h).collect::<Vec<FixedHash>>()),
+                fixedhash_vec_to_bytes(&output_hashes),
                 Vec::new(),
                 Vec::new()
             )
