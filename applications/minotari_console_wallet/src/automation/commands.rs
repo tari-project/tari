@@ -2864,6 +2864,15 @@ pub async fn command_runner(
                 }
             },
             SignOneSidedTransaction(args) => {
+                let metadata = fs::metadata(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file.clone(),
+                    err,
+                })?;
+                let max_size = 10_000_000; // 10MB limit
+                if metadata.len() > max_size {
+                    return Err(CommandError::InvalidArgument("Input file too large".to_string()));
+                }
+
                 let request = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
                     file_path: args.input_file,
                     err,
