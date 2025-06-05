@@ -438,20 +438,8 @@ mod tests {
 
 impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     /// Fetch output information by PayRef
-    pub async fn fetch_output_by_payref(&self, payref: [u8; 32]) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
-        let db = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            let backend = db.db_read_access()?;
-            backend.fetch_output_by_payref(&payref)
-        }).await.map_err(|_| ChainStorageError::AccessError("Task join error".to_string()))?
-    }
+    make_async_fn!(fetch_output_by_payref(payref: FixedHash) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
 
     /// Check if an output is spent and return spent information
-    pub async fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        let db = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            let backend = db.db_read_access()?;
-            backend.check_output_spent_status(output_hash)
-        }).await.map_err(|_| ChainStorageError::AccessError("Task join error".to_string()))?
-    }
+    make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
 }
