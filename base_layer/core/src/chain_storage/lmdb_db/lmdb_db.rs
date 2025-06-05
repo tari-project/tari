@@ -3224,6 +3224,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             // Migration v1 -> v2: Rebuild PayRef index for existing nodes with checkpointing
             info!(target: LOG_TARGET, "Migrating to v2: Checking if PayRef index needs rebuilding");
             
+            // Verify database consistency before starting migration
+            info!(target: LOG_TARGET, "Verifying database consistency before PayRef migration");
             let read_txn = db.read_transaction()?;
             let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
                 Ok(v) => v,
@@ -3233,6 +3235,22 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     continue;
                 },
             };
+            
+            // Verify database integrity for first few blocks before full migration
+            if chain_height > 10 {
+                for test_height in 0..=std::cmp::min(10, chain_height) {
+                    let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &test_height)?;
+                    if header.is_none() {
+                        error!(target: LOG_TARGET, "Database integrity check failed: missing header at height {}", test_height);
+                        drop(read_txn);
+                        return Err(ChainStorageError::DataInconsistencyDetected { 
+                            function: "payref_migration", 
+                            details: format!("Missing header at height {}", test_height) 
+                        });
+                    }
+                }
+                info!(target: LOG_TARGET, "Database integrity check passed for first 10 blocks");
+            }
             
             // Check migration state for resume capability
             let migration_key = "payref_v2_migration";
