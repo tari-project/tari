@@ -74,11 +74,7 @@ const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
-pub struct EncryptedData {
-    #[serde(with = "tari_utilities::serde::hex")]
-    data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
-}
+
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub enum TxType {
@@ -619,6 +615,12 @@ impl Display for PaymentId {
 
 /// AEAD associated data
 const ENCRYPTED_DATA_AAD: &[u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Zeroize)]
+pub struct EncryptedData {
+    #[serde(with = "tari_utilities::serde::hex")]
+    data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
+}
 
 impl EncryptedData {
     /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce

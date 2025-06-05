@@ -25,7 +25,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_key_manager::key_manager, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_key_manager::{key_manager, TransactionKeyManagerInterface}, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -61,13 +61,14 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterfac
     pub(crate) base_node_service: BaseNodeServiceHandle,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
-    key_manager: TKeyManagerInterface
+    pub key_manager: TKeyManagerInterface
 }
 
-impl<TBackend, TWalletConnectivity, TKeyManagerInterface> UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface : Clone> UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static,
 {
     pub fn new(
         retry_limit: usize,
@@ -93,7 +94,7 @@ where
         }
     }
 
-    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity> {
+    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             event_sender: self.event_sender.clone(),
@@ -102,7 +103,8 @@ where
             num_retries: 1,
             mode: self.mode.clone(),
             shutdown_signal,
-            birthday_offset: self.resources.birthday_offset,
+            birthday_offset: self.resources.birthday_offset,    
+            key_manager: self.key_manager.clone(),
         }
     }
 

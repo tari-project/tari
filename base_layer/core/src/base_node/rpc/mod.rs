@@ -64,6 +64,11 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;
 
+    async fn get_utxos_by_block(
+        &self,
+        request: models::GetUtxosByBlockRequest,
+    ) -> Result<models::GetUtxosByBlockResponse, Self::Error>;
+
     async fn transaction_query(&self, signature: models::Signature) -> Result<models::TxQueryResponse, Self::Error>;
 
     async fn sync_utxos_by_block(
