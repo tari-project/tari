@@ -623,11 +623,36 @@ pub struct PaymentDetails {
     pub tx_id: TxId,
 }
 
+/// Individual output with its PayRef
+#[derive(Debug, Clone)]
+pub struct OutputWithPayRef {
+    pub output_hash: HashOutput,
+    pub payment_reference: Option<[u8; 32]>,
+    pub output_type: OutputType,
+    pub amount: MicroMinotari,
+    pub status: OutputStatus,
+}
+
+#[derive(Debug, Clone)]
+pub enum OutputType {
+    Sent,
+    Received,
+    Change,
+}
+
+#[derive(Debug, Clone)]
+pub enum OutputStatus {
+    Available,
+    Pending,
+    NotMined,
+    Spent,
+}
+
 /// Enhanced transaction info with PayRefs
 #[derive(Debug, Clone)]
 pub struct TransactionWithPayRefs {
     pub transaction: CompletedTransaction,
-    pub payment_references: Vec<[u8; 32]>,
+    pub outputs_with_payrefs: Vec<OutputWithPayRef>,
     pub recipient_count: usize,
 }
 
