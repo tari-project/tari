@@ -23,7 +23,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    types::{BlockHash, CompressedCommitment},
+    types::{BlockHash, CompressedCommitment, FixedHash},
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
@@ -101,7 +101,7 @@ pub enum PaymentDirection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentDetails {
     /// The Payment Reference (PayRef)
-    pub payment_reference: [u8; 32],
+    pub payment_reference: FixedHash,
     /// The commitment of the output
     pub commitment: CompressedCommitment,
     /// Amount of the payment
@@ -126,7 +126,7 @@ pub struct PaymentDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentRecord {
     /// The Payment Reference (PayRef)
-    pub payment_reference: [u8; 32],
+    pub payment_reference: FixedHash,
     /// Amount of the payment
     pub amount: MicroMinotari,
     /// Direction of the payment (sent/received)
@@ -239,7 +239,7 @@ impl PaymentRecord {
 }
 
 /// Parse Payment Reference from hex string
-pub fn parse_payref_hex(hex_str: &str) -> Result<[u8; 32], String> {
+pub fn parse_payref_hex(hex_str: &str) -> Result<FixedHash, String> {
     if hex_str.len() != 64 {
         return Err("Payment Reference must be exactly 64 hexadecimal characters".to_string());
     }
@@ -253,7 +253,7 @@ pub fn parse_payref_hex(hex_str: &str) -> Result<[u8; 32], String> {
     
     let mut payref = [0u8; 32];
     payref.copy_from_slice(&bytes);
-    Ok(payref)
+    Ok(FixedHash::from(payref))
 }
 
 /// Validate Payment Reference format
