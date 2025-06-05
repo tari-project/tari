@@ -6922,7 +6922,7 @@ pub unsafe extern "C" fn wallet_create(
     if let TransportType::Tor = comms_config.transport.transport_type {
         comms_config.transport.tor.identity = wallet_database.get_tor_id().ok().flatten();
     }
-    //The wallet database name is derived from the TariCommsConfig data store path and peer database name due to legacy
+    // The wallet database name is derived from the TariCommsConfig data store path and peer database name due to legacy
     // implementation. It must not be the same as the peer database, hence the latter is changed here before use.
     comms_config.peer_database_name = comms_config.peer_database_name.to_owned() + "_peers";
 
