@@ -68,19 +68,7 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
-/// Serialize a vector of HashOutput for database storage
-fn serialize_output_hashes(hashes: &[HashOutput]) -> Result<Vec<u8>, TransactionStorageError> {
-    bincode::serialize(hashes).map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))
-}
 
-/// Deserialize a vector of HashOutput from database storage
-fn deserialize_output_hashes(data: Option<Vec<u8>>) -> Result<Vec<HashOutput>, TransactionStorageError> {
-    match data {
-        Some(bytes) => bincode::deserialize(&bytes)
-            .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string())),
-        None => Ok(Vec::new()),
-    }
-}
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -1426,7 +1414,7 @@ impl InboundTransactionSql {
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
-            received_output_hashes: Some(serialize_output_hashes(&i.received_output_hashes)?),
+            received_output_hashes: Some(i.received_output_hashes.to_vec()),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1477,7 +1465,7 @@ impl InboundTransaction {
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
-            received_output_hashes: deserialize_output_hashes(i.received_output_hashes)?,
+            received_output_hashes: i.received_output_hashes.unwrap_or_default(),
         })
     }
 }
@@ -1688,8 +1676,8 @@ impl OutboundTransactionSql {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(serialize_output_hashes(&o.sent_output_hashes)?),
-            change_output_hashes: Some(serialize_output_hashes(&o.change_output_hashes)?),
+            sent_output_hashes: Some(o.sent_output_hashes.to_vec()),
+            change_output_hashes: Some(o.change_output_hashes.to_vec()),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1742,8 +1730,8 @@ impl OutboundTransaction {
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
-            sent_output_hashes: deserialize_output_hashes(o.sent_output_hashes)?,
-            change_output_hashes: deserialize_output_hashes(o.change_output_hashes)?,
+            sent_output_hashes: o.sent_output_hashes.unwrap_or_default(),
+            change_output_hashes: o.change_output_hashes.unwrap_or_default(),
         };
 
         // zeroize decrypted data
@@ -2032,9 +2020,9 @@ impl CompletedTransactionSql {
             );
             
             (
-                serialize_output_hashes(&output_hashes)?,
-                serialize_output_hashes(&[])?,
-                serialize_output_hashes(&[])?
+                output_hashes.to_vec(),
+                Vec::new(),
+                Vec::new()
             )
         } else {
             // Preserve existing categorized values
@@ -2171,9 +2159,9 @@ impl CompletedTransactionSql {
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
             user_payment_id,
-            sent_output_hashes: Some(serialize_output_hashes(&c.sent_output_hashes)?),
-            received_output_hashes: Some(serialize_output_hashes(&c.received_output_hashes)?),
-            change_output_hashes: Some(serialize_output_hashes(&c.change_output_hashes)?),
+            sent_output_hashes: Some(c.sent_output_hashes.to_vec()),
+            received_output_hashes: Some(c.received_output_hashes.to_vec()),
+            change_output_hashes: Some(c.change_output_hashes.to_vec()),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2268,12 +2256,9 @@ impl CompletedTransaction {
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
-            sent_output_hashes: deserialize_output_hashes(c.sent_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
-            received_output_hashes: deserialize_output_hashes(c.received_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
-            change_output_hashes: deserialize_output_hashes(c.change_output_hashes)
-                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
+            sent_output_hashes: c.sent_output_hashes.unwrap_or_default(),
+            received_output_hashes: c.received_output_hashes.unwrap_or_default(),
+            change_output_hashes: c.change_output_hashes.unwrap_or_default(),
         };
 
         // zeroize sensitive data
