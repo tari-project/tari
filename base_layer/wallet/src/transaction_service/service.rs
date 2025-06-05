@@ -109,7 +109,7 @@ use crate::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
-        storage::models::SpendingPriority,
+        storage::models::{DbWalletOutput, SpendingPriority},
         UtxoSelectionCriteria,
     },
     storage::database::{WalletBackend, WalletDatabase},
