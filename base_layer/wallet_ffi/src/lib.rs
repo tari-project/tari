@@ -9673,9 +9673,65 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
         return ptr::null_mut();
     }
 
-    // TODO: Implement once output manager has lookup by hash function
-    *error_out = LibWalletError::from(InterfaceError::InvalidArgument("Not yet implemented".to_string())).code;
-    ptr::null_mut()
+    // Convert the 32-byte pointer to a HashOutput
+    let hash_array: [u8; 32] = {
+        let slice = std::slice::from_raw_parts(output_hash, 32);
+        let mut array = [0u8; 32];
+        array.copy_from_slice(slice);
+        array
+    };
+    use tari_common_types::types::HashOutput;
+    let hash_output = HashOutput::from(hash_array);
+
+    // Get all transactions with PayRefs and search for the specific output
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_transactions_with_payrefs(None, None, Some(true))
+    ) {
+        Ok(transactions_with_payrefs) => {
+            // Search through all transactions for the output hash
+            for tx_with_payrefs in transactions_with_payrefs {
+                for output in &tx_with_payrefs.outputs_with_payrefs {
+                    if output.output_hash == hash_output {
+                        // Found the output, convert to FFI structure
+                        let ffi_output = TariOutputWithPayRef {
+                            output_hash: {
+                                let bytes = output.output_hash.as_bytes();
+                                let mut array = [0u8; 32];
+                                array.copy_from_slice(bytes);
+                                array
+                            },
+                            payment_reference: output.payment_reference.unwrap_or([0u8; 32]),
+                            has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
+                            output_type: match output.output_type {
+                                minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
+                                minotari_wallet::transaction_service::handle::OutputType::Received => 1,
+                                minotari_wallet::transaction_service::handle::OutputType::Change => 2,
+                            },
+                            amount: output.amount.as_u64(),
+                            status: match output.status {
+                                minotari_wallet::transaction_service::handle::OutputStatus::Available => 0,
+                                minotari_wallet::transaction_service::handle::OutputStatus::Pending => 1,
+                                minotari_wallet::transaction_service::handle::OutputStatus::NotMined => 2,
+                                minotari_wallet::transaction_service::handle::OutputStatus::Spent => 3,
+                            },
+                        };
+                        
+                        return Box::into_raw(Box::new(ffi_output));
+                    }
+                }
+            }
+            
+            // Output hash not found
+            ptr::null_mut()
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
 }
 
 /// Get per-output PayRefs for a specific transaction
