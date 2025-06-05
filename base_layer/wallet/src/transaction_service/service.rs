@@ -692,6 +692,13 @@ where
                     .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
+                const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
+                if request.len() > MAX_REQUEST_SIZE {
+                    return Err(TransactionServiceError::InvalidMessageError(format!(
+                        "Request size {} exceeds maximum allowed size",
+                        request.len()
+                    )));
+                }
                 let lock_request = PrepareOneSidedTransactionForSigningResult::from_string(&request)?;
                 let offline_signing = OfflineSigning::new(
                     self.resources.clone(),
