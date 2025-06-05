@@ -15,15 +15,18 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            OutputFeatures, WalletOutputBuilder,
+            OutputFeatures,
+            WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
-        ReceiverTransactionProtocol, SenderTransactionProtocol,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 use tari_script::{push_pubkey_script, TariScript};
 
+use super::service::TransactionServiceResources;
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::UtxoSelectionCriteria,
@@ -32,8 +35,6 @@ use crate::{
         storage::database::TransactionBackend,
     },
 };
-
-use super::service::TransactionServiceResources;
 
 const LOG_TARGET: &str = "wallet::transaction_service::offline_signing";
 const SUPPORTED_VERSION: &str = "1.0.0";
@@ -142,8 +143,8 @@ where
                 sending_method
             )));
         }
-        if sending_method.contains(TariAddressFeatures::create_interactive_only())
-            && matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
+            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),
@@ -179,8 +180,8 @@ where
                 true,
                 amount,
                 fee_per_gram,
-                if dest_address == self.resources.one_sided_tari_address
-                    || dest_address == self.resources.interactive_tari_address
+                if dest_address == self.resources.one_sided_tari_address ||
+                    dest_address == self.resources.interactive_tari_address
                 {
                     Some(TxType::PaymentToSelf)
                 } else {

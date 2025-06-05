@@ -27,22 +27,38 @@ use digest::consts::U64;
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
-    ledger_get_dh_shared_secret, ledger_get_one_sided_metadata_signature, ledger_get_public_key,
-    ledger_get_raw_schnorr_signature, ledger_get_script_offset, ledger_get_script_schnorr_signature,
-    ledger_get_script_signature, ScriptSignatureKey,
+    ledger_get_dh_shared_secret,
+    ledger_get_one_sided_metadata_signature,
+    ledger_get_public_key,
+    ledger_get_raw_schnorr_signature,
+    ledger_get_script_offset,
+    ledger_get_script_schnorr_signature,
+    ledger_get_script_signature,
+    ScriptSignatureKey,
 };
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     key_branches::{
-        TransactionKeyManagerBranch, KERNEL_NONCE, METADATA_EPHEMERAL_NONCE, NONCE, ONE_SIDED_SENDER_OFFSET,
-        RANDOM_KEY, SENDER_OFFSET,
+        TransactionKeyManagerBranch,
+        KERNEL_NONCE,
+        METADATA_EPHEMERAL_NONCE,
+        NONCE,
+        ONE_SIDED_SENDER_OFFSET,
+        RANDOM_KEY,
+        SENDER_OFFSET,
     },
     tari_address::TariAddress,
     types::{
-        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, RangeProof, Signature,
-        UncompressedComAndPubSignature, UncompressedSignature,
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        RangeProof,
+        Signature,
+        UncompressedComAndPubSignature,
+        UncompressedSignature,
     },
     wallet_types::WalletType,
 };
@@ -66,12 +82,14 @@ use tari_key_manager::{
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
 use tari_utilities::{ByteArray, Hidden};
 use tokio::sync::RwLock;
+use zeroize::Zeroize;
 
 use crate::transactions::transaction_key_manager::{
-    error::KeyManagerServiceError, interface::TariKeyAndId, key_manager::TariKeyManager,
+    error::KeyManagerServiceError,
+    interface::TariKeyAndId,
+    key_manager::TariKeyManager,
     storage::database::KeyManagerState,
 };
-use zeroize::Zeroize;
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
 const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
@@ -85,8 +103,16 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId, EncryptedData, KernelFeatures, RangeProofType, TransactionError,
-            TransactionInput, TransactionInputVersion, TransactionKernel, TransactionKernelVersion, TransactionOutput,
+            encrypted_data::PaymentId,
+            EncryptedData,
+            KernelFeatures,
+            RangeProofType,
+            TransactionError,
+            TransactionInput,
+            TransactionInputVersion,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
             TransactionOutputVersion,
         },
         transaction_key_manager::{
@@ -107,8 +133,7 @@ pub struct TransactionKeyManagerInner<TBackend> {
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
-where
-    TBackend: TransactionKeyManagerBackend + 'static,
+where TBackend: TransactionKeyManagerBackend + 'static
 {
     // -----------------------------------------------------------------------------------------------------------------
     // Key manager section
@@ -169,12 +194,12 @@ where
     pub async fn get_next_key(&self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
         let index = {
             match branch {
-                METADATA_EPHEMERAL_NONCE
-                | NONCE
-                | KERNEL_NONCE
-                | SENDER_OFFSET
-                | ONE_SIDED_SENDER_OFFSET
-                | RANDOM_KEY => OsRng.next_u64(),
+                METADATA_EPHEMERAL_NONCE |
+                NONCE |
+                KERNEL_NONCE |
+                SENDER_OFFSET |
+                ONE_SIDED_SENDER_OFFSET |
+                RANDOM_KEY => OsRng.next_u64(),
                 _ => {
                     let mut km = self
                         .key_managers
@@ -284,9 +309,9 @@ where
                 WalletType::DerivedKeys => {},
                 WalletType::Ledger(ledger) => {
                     match TransactionKeyManagerBranch::from_key(branch) {
-                        TransactionKeyManagerBranch::OneSidedSenderOffset
-                        | TransactionKeyManagerBranch::RandomKey
-                        | TransactionKeyManagerBranch::PreMine => {
+                        TransactionKeyManagerBranch::OneSidedSenderOffset |
+                        TransactionKeyManagerBranch::RandomKey |
+                        TransactionKeyManagerBranch::PreMine => {
                             #[cfg(not(feature = "ledger"))]
                             {
                                 return Err(KeyManagerServiceError::LedgerError(format!(
@@ -386,10 +411,10 @@ where
                         }
 
                         // If we're trying to access any of the private keys, just say no bueno
-                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch
-                            || &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch
-                            || &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch
-                            || &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
+                        if &TransactionKeyManagerBranch::Spend.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::PreMine.get_branch_key() == branch ||
+                            &TransactionKeyManagerBranch::RandomKey.get_branch_key() == branch
                         {
                             return Err(KeyManagerServiceError::LedgerPrivateKeyInaccessible(key_id.to_string()));
                         }
@@ -524,13 +549,10 @@ where
             key: (&commitment_mask.key_id).into(),
         };
         let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
-        Ok((
-            commitment_mask,
-            TariKeyAndId {
-                key_id: script_key_id,
-                pub_key: script_public_key,
-            },
-        ))
+        Ok((commitment_mask, TariKeyAndId {
+            key_id: script_key_id,
+            pub_key: script_public_key,
+        }))
     }
 
     pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
@@ -1004,8 +1026,8 @@ where
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
-        if self.crypto_factories.range_proof.range() < 64
-            && value >= 1u64.shl(&self.crypto_factories.range_proof.range())
+        if self.crypto_factories.range_proof.range() < 64 &&
+            value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
             return Err(TransactionError::BuilderError(
                 "Value provided is outside the range allowed by the range proof".into(),
@@ -1116,10 +1138,10 @@ where
                         match script_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend
-                                    | TransactionKeyManagerBranch::PreMine
-                                    | TransactionKeyManagerBranch::RandomKey
-                                    | TransactionKeyManagerBranch::OneSidedSenderOffset => {
+                                    TransactionKeyManagerBranch::Spend |
+                                    TransactionKeyManagerBranch::PreMine |
+                                    TransactionKeyManagerBranch::RandomKey |
+                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         script_key_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
@@ -1151,10 +1173,10 @@ where
                         match sender_offset_key_id {
                             TariKeyId::Managed { branch, index } => {
                                 match TransactionKeyManagerBranch::from_key(branch) {
-                                    TransactionKeyManagerBranch::Spend
-                                    | TransactionKeyManagerBranch::PreMine
-                                    | TransactionKeyManagerBranch::RandomKey
-                                    | TransactionKeyManagerBranch::OneSidedSenderOffset => {
+                                    TransactionKeyManagerBranch::Spend |
+                                    TransactionKeyManagerBranch::PreMine |
+                                    TransactionKeyManagerBranch::RandomKey |
+                                    TransactionKeyManagerBranch::OneSidedSenderOffset => {
                                         sender_offset_indexes
                                             .push((TransactionKeyManagerBranch::from_key(branch), *index));
                                     },
@@ -1310,8 +1332,8 @@ where
                                 branch: nonce_branch,
                                 index: nonce_index,
                             } => {
-                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch)
-                                    && TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
+                                if TransactionKeyManagerBranch::is_ledger_branch(private_key_branch) &&
+                                    TransactionKeyManagerBranch::is_ledger_branch(nonce_branch)
                                 {
                                     let signature = ledger_get_raw_schnorr_signature(
                                         ledger.account,
@@ -1397,8 +1419,8 @@ where
             )
             .await?;
         let metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &receiver_partial_metadata_signature.to_capk_signature()?
-                + &sender_partial_metadata_signature.to_capk_signature()?,
+            &receiver_partial_metadata_signature.to_capk_signature()? +
+                &sender_partial_metadata_signature.to_capk_signature()?,
         );
         Ok(metadata_signature)
     }
@@ -1590,8 +1612,8 @@ where
         let private_signing_key = if kernel_features.is_coinbase() {
             private_key
         } else {
-            private_key
-                - &self
+            private_key -
+                &self
                     .get_txo_private_kernel_offset(commitment_mask_key_id, nonce_id)
                     .await?
         };

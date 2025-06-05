@@ -44,8 +44,15 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId, EncryptedData, KernelFeatures, RangeProofType, TransactionError,
-        TransactionInputVersion, TransactionKernelVersion, TransactionOutput, TransactionOutputVersion,
+        encrypted_data::PaymentId,
+        EncryptedData,
+        KernelFeatures,
+        RangeProofType,
+        TransactionError,
+        TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
     },
     transaction_key_manager::error::KeyManagerServiceError,
 };

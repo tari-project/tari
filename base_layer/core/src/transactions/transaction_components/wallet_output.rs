@@ -43,7 +43,12 @@ use crate::{
             encrypted_data::PaymentId,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
-            EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionError, TransactionInputVersion,
+            EncryptedData,
+            OutputFeatures,
+            OutputType,
+            RangeProofType,
+            TransactionError,
+            TransactionInputVersion,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     },
@@ -272,8 +277,8 @@ impl WalletOutput {
         );
 
         let total_ephemeral_public_key = CompressedPublicKey::new_from_pk(
-            aggregated_script_signature_public_nonces.to_public_key()?
-                + &ephemeral_public_key_self.pub_key.to_public_key()?,
+            aggregated_script_signature_public_nonces.to_public_key()? +
+                &ephemeral_public_key_self.pub_key.to_public_key()?,
         );
         let commitment_partial_script_signature = key_manager
             .get_partial_script_signature(
@@ -297,8 +302,8 @@ impl WalletOutput {
             .sign_with_nonce_and_challenge(&self.script_key_id, &ephemeral_public_key_self.key_id, &challenge)
             .await?;
         let script_signature = ComAndPubSignature::new_from_capk_signature(
-            &commitment_partial_script_signature.to_capk_signature()?
-                + &script_key_partial_script_signature.to_schnorr_signature()?,
+            &commitment_partial_script_signature.to_capk_signature()? +
+                &script_key_partial_script_signature.to_schnorr_signature()?,
         );
 
         let input = TransactionInput::new_current_version(
@@ -369,9 +374,9 @@ impl WalletOutput {
     }
 
     pub fn features_and_scripts_byte_size(&self) -> std::io::Result<usize> {
-        Ok(self.features.get_serialized_size()?
-            + self.script.get_serialized_size()?
-            + self.covenant.get_serialized_size()?)
+        Ok(self.features.get_serialized_size()? +
+            self.script.get_serialized_size()? +
+            self.covenant.get_serialized_size()?)
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
