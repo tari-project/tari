@@ -1,6 +1,6 @@
 # Tari Vulnerability Disclosure Policy
 
-_Last Updated: January 10, 2024_
+_Last Updated: June 5, 2025_
 
 ## Introduction
 

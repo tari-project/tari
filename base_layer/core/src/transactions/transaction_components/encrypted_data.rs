@@ -80,7 +80,7 @@ pub struct EncryptedData {
     data: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub enum TxType {
     #[default]
     PaymentToOther = 0b0000,
@@ -134,7 +134,7 @@ impl TxType {
         }
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(self) -> Vec<u8> {
         vec![self.as_u8()]
     }
 }
@@ -189,7 +189,7 @@ pub enum PaymentId {
         user_data: Vec<u8>,
     },
 }
-
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum PTag {
     Empty = 0,
     U256 = 1,
@@ -253,7 +253,7 @@ impl PaymentId {
         match self {
             PaymentId::Open { tx_type, .. } |
             PaymentId::AddressAndData { tx_type, .. } |
-            PaymentId::TransactionInfo { tx_type, .. } => tx_type.clone(),
+            PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -268,14 +268,14 @@ impl PaymentId {
     /// Helper function to convert a 'PaymentId::Open' or 'PaymentId::Empty' to a 'PaymentId::AddressAndData', with the
     /// optional 'tx_type' only applicable to 'PaymentId::Open', otherwise 'payment_id' is kept as is.
     pub fn add_sender_address(
-        payment_id: PaymentId,
+        self,
         sender_address: TariAddress,
         sender_one_sided: bool,
         amount: MicroMinotari,
         fee: MicroMinotari,
         tx_type: Option<TxType>,
     ) -> PaymentId {
-        match payment_id {
+        match self {
             PaymentId::Open { user_data, tx_type } => PaymentId::AddressAndData {
                 sender_address,
                 sender_one_sided,
@@ -292,7 +292,7 @@ impl PaymentId {
                 tx_type: tx_type.unwrap_or_default(),
                 user_data: vec![],
             },
-            _ => payment_id,
+            _ => self,
         }
     }
 
@@ -418,124 +418,83 @@ impl PaymentId {
             PTag::from_u8(bytes[0])
         };
         let bytes = if bytes.len() > 1 { &bytes[1..] } else { &[] };
-        match (p_tag, bytes.len()) {
-            (PTag::Empty, 0) => return PaymentId::Empty,
-            (PTag::U256, SIZE_U256) => {
+        match p_tag {
+            PTag::Empty => return PaymentId::Empty,
+            PTag::U256 => {
+                if bytes.len() != SIZE_U256 {
+                    return PaymentId::Open {
+                        tx_type: TxType::from_u8(*bytes.first().unwrap_or(&0)),
+                        user_data: bytes.get(1..).unwrap_or_default().to_vec(),
+                    };
+                }
                 let v = U256::from_little_endian(bytes);
                 return PaymentId::U256(v);
             },
-            (PTag::AddressAndData, len) if len > PaymentId::SIZE_VALUE_AND_META_DATA => {
-                let mut amount_bytes = [0u8; SIZE_VALUE];
-                amount_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
-                let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
-                let mut meta_data_bytes = [0u8; PaymentId::SIZE_META_DATA];
-                meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..PaymentId::SIZE_VALUE_AND_META_DATA]);
-                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(meta_data_bytes);
-                // Amount + fee + Single/Dual
-                if let Ok(sender_address) = TariAddress::from_bytes(&bytes[PaymentId::SIZE_VALUE_AND_META_DATA..]) {
-                    return PaymentId::AddressAndData {
-                        sender_address,
-                        sender_one_sided,
-                        amount,
-                        fee,
-                        tx_type: tx_meta_data,
-                        user_data: Vec::new(),
-                    };
-                }
-                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE {
-                    if let Ok(sender_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
-                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE],
-                    ) {
-                        // Amount + Dual + data
+            _ => {},
+        }
+
+        if (bytes.len() > PaymentId::SIZE_VALUE_AND_META_DATA) && p_tag != PTag::Open {
+            let mut amount_bytes = [0u8; SIZE_VALUE];
+            amount_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
+            let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
+            let mut meta_data_bytes = [0u8; PaymentId::SIZE_META_DATA];
+            meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..PaymentId::SIZE_VALUE_AND_META_DATA]);
+            let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(meta_data_bytes);
+            if let Ok((address, size)) = Self::find_tari_address(&bytes[PaymentId::SIZE_VALUE_AND_META_DATA..]) {
+                let user_data = bytes[PaymentId::SIZE_VALUE_AND_META_DATA + size..].to_vec();
+                match p_tag {
+                    PTag::AddressAndData => {
                         return PaymentId::AddressAndData {
-                            sender_address,
+                            sender_address: address,
                             sender_one_sided,
                             amount,
                             fee,
                             tx_type: tx_meta_data,
-                            user_data: bytes[PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE..]
-                                .to_vec(),
+                            user_data,
                         };
-                    }
-                }
-                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
-                    if let Ok(sender_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
-                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE],
-                    ) {
-                        // Amount + Single + data
-                        return PaymentId::AddressAndData {
-                            sender_address,
-                            sender_one_sided,
-                            amount,
-                            fee,
-                            tx_type: tx_meta_data,
-                            user_data: bytes[PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE..]
-                                .to_vec(),
-                        };
-                    }
-                }
-            },
-            (PTag::TransactionInfo, len) if len > PaymentId::SIZE_VALUE_AND_META_DATA => {
-                let mut amount_bytes = [0u8; SIZE_VALUE];
-                amount_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
-                let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
-                let mut meta_data_bytes = [0u8; PaymentId::SIZE_META_DATA];
-                meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..PaymentId::SIZE_VALUE_AND_META_DATA]);
-                let (fee, sender_one_sided, tx_meta_data) = PaymentId::unpack_meta_data(meta_data_bytes);
-                // Amount + fee + Single/Dual
-                if let Ok(recipient_address) = TariAddress::from_bytes(&bytes[PaymentId::SIZE_VALUE_AND_META_DATA..]) {
-                    return PaymentId::TransactionInfo {
-                        recipient_address,
-                        sender_one_sided,
-                        amount,
-                        fee,
-                        tx_type: tx_meta_data,
-                        user_data: Vec::new(),
-                    };
-                }
-                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE {
-                    if let Ok(recipient_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
-                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE],
-                    ) {
-                        // Amount + Dual + data
+                    },
+                    PTag::TransactionInfo => {
                         return PaymentId::TransactionInfo {
-                            recipient_address,
+                            recipient_address: address,
                             sender_one_sided,
                             amount,
                             fee,
                             tx_type: tx_meta_data,
-                            user_data: bytes[PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_DUAL_SIZE..]
-                                .to_vec(),
+                            user_data,
                         };
-                    }
+                    },
+                    _ => {},
                 }
-                if len > PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
-                    if let Ok(recipient_address) = TariAddress::from_bytes(
-                        &bytes[PaymentId::SIZE_VALUE_AND_META_DATA..
-                            PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE],
-                    ) {
-                        // Amount + Single + data
-                        return PaymentId::TransactionInfo {
-                            recipient_address,
-                            sender_one_sided,
-                            amount,
-                            fee,
-                            tx_type: tx_meta_data,
-                            user_data: bytes[PaymentId::SIZE_VALUE_AND_META_DATA + TARI_ADDRESS_INTERNAL_SINGLE_SIZE..]
-                                .to_vec(),
-                        };
-                    }
-                }
-            },
-            (_, _) => {},
+            }
         }
         PaymentId::Open {
             tx_type: TxType::from_u8(*bytes.first().unwrap_or(&0)),
             user_data: bytes.get(1..).unwrap_or_default().to_vec(),
         }
+    }
+
+    // we dont know where the tari address ends and the user data starts, so we need to find it using the checksum
+    fn find_tari_address(bytes: &[u8]) -> Result<(TariAddress, usize), String> {
+        if bytes.len() < TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
+            return Err("Not enough bytes for single TariAddress".to_string());
+        }
+        if bytes.len() >= TARI_ADDRESS_INTERNAL_SINGLE_SIZE {
+            if let Ok(address) = TariAddress::from_bytes(&bytes[..TARI_ADDRESS_INTERNAL_SINGLE_SIZE]) {
+                return Ok((address, TARI_ADDRESS_INTERNAL_SINGLE_SIZE));
+            }
+        }
+        if bytes.len() < TARI_ADDRESS_INTERNAL_DUAL_SIZE {
+            return Err("Not enough bytes for dual TariAddress".to_string());
+        }
+        // Now we have to try and brute force a match here
+        let mut offset = 0;
+        while (TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset) <= bytes.len() {
+            if let Ok(address) = TariAddress::from_bytes(&bytes[..(TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset)]) {
+                return Ok((address, TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset));
+            }
+            offset += 1;
+        }
+        Err("No valid TariAddress found".to_string())
     }
 
     /// Helper function to convert a byte slice to a string for the open and data variants
@@ -938,6 +897,13 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn it_encrypts_and_decrypts_correctly() {
+        let mut pay_id_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        pay_id_address = pay_id_address
+            .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
+            .unwrap();
         for payment_id in [
             PaymentId::Empty,
             PaymentId::U256(1.into()),
@@ -1023,6 +989,14 @@ mod test {
                 tx_type: TxType::CoinSplit,
                 user_data: vec![1; 50],
             },
+            PaymentId::AddressAndData {
+                sender_address: pay_id_address.clone(),
+                amount: MicroMinotari::from(123456),
+                sender_one_sided: false,
+                fee: MicroMinotari::from(123),
+                tx_type: TxType::CoinSplit,
+                user_data: vec![1; 50],
+            },
             // TransactionInfo - single + amount, no data
             PaymentId::TransactionInfo {
                 recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
@@ -1059,6 +1033,14 @@ mod test {
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
+                sender_one_sided: false,
+                amount: MicroMinotari::from(123456),
+                fee: MicroMinotari::from(123),
+                tx_type: TxType::Burn,
+                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            },
+            PaymentId::TransactionInfo {
+                recipient_address: pay_id_address,
                 sender_one_sided: false,
                 amount: MicroMinotari::from(123456),
                 fee: MicroMinotari::from(123),
@@ -1227,7 +1209,7 @@ mod test {
             TxType::Coinbase,
         ] {
             let payment_id = PaymentId::Open {
-                tx_type: tx_type.clone(),
+                tx_type,
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             };
             let payment_id_bytes = payment_id.to_bytes();
@@ -1236,7 +1218,7 @@ mod test {
 
             let payment_id = PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                tx_type: tx_type.clone(),
+                tx_type,
                 sender_one_sided: false,
                 amount: MicroMinotari::from(123456),
                 fee: MicroMinotari::from(123),
