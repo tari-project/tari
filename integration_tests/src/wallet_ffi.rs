@@ -233,18 +233,3 @@ pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
     seed_words
 }
 
-// pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
-//     let mut error = 0;
-//     let error_ptr = &mut error as *mut c_int;
-//     let seed_words = ffi::SeedWords::create_empty_seed_words();
-//
-//     for word in words {
-//         let word = CString::new(word).unwrap();
-//         let word_str: *const c_char = CString::into_raw(word) as *const c_char;
-//         unsafe {
-//             seed_words_push_word(seed_words.get_ptr(), word_str, ptr::null(), error_ptr),
-//         }
-//     }
-//
-//     seed_words
-// }
