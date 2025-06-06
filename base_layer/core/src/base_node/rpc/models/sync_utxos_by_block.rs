@@ -22,23 +22,24 @@ pub struct SyncUtxosByBlockRequest {
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct SyncUtxosByBlockResponse {
-    pub utxos: Vec<UtxoInfo>,
+    pub blocks: Vec<BlockUtxoInfo>,
     pub has_next_page: bool,
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
-pub struct UtxoInfo {
+pub struct BlockUtxoInfo {
     pub header_hash: Vec<u8>,
     pub height: u64,
-    pub outputs: Vec<MinimalUtxoInfo>,
+    pub outputs: Vec<MinimalUtxoSyncInfo>,
     pub mined_timestamp: u64,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug, Clone)]
-pub struct MinimalUtxoInfo{
+pub struct MinimalUtxoSyncInfo{
     pub output_hash: Vec<u8>,
     pub commitment: Vec<u8>,
-    pub script: Vec<u8>,
+    // pub script: Vec<u8>,
     pub encrypted_data: Vec<u8>,
+    pub sender_offset_public_key: Vec<u8>,
 }
 

@@ -10,7 +10,7 @@ use thiserror::Error;
 use crate::{
     base_node::{
         rpc::{
-            models::{self, GetUtxosByBlockResponse, GetUtxosByBlockRequest, MinimalUtxoInfo, SyncUtxosByBlockRequest, SyncUtxosByBlockResponse, TipInfoResponse, TxLocation, TxQueryResponse, UtxoInfo},
+            models::{self, GetUtxosByBlockResponse, GetUtxosByBlockRequest, MinimalUtxoSyncInfo, SyncUtxosByBlockRequest, SyncUtxosByBlockResponse, TipInfoResponse, TxLocation, TxQueryResponse, BlockUtxoInfo},
             BaseNodeWalletQueryService,
         },
         state_machine_service::states::StateInfo,
@@ -233,15 +233,17 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .collect::<Vec<TransactionOutput>>();
 
             for output_chunk in outputs.chunks(2000) {
-                let output_block_response = UtxoInfo {
+                let output_block_response = BlockUtxoInfo {
                     outputs: output_chunk
                         .iter()
                         .map(|output| {
-                            MinimalUtxoInfo {
+                            MinimalUtxoSyncInfo {
                                 output_hash: output.hash().to_vec(),
                                 commitment: output.commitment().to_vec(),
-                                script: output.script().to_bytes(),
                                 encrypted_data: output.encrypted_data().as_bytes().to_vec(),
+                                sender_offset_public_key: output
+                                    .sender_offset_public_key
+                                    .to_vec(),
                             }
                         })
                         .collect(),
@@ -253,7 +255,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
             if outputs.is_empty() {
                 // if its empty, we need to send an empty vec of outputs.
-                let utxo_block_response = UtxoInfo {
+                let utxo_block_response = BlockUtxoInfo {
                     outputs: Vec::new(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
@@ -279,7 +281,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
         let has_next_page = (end_header.height - current_header.height) > 0;
 
-        Ok(SyncUtxosByBlockResponse { utxos, has_next_page })
+        Ok(SyncUtxosByBlockResponse { blocks: utxos, has_next_page })
     }
 }
 

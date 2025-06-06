@@ -58,7 +58,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
             .route("/transaction_query", get(handler::transaction_query::handle::<B>))
             .route("/sync_utxos_by_block", get(handler::sync_utxos_by_block::handle::<B>))
-            .route("/get_utxos_in_block", get(handler::get_utxos_by_block::handle::<B>))
+            .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()));
         let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;

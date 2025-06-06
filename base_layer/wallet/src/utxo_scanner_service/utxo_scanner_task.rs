@@ -31,7 +31,7 @@ use minotari_node_wallet_client::{http, BaseNodeWalletClient};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::HashOutput,
+    types::{CompressedPublicKey, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -42,14 +42,12 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_core::{
-    base_node::rpc::{models::{BlockHeader, MinimalUtxoInfo}, BaseNodeWalletRpcClient},
-    // blocks::BlockHeader,
-    transactions::{
+    base_node::rpc::{models::{BlockHeader, MinimalUtxoSyncInfo}, BaseNodeWalletRpcClient}, one_sided::public_key_to_output_encryption_key, transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, EncryptedData, TransactionError, TransactionOutput, WalletOutput}, transaction_key_manager::TransactionKeyManagerInterface,
-    },
+    }
 };
-use tari_crypto::compressed_commitment::CompressedCommitment;
+use tari_crypto::{compressed_commitment::CompressedCommitment, dhke::DiffieHellmanSharedSecret, ristretto::{RistrettoPublicKey, RistrettoSecretKey}};
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -194,70 +192,20 @@ where
         // }
     }
 
-    #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
-        // let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
-
-        // get RPC client
-        // let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
-        //     // Use the wallet connectivity service so that RPC pools are correctly managed
-        //     self.resources
-        //         .wallet_connectivity
-        //         .obtain_base_node_wallet_rpc_client()
-        //         .await
-        //         .ok_or(UtxoScannerError::ConnectivityShutdown)?
-        // } else {
-        //     self.establish_new_rpc_connection(&peer).await?
-        // };
-
-        // let latency = client.get_last_request_latency();
-        // self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
-        //     peer.clone(),
-        //     latency.unwrap_or_default(),
-        // ));
-info!(target: LOG_TARGET, "Starting UTXO scanning task");
-
-        // get wallet service query client
-        let wallet_service_client = self.base_node_wallet_service_client()?;
-
-        let timer = Instant::now();
-        loop {
-            info!(target: LOG_TARGET, "here");
-            let tip_header = self.get_chain_tip_header(&wallet_service_client).await?;
-            let tip_header_hash = tip_header.hash;
-            let last_scanned_block = self
-                .get_last_scanned_block(&wallet_service_client, tip_header.height)
-                .await?;
-
-            let next_block_to_scan = if let Some(last_scanned_block) = last_scanned_block {
-                // If we have scanned to the tip and are told to start beyond the tip we are done
-                if last_scanned_block.height >= tip_header.height {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Scanning complete to current tip (height: {}) in {:.2?}",
-                        last_scanned_block.height,
-                        timer.elapsed()
-                    );
-                    return Ok((
-                        last_scanned_block.num_outputs.unwrap_or(0),
-                        last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
-                        timer.elapsed(),
-                    ));
-                }
-
+    async fn determine_next_block_to_scan(&self, last_scanned_block: &Option<ScannedBlock>, wallet_service_client: &http::Client) -> Result<ScannedBlock, UtxoScannerError> {
+        if let Some(last_scanned_block) = last_scanned_block {
                 let next_header = wallet_service_client
                     .get_header_by_height(last_scanned_block.height + 1)
                     .await?;
                 let next_header_hash = next_header.hash;
 
-                ScannedBlock {
+                Ok(ScannedBlock {
                     height: next_header.height,
                     num_outputs: last_scanned_block.num_outputs,
                     amount: last_scanned_block.amount,
                     header_hash: next_header_hash,
                     timestamp: Utc::now().naive_utc(),
-                }
+                })
             } else {
                 // The node does not know of any of our cached headers so we will start the scan anew from the
                 // wallet birthday
@@ -273,14 +221,50 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
                     },
                 };
 
-                ScannedBlock {
+                Ok(ScannedBlock {
                     height: scanning_start_height_hash.height,
                     num_outputs: None,
                     amount: None,
                     header_hash: scanning_start_height_hash.header_hash,
                     timestamp: Utc::now().naive_utc(),
+                })
+            }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+       info!(target: LOG_TARGET, "Starting UTXO scanning task");
+
+        let wallet_service_client = self.base_node_wallet_service_client()?;
+
+        let timer = Instant::now();
+        loop {
+            info!(target: LOG_TARGET, "here");
+            let tip_header = self.get_chain_tip_header(&wallet_service_client).await?;
+            let last_scanned_block = self
+                .get_last_scanned_block(&wallet_service_client, tip_header.height)
+                .await?;
+            
+            // check if we are already synced.
+            if let Some(last_scanned_block) = &last_scanned_block {
+                if last_scanned_block.header_hash == tip_header.hash {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Scanning complete to current tip (height: {}) in {:.2?}",
+                        last_scanned_block.height,
+                        timer.elapsed()
+                    );
+                    return Ok((
+                        last_scanned_block.num_outputs.unwrap_or(0),
+                        last_scanned_block.height,
+                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
+                        timer.elapsed(),
+                    ));
                 }
-            };
+            }
+
+            // Otherwise choose a starting point for the scan
+            let next_block_to_scan = self.determine_next_block_to_scan(&last_scanned_block, &wallet_service_client).await?;
 
             if self.shutdown_signal.is_triggered() {
                 return Ok((
@@ -304,7 +288,7 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
                 .scan_utxos(
                     &wallet_service_client,
                     next_block_to_scan.header_hash,
-                    tip_header_hash,
+                    tip_header.hash,
                     tip_header.height,
                 )
                 .await?;
@@ -462,13 +446,7 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
         let mut utxo_stream = client
             .sync_utxos_by_block(start_header_hash.to_vec(), end_header_hash.to_vec(), self.shutdown_signal.clone())
             .await?;
-        info!(
-            target: LOG_TARGET,
-            "bulletproof rewind profile - UTXO stream request time {} ms",
-            start.elapsed().as_millis(),
-        );
 
-        // let mut utxo_next_await_profiling = Vec::new();
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = 
             utxo_stream.recv().await
@@ -476,12 +454,11 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
             
             info!(target: LOG_TARGET, "here");
             if self.shutdown_signal.is_triggered() {
-                // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok((num_recovered, total_scanned as u64, total_amount));
             }
 
             let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
-            for response in response.utxos {
+            for response in response.blocks {
                 let current_height = response.height;
                 let current_header_hash = response.header_hash;
                 let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
@@ -491,7 +468,7 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
             info!(target: LOG_TARGET, "here");
 
                 let start = Instant::now();
-                let found_outputs = self.scan_for_outputs(outputs).await?;
+                let found_outputs = self.search_for_owned_outputs(outputs).await?;
 
             info!(target: LOG_TARGET, "here");
                 if found_outputs.is_empty() {
@@ -577,83 +554,46 @@ info!(target: LOG_TARGET, "Starting UTXO scanning task");
         Ok((num_recovered, total_scanned as u64, total_amount))
     }
 
-    async fn scan_for_outputs(
+    async fn search_for_owned_outputs(
         &mut self,
-        outputs: Vec<MinimalUtxoInfo>,
-    ) -> Result<Vec<(MinimalUtxoInfo)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(MinimalUtxoInfo)> = Vec::new();
+        outputs: Vec<MinimalUtxoSyncInfo>,
+    ) -> Result<Vec<MinimalUtxoSyncInfo>, UtxoScannerError> {
+        let mut found_outputs: Vec<(MinimalUtxoSyncInfo)> = Vec::new();
         let start = Instant::now();
-        // found_outputs.append(
-        //     &mut self
-        //         .resources
-        //         .output_manager_service
-        //         .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
-        //         .await?
-        //         .into_iter()
-        //         .map(|ro| -> Result<_, UtxoScannerError> {
-        //             let status = if ro.output.features.is_coinbase() {
-        //                 ImportStatus::CoinbaseUnconfirmed
-        //             } else {
-        //                 ImportStatus::Imported
-        //             };
-        //             let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-        //                 UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
-        //             })?;
-        //             Ok((ro.output, status, ro.tx_id, output.clone()))
-        //         })
-        //         .collect::<Result<Vec<_>, _>>()?,
-        // );
+        let view_key = self.key_manager.get_private_view_key().await
+            .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Failed to get private view key: {}", e)))?;
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid commitment: {}", e)))?;
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)
                 .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid encrypted data: {}", e)))?;
 
-            let res = match self.key_manager.try_output_key_recovery(&commitment, &encrypted, None).await {
-                Ok((key_id, value, payment_id)) => (output.clone(), key_id, value, payment_id),
-                Err(e @ TransactionError::EncryptedDataError(_)) => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Failed to recover output {}: {}, is not ours", output.output_hash.to_hex(), e
-                    );
-                    continue;
-                } 
-                Err(e) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Failed to recover output {}: {}", output.output_hash.to_hex(), e
-                    );
-                    continue;
-                    //continue;
-                    // Err(UtxoScannerError::UtxoScanningError(e.to_string()))
-                },
-            };
-            found_outputs.push(output);
+
+            // Change outputs just use the view key.
+            if let Some((value, private_key, payment_id)) =
+            EncryptedData::decrypt_data(&view_key, &commitment, &encrypted).ok() {
+                found_outputs.push(output.clone());
+                continue;
+            } 
+
+            // Received output use the DH of view key and sender offset.
+            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key)
+                    .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid sender offset: {}", e)))?;
+            
+            let recovery_key = offfset_pub_key * &view_key;
+
+                let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key))
+                    .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Failed to convert recovery key: {}", e)))?;
+            if let Some((value, private_key, payment_id)) =
+                EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted).ok()
+            {
+                found_outputs.push(output.clone());
+            }
+
         }
         let scanned_time = start.elapsed();
         let start = Instant::now();
 
-        // found_outputs.append(
-        //     &mut self
-        //         .resources
-        //         .output_manager_service
-        //         .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
-        //         .await?
-        //         .into_iter()
-        //         .map(|ro| -> Result<_, UtxoScannerError> {
-        //             let status = if ro.output.features.is_coinbase() {
-        //                 ImportStatus::CoinbaseUnconfirmed
-        //             } else {
-        //                 ImportStatus::OneSidedUnconfirmed
-        //             };
-        //             let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-        //                 UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
-        //             })?;
-        //             Ok((ro.output, status, ro.tx_id, output.clone()))
-        //         })
-        //         .collect::<Result<Vec<_>, _>>()?,
-        // );
-        // todo!("recover one sided outputs");
         let one_sided_time = start.elapsed();
         trace!(
             target: LOG_TARGET,

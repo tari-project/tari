@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-#![recursion_limit = "2048"]
+// #![recursion_limit = "2048"]
 // Some functions have a large amount of dependencies (e.g. services) and historically this warning
 // has lead to bundling of dependencies into a resources struct, which is then overused and is the
 // wrong abstraction
