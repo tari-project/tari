@@ -28,6 +28,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::PaymentReference,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{
@@ -105,6 +106,7 @@ use crate::{
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
+        payment_reference::PaymentDetails,
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -116,12 +118,9 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
-    transaction_service::handle::TransactionServiceHandle,
+    transaction_service::{handle::TransactionServiceHandle, payref_calculator},
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
-use tari_common_types::payment_reference::PaymentReference;
-use crate::output_manager_service::payment_reference::PaymentDetails;
-use crate::transaction_service::payref_calculator;
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -3618,18 +3617,13 @@ where
     // PayRef methods
 
     /// Find payment details by PayRef using transaction service (optimized)
-    fn find_payment_by_reference(
-        &self,
-        payref: FixedHash,
-    ) -> Result<Option<PaymentDetails>, OutputManagerError> {
+    fn find_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, OutputManagerError> {
         // Get current chain tip height for confirmation calculations
         let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
 
-
-
         // Convert FixedHash to PaymentReference for comparison
         let target_payref = PaymentReference::from(payref);
-       (create_payment_details(tx, payref, PaymentDirection::Received));
+        (create_payment_details(tx, payref, PaymentDirection::Received));
         if let Some(payment_details) =
             payref_calculator::find_payment_by_reference(&completed_transactions, target_payref)
         {

@@ -2791,8 +2791,8 @@ pub async fn command_runner(
                     eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
                 },
             },
-            ListPayRefs(args) => {
-                debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command starting execution");
+            ListTx(args) => {
+                debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
 
                 // Apply status filter to determine mined_only
                 let mined_only = match args.status_filter.as_deref() {
@@ -2807,76 +2807,48 @@ pub async fn command_runner(
 
                 let limit = args.limit.map(|l| l as u64);
 
-                match transaction_service
-                    .get_transactions_with_payrefs(limit, None, mined_only)
-                    .await
-                {
-                    Ok(txs_with_payrefs) => {
-                        debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command got {} transactions with PayRefs", txs_with_payrefs.len());
+                match transaction_service.get_completed_transactions(None, None, None).await {
+                    Ok(txs) => {
+                        debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs_with_payrefs.len());
 
-                        if txs_with_payrefs.is_empty() {
-                            println!("No transactions with PayRefs found.");
-                        } else {
-                            println!("Found {} transaction(s) with PayRefs:", txs_with_payrefs.len());
-                            println!("{}", "=".repeat(80));
+                        if txs.is_empty() {
+                            println!("No transactions.");
+                            continue;
+                        }
+                        println!("Found {} transaction(s)", txs.len());
+                        println!("{}", "=".repeat(80));
 
-                            for (i, tx_with_refs) in txs_with_payrefs.iter().enumerate() {
-                                println!("{}. Transaction ID: {}", i + 1, tx_with_refs.transaction.tx_id);
-                                println!("   Amount: {}", tx_with_refs.transaction.amount);
-                                println!("   Direction: {:?}", tx_with_refs.transaction.direction);
-                                println!("   Status: {:?}", tx_with_refs.transaction.status);
-                                if let Some(height) = tx_with_refs.transaction.mined_height {
-                                    println!("   Mined at height: {}", height);
-                                }
-                                if let Some(timestamp) = tx_with_refs.transaction.mined_timestamp {
-                                    println!("   Mined timestamp: {}", timestamp);
-                                }
-
-                                println!("   PayRefs ({}):", tx_with_refs.outputs_with_payrefs.len());
-                                for (j, output_with_payref) in tx_with_refs.outputs_with_payrefs.iter().enumerate() {
-                                    if let Some(payref) = &output_with_payref.payment_reference {
-                                        if args.show_private_info {
-                                            println!(
-                                                "     {}. {} ({}) - {}",
-                                                j + 1,
-                                                payref.to_hex(),
-                                                output_with_payref.output_type,
-                                                output_with_payref.amount
-                                            );
-                                        } else {
-                                            let hex_payref = payref.to_hex();
-                                            if hex_payref.len() >= 64 {
-                                                println!(
-                                                    "     {}. {}...{} ({}) - {}",
-                                                    j + 1,
-                                                    &hex_payref[..8],
-                                                    &hex_payref[56..],
-                                                    output_with_payref.output_type,
-                                                    output_with_payref.amount
-                                                );
-                                            } else {
-                                                // Fallback for shorter hex strings
-                                                let end_start = hex_payref.len().saturating_sub(8);
-                                                println!(
-                                                    "     {}. {}...{} ({}) - {}",
-                                                    j + 1,
-                                                    &hex_payref[..8.min(hex_payref.len())],
-                                                    &hex_payref[end_start..],
-                                                    output_with_payref.output_type,
-                                                    output_with_payref.amount
-                                                );
-                                            }
-                                        }
-                                    } else {
-                                        println!("     {}. No PayRef (not mined)", j + 1);
-                                    }
-                                }
-                                println!("   Recipients: {}", tx_with_refs.recipient_count);
-                                println!();
+                        for (i, tx) in txs.iter().enumerate() {
+                            println!("{}. Transaction ID: {}", i + 1, tx.tx_id);
+                            println!("   Amount: {}", tx.amount);
+                            println!("   Direction: {:?}", tx.direction);
+                            println!("   Status: {:?}", tx.status);
+                            if let Some(height) = tx.mined_height {
+                                println!("   Mined at height: {}", height);
                             }
+                            if let Some(timestamp) = tx.mined_timestamp {
+                                println!("   Mined timestamp: {}", timestamp);
+                            }
+                            if tx.mined_in_block.is_some() {
+                                println!("\nReceived PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_received_payment_references().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nSent PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_sent_payment_references().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nChange PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_change_payment_references().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                            } else {
+                                println!("Payrefs: Transaction not mined yet.");
+                            }
+                            println!();
                         }
                     },
-                    Err(e) => eprintln!("ListPayRefs error! {}", e),
+                    Err(e) => eprintln!("ListTxs error! {}", e),
                 }
             },
         }

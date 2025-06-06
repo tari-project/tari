@@ -60,7 +60,12 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::{OutputManagerRequest, OutputManagerResponse},
+        service::UseOutput,
+        UtxoSelectionCriteria,
+    },
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -1341,7 +1346,7 @@ impl TransactionServiceHandle {
     }
 
     /// Get all transactions with their PayRefs (for listing/filtering)
-    pub async fn get_transactions_with_payrefs(
+    pub async fn get_transactions_with_payref(
         &mut self,
         limit: Option<u64>,
         offset: Option<u64>,

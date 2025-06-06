@@ -115,7 +115,7 @@ use minotari_wallet::{
         UtxoSelectionCriteria,
     },
     transaction_service::{
-        handle::TransactionServiceHandle,
+        handle::{TransactionServiceHandle, TransactionWithPayRefs},
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
@@ -1710,14 +1710,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .try_into()
             .map_err(|_| Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string()))?;
 
-        let mut output_service = self.get_output_manager_service();
-
-        match output_service.find_payment_by_reference(payment_ref).await {
-            Ok(Some(payment_details)) => {
-                trace!(
+        match tms.get_transactions_with_payrefs(None, None, None).await {
+            Ok(transactions_with_payrefs) => {
+                if transactions_with_payrefs.is_empty() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "get_payment_by_reference: PayRef not found: {}",
+                        payment_ref.to_hex()
+                    );
+                    return Err(Status::not_found("Payment reference not found".to_string()));
+                }
+                let trace!(
                     target: LOG_TARGET,
                     "get_payment_by_reference: Found payment details for PayRef: {}",
-                    payment_ref.to_hex()
+                    transactions_with_payrefs.to_hex()
                 );
 
                 let direction = payment_direction_to_grpc(&payment_details.direction);
@@ -1765,14 +1771,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(Response::new(GetPaymentByReferenceResponse {
                     transaction: Some(transaction_info),
                 }))
-            },
-            Ok(None) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "get_payment_by_reference: PayRef not found: {}",
-                    payment_ref.to_hex()
-                );
-                Err(Status::not_found("Payment reference not found".to_string()))
             },
             Err(e) => {
                 warn!(

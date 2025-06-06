@@ -176,7 +176,7 @@ pub enum CliCommands {
     ImportPaperWallet(ImportPaperWalletArgs),
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
-    ListPayRefs(ListPayRefsArgs),
+    ListTx(ListTxArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -487,7 +487,7 @@ pub struct FindPayRefArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct ListPayRefsArgs {
+pub struct ListTxArgs {
     #[clap(short, long)]
     pub limit: Option<usize>,
     #[clap(long)]
