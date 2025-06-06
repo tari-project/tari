@@ -121,6 +121,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use tari_common_types::{
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, Signature},
@@ -1709,8 +1710,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .payment_reference
             .try_into()
             .map_err(|_| Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string()))?;
+        let tms = self.get_transaction_service();
 
-        match tms.get_transactions_with_payrefs(None, None, None).await {
+        match tms.get_transactions_with_payref(payment_ref).await {
             Ok(transactions_with_payrefs) => {
                 if transactions_with_payrefs.is_empty() {
                     debug!(
@@ -1928,22 +1930,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
                     // Generate PayRefs from sent output hashes
                     for output_hash in &completed_tx.sent_output_hashes {
-                        let payref =
-                            tari_common_types::payment_reference::generate_payment_reference(block_hash, output_hash);
+                        let payref = generate_payment_reference(block_hash, output_hash);
                         payment_references.push(payref.to_vec());
                     }
 
                     // Generate PayRefs from received output hashes
                     for output_hash in &completed_tx.received_output_hashes {
-                        let payref =
-                            tari_common_types::payment_reference::generate_payment_reference(block_hash, output_hash);
+                        let payref = generate_payment_reference(block_hash, output_hash);
                         payment_references.push(payref.to_vec());
                     }
 
                     // Generate PayRefs from change output hashes (per-output approach)
                     for output_hash in &completed_tx.change_output_hashes {
-                        let payref =
-                            tari_common_types::payment_reference::generate_payment_reference(block_hash, output_hash);
+                        let payref = generate_payment_reference(block_hash, output_hash);
                         payment_references.push(payref.to_vec());
                     }
 

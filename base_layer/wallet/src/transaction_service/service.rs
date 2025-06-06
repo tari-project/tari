@@ -1027,14 +1027,10 @@ where
             TransactionServiceRequest::GetPaymentByReference(payref) => self
                 .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
-            TransactionServiceRequest::GetTransactionsWithPayRefs {
-                limit,
-                offset,
-                mined_only,
-            } => self
-                .get_transactions_with_payrefs(limit, offset, mined_only)
+            TransactionServiceRequest::GetTransactionsWithPayRef { hash } => self
+                .get_transactions_with_payref(hash)
                 .await
-                .map(TransactionServiceResponse::TransactionsWithPayRefs),
+                .map(TransactionServiceResponse::TransactionsWithPayRef),
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -4119,9 +4115,7 @@ where
 
     async fn get_transactions_with_payrefs(
         &self,
-        limit: Option<u64>,
-        offset: Option<u64>,
-        mined_only: Option<bool>,
+        hash: FixedHash,
     ) -> Result<Vec<TransactionWithPayRefs>, TransactionServiceError> {
         let mut transactions = self.db.get_completed_transactions(None, None, None)?;
 

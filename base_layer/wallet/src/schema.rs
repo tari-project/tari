@@ -37,10 +37,10 @@ diesel::table! {
         transaction_signature_nonce -> Binary,
         transaction_signature_key -> Binary,
         payment_id -> Nullable<Binary>,
-        user_payment_id -> Nullable<Binary>,
         sent_output_hashes -> Nullable<Binary>,
         received_output_hashes -> Nullable<Binary>,
         change_output_hashes -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -56,8 +56,8 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
-        user_payment_id -> Nullable<Binary>,
         received_output_hashes -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -84,9 +84,9 @@ diesel::table! {
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
-        user_payment_id -> Nullable<Binary>,
         sent_output_hashes -> Nullable<Binary>,
         change_output_hashes -> Nullable<Binary>,
+        user_payment_id -> Nullable<Binary>,
     }
 }
 
@@ -132,6 +132,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    payrefs (commitment) {
+        commitment -> Binary,
+        payref -> Binary,
+        tx_id -> BigInt,
+    }
+}
+
+diesel::table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -156,6 +164,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
+    payrefs,
     scanned_blocks,
     wallet_settings,
 );

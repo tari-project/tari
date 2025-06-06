@@ -9712,7 +9712,7 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
             (*wallet)
                 .wallet
                 .transaction_service
-                .get_transactions_with_payrefs(None, None, Some(true)),
+                .get_transactions_with_payref(None, None, Some(true)),
         ) {
         Ok(transactions_with_payrefs) => {
             // Search through all transactions for the output hash
@@ -9936,7 +9936,7 @@ pub unsafe extern "C" fn outputs_with_payrefs_get_at(
 /// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
 /// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_transactions_with_payrefs(
+pub unsafe extern "C" fn wallet_get_transactions_with_payref(
     wallet: *mut TariWallet,
     limit: c_ulonglong,
     offset: c_ulonglong,
@@ -9958,7 +9958,7 @@ pub unsafe extern "C" fn wallet_get_transactions_with_payrefs(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.transaction_service.get_transactions_with_payrefs(
+        .block_on((*wallet).wallet.transaction_service.get_transactions_with_payref(
             limit_opt,
             offset_opt,
             Some(mined_only),

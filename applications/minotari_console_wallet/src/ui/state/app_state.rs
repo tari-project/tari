@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
@@ -46,6 +45,7 @@ use minotari_wallet::{
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
 use tari_common_types::{
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::CompressedPublicKey,
@@ -873,8 +873,6 @@ impl AppStateInner {
         completed_transactions: &[minotari_wallet::transaction_service::storage::models::CompletedTransaction],
     ) -> Result<(), UiError> {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
-
-        use tari_common_types::payment_reference::generate_payment_reference;
 
         // Get current tip height for confirmation calculations
         let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
