@@ -119,7 +119,9 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
-
+use tari_common_types::payment_reference::PaymentReference;
+use crate::output_manager_service::payment_reference::PaymentDetails;
+use crate::transaction_service::payref_calculator;
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -3619,29 +3621,20 @@ where
     fn find_payment_by_reference(
         &self,
         payref: FixedHash,
-    ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
+    ) -> Result<Option<PaymentDetails>, OutputManagerError> {
         // Get current chain tip height for confirmation calculations
         let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
 
-        // Get completed transactions from transaction service (faster than OMS output scanning)
-        let mut handle = self.resources.transaction_service_handle.clone();
-        let completed_transactions =
-            futures::executor::block_on(async { handle.get_completed_transactions(None, None, None).await })
-                .map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
 
-        // Use payref_calculator to efficiently find PayRef in transaction data
-        use tari_common_types::payment_reference::PaymentReference;
-
-        use crate::transaction_service::payref_calculator;
 
         // Convert FixedHash to PaymentReference for comparison
         let target_payref = PaymentReference::from(payref);
-
+       (create_payment_details(tx, payref, PaymentDirection::Received));
         if let Some(payment_details) =
             payref_calculator::find_payment_by_reference(&completed_transactions, target_payref)
         {
             // Convert payref_calculator::PaymentDetails to OMS PaymentDetails
-            let oms_payment_details = crate::output_manager_service::payment_reference::PaymentDetails {
+            let oms_payment_details = PaymentDetails {
                 payment_reference: payment_details.payment_reference,
                 commitment: payment_details.commitment,
                 amount: payment_details.amount,
@@ -3652,6 +3645,7 @@ where
                 mined_timestamp: payment_details.mined_timestamp,
                 confirmations: payment_details.confirmations,
                 payment_id: payment_details.payment_id,
+                internal_transaction_id: payment_details.internal_transaction_id,
             };
 
             return Ok(Some(oms_payment_details));

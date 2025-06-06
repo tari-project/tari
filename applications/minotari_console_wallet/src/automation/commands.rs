@@ -43,6 +43,7 @@ use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
+        payment_reference::parse_payref_hex,
         service::UseOutput,
         UtxoSelectionCriteria,
     },
@@ -2720,7 +2721,7 @@ pub async fn command_runner(
                     Ok(Some(tx)) => {
                         println!("Transaction ID: {}", args.transaction_id);
                         let _status = match &tx {
-                            minotari_wallet::transaction_service::storage::models::WalletTransaction::Completed(completed_tx) => {
+                            WalletTransaction::Completed(completed_tx) => {
                                 println!("Transaction status: Completed");
                                 println!("Amount: {}", completed_tx.amount);
                                 println!("Fee: {}", completed_tx.fee);
@@ -2765,33 +2766,30 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ShowPayRef error! {}", e),
                 }
             },
-            FindPayRef(args) => {
-                use minotari_wallet::output_manager_service::payment_reference::parse_payref_hex;
-                match parse_payref_hex(&args.payment_reference_hex) {
-                    Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
-                        Ok(Some(payment_details)) => {
-                            println!("Found PayRef: {}", args.payment_reference_hex);
-                            println!("Transaction ID: {}", payment_details.tx_id);
-                            println!("Amount: {}", payment_details.amount);
-                            println!("Direction: {:?}", payment_details.direction);
-                            println!("Block height: {}", payment_details.block_height);
-                            println!("Confirmations: {}", payment_details.confirmations);
-                            if let Some(timestamp) = payment_details.timestamp {
-                                println!("Timestamp: {}", timestamp);
-                            }
-                            if let Some(payment_id) = &payment_details.payment_id {
-                                println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
-                            }
-                        },
-                        Ok(None) => {
-                            println!("No payment found for PayRef: {}", args.payment_reference_hex);
-                        },
-                        Err(e) => eprintln!("FindPayRef error! {}", e),
+            FindPayRef(args) => match parse_payref_hex(&args.payment_reference_hex) {
+                Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
+                    Ok(Some(payment_details)) => {
+                        println!("Found PayRef: {}", args.payment_reference_hex);
+                        println!("Transaction ID: {}", payment_details.tx_id);
+                        println!("Amount: {}", payment_details.amount);
+                        println!("Direction: {:?}", payment_details.direction);
+                        println!("Block height: {}", payment_details.block_height);
+                        println!("Confirmations: {}", payment_details.confirmations);
+                        if let Some(timestamp) = payment_details.timestamp {
+                            println!("Timestamp: {}", timestamp);
+                        }
+                        if let Some(payment_id) = &payment_details.payment_id {
+                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                        }
                     },
-                    Err(e) => {
-                        eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                    Ok(None) => {
+                        println!("No payment found for PayRef: {}", args.payment_reference_hex);
                     },
-                }
+                    Err(e) => eprintln!("FindPayRef error! {}", e),
+                },
+                Err(e) => {
+                    eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                },
             },
             ListPayRefs(args) => {
                 debug!(target: LOG_TARGET, "payref_debug: ListPayRefs command starting execution");

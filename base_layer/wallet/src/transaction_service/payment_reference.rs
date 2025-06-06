@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash};
 use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::hex::Hex;
-
+use tari_common_types::transaction::TxId;
 use crate::output_manager_service::storage::OutputStatus;
 
 /// Default number of block confirmations required before a PayRef becomes available
@@ -116,6 +116,8 @@ pub struct PaymentDetails {
     pub confirmations: u64,
     /// The payment ID associated with this payment
     pub payment_id: Option<Vec<u8>>,
+    /// The internal db ID of the linked transaction
+    pub internal_transaction_id: TxId,
 }
 
 /// Summary record for Payment Reference listings
@@ -260,4 +262,3 @@ pub fn is_valid_payref_format(hex_str: &str) -> bool {
     hex_str.len() == 64 && hex_str.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-// TODO: Add comprehensive tests for PayRef functionality
