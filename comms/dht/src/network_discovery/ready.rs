@@ -160,9 +160,10 @@ impl DiscoveryReady {
                 num_peers, min_desired_peers
             );
 
-            let excluded_peers = self.context.all_attempted_peers.read().await.clone();
-            let peers_for_discovery =
-                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
+            let peers_for_discovery = {
+                let excluded_peers = self.context.all_attempted_peers.read().await;
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?
+            };
 
             if peers_for_discovery.is_empty() {
                 debug!(
