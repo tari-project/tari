@@ -71,9 +71,7 @@ impl BurnTab {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_burn_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Burn Minotari",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -213,9 +211,7 @@ impl BurnTab {
     }
 
     fn draw_proofs<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Burnt Proofs",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),

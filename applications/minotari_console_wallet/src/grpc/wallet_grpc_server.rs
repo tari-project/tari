@@ -29,27 +29,81 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt, Stream,
+    future,
+    SinkExt,
+    Stream,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
-    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, GetAddressResponse,
-    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetAllPaymentReferencesRequest,
-    GetAllPaymentReferencesResponse, GetBalanceRequest, GetBalanceResponse, GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse, GetCompleteAddressResponse, GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse, GetConnectivityRequest, GetIdentityRequest, GetIdentityResponse,
-    GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest, GetStateRequest,
-    GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse, GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse, GetTransactionsWithPayRefsRequest, GetTransactionsWithPayRefsResponse,
-    GetUnspentAmountsResponse, GetUnspentPaymentReferencesRequest, GetUnspentPaymentReferencesResponse,
-    GetVersionRequest, GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest,
-    ImportUtxosResponse, PaymentDetails, RegisterValidatorNodeRequest, RegisterValidatorNodeResponse,
-    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest,
-    SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse,
-    TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, ValidateRequest,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    GetAddressResponse,
+    GetAllCompletedTransactionsRequest,
+    GetAllCompletedTransactionsResponse,
+    GetAllPaymentReferencesRequest,
+    GetAllPaymentReferencesResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
+    GetTransactionsWithPayRefsRequest,
+    GetTransactionsWithPayRefsResponse,
+    GetUnspentAmountsResponse,
+    GetUnspentPaymentReferencesRequest,
+    GetUnspentPaymentReferencesResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    PaymentDetails,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    ValidateRequest,
     ValidateResponse,
 };
 use minotari_wallet::{
@@ -78,7 +132,11 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            OutputType,
+            SideChainFeature,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -93,7 +151,6 @@ use tokio::{
     sync::{broadcast, Mutex},
     task,
 };
-
 use tonic::{Request, Response, Status};
 
 use crate::{
@@ -276,9 +333,9 @@ async fn calculate_payment_references_impl(
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
-    type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
     type GetTransactionsWithPayRefsStream =
         Pin<Box<dyn Stream<Item = Result<GetTransactionsWithPayRefsResponse, Status>> + Send>>;
+    type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
@@ -1608,14 +1665,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(
-                1 * T,
-                OutputFeatures {
-                    output_type: OutputType::CodeTemplateRegistration,
-                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                    ..Default::default()
-                },
-            )
+            .create_output_with_features(1 * T, OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                ..Default::default()
+            })
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -2023,51 +2077,47 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mined_only = req.mined_only;
 
         // Use the new per-output PayRef service method
-        match transaction_service.get_transactions_with_payrefs(
-            Some(req.limit),
-            Some(req.offset),
-            Some(mined_only),
-        ).await {
+        match transaction_service
+            .get_transactions_with_payrefs(Some(req.limit), Some(req.offset), Some(mined_only))
+            .await
+        {
             Ok(transactions_with_payrefs) => {
-                let stream = futures::stream::iter(
-                    transactions_with_payrefs
-                        .into_iter()
-                        .map(|tx_with_payrefs| {
-                            let completed_tx = &tx_with_payrefs.transaction;
-                            
-                            // Extract PayRefs from the per-output structure
-                            let payment_references: Vec<Vec<u8>> = tx_with_payrefs.outputs_with_payrefs
-                                .iter()
-                                .filter_map(|output| output.payment_reference.map(|pr| pr.to_vec()))
-                                .collect();
+                let stream = futures::stream::iter(transactions_with_payrefs.into_iter().map(|tx_with_payrefs| {
+                    let completed_tx = &tx_with_payrefs.transaction;
 
-                            // Convert to gRPC response
-                            let transaction_info = TransactionInfo {
-                                tx_id: completed_tx.tx_id.as_u64(),
-                                source_address: completed_tx.source_address.to_vec(),
-                                dest_address: completed_tx.destination_address.to_vec(),
-                                status: completed_tx.status.clone() as i32,
-                                amount: completed_tx.amount.into(),
-                                is_cancelled: completed_tx.cancelled.is_some(),
-                                direction: TransactionDirection::from(completed_tx.direction.clone()) as i32,
-                                fee: completed_tx.fee.into(),
-                                timestamp: completed_tx.timestamp.timestamp() as u64,
-                                excess_sig: completed_tx.transaction_signature.get_signature().to_vec(),
-                                raw_payment_id: completed_tx.payment_id.to_bytes(),
-                                user_payment_id: vec![],
-                                mined_in_block_height: completed_tx.mined_height.unwrap_or(0),
-                                output_commitments: vec![], // Could be populated if needed
-                                input_commitments: vec![],  // Could be populated if needed
-                                payment_references: payment_references.iter().map(|pr| to_hex(pr)).collect(),
-                            };
+                    // Extract PayRefs from the per-output structure
+                    let payment_references: Vec<Vec<u8>> = tx_with_payrefs
+                        .outputs_with_payrefs
+                        .iter()
+                        .filter_map(|output| output.payment_reference.map(|pr| pr.to_vec()))
+                        .collect();
 
-                            Ok(GetTransactionsWithPayRefsResponse {
-                                transaction: Some(transaction_info),
-                                payment_references,
-                                recipient_count: tx_with_payrefs.recipient_count as u64,
-                            })
-                        }),
-                );
+                    // Convert to gRPC response
+                    let transaction_info = TransactionInfo {
+                        tx_id: completed_tx.tx_id.as_u64(),
+                        source_address: completed_tx.source_address.to_vec(),
+                        dest_address: completed_tx.destination_address.to_vec(),
+                        status: completed_tx.status.clone() as i32,
+                        amount: completed_tx.amount.into(),
+                        is_cancelled: completed_tx.cancelled.is_some(),
+                        direction: TransactionDirection::from(completed_tx.direction.clone()) as i32,
+                        fee: completed_tx.fee.into(),
+                        timestamp: completed_tx.timestamp.timestamp() as u64,
+                        excess_sig: completed_tx.transaction_signature.get_signature().to_vec(),
+                        raw_payment_id: completed_tx.payment_id.to_bytes(),
+                        user_payment_id: vec![],
+                        mined_in_block_height: completed_tx.mined_height.unwrap_or(0),
+                        output_commitments: vec![], // Could be populated if needed
+                        input_commitments: vec![],  // Could be populated if needed
+                        payment_references: payment_references.iter().map(|pr| to_hex(pr)).collect(),
+                    };
+
+                    Ok(GetTransactionsWithPayRefsResponse {
+                        transaction: Some(transaction_info),
+                        payment_references,
+                        recipient_count: tx_with_payrefs.recipient_count as u64,
+                    })
+                }));
 
                 Ok(Response::new(Box::pin(stream) as Self::GetTransactionsWithPayRefsStream))
             },

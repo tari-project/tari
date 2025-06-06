@@ -20,9 +20,7 @@ impl ReceiveTab {
     }
 
     fn draw_whoami<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Who Am I?",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),

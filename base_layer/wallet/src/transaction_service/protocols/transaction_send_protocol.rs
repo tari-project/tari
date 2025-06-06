@@ -1005,7 +1005,7 @@ where
 
         for output in tx.body.outputs() {
             let output_hash = output.hash();
-            
+
             // Check if this output belongs to our wallet using the output manager
             match self.resources.output_manager_service.is_output_ours(output).await {
                 Ok(true) => {
@@ -1018,8 +1018,11 @@ where
                         },
                         Err(e) => {
                             error!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
-                            return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::OutputManagerError(e)));
-                        }
+                            return Err(TransactionServiceProtocolError::new(
+                                self.id,
+                                TransactionServiceError::OutputManagerError(e),
+                            ));
+                        },
                     }
                 },
                 Ok(false) => {
@@ -1030,7 +1033,7 @@ where
                     warn!(target: LOG_TARGET, "Error checking output ownership: {:?}", e);
                     // Default to treating as sent to be safe
                     sent_hashes.push(output_hash);
-                }
+                },
             }
         }
 

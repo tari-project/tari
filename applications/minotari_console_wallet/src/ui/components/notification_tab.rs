@@ -28,9 +28,7 @@ impl NotificationTab {
     }
 
     fn draw_notifications<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let span_vec = vec![
             Span::raw("Press "),
             Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),

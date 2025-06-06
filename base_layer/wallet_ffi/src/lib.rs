@@ -108,7 +108,9 @@ use minotari_wallet::{
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
-    Wallet, WalletConfig, WalletSqlite,
+    Wallet,
+    WalletConfig,
+    WalletSqlite,
 };
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
@@ -123,8 +125,15 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
-        BlockHash, ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, RangeProof,
-        SignatureWithDomain, UncompressedPublicKey,
+        BlockHash,
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        RangeProof,
+        SignatureWithDomain,
+        UncompressedPublicKey,
     },
     wallet_types::WalletType,
 };
@@ -144,7 +153,12 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra, OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput,
+            CoinBaseExtra,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
@@ -160,8 +174,16 @@ use tari_key_manager::{
     SeedWords,
 };
 use tari_p2p::{
-    auto_update::AutoUpdateConfig, transport::MemoryTransportConfig, Network, PeerSeedsConfig, SocksAuthentication,
-    TcpTransportConfig, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType,
+    auto_update::AutoUpdateConfig,
+    transport::MemoryTransportConfig,
+    Network,
+    PeerSeedsConfig,
+    SocksAuthentication,
+    TcpTransportConfig,
+    TorControlAuthentication,
+    TorTransportConfig,
+    TransportConfig,
+    TransportType,
 };
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
@@ -170,7 +192,6 @@ use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
 };
-
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
 
@@ -239,7 +260,7 @@ pub struct TariOutputWithPayRef {
     pub output_hash: [c_uchar; 32],
     pub payment_reference: [c_uchar; 32],
     pub has_payment_reference: c_int, // 0 = false, 1 = true
-    pub output_type: c_uint, // 0 = Sent, 1 = Received, 2 = Change
+    pub output_type: c_uint,          // 0 = Sent, 1 = Received, 2 = Change
     pub amount: c_ulonglong,
     pub status: c_uint, // 0 = Available, 1 = Pending, 2 = NotMined, 3 = Spent
 }
@@ -252,7 +273,7 @@ pub struct TariOutputsWithPayRefs {
 }
 
 /// Enhanced transaction info with per-output PayRefs
-#[repr(C)] 
+#[repr(C)]
 pub struct TariTransactionWithPayRefs {
     pub transaction: *mut TariCompletedTransaction,
     pub outputs_with_payrefs: TariOutputsWithPayRefs,
@@ -3178,9 +3199,9 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                         .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
                 ) {
                     Ok(payment_id) => {
-                        if let PaymentId::Open { tx_type, .. }
-                        | PaymentId::AddressAndData { tx_type, .. }
-                        | PaymentId::TransactionInfo { tx_type, .. } = payment_id
+                        if let PaymentId::Open { tx_type, .. } |
+                        PaymentId::AddressAndData { tx_type, .. } |
+                        PaymentId::TransactionInfo { tx_type, .. } = payment_id
                         {
                             transaction_type = c_uint::from(tx_type.as_u8());
                         }
@@ -5026,9 +5047,9 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_type(
         *error_out = LibWalletError::from(InterfaceError::NullError("completed_transaction".to_string())).code;
     } else {
         let payment_id = (*transaction).payment_id.clone();
-        if let PaymentId::Open { tx_type, .. }
-        | PaymentId::AddressAndData { tx_type, .. }
-        | PaymentId::TransactionInfo { tx_type, .. } = payment_id
+        if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = payment_id
         {
             transaction_type = c_uint::from(tx_type.as_u8());
         }
@@ -8877,9 +8898,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .iter()
                     .filter(|ct| {
-                        ct.status == TransactionStatus::Completed
-                            || ct.status == TransactionStatus::Broadcast
-                            || ct.status == TransactionStatus::Imported
+                        ct.status == TransactionStatus::Completed ||
+                            ct.status == TransactionStatus::Broadcast ||
+                            ct.status == TransactionStatus::Imported
                     })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
@@ -9167,8 +9188,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Inbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingInboundTransaction::from(completed);
@@ -9243,8 +9264,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Outbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingOutboundTransaction::from(completed);
@@ -9585,7 +9606,8 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
 /// note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
 ///
 /// # Safety
-/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to prevent a memory leak
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_payment_by_reference(
     wallet: *mut TariWallet,
@@ -9684,12 +9706,14 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
     let hash_output = HashOutput::from(hash_array);
 
     // Get all transactions with PayRefs and search for the specific output
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .transaction_service
-            .get_transactions_with_payrefs(None, None, Some(true))
-    ) {
+    match (*wallet)
+        .runtime
+        .block_on(
+            (*wallet)
+                .wallet
+                .transaction_service
+                .get_transactions_with_payrefs(None, None, Some(true)),
+        ) {
         Ok(transactions_with_payrefs) => {
             // Search through all transactions for the output hash
             for tx_with_payrefs in transactions_with_payrefs {
@@ -9703,11 +9727,14 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
                                 array.copy_from_slice(bytes);
                                 array
                             },
-                            payment_reference: output.payment_reference.map(|p| {
-                                let mut array = [0u8; 32];
-                                array.copy_from_slice(p.as_slice());
-                                array
-                            }).unwrap_or([0u8; 32]),
+                            payment_reference: output
+                                .payment_reference
+                                .map(|p| {
+                                    let mut array = [0u8; 32];
+                                    array.copy_from_slice(p.as_slice());
+                                    array
+                                })
+                                .unwrap_or([0u8; 32]),
                             has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
                             output_type: match output.output_type {
                                 minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
@@ -9722,12 +9749,12 @@ pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
                                 minotari_wallet::transaction_service::handle::OutputStatus::Spent => 3,
                             },
                         };
-                        
+
                         return Box::into_raw(Box::new(ffi_output));
                     }
                 }
             }
-            
+
             // Output hash not found
             ptr::null_mut()
         },
@@ -9768,18 +9795,20 @@ pub unsafe extern "C" fn wallet_get_output_payrefs_for_transaction(
 
     let tx_id = TxId::from(transaction_id);
 
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .transaction_service
-            .get_transactions_with_payrefs(Some(1), None, Some(true))
-    ) {
+    match (*wallet)
+        .runtime
+        .block_on(
+            (*wallet)
+                .wallet
+                .transaction_service
+                .get_transactions_with_payrefs(Some(1), None, Some(true)),
+        ) {
         Ok(txs_with_payrefs) => {
             // Find the specific transaction
             if let Some(tx_with_payrefs) = txs_with_payrefs.into_iter().find(|tx| tx.transaction.tx_id == tx_id) {
                 // Convert to FFI structure
                 let mut ffi_outputs = Vec::new();
-                
+
                 for output in &tx_with_payrefs.outputs_with_payrefs {
                     let ffi_output = TariOutputWithPayRef {
                         output_hash: {
@@ -9788,11 +9817,14 @@ pub unsafe extern "C" fn wallet_get_output_payrefs_for_transaction(
                             array.copy_from_slice(bytes);
                             array
                         },
-                        payment_reference: output.payment_reference.map(|p| {
-                            let mut array = [0u8; 32];
-                            array.copy_from_slice(p.as_slice());
-                            array
-                        }).unwrap_or([0u8; 32]),
+                        payment_reference: output
+                            .payment_reference
+                            .map(|p| {
+                                let mut array = [0u8; 32];
+                                array.copy_from_slice(p.as_slice());
+                                array
+                            })
+                            .unwrap_or([0u8; 32]),
                         has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
                         output_type: match output.output_type {
                             minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
@@ -9844,10 +9876,8 @@ pub unsafe extern "C" fn outputs_with_payrefs_destroy(ptr: *mut TariOutputsWithP
     if !ptr.is_null() {
         let outputs_with_payrefs = Box::from_raw(ptr);
         if !outputs_with_payrefs.outputs.is_null() {
-            let outputs_slice = std::slice::from_raw_parts_mut(
-                outputs_with_payrefs.outputs,
-                outputs_with_payrefs.length as usize,
-            );
+            let outputs_slice =
+                std::slice::from_raw_parts_mut(outputs_with_payrefs.outputs, outputs_with_payrefs.length as usize);
             drop(Box::from_raw(outputs_slice.as_mut_ptr()));
         }
     }
@@ -9903,7 +9933,8 @@ pub unsafe extern "C" fn outputs_with_payrefs_get_at(
 /// note that ptr::null_mut() is returned if wallet is null or an error occurs
 ///
 /// # Safety
-/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to prevent a memory leak
+/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_transactions_with_payrefs(
     wallet: *mut TariWallet,
@@ -10699,9 +10730,9 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
         w.runtime.block_on(w.wallet.wait_until_shutdown());
         // The wallet should be shutdown by now; these are just additional confirmations
         loop {
-            if w.shutdown.is_triggered()
-                && wallet_comms.shutdown_signal().is_triggered()
-                && w.runtime
+            if w.shutdown.is_triggered() &&
+                wallet_comms.shutdown_signal().is_triggered() &&
+                w.runtime
                     .block_on(wallet_comms.connectivity().get_connectivity_status())
                     .is_err()
             {
@@ -11585,9 +11616,9 @@ pub unsafe extern "C" fn wallet_get_payment_reference_status(
             // Get config to check required confirmations
             let config = (*wallet)
                 .runtime
-                .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config()).unwrap_or_default();
+                .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config())
+                .unwrap_or_default();
 
-            
             if payment_details.confirmations >= config.required_confirmations {
                 // Available
                 Box::into_raw(Box::new(TariPayRefStatus {
@@ -11751,7 +11782,8 @@ pub unsafe extern "C" fn wallet_verify_payment_reference(
             };
 
             format!(
-                "{{\"status\":\"{}\",\"amount\":{},\"block_height\":{},\"confirmations\":{},\"sufficient_confirmations\":{}}}",
+                "{{\"status\":\"{}\",\"amount\":{},\"block_height\":{},\"confirmations\":{},\"\
+                 sufficient_confirmations\":{}}}",
                 status,
                 payment_details.amount.as_u64(),
                 payment_details.block_height,
@@ -11777,8 +11809,6 @@ pub unsafe extern "C" fn wallet_verify_payment_reference(
 mod test {
     use std::{ffi::c_void, path::Path, str::from_utf8, sync::Mutex};
 
-    use tari_test_utils::random;
-
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
@@ -11797,7 +11827,7 @@ mod test {
     use tari_key_manager::mnemonic_wordlists;
     use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
-
+    use tari_test_utils::random;
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
@@ -13410,8 +13440,8 @@ mod test {
                         alice_wallet_runtime
                             .block_on(val.commitment(key_manager))
                             .unwrap()
-                            .to_hex()
-                            == CStr::from_ptr(utxo.commitment).to_str().unwrap()
+                            .to_hex() ==
+                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
                     })
                     .unwrap();
                 assert_eq!(output.value.as_u64(), utxo.value);

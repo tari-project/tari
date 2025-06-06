@@ -542,7 +542,8 @@ where
             },
             OutputManagerRequest::GetOutputsByTxId(tx_id) => {
                 let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id)?;
-                let wallet_outputs: Vec<WalletOutput> = outputs.into_iter().map(|db_output| db_output.wallet_output).collect();
+                let wallet_outputs: Vec<WalletOutput> =
+                    outputs.into_iter().map(|db_output| db_output.wallet_output).collect();
                 Ok(OutputManagerResponse::Outputs(wallet_outputs))
             },
             OutputManagerRequest::IsOutputOurs(output) => {
@@ -3150,7 +3151,7 @@ where
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
                     // Continue processing other outputs instead of failing completely
-                }
+                },
             }
         }
         Ok(results)
@@ -3568,28 +3569,28 @@ where
     pub async fn is_output_ours(&self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
         // Check if we can decrypt the output with our view key
         let view_key = self.resources.key_manager.get_view_key().await?;
-        
+
         // Try to decrypt using our view key and the sender offset public key
         let shared_secret = self
             .resources
             .key_manager
             .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)
             .await?;
-        
+
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        
+
         // If we can decrypt, it's ours
         match EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
     }
-    
+
     /// Check if this is a change output from our own transaction
     pub async fn is_change_output(&self, output: &TransactionOutput) -> Result<bool, OutputManagerError> {
         // Check if this output hash exists in our database as a known output
         let output_hash = output.hash();
-        
+
         // First try to find it as an unspent output
         match self.resources.db.get_unspent_output(output_hash) {
             Ok(db_output) => {
@@ -3606,14 +3607,14 @@ where
                     Err(_) => {
                         // Not in our database, so not our change
                         Ok(false)
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 
     // PayRef methods
-    
+
     /// Find payment details by PayRef using transaction service (optimized)
     fn find_payment_by_reference(
         &self,
@@ -3621,21 +3622,24 @@ where
     ) -> Result<Option<crate::output_manager_service::payment_reference::PaymentDetails>, OutputManagerError> {
         // Get current chain tip height for confirmation calculations
         let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
-        
+
         // Get completed transactions from transaction service (faster than OMS output scanning)
         let mut handle = self.resources.transaction_service_handle.clone();
-        let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions(None, None, None).await
-        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
-        
+        let completed_transactions =
+            futures::executor::block_on(async { handle.get_completed_transactions(None, None, None).await })
+                .map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
+
         // Use payref_calculator to efficiently find PayRef in transaction data
-        use crate::transaction_service::payref_calculator;
         use tari_common_types::payment_reference::PaymentReference;
-        
+
+        use crate::transaction_service::payref_calculator;
+
         // Convert FixedHash to PaymentReference for comparison
         let target_payref = PaymentReference::from(payref);
-        
-        if let Some(payment_details) = payref_calculator::find_payment_by_reference(&completed_transactions, target_payref) {
+
+        if let Some(payment_details) =
+            payref_calculator::find_payment_by_reference(&completed_transactions, target_payref)
+        {
             // Convert payref_calculator::PaymentDetails to OMS PaymentDetails
             let oms_payment_details = crate::output_manager_service::payment_reference::PaymentDetails {
                 payment_reference: payment_details.payment_reference,
@@ -3649,52 +3653,52 @@ where
                 confirmations: payment_details.confirmations,
                 payment_id: payment_details.payment_id,
             };
-            
+
             return Ok(Some(oms_payment_details));
         }
-        
+
         Ok(None)
     }
-    
+
     /// Helper function to get current tip height and required confirmations
     fn get_tip_height_and_confirmations(&self) -> Result<(u64, u64), OutputManagerError> {
         let current_tip_height = self.last_seen_tip_height.unwrap_or(0);
         let payref_config = self.get_payment_reference_config()?;
         let required_confirmations = payref_config.required_confirmations;
-        
+
         // Validate values
         if current_tip_height == 0 {
             warn!(target: LOG_TARGET, "Current tip height is 0, wallet may not be synced");
         }
-        
+
         Ok((current_tip_height, required_confirmations))
     }
 
     /// Collect all outputs that are linked to transactions (have received_in_tx_id)
-    /// DEPRECATED: This method was primarily used for PayRef operations. 
+    /// DEPRECATED: This method was primarily used for PayRef operations.
     /// PayRef operations now use transaction service + payref_calculator for better performance.
     #[deprecated(note = "Use transaction service + payref_calculator instead for PayRef operations")]
     #[allow(dead_code)]
     fn collect_transaction_linked_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         let all_unspent_outputs = self.resources.db.fetch_all_unspent_outputs()?;
         let all_spent_outputs = self.resources.db.fetch_spent_outputs()?;
-        
+
         let mut transaction_linked_outputs = Vec::new();
-        
+
         // Add unspent outputs that have received_in_tx_id (received transactions)
         for output in all_unspent_outputs {
             if output.received_in_tx_id.is_some() {
                 transaction_linked_outputs.push(output);
             }
         }
-        
+
         // Add spent outputs that have received_in_tx_id (sent transactions)
         for output in all_spent_outputs {
             if output.received_in_tx_id.is_some() {
                 transaction_linked_outputs.push(output);
             }
         }
-        
+
         Ok(transaction_linked_outputs)
     }
 
@@ -3704,22 +3708,22 @@ where
     ) -> Result<Vec<crate::output_manager_service::payment_reference::PaymentRecord>, OutputManagerError> {
         // Get current blockchain state for confirmations
         let (_current_tip_height, required_confirmations) = self.get_tip_height_and_confirmations()?;
-        
+
         // Get completed transactions from transaction service (faster than OMS output scanning)
         let mut handle = self.resources.transaction_service_handle.clone();
-        let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions(None, None, None).await
-        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
-        
+        let completed_transactions =
+            futures::executor::block_on(async { handle.get_completed_transactions(None, None, None).await })
+                .map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
+
         let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
         let mut seen_payrefs = std::collections::HashSet::new();
-        
+
         // Use payref_calculator to generate PayRefs from transaction data
         use crate::transaction_service::payref_calculator;
-        
+
         for tx in completed_transactions {
             let payrefs = payref_calculator::calculate_transaction_payrefs(&tx);
-            
+
             if !payrefs.is_empty() {
                 // Check if transaction has sufficient confirmations
                 let confirmations = tx.confirmations.unwrap_or(0);
@@ -3728,17 +3732,22 @@ where
                         // Check for duplicates (O(1) lookup)
                         if !seen_payrefs.contains(&payref) {
                             seen_payrefs.insert(payref);
-                            
+
                             if let (Some(block_height), Some(timestamp)) = (tx.mined_height, tx.mined_timestamp) {
-                                payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
+                                payment_references
+                                    .push(crate::output_manager_service::payment_reference::PaymentRecord {
                                     payment_reference: payref,
                                     amount: tx.amount,
                                     direction: match tx.direction {
-                                        tari_common_types::transaction::TransactionDirection::Inbound => 
-                                            crate::output_manager_service::payment_reference::PaymentDirection::Received,
-                                        tari_common_types::transaction::TransactionDirection::Outbound => 
-                                            crate::output_manager_service::payment_reference::PaymentDirection::Sent,
-                                        _ => crate::output_manager_service::payment_reference::PaymentDirection::Received,
+                                        tari_common_types::transaction::TransactionDirection::Inbound => {
+                                            crate::output_manager_service::payment_reference::PaymentDirection::Received
+                                        },
+                                        tari_common_types::transaction::TransactionDirection::Outbound => {
+                                            crate::output_manager_service::payment_reference::PaymentDirection::Sent
+                                        },
+                                        _ => {
+                                            crate::output_manager_service::payment_reference::PaymentDirection::Received
+                                        },
                                     },
                                     block_height,
                                     confirmations,
@@ -3751,13 +3760,13 @@ where
                 }
             }
         }
-        
+
         // Sort by block height (newest first) for consistent ordering
         payment_references.sort_by(|a, b| b.block_height.cmp(&a.block_height));
-        
+
         Ok(payment_references)
     }
-    
+
     /// Get all payment references using transaction service (optimized - regardless of confirmation status)
     /// This method uses transaction service instead of OMS output scanning for better performance
     fn get_all_payment_references(
@@ -3766,19 +3775,19 @@ where
         let mut payment_references: Vec<crate::output_manager_service::payment_reference::PaymentRecord> = Vec::new();
         let mut seen_payment_refs = std::collections::HashSet::new();
         let (_current_tip_height, _required_confirmations) = self.get_tip_height_and_confirmations()?;
-        
+
         // Get completed transactions from transaction service (faster than OMS output scanning)
         let mut handle = self.resources.transaction_service_handle.clone();
-        let completed_transactions = futures::executor::block_on(async {
-            handle.get_completed_transactions(None, None, None).await
-        }).map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
-        
+        let completed_transactions =
+            futures::executor::block_on(async { handle.get_completed_transactions(None, None, None).await })
+                .map_err(|e| OutputManagerError::ServiceError(format!("Transaction service error: {}", e)))?;
+
         // Use payref_calculator to generate PayRefs from transaction data
         use crate::transaction_service::payref_calculator;
-        
+
         for tx in completed_transactions {
             let payrefs = payref_calculator::calculate_transaction_payrefs(&tx);
-            
+
             if !payrefs.is_empty() {
                 // Include all PayRefs regardless of confirmation status (as per method name)
                 let confirmations = tx.confirmations.unwrap_or(0);
@@ -3786,16 +3795,18 @@ where
                     // Check for duplicates (O(1) lookup)
                     if !seen_payment_refs.contains(&payref) {
                         seen_payment_refs.insert(payref);
-                        
+
                         if let (Some(block_height), Some(timestamp)) = (tx.mined_height, tx.mined_timestamp) {
                             payment_references.push(crate::output_manager_service::payment_reference::PaymentRecord {
                                 payment_reference: payref,
                                 amount: tx.amount,
                                 direction: match tx.direction {
-                                    tari_common_types::transaction::TransactionDirection::Inbound => 
-                                        crate::output_manager_service::payment_reference::PaymentDirection::Received,
-                                    tari_common_types::transaction::TransactionDirection::Outbound => 
-                                        crate::output_manager_service::payment_reference::PaymentDirection::Sent,
+                                    tari_common_types::transaction::TransactionDirection::Inbound => {
+                                        crate::output_manager_service::payment_reference::PaymentDirection::Received
+                                    },
+                                    tari_common_types::transaction::TransactionDirection::Outbound => {
+                                        crate::output_manager_service::payment_reference::PaymentDirection::Sent
+                                    },
                                     _ => crate::output_manager_service::payment_reference::PaymentDirection::Received,
                                 },
                                 block_height,
@@ -3808,13 +3819,13 @@ where
                 }
             }
         }
-        
+
         // Sort by block height (newest first) for consistent ordering
         payment_references.sort_by(|a, b| b.block_height.cmp(&a.block_height));
-        
+
         Ok(payment_references)
     }
-    
+
     /// Get PayRef configuration
     fn get_payment_reference_config(
         &self,
@@ -3823,7 +3834,7 @@ where
         // In a full implementation, this would be stored in the database
         Ok(crate::output_manager_service::payment_reference::PayRefConfig::default())
     }
-    
+
     /// Set PayRef configuration
     fn set_payment_reference_config(
         &mut self,
@@ -3834,10 +3845,12 @@ where
     }
 
     /// Batch query outputs by commitments for efficient PayRef calculation
-    fn get_outputs_by_commitments(&self, commitments: Vec<CompressedCommitment>) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        use crate::output_manager_service::storage::database::OutputBackendQuery;
-        use crate::output_manager_service::storage::OutputStatus;
-        
+    fn get_outputs_by_commitments(
+        &self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+        use crate::output_manager_service::storage::{database::OutputBackendQuery, OutputStatus};
+
         let query = OutputBackendQuery {
             tip_height: i64::MAX,
             status: vec![OutputStatus::Unspent, OutputStatus::Spent], // Include both spent and unspent
@@ -3847,7 +3860,7 @@ where
             value_max: None,
             sorting: vec![],
         };
-        
+
         Ok(self.resources.db.fetch_outputs_by_query(query)?)
     }
 

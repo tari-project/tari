@@ -411,8 +411,16 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPaymentByReference(payref) => {
                 write!(f, "GetPaymentByReference({})", tari_utilities::hex::Hex::to_hex(payref))
             },
-            Self::GetTransactionsWithPayRefs { limit, offset, mined_only } => {
-                write!(f, "GetTransactionsWithPayRefs(limit: {:?}, offset: {:?}, mined_only: {:?})", limit, offset, mined_only)
+            Self::GetTransactionsWithPayRefs {
+                limit,
+                offset,
+                mined_only,
+            } => {
+                write!(
+                    f,
+                    "GetTransactionsWithPayRefs(limit: {:?}, offset: {:?}, mined_only: {:?})",
+                    limit, offset, mined_only
+                )
             },
         }
     }
@@ -1321,7 +1329,10 @@ impl TransactionServiceHandle {
     }
 
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
-    pub async fn get_payment_by_reference(&mut self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+    pub async fn get_payment_by_reference(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPaymentByReference(payref))

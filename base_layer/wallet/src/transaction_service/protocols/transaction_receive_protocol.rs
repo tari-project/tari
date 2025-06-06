@@ -432,7 +432,9 @@ where
             }
 
             // Categorize outputs for PayRef functionality
-            let received_hashes = self.categorize_received_output_hashes(&finalized_transaction, &inbound_tx).await?;
+            let received_hashes = self
+                .categorize_received_output_hashes(&finalized_transaction, &inbound_tx)
+                .await?;
 
             let completed_transaction = CompletedTransaction::new_with_output_hashes(
                 self.id,
@@ -450,9 +452,9 @@ where
                 None,
                 None,
                 inbound_tx.payment_id.clone(),
-                Vec::new(), // sent_output_hashes: empty for inbound transactions
+                Vec::new(),      // sent_output_hashes: empty for inbound transactions
                 received_hashes, // received_output_hashes: the outputs we received
-                Vec::new(), // change_output_hashes: empty for inbound transactions
+                Vec::new(),      // change_output_hashes: empty for inbound transactions
             )
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
@@ -491,7 +493,7 @@ where
 
         for output in tx.body.outputs() {
             let output_hash = output.hash();
-            
+
             // Check if this output belongs to our wallet and is not change
             match self.resources.output_manager_service.is_output_ours(output).await {
                 Ok(true) => {
@@ -512,7 +514,7 @@ where
                             );
                             // Assume it's a received output if we can't determine otherwise
                             received_hashes.push(output_hash);
-                        }
+                        },
                     }
                 },
                 Ok(false) => {
@@ -524,7 +526,7 @@ where
                         target: LOG_TARGET,
                         "Error checking output ownership for TxId {}: {:?}", self.id, e
                     );
-                }
+                },
             }
         }
 

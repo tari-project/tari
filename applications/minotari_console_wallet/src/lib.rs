@@ -34,11 +34,24 @@ mod ui;
 mod utils;
 mod wallet_modes;
 pub use cli::{
-    BurnMinotariArgs, Cli, CliCommands, CoinSplitArgs, DiscoverPeerArgs, ExportUtxosArgs, MakeItRainArgs,
-    SendMinotariArgs, SetBaseNodeArgs, WhoisArgs,
+    BurnMinotariArgs,
+    Cli,
+    CliCommands,
+    CoinSplitArgs,
+    DiscoverPeerArgs,
+    ExportUtxosArgs,
+    MakeItRainArgs,
+    SendMinotariArgs,
+    SetBaseNodeArgs,
+    WhoisArgs,
 };
 use init::{
-    change_password, init_wallet, set_peer_and_get_base_node_peer_config, start_wallet, tari_splash_screen, WalletBoot,
+    change_password,
+    init_wallet,
+    set_peer_and_get_base_node_peer_config,
+    start_wallet,
+    tari_splash_screen,
+    WalletBoot,
 };
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
@@ -184,9 +197,9 @@ pub fn run_wallet_with_cli(
         wallet_type,
     ))?;
 
-    if !cli.non_interactive_mode
-        && config.wallet.transaction_service_config.transaction_routing_mechanism
-            == TransactionRoutingMechanism::DirectOnly
+    if !cli.non_interactive_mode &&
+        config.wallet.transaction_service_config.transaction_routing_mechanism ==
+            TransactionRoutingMechanism::DirectOnly
     {
         match confirm_direct_only_send(&mut wallet) {
             Ok(()) => {

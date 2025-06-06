@@ -367,8 +367,7 @@ mod test {
     fn pad_message_correctness() {
         // test for small message
         let message = [0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59].as_slice();
-        let pad = std::iter::repeat_n(0u8, MESSAGE_BASE_LENGTH - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, MESSAGE_BASE_LENGTH - message.len()).collect::<Vec<_>>();
 
         let mut pad_message = BytesMut::from(message);
         let pad_len = pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
@@ -386,8 +385,7 @@ mod test {
         let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 8 - 100], 0).unwrap();
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
-        let pad = std::iter::repeat_n(0u8, (8 * MESSAGE_BASE_LENGTH) - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, (8 * MESSAGE_BASE_LENGTH) - message.len()).collect::<Vec<_>>();
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), 8 * MESSAGE_BASE_LENGTH);
@@ -398,8 +396,7 @@ mod test {
 
         // test for base message of multiple base length
         let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 9 - 123], 0).unwrap();
-        let pad = std::iter::repeat_n(0u8, (9 * MESSAGE_BASE_LENGTH) - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, (9 * MESSAGE_BASE_LENGTH) - message.len()).collect::<Vec<_>>();
 
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();

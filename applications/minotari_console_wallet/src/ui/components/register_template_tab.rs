@@ -145,9 +145,7 @@ impl RegisterTemplateTab {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Register Code Template",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),

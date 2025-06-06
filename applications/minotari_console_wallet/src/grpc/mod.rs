@@ -6,7 +6,9 @@ mod wallet_grpc_server;
 
 use minotari_app_grpc::tari_rpc::TransactionEvent;
 use minotari_wallet::transaction_service::storage::models::{
-    CompletedTransaction, InboundTransaction, OutboundTransaction,
+    CompletedTransaction,
+    InboundTransaction,
+    OutboundTransaction,
 };
 
 pub use self::wallet_grpc_server::*;

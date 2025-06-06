@@ -129,9 +129,7 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         let inner = self.inner.read().await;
         let transport = inner.socks_transport.as_ref().ok_or_else(|| {
-            io::Error::other(
-                "BUG: Hidden service transport not initialized before dialling".to_string(),
-            )
+            io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
         })?;
         transport.dial(addr).await
     }

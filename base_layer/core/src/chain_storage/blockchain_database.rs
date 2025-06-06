@@ -448,8 +448,6 @@ where B: BlockchainBackend
         db.fetch_output(&output_hash)
     }
 
-
-
     /// Returns a copy of the current input mined info
     pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -463,7 +461,10 @@ where B: BlockchainBackend
     }
 
     /// Check if an output is spent and return spent information
-    pub fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+    pub fn check_output_spent_status(
+        &self,
+        output_hash: HashOutput,
+    ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.check_output_spent_status(output_hash)
     }

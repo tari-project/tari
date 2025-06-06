@@ -33,8 +33,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_utilities::hex::Hex;
-
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
@@ -53,7 +51,9 @@ use minotari_wallet::{
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
-    TransactionStage, WalletConfig, WalletSqlite,
+    TransactionStage,
+    WalletConfig,
+    WalletSqlite,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::Sha256;
@@ -65,8 +65,15 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{
-        CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature,
-        UncompressedCommitment, UncompressedPublicKey, UncompressedSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        Signature,
+        UncompressedCommitment,
+        UncompressedPublicKey,
+        UncompressedSignature,
     },
     wallet_types::WalletType,
 };
@@ -85,21 +92,31 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            EncryptedData, OutputFeatures, Transaction, TransactionInput, TransactionInputVersion, TransactionKernel,
-            TransactionOutput, TransactionOutputVersion, UnblindedOutput, WalletOutput,
+            EncryptedData,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionInputVersion,
+            TransactionKernel,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+            WalletOutput,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         CryptoFactories,
     },
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory, dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey,
+    commitment::HomomorphicCommitmentFactory,
+    dhke::DiffieHellmanSharedSecret,
+    ristretto::RistrettoSecretKey,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
-use tari_utilities::{encoding::MBase58, ByteArray, SafePassword};
+use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -109,12 +126,27 @@ use super::error::CommandError;
 use crate::{
     automation::{
         utils::{
-            create_pre_mine_output_dir, get_file_name, move_session_file_to_session_dir, out_dir, read_and_verify,
-            read_session_info, read_verify_session_info, write_json_object_to_file_as_line, write_to_json_file,
+            create_pre_mine_output_dir,
+            get_file_name,
+            move_session_file_to_session_dir,
+            out_dir,
+            read_and_verify,
+            read_session_info,
+            read_verify_session_info,
+            write_json_object_to_file_as_line,
+            write_to_json_file,
         },
-        PreMineSpendStep1SessionInfo, PreMineSpendStep2OutputsForLeader, PreMineSpendStep2OutputsForSelf,
-        PreMineSpendStep3OutputsForParties, PreMineSpendStep3OutputsForSelf, PreMineSpendStep4OutputsForLeader,
-        RecipientInfo, Step2OutputsForLeader, Step2OutputsForSelf, Step3OutputsForParties, Step3OutputsForSelf,
+        PreMineSpendStep1SessionInfo,
+        PreMineSpendStep2OutputsForLeader,
+        PreMineSpendStep2OutputsForSelf,
+        PreMineSpendStep3OutputsForParties,
+        PreMineSpendStep3OutputsForSelf,
+        PreMineSpendStep4OutputsForLeader,
+        RecipientInfo,
+        Step2OutputsForLeader,
+        Step2OutputsForSelf,
+        Step3OutputsForParties,
+        Step3OutputsForSelf,
         Step4OutputsForLeader,
     },
     cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
@@ -645,8 +677,8 @@ pub async fn monitor_transactions(
             Ok(event) => match &*event {
                 TransactionEvent::TransactionSendResult(id, status) if tx_ids.contains(id) => {
                     debug!(target: LOG_TARGET, "tx send event for tx_id: {}, {}", *id, status);
-                    if wait_stage == TransactionStage::DirectSendOrSaf
-                        && (status.direct_send_result || status.store_and_forward_send_result)
+                    if wait_stage == TransactionStage::DirectSendOrSaf &&
+                        (status.direct_send_result || status.store_and_forward_send_result)
                     {
                         results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
@@ -1126,25 +1158,17 @@ pub async fn command_runner(
                 let out_dir = out_dir(&session_info.session_id)?;
                 let out_file_leader = out_dir.join(get_file_name(SPEND_STEP_2_LEADER, Some(args.alias.clone())));
                 write_json_object_to_file_as_line(&out_file_leader, true, session_info.clone())?;
-                write_json_object_to_file_as_line(
-                    &out_file_leader,
-                    false,
-                    PreMineSpendStep2OutputsForLeader {
-                        outputs_for_leader,
-                        alias: args.alias.clone(),
-                    },
-                )?;
+                write_json_object_to_file_as_line(&out_file_leader, false, PreMineSpendStep2OutputsForLeader {
+                    outputs_for_leader,
+                    alias: args.alias.clone(),
+                })?;
 
                 let out_file_self = out_dir.join(get_file_name(SPEND_STEP_2_SELF, None));
                 write_json_object_to_file_as_line(&out_file_self, true, session_info.clone())?;
-                write_json_object_to_file_as_line(
-                    &out_file_self,
-                    false,
-                    PreMineSpendStep2OutputsForSelf {
-                        outputs_for_self,
-                        alias: args.alias.clone(),
-                    },
-                )?;
+                write_json_object_to_file_as_line(&out_file_self, false, PreMineSpendStep2OutputsForSelf {
+                    outputs_for_self,
+                    alias: args.alias.clone(),
+                })?;
 
                 println!();
                 println!("Concluded step 2 'pre-mine-spend-party-details'");
@@ -1389,19 +1413,15 @@ pub async fn command_runner(
                 let out_dir = out_dir(&session_id)?;
                 let out_file = out_dir.join(get_file_name(SPEND_STEP_3_SELF, None));
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
-                write_json_object_to_file_as_line(
-                    &out_file,
-                    false,
-                    PreMineSpendStep3OutputsForSelf { outputs_for_self },
-                )?;
+                write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep3OutputsForSelf {
+                    outputs_for_self,
+                })?;
 
                 let out_file = out_dir.join(get_file_name(SPEND_STEP_3_PARTIES, None));
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
-                write_json_object_to_file_as_line(
-                    &out_file,
-                    false,
-                    PreMineSpendStep3OutputsForParties { outputs_for_parties },
-                )?;
+                write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep3OutputsForParties {
+                    outputs_for_parties,
+                })?;
 
                 println!();
                 println!("Concluded step 3 'pre-mine-spend-encumber-aggregate-utxo'");
@@ -1585,10 +1605,9 @@ pub async fn command_runner(
 
                     // Metadata signature
                     let script_offset = key_manager_service
-                        .get_script_offset(
-                            &vec![party_info.pre_mine_script_key_id.clone()],
-                            &vec![party_info.sender_offset_key_id.clone()],
-                        )
+                        .get_script_offset(&vec![party_info.pre_mine_script_key_id.clone()], &vec![party_info
+                            .sender_offset_key_id
+                            .clone()])
                         .await?;
                     let challenge = TransactionOutput::build_metadata_signature_challenge(
                         &TransactionOutputVersion::get_current_version(),
@@ -1619,8 +1638,8 @@ pub async fn command_runner(
                         },
                     };
 
-                    if script_signature.get_signature() == Signature::default().get_signature()
-                        || metadata_signature.get_signature() == Signature::default().get_signature()
+                    if script_signature.get_signature() == Signature::default().get_signature() ||
+                        metadata_signature.get_signature() == Signature::default().get_signature()
                     {
                         eprintln!(
                             "\nError: Script and/or metadata signatures not created (index {})!\n",
@@ -1653,14 +1672,10 @@ pub async fn command_runner(
                     Some(party_info_indexed.alias.clone()),
                 ));
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
-                write_json_object_to_file_as_line(
-                    &out_file,
-                    false,
-                    PreMineSpendStep4OutputsForLeader {
-                        outputs_for_leader,
-                        alias: party_info_indexed.alias.clone(),
-                    },
-                )?;
+                write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep4OutputsForLeader {
+                    outputs_for_leader,
+                    alias: party_info_indexed.alias.clone(),
+                })?;
 
                 println!();
                 println!("Concluded step 4 'pre-mine-spend-input-output-sigs'");
@@ -2831,16 +2846,33 @@ pub async fn command_runner(
                                     if let Some(payref) = &output_with_payref.payment_reference {
                                         let output_type_str = match output_with_payref.output_type {
                                             minotari_wallet::transaction_service::handle::OutputType::Sent => "Sent",
-                                            minotari_wallet::transaction_service::handle::OutputType::Received => "Received", 
-                                            minotari_wallet::transaction_service::handle::OutputType::Change => "Change",
+                                            minotari_wallet::transaction_service::handle::OutputType::Received => {
+                                                "Received"
+                                            },
+                                            minotari_wallet::transaction_service::handle::OutputType::Change => {
+                                                "Change"
+                                            },
                                         };
-                                        
+
                                         if args.show_private_info {
-                                            println!("     {}. {} ({}) - {}", j + 1, payref.to_hex(), output_type_str, output_with_payref.amount);
+                                            println!(
+                                                "     {}. {} ({}) - {}",
+                                                j + 1,
+                                                payref.to_hex(),
+                                                output_type_str,
+                                                output_with_payref.amount
+                                            );
                                         } else {
                                             let hex_payref = payref.to_hex();
                                             if hex_payref.len() >= 64 {
-                                                println!("     {}. {}...{} ({}) - {}", j + 1, &hex_payref[..8], &hex_payref[56..], output_type_str, output_with_payref.amount);
+                                                println!(
+                                                    "     {}. {}...{} ({}) - {}",
+                                                    j + 1,
+                                                    &hex_payref[..8],
+                                                    &hex_payref[56..],
+                                                    output_type_str,
+                                                    output_with_payref.amount
+                                                );
                                             } else {
                                                 // Fallback for shorter hex strings
                                                 let end_start = hex_payref.len().saturating_sub(8);

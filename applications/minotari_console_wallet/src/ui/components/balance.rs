@@ -23,9 +23,7 @@ impl Balance {
 
 impl<B: Backend> Component<B> for Balance {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         // This is a hack to produce only a top margin and not a bottom margin
         let block_title_body = Layout::default()
             .constraints([Constraint::Length(1), Constraint::Length(1)].as_ref())

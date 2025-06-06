@@ -53,7 +53,8 @@ mod test {
             encrypted_data::{PaymentId, TxType},
             Transaction,
         },
-        ReceiverTransactionProtocol, SenderTransactionProtocol,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     };
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
@@ -486,10 +487,10 @@ mod test {
         let mut mock_output_manager_service =
             MockOutputManagerService::new(oms_request_receiver, shutdown_signal.to_signal());
         let mut balance = Balance {
-            available_balance: completed_tx.amount
-                + completed_tx.fee
-                + completed_tx_cancelled.amount
-                + completed_tx_cancelled.fee,
+            available_balance: completed_tx.amount +
+                completed_tx.fee +
+                completed_tx_cancelled.amount +
+                completed_tx_cancelled.fee,
             time_locked_balance: None,
             pending_incoming_balance: inbound_tx.amount,
             pending_outgoing_balance: outbound_tx.amount + outbound_tx.fee,

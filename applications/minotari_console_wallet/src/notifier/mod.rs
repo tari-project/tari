@@ -29,7 +29,10 @@ use std::{
 use log::*;
 use minotari_wallet::{
     transaction_service::storage::models::{
-        CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction,
+        CompletedTransaction,
+        InboundTransaction,
+        OutboundTransaction,
+        WalletTransaction,
     },
     WalletSqlite,
 };

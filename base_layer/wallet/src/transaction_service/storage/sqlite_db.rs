@@ -31,7 +31,8 @@ fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
 }
 
 fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
-    bytes.chunks_exact(32)
+    bytes
+        .chunks_exact(32)
         .filter_map(|chunk| FixedHash::try_from(chunk).ok())
         .collect()
 }
@@ -78,8 +79,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
-
-
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -2003,45 +2002,42 @@ impl CompletedTransactionSql {
             .first::<CompletedTransactionSql>(conn)?;
 
         let existing_tx_clone = existing_tx.clone();
-        let existing_tx_data = existing_tx_clone.decrypt(cipher)
+        let existing_tx_data = existing_tx_clone
+            .decrypt(cipher)
             .map_err(TransactionStorageError::AeadError)?;
 
         // Only update output hashes if they're not already set to preserve proper categorization
         // Output hashes should have been categorized correctly during transaction creation
         let (sent_hashes, received_hashes, change_hashes) = if existing_tx_data.sent_output_hashes.is_none() ||
             existing_tx_data.received_output_hashes.is_none() ||
-            existing_tx_data.change_output_hashes.is_none() {
-            
+            existing_tx_data.change_output_hashes.is_none()
+        {
             // If output hashes are missing, extract them from the transaction
             // Note: This loses proper categorization but is better than completely wrong data
-            let transaction: tari_core::transactions::transaction_components::Transaction = 
+            let transaction: tari_core::transactions::transaction_components::Transaction =
                 bincode::deserialize(&existing_tx_data.transaction_protocol)
                     .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?;
-            
+
             let output_hashes: Vec<tari_common_types::types::HashOutput> = transaction
                 .body()
                 .outputs()
                 .iter()
                 .map(|output| output.hash())
                 .collect();
-            
+
             warn!(
                 target: LOG_TARGET,
                 "Output hashes not found for tx_id {}, extracting from transaction (categorization may be incorrect)",
                 tx_id
             );
-            
-            (
-                fixedhash_vec_to_bytes(&output_hashes),
-                Vec::new(),
-                Vec::new()
-            )
+
+            (fixedhash_vec_to_bytes(&output_hashes), Vec::new(), Vec::new())
         } else {
             // Preserve existing categorized values (just use the bytes directly)
             (
                 existing_tx.sent_output_hashes.unwrap_or_default(),
                 existing_tx.received_output_hashes.unwrap_or_default(),
-                existing_tx.change_output_hashes.unwrap_or_default()
+                existing_tx.change_output_hashes.unwrap_or_default(),
             )
         };
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
@@ -3057,7 +3053,7 @@ mod test {
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
-            received_output_hashes: vec![],
+                received_output_hashes: vec![],
             };
             let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx, &cipher).unwrap();
 

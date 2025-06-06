@@ -22,12 +22,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{BlockHash, CompressedCommitment, FixedHash},
-};
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-};
+use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash};
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::storage::OutputStatus;
@@ -220,20 +216,23 @@ impl PaymentRecord {
             PayRefDisplayFormat::Full => hex,
             PayRefDisplayFormat::Shortened => {
                 if hex.len() >= 16 {
-                    format!("{}...{}", &hex[0..8], &hex[hex.len()-8..])
+                    format!("{}...{}", &hex[0..8], &hex[hex.len() - 8..])
                 } else {
                     hex
                 }
             },
-            PayRefDisplayFormat::Custom { prefix_chars, suffix_chars } => {
+            PayRefDisplayFormat::Custom {
+                prefix_chars,
+                suffix_chars,
+            } => {
                 let prefix = *prefix_chars as usize;
                 let suffix = *suffix_chars as usize;
                 if hex.len() >= (prefix + suffix) {
-                    format!("{}...{}", &hex[0..prefix], &hex[hex.len()-suffix..])
+                    format!("{}...{}", &hex[0..prefix], &hex[hex.len() - suffix..])
                 } else {
                     hex
                 }
-            }
+            },
         }
     }
 }
@@ -243,14 +242,14 @@ pub fn parse_payref_hex(hex_str: &str) -> Result<FixedHash, String> {
     if hex_str.len() != 64 {
         return Err("Payment Reference must be exactly 64 hexadecimal characters".to_string());
     }
-    
+
     let bytes = Vec::<u8>::from_hex(hex_str)
         .map_err(|_| "Payment Reference must contain only valid hexadecimal characters".to_string())?;
-    
+
     if bytes.len() != 32 {
         return Err("Payment Reference must decode to exactly 32 bytes".to_string());
     }
-    
+
     let mut payref = [0u8; 32];
     payref.copy_from_slice(&bytes);
     Ok(FixedHash::from(payref))

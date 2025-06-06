@@ -304,7 +304,11 @@ impl fmt::Display for OutputManagerRequest {
             GetOutputsByTxId(t) => write!(f, "GetOutputsByTxId: {}", t),
             IsOutputOurs(_) => write!(f, "IsOutputOurs"),
             IsChangeOutput(_) => write!(f, "IsChangeOutput"),
-            FindPaymentByReference(payref) => write!(f, "FindPaymentByReference({})", payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()),
+            FindPaymentByReference(payref) => write!(
+                f,
+                "FindPaymentByReference({})",
+                payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            ),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
             GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
             GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
@@ -1142,7 +1146,10 @@ impl OutputManagerHandle {
     }
 
     /// Batch query outputs by commitments for efficient PayRef calculation
-    pub async fn get_outputs_by_commitments(&mut self, commitments: Vec<CompressedCommitment>) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
+    pub async fn get_outputs_by_commitments(
+        &mut self,
+        commitments: Vec<CompressedCommitment>,
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputsByCommitments(commitments))
@@ -1155,11 +1162,7 @@ impl OutputManagerHandle {
 
     /// Get output by hash (any status - unspent, spent, invalid)
     pub async fn get_output_by_hash(&mut self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetOutputByHash(hash))
-            .await??
-        {
+        match self.handle.call(OutputManagerRequest::GetOutputByHash(hash)).await?? {
             OutputManagerResponse::OutputByHash(output) => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }

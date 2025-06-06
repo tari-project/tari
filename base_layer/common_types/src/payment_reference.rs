@@ -46,7 +46,7 @@ use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;
 use tari_utilities::hex::Hex;
 
-use crate::types::{BlockHash, HashOutput, FixedHash};
+use crate::types::{BlockHash, FixedHash, HashOutput};
 
 /// A Payment Reference (PayRef) - a 32-byte globally unique identifier for transaction outputs
 pub type PaymentReference = FixedHash;
@@ -57,23 +57,23 @@ pub enum PayRefError {
     /// Invalid PayRef format (must be 64-character hex string)
     #[error("Invalid PayRef format: expected 64 hexadecimal characters, got {0}")]
     InvalidFormat(String),
-    
+
     /// PayRef hex string contains invalid characters
     #[error("Invalid PayRef hex: contains non-hexadecimal characters")]
     InvalidHex,
-    
+
     /// PayRef decodes to wrong length (must be exactly 32 bytes)
     #[error("Invalid PayRef length: expected 32 bytes, got {0}")]
     InvalidLength(usize),
-    
+
     /// Missing required data for PayRef generation
     #[error("Missing required data: {0}")]
     MissingData(String),
-    
+
     /// PayRef not found in database or index
     #[error("PayRef not found")]
     NotFound,
-    
+
     /// Database error during PayRef operations
     #[error("Database error: {0}")]
     DatabaseError(String),
@@ -94,16 +94,19 @@ pub enum PayRefError {
 ///
 /// # Example
 /// ```rust
-/// use tari_common_types::payment_reference::generate_payment_reference;
-/// use tari_common_types::types::{BlockHash, HashOutput};
-/// 
+/// use tari_common_types::{
+///     payment_reference::generate_payment_reference,
+///     types::{BlockHash, HashOutput},
+/// };
+///
 /// let block_hash = BlockHash::from([1u8; 32]);
 /// let output_hash = HashOutput::from([2u8; 32]);
 /// let payref = generate_payment_reference(&block_hash, &output_hash);
 /// println!("PayRef: {}", hex::encode(payref));
 /// ```
 pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutput) -> PaymentReference {
-    let mut hasher = DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
+    let mut hasher =
+        DomainSeparatedHasher::<Blake2b<U32>, PaymentReferenceHashDomain>::new_with_label("payment_reference");
     hasher.update(block_hash.as_slice());
     hasher.update(output_hash.as_slice());
     let mut output = [0u8; 32];
@@ -123,7 +126,7 @@ pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutp
 /// # Example
 /// ```rust
 /// use tari_common_types::payment_reference::parse_payment_reference_hex;
-/// 
+///
 /// let payref_hex = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
 /// match parse_payment_reference_hex(payref_hex) {
 ///     Ok(payref) => println!("Parsed PayRef: {:?}", payref),
@@ -137,14 +140,13 @@ pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, Pa
             hex_str.len()
         )));
     }
-    
-    let bytes = Vec::<u8>::from_hex(hex_str)
-        .map_err(|_| PayRefError::InvalidHex)?;
-    
+
+    let bytes = Vec::<u8>::from_hex(hex_str).map_err(|_| PayRefError::InvalidHex)?;
+
     if bytes.len() != 32 {
         return Err(PayRefError::InvalidLength(bytes.len()));
     }
-    
+
     let mut payref = [0u8; 32];
     payref.copy_from_slice(&bytes);
     Ok(FixedHash::from(payref))
@@ -164,8 +166,10 @@ pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, Pa
 /// # Example
 /// ```rust
 /// use tari_common_types::payment_reference::is_valid_payment_reference_format;
-/// 
-/// assert!(is_valid_payment_reference_format("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
+///
+/// assert!(is_valid_payment_reference_format(
+///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+/// ));
 /// assert!(!is_valid_payment_reference_format("invalid"));
 /// assert!(!is_valid_payment_reference_format("123")); // too short
 /// ```
@@ -184,7 +188,7 @@ pub fn is_valid_payment_reference_format(hex_str: &str) -> bool {
 /// # Example
 /// ```rust
 /// use tari_common_types::payment_reference::payment_reference_to_hex;
-/// 
+///
 /// let payref = FixedHash::from([1u8; 32]);
 /// let hex_str = payment_reference_to_hex(&payref);
 /// assert_eq!(hex_str.len(), 64);
@@ -207,20 +211,23 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
         PayRefDisplayFormat::Full => hex,
         PayRefDisplayFormat::Shortened => {
             if hex.len() >= 16 {
-                format!("{}...{}", &hex[0..8], &hex[hex.len()-8..])
+                format!("{}...{}", &hex[0..8], &hex[hex.len() - 8..])
             } else {
                 hex
             }
         },
-        PayRefDisplayFormat::Custom { prefix_chars, suffix_chars } => {
+        PayRefDisplayFormat::Custom {
+            prefix_chars,
+            suffix_chars,
+        } => {
             let prefix = *prefix_chars as usize;
             let suffix = *suffix_chars as usize;
             if hex.len() >= (prefix + suffix) {
-                format!("{}...{}", &hex[0..prefix], &hex[hex.len()-suffix..])
+                format!("{}...{}", &hex[0..prefix], &hex[hex.len() - suffix..])
             } else {
                 hex
             }
-        }
+        },
     }
 }
 
@@ -253,7 +260,7 @@ mod tests {
         let hex_str = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
         let result = parse_payment_reference_hex(hex_str);
         assert!(result.is_ok());
-        
+
         let payref = result.unwrap();
         assert_eq!(payref.len(), 32);
     }
@@ -274,40 +281,50 @@ mod tests {
 
     #[test]
     fn test_is_valid_payment_reference_format() {
-        assert!(is_valid_payment_reference_format("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
+        assert!(is_valid_payment_reference_format(
+            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        ));
         assert!(!is_valid_payment_reference_format("invalid"));
         assert!(!is_valid_payment_reference_format("123")); // too short
-        assert!(!is_valid_payment_reference_format("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefgg")); // too long
+        assert!(!is_valid_payment_reference_format(
+            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefgg"
+        )); // too long
     }
 
     #[test]
     fn test_payment_reference_to_hex() {
-        let payref = FixedHash::from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]);
-        
+        let payref = FixedHash::from([
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34,
+            0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+        ]);
+
         let hex_str = payment_reference_to_hex(&payref);
-        assert_eq!(hex_str, "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+        assert_eq!(
+            hex_str,
+            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        );
     }
 
     #[test]
     fn test_format_payment_reference() {
-        let payref = FixedHash::from([0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-                                      0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]);
-        
+        let payref = FixedHash::from([
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34,
+            0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
+        ]);
+
         // Test full format
         let full = format_payment_reference(&payref, &PayRefDisplayFormat::Full);
         assert_eq!(full, "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
-        
+
         // Test shortened format
         let shortened = format_payment_reference(&payref, &PayRefDisplayFormat::Shortened);
         assert_eq!(shortened, "12345678...90abcdef");
-        
+
         // Test custom format
-        let custom = format_payment_reference(&payref, &PayRefDisplayFormat::Custom { prefix_chars: 4, suffix_chars: 4 });
+        let custom = format_payment_reference(&payref, &PayRefDisplayFormat::Custom {
+            prefix_chars: 4,
+            suffix_chars: 4,
+        });
         assert_eq!(custom, "1234...cdef");
     }
 

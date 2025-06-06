@@ -30,8 +30,6 @@ use std::{
     time::Instant,
 };
 
-
-
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
@@ -59,7 +57,6 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
-
 
 use super::{
     cursors::KeyPrefixCursor,
@@ -676,33 +673,30 @@ impl LMDBDatabase {
         migration_key: &str,
     ) -> Result<(), ChainStorageError> {
         let write_txn = db.write_transaction()?;
-        
+
         info!(target: LOG_TARGET, "Processing PayRef rebuild batch: blocks {} to {}", batch_start, batch_end);
-        
+
         for height in batch_start..=batch_end {
             let read_txn = db.read_transaction()?;
-            
+
             // Get block header to get block hash
             let header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
             if let Some(header) = header {
                 let block_hash = header.hash();
-                
+
                 // Get all outputs for this block
-                let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> = lmdb_fetch_matching_after(
-                    &read_txn,
-                    &db.utxos_db,
-                    block_hash.as_slice(),
-                )?;
-                
+                let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> =
+                    lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
+
                 drop(read_txn);
-                
+
                 // Process outputs in chunks to manage memory usage with better error handling
                 for (chunk_idx, chunk) in outputs.chunks(OUTPUT_CHUNK_SIZE).enumerate() {
                     for (output_idx, (_, output_data)) in chunk.iter().enumerate() {
                         // Generate PayRef and add to index
                         let output_hash = &output_data.hash;
                         let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
-                        
+
                         // Insert into PayRef index with granular error handling
                         match lmdb_replace(
                             &write_txn,
@@ -716,10 +710,10 @@ impl LMDBDatabase {
                                 error!(target: LOG_TARGET, "Failed to insert PayRef for output {} at height {} (chunk {}, item {}): {}", 
                                        output_hash.to_hex(), height, chunk_idx, output_idx, e);
                                 return Err(e);
-                            }
+                            },
                         }
                     }
-                    
+
                     // Periodically check disk space within batch processing
                     if chunk_idx % 10 == 0 {
                         let (_, _, size_left_bytes) = LMDBStore::get_stats(&db.env)?;
@@ -728,7 +722,9 @@ impl LMDBDatabase {
                                   size_left_bytes / BYTES_PER_MB, height);
                             // Consider pausing migration if space gets too low
                             if size_left_bytes < 200 * BYTES_PER_MB {
-                                return Err(ChainStorageError::CriticalError("Insufficient disk space for PayRef migration".to_string()));
+                                return Err(ChainStorageError::CriticalError(
+                                    "Insufficient disk space for PayRef migration".to_string(),
+                                ));
                             }
                         }
                     }
@@ -737,7 +733,7 @@ impl LMDBDatabase {
                 debug!(target: LOG_TARGET, "No header found for height {} during PayRef migration", height);
             }
         }
-        
+
         // Save migration checkpoint
         let migration_state = PayRefMigrationState {
             version: 2,
@@ -749,18 +745,12 @@ impl LMDBDatabase {
                 .unwrap_or_default()
                 .as_secs(),
         };
-        
-        lmdb_replace(
-            &write_txn,
-            &db.migration_state,
-            migration_key,
-            &migration_state,
-            None,
-        )?;
-        
+
+        lmdb_replace(&write_txn, &db.migration_state, migration_key, &migration_state, None)?;
+
         // Commit the batch
         write_txn.commit()?;
-        
+
         Ok(())
     }
 
@@ -915,7 +905,7 @@ impl LMDBDatabase {
                     // Actual database error - must fail the transaction
                     error!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
                     return Err(e);
-                }
+                },
             }
         }
 
@@ -1194,9 +1184,11 @@ impl LMDBDatabase {
         block_hash: &HashOutput,
         // output_smt: &mut OutputSmt,
     ) -> Result<(), ChainStorageError> {
-        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
+        let output_rows =
+            lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
-        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash.as_slice())?;
+        let inputs =
+            lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
 
         for (_, utxo) in &output_rows {
@@ -1209,12 +1201,12 @@ impl LMDBDatabase {
             )?;
 
             let output_hash = utxo.output.hash();
-            
+
             // Clean up PayRef index for this output during reorg
             // Only clean PayRef if output was actually created (not spent in same block, not burned)
-            let should_cleanup_payref = !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) 
-                && !utxo.output.is_burned();
-            
+            let should_cleanup_payref =
+                !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) && !utxo.output.is_burned();
+
             if should_cleanup_payref {
                 let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
                 // Delete the PayRef index entry with proper error handling
@@ -1224,7 +1216,9 @@ impl LMDBDatabase {
                     payref_bytes.as_slice(),
                     "payref_to_output_index",
                 ) {
-                    Ok(()) => debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex()),
+                    Ok(()) => {
+                        debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
+                    },
                     Err(ChainStorageError::ValueNotFound { .. }) => {
                         // Expected case for outputs that didn't have PayRefs
                     },
@@ -1234,7 +1228,7 @@ impl LMDBDatabase {
                     },
                 }
             }
-            
+
             // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
             // does not exist here
             if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
@@ -3231,7 +3225,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         if migrate_from_version == 2 {
             // Migration v1 -> v2: Rebuild PayRef index for existing nodes with checkpointing
             info!(target: LOG_TARGET, "Migrating to v2: Checking if PayRef index needs rebuilding");
-            
+
             // Verify database consistency before starting migration
             info!(target: LOG_TARGET, "Verifying database consistency before PayRef migration");
             let read_txn = db.read_transaction()?;
@@ -3243,7 +3237,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     continue;
                 },
             };
-            
+
             // Verify database integrity for first few blocks before full migration
             if chain_height > 10 {
                 for test_height in 0..=std::cmp::min(10, chain_height) {
@@ -3251,63 +3245,73 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     if header.is_none() {
                         error!(target: LOG_TARGET, "Database integrity check failed: missing header at height {}", test_height);
                         drop(read_txn);
-                        return Err(ChainStorageError::DataInconsistencyDetected { 
-                            function: "payref_migration", 
-                            details: format!("Missing header at height {}", test_height) 
+                        return Err(ChainStorageError::DataInconsistencyDetected {
+                            function: "payref_migration",
+                            details: format!("Missing header at height {}", test_height),
                         });
                     }
                 }
                 info!(target: LOG_TARGET, "Database integrity check passed for first 10 blocks");
             }
-            
+
             // Check migration state for resume capability
             let migration_key = "payref_v2_migration";
             let existing_state: Option<PayRefMigrationState> = lmdb_get(&read_txn, &db.migration_state, migration_key)?;
-            
+
             let (start_height, rebuild_count) = if let Some(state) = existing_state {
                 info!(target: LOG_TARGET, "Resuming PayRef migration from height {}, {} outputs already processed", 
                       state.last_processed_height + 1, state.total_outputs_processed);
                 (state.last_processed_height + 1, state.total_outputs_processed)
             } else {
                 // Check if PayRef index is empty by trying to get the first entry
-                let payref_entries: Vec<(Vec<u8>, HashOutput)> = lmdb_fetch_matching_after(&read_txn, &db.payref_to_output_index, &[])?;
+                let payref_entries: Vec<(Vec<u8>, HashOutput)> =
+                    lmdb_fetch_matching_after(&read_txn, &db.payref_to_output_index, &[])?;
                 let payref_index_empty = payref_entries.is_empty();
-                
+
                 if !payref_index_empty {
                     info!(target: LOG_TARGET, "PayRef index already populated, skipping rebuild");
                     drop(read_txn);
                     continue;
                 }
-                
+
                 info!(target: LOG_TARGET, "PayRef index is empty, starting new migration");
                 (0u64, 0u64)
             };
-            
+
             drop(read_txn);
 
             // Rebuild PayRef index by iterating through all existing outputs with batching
             let mut rebuild_count = rebuild_count;
             let mut batch_start = start_height;
-            
+
             while batch_start <= chain_height {
                 let batch_end = std::cmp::min(batch_start + MIGRATION_BATCH_SIZE - 1, chain_height);
-                
+
                 // Check available disk space before processing large batches
                 let (_, _, size_left_bytes) = LMDBStore::get_stats(&db.env)?;
                 if size_left_bytes < 100 * BYTES_PER_MB {
                     warn!(target: LOG_TARGET, "Low disk space detected during PayRef migration: {} MB remaining", size_left_bytes / BYTES_PER_MB);
                 }
-                
+
                 // Wrap batch processing in retry logic for transient errors
                 let mut retry_count = 0;
                 const MAX_RETRIES: u32 = 3;
-                
+
                 let batch_result = loop {
-                    match LMDBDatabase::process_payref_migration_batch(db, batch_start, batch_end, &mut rebuild_count, migration_key) {
+                    match LMDBDatabase::process_payref_migration_batch(
+                        db,
+                        batch_start,
+                        batch_end,
+                        &mut rebuild_count,
+                        migration_key,
+                    ) {
                         Ok(()) => break Ok(()),
                         Err(e) if retry_count < MAX_RETRIES => {
                             // Only retry for specific error types
-                            if matches!(e, ChainStorageError::DbResizeRequired(_) | ChainStorageError::AccessError(_)) {
+                            if matches!(
+                                e,
+                                ChainStorageError::DbResizeRequired(_) | ChainStorageError::AccessError(_)
+                            ) {
                                 retry_count += 1;
                                 warn!(target: LOG_TARGET, "PayRef migration batch failed (attempt {}), retrying: {}", retry_count, e);
                                 std::thread::sleep(std::time::Duration::from_secs(1));
@@ -3320,10 +3324,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         Err(e) => {
                             error!(target: LOG_TARGET, "PayRef migration batch failed after {} attempts: {}", MAX_RETRIES, e);
                             break Err(e);
-                        }
+                        },
                     }
                 };
-                
+
                 // Handle batch processing result
                 match batch_result {
                     Ok(()) => {
@@ -3334,15 +3338,15 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     Err(e) => {
                         error!(target: LOG_TARGET, "PayRef migration failed at batch {}-{}: {}", batch_start, batch_end, e);
                         return Err(e);
-                    }
+                    },
                 }
             }
-            
+
             // Clean up migration state on successful completion
             let cleanup_txn = db.write_transaction()?;
             lmdb_delete(&cleanup_txn, &db.migration_state, migration_key, "migration_state").unwrap_or(());
             cleanup_txn.commit()?;
-            
+
             info!(target: LOG_TARGET, "PayRef index rebuild completed: {} outputs indexed", rebuild_count);
         }
 

@@ -32,7 +32,7 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{TemplateRegistrationEntry, OutputMinedInfo, InputMinedInfo},
+    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };

@@ -758,9 +758,7 @@ impl OutputSql {
         hash: &[u8],
         conn: &mut SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(outputs::hash.eq(hash))
-            .first::<OutputSql>(conn)?)
+        Ok(outputs::table.filter(outputs::hash.eq(hash)).first::<OutputSql>(conn)?)
     }
 
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {

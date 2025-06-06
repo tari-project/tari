@@ -39,18 +39,18 @@ use crate::{
 };
 
 /// Calculate PayRefs for a transaction using stored output hashes (FAST)
-/// 
+///
 /// This function generates PayRefs only for transactions that have been mined,
 /// using the pre-computed output hashes stored with the transaction.
-/// 
+///
 /// # Arguments
 /// * `tx` - The completed transaction containing stored output hashes
-/// 
+///
 /// # Returns
 /// A vector of PaymentReferences for the transaction outputs, or empty if not mined
 pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentReference> {
     let mut payrefs = Vec::new();
-    
+
     // Only generate PayRefs if transaction is mined
     if let Some(block_hash) = tx.mined_in_block.as_ref() {
         match tx.direction {
@@ -70,22 +70,22 @@ pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentRe
             },
             TransactionDirection::Unknown => {
                 // Skip unknown direction transactions
-            }
+            },
         }
     }
-    
+
     payrefs
 }
 
 /// Find payment by PayRef using stored transaction hashes
-/// 
+///
 /// This function searches through completed transactions using the pre-computed
 /// output hashes for efficient PayRef matching.
-/// 
+///
 /// # Arguments
 /// * `transactions` - List of completed transactions to search
 /// * `payref` - The PaymentReference to find
-/// 
+///
 /// # Returns
 /// PaymentDetails if found, None otherwise
 pub fn find_payment_by_reference(
@@ -104,8 +104,8 @@ pub fn find_payment_by_reference(
                     }
                 }
             }
-            
-            // Check received outputs for inbound transactions  
+
+            // Check received outputs for inbound transactions
             if tx.direction == TransactionDirection::Inbound {
                 for output_hash in &tx.received_output_hashes {
                     let tx_payref = generate_payment_reference(block_hash, output_hash);
@@ -116,22 +116,19 @@ pub fn find_payment_by_reference(
             }
         }
     }
-    
+
     None
 }
 
 /// Get all PayRefs for a specific transaction ID
-/// 
+///
 /// # Arguments
 /// * `transactions` - List of completed transactions to search
 /// * `tx_id` - Transaction ID to find PayRefs for
-/// 
+///
 /// # Returns
 /// Vector of PaymentReferences for the transaction, empty if not found or not mined
-pub fn get_transaction_payrefs(
-    transactions: &[CompletedTransaction], 
-    tx_id: TxId
-) -> Vec<PaymentReference> {
+pub fn get_transaction_payrefs(transactions: &[CompletedTransaction], tx_id: TxId) -> Vec<PaymentReference> {
     if let Some(tx) = transactions.iter().find(|t| t.tx_id == tx_id) {
         calculate_transaction_payrefs(tx)
     } else {
@@ -141,7 +138,7 @@ pub fn get_transaction_payrefs(
 
 /// Create payment details from a transaction and PayRef
 fn create_payment_details(
-    tx: &CompletedTransaction, 
+    tx: &CompletedTransaction,
     payref: PaymentReference,
     direction: PaymentDirection,
 ) -> PaymentDetails {
@@ -170,15 +167,16 @@ pub fn calculate_confirmations(mined_height: Option<u64>, current_tip_height: u6
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tari_common_types::{
         transaction::TransactionStatus,
         types::{BlockHash, HashOutput, PrivateKey, Signature},
     };
     use tari_core::transactions::{
-        transaction_components::{encrypted_data::PaymentId, Transaction},
         tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, Transaction},
     };
+
+    use super::*;
 
     fn create_test_transaction() -> CompletedTransaction {
         CompletedTransaction {
@@ -210,13 +208,10 @@ mod tests {
     fn test_calculate_transaction_payrefs_outbound() {
         let tx = create_test_transaction();
         let payrefs = calculate_transaction_payrefs(&tx);
-        
+
         assert_eq!(payrefs.len(), 1);
         // PayRef should be generated from block hash and output hash
-        let expected_payref = generate_payment_reference(
-            &BlockHash::from([1u8; 32]), 
-            &HashOutput::from([2u8; 32])
-        );
+        let expected_payref = generate_payment_reference(&BlockHash::from([1u8; 32]), &HashOutput::from([2u8; 32]));
         assert_eq!(payrefs[0], expected_payref);
     }
 
@@ -224,7 +219,7 @@ mod tests {
     fn test_calculate_transaction_payrefs_not_mined() {
         let mut tx = create_test_transaction();
         tx.mined_in_block = None;
-        
+
         let payrefs = calculate_transaction_payrefs(&tx);
         assert_eq!(payrefs.len(), 0);
     }
@@ -233,15 +228,12 @@ mod tests {
     fn test_find_payment_by_reference() {
         let tx = create_test_transaction();
         let transactions = vec![tx];
-        
-        let target_payref = generate_payment_reference(
-            &BlockHash::from([1u8; 32]), 
-            &HashOutput::from([2u8; 32])
-        );
-        
+
+        let target_payref = generate_payment_reference(&BlockHash::from([1u8; 32]), &HashOutput::from([2u8; 32]));
+
         let result = find_payment_by_reference(&transactions, target_payref);
         assert!(result.is_some());
-        
+
         let payment_details = result.unwrap();
         assert_eq!(payment_details.payment_reference, target_payref);
         assert_eq!(payment_details.amount, MicroMinotari::from(1000));

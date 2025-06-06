@@ -110,8 +110,7 @@ impl GreetingRpc for GreetingService {
         let (tx, rx) = mpsc::channel(10);
         let t = std::time::Instant::now();
         task::spawn(async move {
-            let item = std::iter::repeat_n(0u8, usize::try_from(item_size).unwrap())
-                .collect::<Vec<_>>();
+            let item = std::iter::repeat_n(0u8, usize::try_from(item_size).unwrap()).collect::<Vec<_>>();
             for (i, item) in iter::repeat_with(|| Ok(item.clone()))
                 .take(usize::try_from(num_items).unwrap())
                 .enumerate()

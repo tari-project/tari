@@ -29,7 +29,6 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
-
 use log::*;
 use minotari_app_grpc::{
     tari_rpc,
@@ -234,8 +233,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
-    type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
+    type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     #[allow(clippy::too_many_lines)]
     async fn get_network_difficulty(
@@ -2951,7 +2950,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
-        
+
         trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for SearchPaymentReferences: {} PayRefs",
@@ -2967,7 +2966,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 if payref_hex.len() != 64 || !payref_hex.chars().all(|c| c.is_ascii_hexdigit()) {
                     let error = obscure_error_if_true(
                         report_error_flag,
-                        Status::invalid_argument(format!("Invalid PayRef format: {}", payref_hex))
+                        Status::invalid_argument(format!("Invalid PayRef format: {}", payref_hex)),
                     );
                     if tx.send(Err(error)).await.is_err() {
                         break;
@@ -2985,13 +2984,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     _ => {
                         let error = obscure_error_if_true(
                             report_error_flag,
-                            Status::invalid_argument(format!("Invalid PayRef hex: {}", payref_hex))
+                            Status::invalid_argument(format!("Invalid PayRef hex: {}", payref_hex)),
                         );
                         if tx.send(Err(error)).await.is_err() {
                             break;
                         }
                         continue;
-                    }
+                    },
                 };
 
                 // Use efficient LMDB PayRef index lookup
@@ -2999,7 +2998,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Ok(Some(output_info)) => {
                         // Check if output is spent
                         let output_hash = output_info.output.hash();
-                        let (is_spent, spent_height, spent_block_hash) = match node_service.check_output_spent_status(output_hash).await {
+                        let (is_spent, spent_height, spent_block_hash) = match node_service
+                            .check_output_spent_status(output_hash)
+                            .await
+                        {
                             Ok(Some(input_info)) => (true, input_info.spent_height, input_info.header_hash.to_vec()),
                             Ok(None) => (false, 0, vec![]),
                             Err(_) => (false, 0, vec![]), // Default to not spent on error
@@ -3029,12 +3031,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref_hex, e);
                         let error = obscure_error_if_true(
                             report_error_flag,
-                            Status::internal(format!("PayRef lookup error: {}", e))
+                            Status::internal(format!("PayRef lookup error: {}", e)),
                         );
                         if tx.send(Err(error)).await.is_err() {
                             break;
                         }
-                    }
+                    },
                 }
             }
         });
@@ -3048,7 +3050,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::PublicPaymentInfoResponse>, Status> {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
-        
+
         trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetPublicPaymentInfo: PayRef {}",
@@ -3056,11 +3058,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         // Validate PayRef format
-        if request.payment_reference_hex.len() != 64 || 
-           !request.payment_reference_hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        if request.payment_reference_hex.len() != 64 ||
+            !request.payment_reference_hex.chars().all(|c| c.is_ascii_hexdigit())
+        {
             return Err(obscure_error_if_true(
                 report_error_flag,
-                Status::invalid_argument("Invalid PayRef format")
+                Status::invalid_argument("Invalid PayRef format"),
             ));
         }
 
@@ -3074,9 +3077,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             _ => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
-                    Status::invalid_argument("Invalid PayRef hex")
+                    Status::invalid_argument("Invalid PayRef hex"),
                 ));
-            }
+            },
         };
 
         let mut node_service = self.node_service.clone();
@@ -3087,24 +3090,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Err(e) => {
                 return Err(obscure_error_if_true(
                     report_error_flag,
-                    Status::internal(format!("Failed to get chain metadata: {}", e))
+                    Status::internal(format!("Failed to get chain metadata: {}", e)),
                 ));
-            }
+            },
         };
 
         // Use efficient LMDB PayRef index lookup
         match node_service.fetch_output_by_payref(&payref_bytes).await {
             Ok(Some(output_info)) => {
                 let confirmations = tip_height.saturating_sub(output_info.mined_height) + 1;
-                
+
                 // Check if output is spent
                 let output_hash = output_info.output.hash();
-                let (is_spent, spent_height, spending_transaction_hash) = match node_service.check_output_spent_status(output_hash).await {
+                let (is_spent, spent_height, spending_transaction_hash) = match node_service
+                    .check_output_spent_status(output_hash)
+                    .await
+                {
                     Ok(Some(input_info)) => (true, input_info.spent_height, input_info.input.output_hash().to_vec()),
                     Ok(None) => (false, 0, vec![]),
                     Err(_) => (false, 0, vec![]), // Default to not spent on error
                 };
-                
+
                 Ok(Response::new(tari_rpc::PublicPaymentInfoResponse {
                     status: tari_rpc::PaymentReferenceStatus::Found as i32,
                     block_height: output_info.mined_height,
@@ -3133,8 +3139,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
             Err(e) => Err(obscure_error_if_true(
                 report_error_flag,
-                Status::internal(format!("PayRef lookup error: {}", e))
-            ))
+                Status::internal(format!("PayRef lookup error: {}", e)),
+            )),
         }
     }
 }
@@ -3143,7 +3149,6 @@ enum BlockGroupType {
     BlockFees,
     BlockSize,
 }
-
 
 async fn get_block_group(
     mut handler: LocalNodeCommsInterface,

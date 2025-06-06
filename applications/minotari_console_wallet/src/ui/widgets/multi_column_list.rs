@@ -31,8 +31,7 @@ use tui::{
 
 /// A Tui-rs list with columns
 pub struct MultiColumnList<'a, T>
-where
-    T: Into<Vec<ListItem<'a>>>,
+where T: Into<Vec<ListItem<'a>>>
 {
     columns: Vec<ListColumn<'a, T>>,
     highlight_style: Option<Style>,
@@ -42,8 +41,7 @@ where
 }
 
 impl<'a, T> MultiColumnList<'a, T>
-where
-    T: Into<Vec<ListItem<'a>>>,
+where T: Into<Vec<ListItem<'a>>>
 {
     pub fn new() -> Self {
         Self {
@@ -143,8 +141,7 @@ where
     }
 }
 struct ListColumn<'a, T>
-where
-    T: Into<Vec<ListItem<'a>>>,
+where T: Into<Vec<ListItem<'a>>>
 {
     pub heading: Option<&'a str>,
     pub width: Option<u16>,

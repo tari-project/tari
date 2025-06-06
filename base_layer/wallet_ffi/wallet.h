@@ -4260,7 +4260,8 @@ struct ByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
  * note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
  *
  * # Safety
- * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to prevent a memory leak
+ * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+ * prevent a memory leak
  */
 TariCompletedTransaction *wallet_get_payment_by_reference(struct TariWallet *wallet,
                                                           const uint8_t *payref,
@@ -4340,7 +4341,8 @@ struct TariOutputWithPayRef *outputs_with_payrefs_get_at(struct TariOutputsWithP
  * note that ptr::null_mut() is returned if wallet is null or an error occurs
  *
  * # Safety
- * The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to prevent a memory leak
+ * The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+ * prevent a memory leak
  */
 struct TariCompletedTransactions *wallet_get_transactions_with_payrefs(struct TariWallet *wallet,
                                                                        unsigned long long limit,

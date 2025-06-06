@@ -37,7 +37,7 @@ use tari_script::{ExecutionStack, TariScript};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    payment_reference::{PaymentDetails, PaymentDirection, PayRefStatus},
+    payment_reference::{PayRefStatus, PaymentDetails, PaymentDirection},
     storage::{OutputSource, OutputStatus},
 };
 
@@ -93,7 +93,9 @@ impl DbWalletOutput {
     /// Generate a Payment Reference (PayRef) for this output if it has been mined
     /// PayRef = Blake2b_256(block_hash || output_hash)
     pub fn generate_payment_reference(&self) -> Option<PaymentReference> {
-        self.mined_in_block.as_ref().map(|block_hash| generate_payment_reference(block_hash, &self.hash))
+        self.mined_in_block
+            .as_ref()
+            .map(|block_hash| generate_payment_reference(block_hash, &self.hash))
     }
 
     /// Get the PayRef status based on confirmation requirements
@@ -108,13 +110,13 @@ impl DbWalletOutput {
             } else {
                 (current_tip_height.saturating_sub(mined_height) + 1, false)
             };
-            
+
             log::debug!(
                 target: "wallet::output_manager_service::models",
                 "payref_debug: confirmation calc - current_tip: {}, mined_height: {}, confirmations: {}, required: {}, unsynced_mode: {}",
                 current_tip_height, mined_height, confirmations, required_confirmations, is_unsynced_mode
             );
-            
+
             if confirmations >= required_confirmations {
                 if let Some(payref) = self.generate_payment_reference() {
                     PayRefStatus::Available(payref, confirmations)

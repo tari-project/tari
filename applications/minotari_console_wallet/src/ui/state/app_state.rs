@@ -40,7 +40,8 @@ use minotari_wallet::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig, WalletSqlite,
+    WalletConfig,
+    WalletSqlite,
 };
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
@@ -61,7 +62,9 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         encrypted_data::{PaymentId, TxType},
-        OutputFeatures, TemplateType, TransactionError,
+        OutputFeatures,
+        TemplateType,
+        TransactionError,
     },
     weight::TransactionWeight,
 };
@@ -211,8 +214,8 @@ impl AppState {
     }
 
     pub async fn check_connectivity(&mut self) {
-        if self.get_custom_base_node().is_none()
-            && self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
+        if self.get_custom_base_node().is_none() &&
+            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
         {
             let current = self.get_selected_base_node();
             let list = self.get_base_node_list().clone();
@@ -809,20 +812,18 @@ impl AppStateInner {
 
         // Use payref_calculator to efficiently generate PayRefs from transaction data
         use minotari_wallet::transaction_service::payref_calculator;
-        
+
         for tx in &completed_transactions {
             let payrefs = payref_calculator::calculate_transaction_payrefs(tx);
-            
+
             if !payrefs.is_empty() {
-                let payref_hexes: Vec<String> = payrefs.iter()
-                    .map(|pr| tari_utilities::hex::Hex::to_hex(pr))
-                    .collect();
-                
+                let payref_hexes: Vec<String> = payrefs.iter().map(|pr| tari_utilities::hex::Hex::to_hex(pr)).collect();
+
                 payrefs_by_tx_id.insert(tx.tx_id, payref_hexes.clone());
-                
+
                 debug!(target: LOG_TARGET, "payref_debug: Generated {} PayRefs for tx {}: {:?}", 
                        payref_hexes.len(), tx.tx_id, payref_hexes);
-                
+
                 // Calculate status based on transaction confirmations
                 let status_text = if let Some(confirmations) = tx.confirmations {
                     format!("Available ({} confs)", confirmations)
@@ -831,7 +832,7 @@ impl AppStateInner {
                 } else {
                     "Not mined".to_string()
                 };
-                
+
                 payref_status_by_tx_id.insert(tx.tx_id, status_text);
             } else if tx.mined_in_block.is_none() {
                 payref_status_by_tx_id.insert(tx.tx_id, "Not mined".to_string());
@@ -1403,9 +1404,9 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. }
-        | PaymentId::AddressAndData { tx_type, .. }
-        | PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
+        } else if let PaymentId::Open { tx_type, .. } |
+        PaymentId::AddressAndData { tx_type, .. } |
+        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
         {
             tx_type == TxType::Burn
         } else {

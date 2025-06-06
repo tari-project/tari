@@ -38,7 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{TemplateRegistrationEntry, OutputMinedInfo, InputMinedInfo},
+    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
