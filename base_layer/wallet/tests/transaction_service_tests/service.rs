@@ -328,6 +328,7 @@ pub struct TransactionServiceNoCommsInterface {
     output_manager_service_event_publisher: broadcast::Sender<Arc<OutputManagerEvent>>,
     ts_db: TransactionServiceSqliteDatabase,
     oms_db: OutputManagerDatabase<OutputManagerSqliteDatabase>,
+    wallet_database: WalletDatabase<WalletSqliteDatabase>,
 }
 
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
@@ -493,6 +494,7 @@ async fn setup_transaction_service_no_comms(
         output_manager_service_event_publisher,
         ts_db: ts_service_db,
         oms_db,
+        wallet_database: wallet_db,
     }
 }
 
@@ -5959,7 +5961,7 @@ async fn test_update_faux_tx_on_oms_validation() {
         .await
         .unwrap();
 
-    for (tx_id, uo) in [(tx_id_1, uo_1), (tx_id_2, uo_2), (tx_id_3, uo_3)] {
+    for (tx_id, uo, height) in [(tx_id_1, uo_1, 10), (tx_id_2, uo_2, 10), (tx_id_3, uo_3, 5)] {
         alice_ts_interface
             .output_manager_service_handle
             .add_output_with_tx_id(tx_id, uo.clone(), None)
@@ -5973,7 +5975,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             .oms_db
             .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
                 commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
-                mined_height: 5,
+                mined_height: height,
                 mined_in_block: FixedHash::zero(),
                 confirmed: false,
                 mined_timestamp: 0,
@@ -6010,6 +6012,12 @@ async fn test_update_faux_tx_on_oms_validation() {
             }
         }
     }
+    // let set the tip height so that the txs are considered mined
+    let chain_metadata = ChainMetadata::new(10, FixedHash::zero(), 0, 0, 100.into(), 0).unwrap();
+    alice_ts_interface
+        .wallet_database
+        .set_chain_metadata(chain_metadata)
+        .unwrap();
 
     // This will change the status of the imported transaction
     alice_ts_interface
@@ -6141,12 +6149,24 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             .add_output_with_tx_id(tx_id, uo.clone(), None)
             .await
             .unwrap();
-        if uo.value != MicroMinotari::from(30000) {
+        if uo.value == MicroMinotari::from(10000) {
             alice_ts_interface
                 .oms_db
                 .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
                     commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
                     mined_height: 5,
+                    mined_in_block: FixedHash::zero(),
+                    confirmed: false,
+                    mined_timestamp: 0,
+                }])
+                .unwrap();
+        }
+        if uo.value == MicroMinotari::from(20000) {
+            alice_ts_interface
+                .oms_db
+                .set_received_outputs_mined_height_and_statuses(vec![ReceivedOutputInfoForBatch {
+                    commitment: uo.commitment(&alice_ts_interface.key_manager_handle).await.unwrap(),
+                    mined_height: 10,
                     mined_in_block: FixedHash::zero(),
                     confirmed: false,
                     mined_timestamp: 0,
@@ -6184,6 +6204,12 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             }
         }
     }
+    // let set the tip height so that the txs are considered mined
+    let chain_metadata = ChainMetadata::new(10, FixedHash::zero(), 0, 0, 100.into(), 0).unwrap();
+    alice_ts_interface
+        .wallet_database
+        .set_chain_metadata(chain_metadata)
+        .unwrap();
 
     // This will change the status of the imported transaction
     alice_ts_interface
