@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::{Arc, RwLock},
 };
@@ -1024,7 +1025,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        let mut one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
+        let mut results = HashMap::new();
+
+        let one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
             TransactionStatus::OneSidedUnconfirmed,
             false,
             &mut conn,
@@ -1034,7 +1037,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
+        for tx in one_sided {
+            results.insert(tx.tx_id, tx);
+        }
+
+        let coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
             TransactionStatus::CoinbaseUnconfirmed,
             false,
             &mut conn,
@@ -1044,16 +1051,21 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        coinbases.append(&mut one_sided);
+        for tx in coinbases {
+            results.insert(tx.tx_id, tx);
+        }
 
-        let mut not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
+        let not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
                 CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        coinbases.append(&mut not_validated);
-        Ok(coinbases)
+        for tx in not_validated {
+            results.insert(tx.tx_id, tx);
+        }
+
+        Ok(results.into_values().collect())
     }
 
     fn find_completed_transactions_filter_addresses(
@@ -1861,8 +1873,11 @@ impl CompletedTransactionSql {
                     .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
                     .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
             )
-            .filter(completed_transactions::mined_height.is_null())
-            .filter(completed_transactions::mined_height.eq::<Option<i64>>(None))
+            .filter(
+                completed_transactions::mined_height
+                    .is_null()
+                    .or(completed_transactions::mined_height.eq::<Option<i64>>(None)),
+            )
             .load::<CompletedTransactionSql>(conn)?)
     }
 
