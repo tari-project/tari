@@ -27,7 +27,7 @@ use std::{
 
 // Helper functions for FixedHash <-> Vec<u8> conversion
 fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
-    hashes.iter().flat_map(|h| h.as_slice().iter().cloned()).collect()
+    hashes.iter().flat_map(|h| h.as_slice().iter().copied()).collect()
 }
 
 fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {

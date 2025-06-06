@@ -123,7 +123,7 @@ use minotari_wallet::{
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, Signature},
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
@@ -222,112 +222,6 @@ impl WalletGrpcServer {
             .unwrap_or_default();
         Ok(self.rules.consensus_constants(height))
     }
-
-    /// Calculate PayRefs for a transaction's outputs using existing wallet output data
-    async fn calculate_payment_references_for_transaction(
-        &self,
-        output_commitments: &[Vec<u8>],
-        mined_height: u64,
-    ) -> Vec<Vec<u8>> {
-        calculate_payment_references_impl(self.get_output_manager_service(), output_commitments, mined_height).await
-    }
-}
-
-/// Standalone function to calculate payment references for transactions without requiring &self
-async fn calculate_payment_references_for_transaction_standalone(
-    output_manager: &OutputManagerHandle,
-    output_commitments: &[Vec<u8>],
-    mined_height: u64,
-) -> Vec<Vec<u8>> {
-    calculate_payment_references_impl(output_manager.clone(), output_commitments, mined_height).await
-}
-
-/// Private helper function that contains the core payment reference calculation logic
-async fn calculate_payment_references_impl(
-    mut output_manager: OutputManagerHandle,
-    output_commitments: &[Vec<u8>],
-    mined_height: u64,
-) -> Vec<Vec<u8>> {
-    let mut payment_refs = Vec::new();
-
-    // Note: Don't skip based on transaction mined_height for restored wallets
-    // Individual outputs may have mining data even if transaction doesn't
-    debug!(target: LOG_TARGET, "PayRef calculation: Processing {} commitments (tx mined_height={})", output_commitments.len(), mined_height);
-
-    if output_commitments.is_empty() {
-        return payment_refs;
-    }
-
-    // Convert commitment bytes to CompressedCommitment for database query
-    let mut commitments = Vec::new();
-    for commitment_bytes in output_commitments {
-        match CompressedCommitment::from_canonical_bytes(commitment_bytes) {
-            Ok(commitment) => commitments.push(commitment),
-            Err(e) => {
-                warn!(target: LOG_TARGET, "PayRef calculation: Invalid commitment bytes: {}", e);
-                payment_refs.push(vec![]);
-                continue;
-            },
-        }
-    }
-
-    // Use batch query instead of fetching all outputs - this is the key optimization
-    let matched_outputs = match output_manager.get_outputs_by_commitments(commitments).await {
-        Ok(outputs) => outputs,
-        Err(e) => {
-            warn!(target: LOG_TARGET, "Failed to fetch outputs by commitments for PayRef calculation: {}", e);
-            // Return empty PayRefs for all commitments
-            return output_commitments.iter().map(|_| vec![]).collect();
-        },
-    };
-
-    debug!(target: LOG_TARGET, "PayRef calculation: Found {} outputs from batch query", matched_outputs.len());
-
-    // Create a HashMap for O(1) lookup instead of O(n) search
-    use std::collections::HashMap;
-    let output_map: HashMap<Vec<u8>, &minotari_wallet::output_manager_service::storage::models::DbWalletOutput> =
-        matched_outputs
-            .iter()
-            .map(|output| (output.commitment.as_bytes().to_vec(), output))
-            .collect();
-
-    // Process each commitment in order
-    for (i, commitment_bytes) in output_commitments.iter().enumerate() {
-        if let Some(db_output) = output_map.get(commitment_bytes) {
-            // Check if output has mining data (mined_height and mined_in_block)
-            if db_output.mined_height.is_some() && db_output.mined_in_block.is_some() {
-                // Use existing PayRef generation method - it will check the output's mining data
-                if let Some(payref) = db_output.generate_payment_reference() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "PayRef calculation: Generated PayRef for output {} at height {}: {}",
-                        i,
-                        db_output.mined_height.unwrap_or(0),
-                        payref.to_hex()
-                    );
-                    payment_refs.push(payref.to_vec());
-                } else {
-                    debug!(target: LOG_TARGET, "PayRef calculation: No PayRef generated for output {} (PayRef generation failed)", i);
-                    payment_refs.push(vec![]);
-                }
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "PayRef calculation: Output {} not mined (mined_height: {:?}, mined_in_block: {:?})",
-                    i,
-                    db_output.mined_height,
-                    db_output.mined_in_block.is_some()
-                );
-                payment_refs.push(vec![]);
-            }
-        } else {
-            debug!(target: LOG_TARGET, "PayRef calculation: Output {} commitment not found in wallet", i);
-            payment_refs.push(vec![]);
-        }
-    }
-
-    debug!(target: LOG_TARGET, "PayRef calculation: Completed, returning {} PayRefs", payment_refs.len());
-    payment_refs
 }
 
 #[tonic::async_trait]
@@ -739,7 +633,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             wallet_tx,
                             &wallet_address,
                             &self.wallet.key_manager_service,
-                            self,
                         )
                         .await;
                         TransferResult {
@@ -817,7 +710,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             wallet_tx,
                             &wallet_address,
                             &self.wallet.key_manager_service,
-                            self,
                         )
                         .await;
                         TransferResult {
@@ -965,7 +857,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         wallet_tx,
                         &wallet_address,
                         &self.wallet.key_manager_service,
-                        self,
                     )
                     .await;
                     results.push(TransferResult {
@@ -1079,7 +970,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx,
                         &wallet_address,
                         &self.wallet.key_manager_service,
-                        self,
                     )
                     .await
                 },
@@ -1237,31 +1127,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .collect();
 
-                // Calculate PayRef for this transaction using existing helper
-                let payment_refs = calculate_payment_references_for_transaction_standalone(
-                    &output_manager,
-                    &output_commitments,
-                    txn.mined_height.unwrap_or(0),
-                )
-                .await;
-
-                let payment_reference = payment_refs
-                    .first()
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect::<String>();
-
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
                         source_address: txn.source_address.to_vec(),
                         dest_address: txn.destination_address.to_vec(),
-                        status: TransactionStatus::from(txn.status.clone()) as i32,
+                        status: TransactionStatus::from(txn.status) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
-                        direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                        direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
                         timestamp: txn.timestamp.timestamp() as u64,
                         excess_sig: txn
@@ -1275,7 +1149,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
-                        payment_references: vec![payment_reference],
+                        payment_references_sent: txn
+                            .calculate_sent_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_received: txn
+                            .calculate_received_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_change: txn
+                            .calculate_change_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1374,11 +1262,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 })
                 .collect();
 
-            // Calculate PayRefs for all outputs in this transaction (if mined)
-            let payment_refs = self
-                .calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0))
-                .await;
-
             transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
                 source_address: txn.source_address.to_vec(),
@@ -1400,7 +1283,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
+                payment_references_sent: txn
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: txn
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: txn
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
             });
         }
 
@@ -1460,11 +1357,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 })
                 .collect();
 
-            // Calculate PayRefs for all outputs in this transaction (if mined)
-            let payment_refs = self
-                .calculate_payment_references_for_transaction(&output_commitments, txn.mined_height.unwrap_or(0))
-                .await;
-
             result_transactions.push(TransactionInfo {
                 tx_id: txn.tx_id.into(),
                 source_address: txn.source_address.to_vec(),
@@ -1486,7 +1378,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
-                payment_references: payment_refs.iter().map(|pr| pr.to_hex()).collect(),
+                payment_references_sent: txn
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: txn
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: txn
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
             });
         }
 
@@ -1838,6 +1744,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     mined_in_block_height: payment_details.block_height,
                     output_commitments: vec![],
                     input_commitments: vec![],
+                    payment_references_sent: txn
+                        .calculate_sent_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_received: txn
+                        .calculate_received_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_change: txn
+                        .calculate_change_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
                     payment_references: vec![payment_details.payment_reference.to_hex()],
                 };
 
@@ -2189,7 +2110,6 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
     tx: models::WalletTransaction,
     wallet_address: &TariAddress,
     key_manager: &KM,
-    wallet_grpc_server: &WalletGrpcServer,
 ) -> TransactionInfo {
     use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
@@ -2214,7 +2134,9 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
-                payment_references: vec![],
+                payment_references_sent: vec![],
+                payment_references_received: vec![],
+                payment_references_change: vec![],
             }
         },
         PendingOutbound(tx) => {
@@ -2248,7 +2170,9 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
-                payment_references: vec![],
+                payment_references_sent: vec![],
+                payment_references_received: vec![],
+                payment_references_change: vec![],
             }
         },
         Completed(tx) => {
@@ -2279,7 +2203,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 status: TransactionStatus::from(tx.status) as i32,
                 amount: tx.amount.into(),
                 is_cancelled: tx.cancelled.is_some(),
-                direction: TransactionDirection::from(tx.direction) as i32,
+                direction: TransactionDirection::from(tx.direction.clone()) as i32,
                 fee: tx.fee.into(),
                 timestamp: tx.timestamp.timestamp() as u64,
                 excess_sig: tx
@@ -2292,21 +2216,21 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments: output_commitments.clone(),
                 input_commitments,
-                payment_references: {
-                    // Calculate all payment references for completed transactions
-                    if tx.mined_height.is_some() && !output_commitments.is_empty() {
-                        let payment_refs = wallet_grpc_server
-                            .calculate_payment_references_for_transaction(
-                                &output_commitments,
-                                tx.mined_height.unwrap_or(0),
-                            )
-                            .await;
-
-                        payment_refs.iter().map(|pr| to_hex(pr)).collect()
-                    } else {
-                        vec![]
-                    }
-                },
+                payment_references_sent: tx
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: tx
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: tx
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
             }
         },
     }

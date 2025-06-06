@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    fmt::{Formatter, Write},
+    sync::Arc,
+};
 
 use tari_common_types::{
     tari_address::TariAddress,
@@ -56,7 +61,6 @@ use crate::output_manager_service::{
     storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
-
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
@@ -307,7 +311,10 @@ impl fmt::Display for OutputManagerRequest {
             FindPaymentByReference(payref) => write!(
                 f,
                 "FindPaymentByReference({})",
-                payref.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+                payref.iter().fold(String::new(), |mut output, b| {
+                    let _ = write!(output, "{b:02x}");
+                    output
+                })
             ),
             GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
             GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),

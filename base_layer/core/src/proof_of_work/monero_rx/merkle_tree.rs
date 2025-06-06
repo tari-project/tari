@@ -333,7 +333,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 
 #[cfg(test)]
 mod test {
-    use std::{iter, str::FromStr};
+    use std::str::FromStr;
 
     use monero::{
         blockdata::block::BlockHeader,

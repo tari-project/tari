@@ -28,6 +28,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
+    payment_reference::{generate_payment_reference, PaymentReference},
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, FixedHash, PrivateKey, Signature},
@@ -261,6 +262,39 @@ impl CompletedTransaction {
             received_output_hashes,
             change_output_hashes,
         })
+    }
+
+    pub fn calculate_received_payment_references(&self) -> Vec<PaymentReference> {
+        if let Some(block_hash) = self.mined_in_block.as_ref() {
+            return self
+                .received_output_hashes
+                .iter()
+                .map(|hash| generate_payment_reference(block_hash, hash))
+                .collect();
+        }
+        vec![]
+    }
+
+    pub fn calculate_sent_payment_references(&self) -> Vec<PaymentReference> {
+        if let Some(block_hash) = self.mined_in_block.as_ref() {
+            return self
+                .sent_output_hashes
+                .iter()
+                .map(|hash| generate_payment_reference(block_hash, hash))
+                .collect();
+        }
+        vec![]
+    }
+
+    pub fn calculate_change_payment_references(&self) -> Vec<PaymentReference> {
+        if let Some(block_hash) = self.mined_in_block.as_ref() {
+            return self
+                .change_output_hashes
+                .iter()
+                .map(|hash| generate_payment_reference(block_hash, hash))
+                .collect();
+        }
+        vec![]
     }
 }
 

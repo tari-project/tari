@@ -3930,35 +3930,6 @@ where
         Ok(())
     }
 
-    /// Get PayRefs for a specific transaction with verification
-    fn get_transaction_payrefs(&self, tx_id: TxId) -> Result<Vec<FixedHash>, TransactionServiceError> {
-        let completed_transaction = self.db.get_completed_transaction(tx_id)?;
-
-        // Verify transaction is mined and has sufficient confirmations
-        self.verify_transaction_mined_and_confirmed(&completed_transaction)?;
-
-        // Get the block hash where the transaction was mined
-        let block_hash = completed_transaction.mined_in_block.ok_or_else(|| {
-            TransactionServiceError::InvalidMessageError("Transaction must be mined to generate PayRefs".to_string())
-        })?;
-
-        let mut payrefs = Vec::new();
-
-        // Generate proper PayRefs for sent output hashes using Blake2b_256(block_hash || output_hash)
-        for output_hash in &completed_transaction.sent_output_hashes {
-            let payref = generate_payment_reference(&block_hash, output_hash);
-            payrefs.push(payref);
-        }
-
-        // Generate proper PayRefs for received output hashes (for incoming transactions)
-        for output_hash in &completed_transaction.received_output_hashes {
-            let payref = generate_payment_reference(&block_hash, output_hash);
-            payrefs.push(payref);
-        }
-
-        Ok(payrefs)
-    }
-
     /// Verify that a transaction is mined and has sufficient confirmations
     fn verify_transaction_mined_and_confirmed(
         &self,
@@ -3994,8 +3965,6 @@ where
 
     /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
-        let transactions = self.db.get_completed_transactions(None, None, None)?;
-
         for transaction in transactions {
             // Skip transactions that are not mined (no block hash available)
             let block_hash = match transaction.mined_in_block {
@@ -4170,8 +4139,8 @@ where
         transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         // Apply pagination
-        let offset = offset.unwrap_or(0) as usize;
-        let limit = limit.map(|l| l as usize);
+        let offset = usize::try_from(offset.unwrap_or(0)).expect("we dont support non 64-bit systems");
+        let limit = limit.map(|l| usize::try_from(l).expect("we dont support non 64-bit systems"));
 
         let transactions: Vec<CompletedTransaction> = if let Some(limit) = limit {
             transactions.into_iter().skip(offset).take(limit).collect()
@@ -4181,7 +4150,7 @@ where
 
         // Convert to TransactionWithPayRefs
         let mut result = Vec::new();
-        for tx in transactions.into_iter() {
+        for tx in transactions {
             // Skip transactions that are not mined (no block hash available for PayRef generation)
             let block_hash = match tx.mined_in_block {
                 Some(hash) => hash,

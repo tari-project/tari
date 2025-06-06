@@ -77,49 +77,6 @@ pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentRe
     payrefs
 }
 
-/// Find payment by PayRef using stored transaction hashes
-///
-/// This function searches through completed transactions using the pre-computed
-/// output hashes for efficient PayRef matching.
-///
-/// # Arguments
-/// * `transactions` - List of completed transactions to search
-/// * `payref` - The PaymentReference to find
-///
-/// # Returns
-/// PaymentDetails if found, None otherwise
-pub fn find_payment_by_reference(
-    transactions: &[CompletedTransaction],
-    payref: PaymentReference,
-) -> Option<PaymentDetails> {
-    for tx in transactions {
-        // Only check mined transactions
-        if let Some(block_hash) = tx.mined_in_block.as_ref() {
-            // Check sent outputs for outbound transactions
-            if tx.direction == TransactionDirection::Outbound {
-                for output_hash in &tx.sent_output_hashes {
-                    let tx_payref = generate_payment_reference(block_hash, output_hash);
-                    if tx_payref == payref {
-                        return Some(create_payment_details(tx, payref, PaymentDirection::Sent));
-                    }
-                }
-            }
-
-            // Check received outputs for inbound transactions
-            if tx.direction == TransactionDirection::Inbound {
-                for output_hash in &tx.received_output_hashes {
-                    let tx_payref = generate_payment_reference(block_hash, output_hash);
-                    if tx_payref == payref {
-                        return Some(create_payment_details(tx, payref, PaymentDirection::Received));
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
 /// Get all PayRefs for a specific transaction ID
 ///
 /// # Arguments

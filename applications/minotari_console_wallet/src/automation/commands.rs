@@ -2731,6 +2731,22 @@ pub async fn command_runner(
                                 if let Some(timestamp) = completed_tx.mined_timestamp {
                                     println!("Mined timestamp: {}", timestamp);
                                 }
+                                if completed_tx.mined_in_block.is_some() {
+                                    println!("\nReceived PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_received_payment_references().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nSent PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_sent_payment_references().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nChange PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_change_payment_references().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                } else {
+                                    println!("Payrefs: Transaction not mined yet.");
+                                }
                                 "Completed"
                             },
                             minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingInbound(_) => {
@@ -2742,29 +2758,6 @@ pub async fn command_runner(
                                 "PendingOutbound"
                             },
                         };
-
-                        // Get PayRefs for this specific transaction using our new method
-                        match transaction_service
-                            .get_transaction_payrefs(args.transaction_id.into())
-                            .await
-                        {
-                            Ok(payrefs) => {
-                                if payrefs.is_empty() {
-                                    println!("\nNo PayRefs found for this transaction.");
-                                    println!("This may happen if:");
-                                    println!("- Transaction has not been mined yet");
-                                    println!("- Transaction has no outputs that generate PayRefs");
-                                } else {
-                                    println!("\nPayRefs for this transaction:");
-                                    println!("{}", "=".repeat(80));
-                                    for (i, payref) in payrefs.iter().enumerate() {
-                                        println!("{}. PayRef: {}", i + 1, payref.to_hex());
-                                    }
-                                    println!("\nTotal PayRefs: {}", payrefs.len());
-                                }
-                            },
-                            Err(e) => eprintln!("Error getting PayRefs for transaction: {}", e),
-                        }
                     },
                     Ok(None) => {
                         println!("Transaction ID {} not found", args.transaction_id);
@@ -2844,22 +2837,12 @@ pub async fn command_runner(
                                 println!("   PayRefs ({}):", tx_with_refs.outputs_with_payrefs.len());
                                 for (j, output_with_payref) in tx_with_refs.outputs_with_payrefs.iter().enumerate() {
                                     if let Some(payref) = &output_with_payref.payment_reference {
-                                        let output_type_str = match output_with_payref.output_type {
-                                            minotari_wallet::transaction_service::handle::OutputType::Sent => "Sent",
-                                            minotari_wallet::transaction_service::handle::OutputType::Received => {
-                                                "Received"
-                                            },
-                                            minotari_wallet::transaction_service::handle::OutputType::Change => {
-                                                "Change"
-                                            },
-                                        };
-
                                         if args.show_private_info {
                                             println!(
                                                 "     {}. {} ({}) - {}",
                                                 j + 1,
                                                 payref.to_hex(),
-                                                output_type_str,
+                                                output_with_payref.output_type,
                                                 output_with_payref.amount
                                             );
                                         } else {
@@ -2870,7 +2853,7 @@ pub async fn command_runner(
                                                     j + 1,
                                                     &hex_payref[..8],
                                                     &hex_payref[56..],
-                                                    output_type_str,
+                                                    output_with_payref.output_type,
                                                     output_with_payref.amount
                                                 );
                                             } else {
@@ -2881,7 +2864,7 @@ pub async fn command_runner(
                                                     j + 1,
                                                     &hex_payref[..8.min(hex_payref.len())],
                                                     &hex_payref[end_start..],
-                                                    output_type_str,
+                                                    output_with_payref.output_type,
                                                     output_with_payref.amount
                                                 );
                                             }
@@ -2897,25 +2880,6 @@ pub async fn command_runner(
                     },
                     Err(e) => eprintln!("ListPayRefs error! {}", e),
                 }
-            },
-            PayRefConfig(args) => {
-                println!("PayRef Configuration:");
-                if let Some(confirmations) = args.required_confirmations {
-                    println!("Required confirmations: {}", confirmations);
-                }
-                if let Some(format) = &args.display_format {
-                    println!("Display format: {}", format);
-                }
-                if let Some(auto_copy) = args.auto_copy_enabled {
-                    println!("Auto copy enabled: {}", auto_copy);
-                }
-                if let Some(show_progress) = args.show_pending_progress {
-                    println!("Show pending progress: {}", show_progress);
-                }
-                if let Some(refresh_interval) = args.refresh_interval_seconds {
-                    println!("Refresh interval: {} seconds", refresh_interval);
-                }
-                println!("Note: Configuration changes are not persisted in this implementation.");
             },
         }
     }

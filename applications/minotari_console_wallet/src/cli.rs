@@ -177,7 +177,6 @@ pub enum CliCommands {
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListPayRefs(ListPayRefsArgs),
-    PayRefConfig(PayRefConfigArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -495,18 +494,4 @@ pub struct ListPayRefsArgs {
     pub status_filter: Option<String>, // "available", "pending", "all"
     #[clap(long)]
     pub show_private_info: bool,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct PayRefConfigArgs {
-    #[clap(long)]
-    pub required_confirmations: Option<u64>,
-    #[clap(long)]
-    pub display_format: Option<String>, // "hex", "base58"
-    #[clap(long)]
-    pub auto_copy_enabled: Option<bool>,
-    #[clap(long)]
-    pub show_pending_progress: Option<bool>,
-    #[clap(long)]
-    pub refresh_interval_seconds: Option<u64>,
 }

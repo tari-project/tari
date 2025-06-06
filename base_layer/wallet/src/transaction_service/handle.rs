@@ -33,6 +33,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    wallet_types::WalletType,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -208,8 +209,6 @@ pub enum TransactionServiceRequest {
     GetFeePerGramStatsPerBlock {
         count: usize,
     },
-    /// Get all PayRefs for a specific transaction
-    GetTransactionPayRefs(TxId),
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
     GetPaymentByReference(FixedHash),
     /// Get all transactions with their PayRefs (for listing/filtering)
@@ -646,6 +645,16 @@ pub enum OutputType {
     Sent,
     Received,
     Change,
+}
+
+impl Display for OutputType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            OutputType::Sent => write!(f, "Sent"),
+            OutputType::Received => write!(f, "Received"),
+            OutputType::Change => write!(f, "Change"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1312,18 +1321,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::FeePerGramStatsPerBlock(resp) => Ok(resp),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    /// Get all PayRefs for a specific transaction
-    pub async fn get_transaction_payrefs(&mut self, tx_id: TxId) -> Result<Vec<FixedHash>, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::GetTransactionPayRefs(tx_id))
-            .await??
-        {
-            TransactionServiceResponse::TransactionPayRefs(payrefs) => Ok(payrefs),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

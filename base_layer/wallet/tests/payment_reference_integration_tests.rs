@@ -385,7 +385,7 @@ async fn test_payref_performance_with_many_outputs() {
         .await
         .unwrap();
 
-        let block_hash = BlockHash::from([(i % 256) as u8; 32]); // Varied block hashes
+        let block_hash = BlockHash::from([u8::try_from(i % 256).unwrap(); 32]); // Varied block hashes
         let block_height = 100 + i;
 
         let output_commitment = output.commitment(&key_manager).await.unwrap();
@@ -417,7 +417,7 @@ async fn test_payref_performance_with_many_outputs() {
 
     // Test PayRef lookup performance
     let lookup_start = std::time::Instant::now();
-    let test_payref = generated_payrefs[num_outputs as usize / 2]; // Middle PayRef
+    let test_payref = generated_payrefs[usize::try_from(num_outputs).unwrap() / 2]; // Middle PayRef
 
     let mut found = false;
     for output in &all_outputs {
@@ -431,7 +431,7 @@ async fn test_payref_performance_with_many_outputs() {
     println!("PayRef lookup took {:?}", lookup_time);
 
     assert!(found, "Should find the test PayRef");
-    assert_eq!(generated_payrefs.len(), num_outputs as usize);
+    assert_eq!(generated_payrefs.len(), usize::try_from(num_outputs).unwrap());
 
     // Verify all PayRefs are unique
     let mut unique_payrefs = std::collections::HashSet::new();
