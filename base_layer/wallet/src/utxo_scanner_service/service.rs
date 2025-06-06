@@ -25,7 +25,11 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_key_manager::{key_manager, TransactionKeyManagerInterface}, CryptoFactories};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_key_manager::{key_manager, TransactionKeyManagerInterface},
+    CryptoFactories,
+};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -61,10 +65,11 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterfac
     pub(crate) base_node_service: BaseNodeServiceHandle,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
-    pub key_manager: TKeyManagerInterface
+    pub key_manager: TKeyManagerInterface,
 }
 
-impl<TBackend, TWalletConnectivity, TKeyManagerInterface : Clone> UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface: Clone>
+    UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -90,11 +95,14 @@ where
             base_node_service,
             one_sided_message_watch,
             recovery_message_watch,
-            key_manager
+            key_manager,
         }
     }
 
-    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
+    fn create_task(
+        &self,
+        shutdown_signal: ShutdownSignal,
+    ) -> UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             event_sender: self.event_sender.clone(),
@@ -103,7 +111,7 @@ where
             num_retries: 1,
             mode: self.mode.clone(),
             shutdown_signal,
-            birthday_offset: self.resources.birthday_offset,    
+            birthday_offset: self.resources.birthday_offset,
             key_manager: self.key_manager.clone(),
         }
     }
@@ -198,7 +206,7 @@ pub(crate) struct UtxoScannerResources<TBackend, TWalletConnectivity> {
     pub recovery_message: String,
     pub one_sided_payment_message: String,
     pub birthday_offset: u16,
-    pub http_client_url: Url
+    pub http_client_url: Url,
 }
 
 #[derive(Debug, Clone)]

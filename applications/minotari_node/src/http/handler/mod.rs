@@ -6,9 +6,8 @@ use serde::{Deserialize, Serialize};
 use tari_core::base_node::rpc::{query_service, query_service::Error};
 use utoipa::ToSchema;
 
-
-pub mod get_utxos_by_block;
 pub mod get_header_by_height;
+pub mod get_utxos_by_block;
 pub use get_header_by_height::__path_handle as __path_get_header_by_height;
 
 pub mod get_tip_info;

@@ -35,11 +35,10 @@ pub struct BlockUtxoInfo {
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug, Clone)]
-pub struct MinimalUtxoSyncInfo{
+pub struct MinimalUtxoSyncInfo {
     pub output_hash: Vec<u8>,
     pub commitment: Vec<u8>,
     // pub script: Vec<u8>,
     pub encrypted_data: Vec<u8>,
     pub sender_offset_public_key: Vec<u8>,
 }
-

@@ -28,7 +28,12 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityHandle, error::WalletError, storage::sqlite_db::wallet::WalletSqliteDatabase, utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService}, WalletKeyManager, WalletSqlite
+    connectivity_service::WalletConnectivityHandle,
+    error::WalletError,
+    storage::sqlite_db::wallet::WalletSqliteDatabase,
+    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
+    WalletKeyManager,
+    WalletSqlite,
 };
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
@@ -102,8 +107,8 @@ pub async fn wallet_recovery(
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-
-    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder()
+    let mut recovery_task =
+        UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder()
         .with_http_node_url(base_node_config.http_client_url.clone())
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)

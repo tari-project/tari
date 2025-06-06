@@ -20,10 +20,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, ClientError>;
 
-    async fn get_utxos_by_block(
-        &self,
-       header_hash: Vec<u8>
-    ) -> Result<models::GetUtxosByBlockResponse, ClientError>;
+    async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, ClientError>;
 
     async fn sync_utxos_by_block(
         &self,

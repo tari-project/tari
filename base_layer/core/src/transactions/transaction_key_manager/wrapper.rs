@@ -418,7 +418,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner
             .read()
             .await
-            .try_output_key_recovery(commitment,    encrypted_data, custom_recovery_key_id)
+            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
             .await
     }
 

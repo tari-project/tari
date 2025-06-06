@@ -2623,12 +2623,10 @@ pub async fn command_runner(
                         None => get_custom_base_node_peer_from_db(&wallet),
                     };
 
-                    let http_client_url = Url::parse(&config
-                        .http_client_url
-                        .clone()
-                        .ok_or(CommandError::General(
-                            "Base node service HTTP client URL is not set".to_string(),
-                        ))?).map_err(|e| CommandError::General(format!("Not a valid url: {}", e.to_string())))?;
+                    let http_client_url = Url::parse(&config.http_client_url.clone().ok_or(CommandError::General(
+                        "Base node service HTTP client URL is not set".to_string(),
+                    ))?)
+                    .map_err(|e| CommandError::General(format!("Not a valid url: {}", e.to_string())))?;
 
                     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
 

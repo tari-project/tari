@@ -10,7 +10,18 @@ use thiserror::Error;
 use crate::{
     base_node::{
         rpc::{
-            models::{self, GetUtxosByBlockResponse, GetUtxosByBlockRequest, MinimalUtxoSyncInfo, SyncUtxosByBlockRequest, SyncUtxosByBlockResponse, TipInfoResponse, TxLocation, TxQueryResponse, BlockUtxoInfo},
+            models::{
+                self,
+                BlockUtxoInfo,
+                GetUtxosByBlockRequest,
+                GetUtxosByBlockResponse,
+                MinimalUtxoSyncInfo,
+                SyncUtxosByBlockRequest,
+                SyncUtxosByBlockResponse,
+                TipInfoResponse,
+                TxLocation,
+                TxQueryResponse,
+            },
             BaseNodeWalletQueryService,
         },
         state_machine_service::states::StateInfo,
@@ -134,6 +145,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
         Ok(mempool_response)
     }
+
     async fn fetch_utxos_by_block(&self, request: GetUtxosByBlockRequest) -> Result<GetUtxosByBlockResponse, Error> {
         request.validate()?;
 
@@ -145,28 +157,21 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .await?
             .ok_or_else(|| Error::HeaderHashNotFound)?;
 
-
         // fetch utxos
-            let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(hash, None)
-                .await?;
+        let outputs_with_statuses = self.db.fetch_outputs_in_block_with_spend_state(hash, None).await?;
 
-            let outputs = outputs_with_statuses
-                .into_iter()
-                .map(|(output, _spent)| output)
-                .collect::<Vec<TransactionOutput>>();
+        let outputs = outputs_with_statuses
+            .into_iter()
+            .map(|(output, _spent)| output)
+            .collect::<Vec<TransactionOutput>>();
 
-        
-                // if its empty, we need to send an empty vec of outputs.
-                let utxo_block_response = GetUtxosByBlockResponse {
-                    outputs,
-                    height: header.height,
-                    header_hash: hash.to_vec(),
-                    mined_timestamp: header.timestamp.as_u64(),
-                };
-
-
+        // if its empty, we need to send an empty vec of outputs.
+        let utxo_block_response = GetUtxosByBlockResponse {
+            outputs,
+            height: header.height,
+            header_hash: hash.to_vec(),
+            mined_timestamp: header.timestamp.as_u64(),
+        };
 
         Ok(utxo_block_response)
     }
@@ -236,15 +241,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 let output_block_response = BlockUtxoInfo {
                     outputs: output_chunk
                         .iter()
-                        .map(|output| {
-                            MinimalUtxoSyncInfo {
-                                output_hash: output.hash().to_vec(),
-                                commitment: output.commitment().to_vec(),
-                                encrypted_data: output.encrypted_data().as_bytes().to_vec(),
-                                sender_offset_public_key: output
-                                    .sender_offset_public_key
-                                    .to_vec(),
-                            }
+                        .map(|output| MinimalUtxoSyncInfo {
+                            output_hash: output.hash().to_vec(),
+                            commitment: output.commitment().to_vec(),
+                            encrypted_data: output.encrypted_data().as_bytes().to_vec(),
+                            sender_offset_public_key: output.sender_offset_public_key.to_vec(),
                         })
                         .collect(),
                     height: current_header.height,
@@ -281,7 +282,10 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
         let has_next_page = (end_header.height - current_header.height) > 0;
 
-        Ok(SyncUtxosByBlockResponse { blocks: utxos, has_next_page })
+        Ok(SyncUtxosByBlockResponse {
+            blocks: utxos,
+            has_next_page,
+        })
     }
 }
 
@@ -406,11 +410,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         self.fetch_utxos(request).await
     }
 
- async fn get_utxos_by_block(
+    async fn get_utxos_by_block(
         &self,
         request: GetUtxosByBlockRequest,
     ) -> Result<GetUtxosByBlockResponse, Self::Error> {
         self.fetch_utxos_by_block(request).await
     }
-    
 }

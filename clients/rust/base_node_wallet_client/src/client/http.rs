@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use async_trait::async_trait;
 use log::{error, info};
-use tari_core::base_node::{rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse}, state_machine_service::states::Shutdown};
+use tari_core::base_node::{
+    rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse},
+    state_machine_service::states::Shutdown,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
@@ -58,11 +61,8 @@ impl BaseNodeWalletClient for Client {
         Ok(self.http_client.get(target_url).send().await?.json::<u64>().await?)
     }
 
-    async fn get_utxos_by_block(
-        &self,
-        header_hash: Vec<u8>
-    ) -> Result<models::GetUtxosByBlockResponse, ClientError> {
-        let  mut target_url = self.api_address.join("/get_utxos_by_block")?;
+    async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, ClientError> {
+        let mut target_url = self.api_address.join("/get_utxos_by_block")?;
         target_url.set_query(Some(&format!("header_hash={}", header_hash.to_hex())));
         let res = self
             .http_client
@@ -71,8 +71,7 @@ impl BaseNodeWalletClient for Client {
             .send()
             .await?;
         info!(target: LOG_TARGET, "Response status: {}", res.status());
-     Ok(res .json::<models::GetUtxosByBlockResponse>()
-            .await?)
+        Ok(res.json::<models::GetUtxosByBlockResponse>().await?)
     }
 
     async fn sync_utxos_by_block(
@@ -99,7 +98,6 @@ impl BaseNodeWalletClient for Client {
                 target_url.set_query(Some(
                     format!(
                         "start_header_hash={}&end_header_hash={}&limit={}&page={}",
-
                         &start_header_hash_hex, &end_header_hash_hex, limit, page
                     )
                     .as_str(),

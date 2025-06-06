@@ -264,7 +264,13 @@ where
                 factories.clone(),
                 config.network,
                 config.birthday_offset,
-               Url::parse( config.http_client_url.as_ref().ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?).map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?
+                Url::parse(
+                    config
+                        .http_client_url
+                        .as_ref()
+                        .ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?,
+                )
+                .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.

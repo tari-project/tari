@@ -293,13 +293,16 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value, payment_id) =
-            match self.master_key_manager.try_output_key_recovery(output.commitment(), output.encrypted_data(), None).await {
-                Ok(value) => value,
-                // Key manager errors here are actual errors and should not be suppressed.
-                Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
-                Err(_) => return Ok(None),
-            };
+        let (key, committed_value, payment_id) = match self
+            .master_key_manager
+            .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
+            .await
+        {
+            Ok(value) => value,
+            // Key manager errors here are actual errors and should not be suppressed.
+            Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
+            Err(_) => return Ok(None),
+        };
 
         Ok(Some((key, committed_value, payment_id)))
     }

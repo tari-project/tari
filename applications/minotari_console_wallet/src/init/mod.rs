@@ -368,7 +368,13 @@ pub async fn set_peer_and_get_base_node_peer_config(
             ExitCode::ConfigError,
             format!("HTTP client URL is not set in the wallet config"),
         )
-    })?).map_err(|e| ExitError::new(ExitCode::ConfigError, format!("HTTP Client URL is not a valid url:{}", e.to_string())))?;
+    })?)
+    .map_err(|e| {
+        ExitError::new(
+            ExitCode::ConfigError,
+            format!("HTTP Client URL is not a valid url:{}", e.to_string()),
+        )
+    })?;
     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
     debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 

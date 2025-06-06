@@ -1666,13 +1666,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         } else {
             self.get_private_view_key().await?
         };
-        let (value, private_key, payment_id) =
-            EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
-        self.crypto_factories.range_proof.verify_mask(
-            &commitment.to_commitment()?,
-            &private_key,
-            value.into(),
-        )?;
+        let (value, private_key, payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        self.crypto_factories
+            .range_proof
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
         let branch = TransactionKeyManagerBranch::CommitmentMask.get_branch_key();
         let key = match self.find_private_key_index(&branch, &private_key).await {
             Ok(index) => {

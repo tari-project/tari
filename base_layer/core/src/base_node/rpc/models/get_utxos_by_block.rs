@@ -9,15 +9,12 @@ use utoipa::{
 
 use crate::transactions::transaction_components::TransactionOutput;
 
-
-
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GetUtxosByBlockRequest {
     pub header_hash: Vec<u8>,
 }
 
-
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
 pub struct GetUtxosByBlockResponse {
     pub header_hash: Vec<u8>,
     pub height: u64,

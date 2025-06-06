@@ -60,7 +60,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use url::Url;
+
 use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
@@ -80,7 +80,10 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
-    base_node_service::config::BaseNodeServiceConfig, connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface}, error::{WalletError, WalletStorageError}, output_manager_service::{
+    base_node_service::config::BaseNodeServiceConfig,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    error::{WalletError, WalletStorageError},
+    output_manager_service::{
         error::OutputManagerError,
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
@@ -88,18 +91,26 @@ use minotari_wallet::{
             OutputStatus,
         },
         UtxoSelectionCriteria,
-    }, storage::{
+    },
+    storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
-    }, transaction_service::{
+    },
+    transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
-    }, utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY}, wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain}, Wallet, WalletConfig, WalletKeyManager, WalletSqlite
+    },
+    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
+    Wallet,
+    WalletConfig,
+    WalletKeyManager,
+    WalletSqlite,
 };
 use num_traits::FromPrimitive;
 use rand::{prelude::SliceRandom, rngs::OsRng};
@@ -179,6 +190,7 @@ use tari_utilities::{
     SafePassword,
 };
 use tokio::runtime::Runtime;
+use url::Url;
 use zeroize::Zeroize;
 
 use crate::{
@@ -9990,7 +10002,8 @@ pub unsafe extern "C" fn wallet_start_recovery(
     } else {
         (*base_node_public_keys).0.clone()
     };
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder();
+    let mut recovery_task_builder =
+        UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
@@ -10004,15 +10017,18 @@ pub unsafe extern "C" fn wallet_start_recovery(
         recovery_task_builder.with_recovery_message(message_str);
     }
     let http_url = if http_base_node.is_null() {
-        *error_out =
-            LibWalletError::from(InterfaceError::NullError("http_base_node".to_string())).code;
+        *error_out = LibWalletError::from(InterfaceError::NullError("http_base_node".to_string())).code;
         return false;
     } else {
         match CStr::from_ptr(http_base_node).to_str() {
             Ok(v) => match Url::parse(v) {
                 Ok(url) => url,
                 Err(e) => {
-                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!("Url is not valid: {}", e.to_string()))).code;
+                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!(
+                        "Url is not valid: {}",
+                        e.to_string()
+                    )))
+                    .code;
                     return false;
                 },
             },

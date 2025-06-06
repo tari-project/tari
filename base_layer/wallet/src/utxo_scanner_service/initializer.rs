@@ -43,7 +43,8 @@ use crate::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
-    }, WalletKeyManager,
+    },
+    WalletKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
@@ -60,7 +61,13 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, factories: CryptoFactories, network: Network, birthday_offset: u16, http_node_url: Url) -> Self {
+    pub fn new(
+        backend: WalletDatabase<T>,
+        factories: CryptoFactories,
+        network: Network,
+        birthday_offset: u16,
+        http_node_url: Url,
+    ) -> Self {
         Self {
             backend: Some(backend),
             factories,
@@ -129,7 +136,7 @@ where
             .expect("Could not create one-sided Tari address");
 
             let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle, TKeyManagerInterface>::builder()
-            .with_http_node_url(node_url)
+                .with_http_node_url(node_url)
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources::<T, WalletConnectivityHandle, TKeyManagerInterface>(
@@ -146,9 +153,10 @@ where
                     one_sided_message_watch_receiver,
                     recovery_message_watch_receiver,
                     birthday_offset,
-                    key_manager
+                    key_manager,
                 )
-                .await.expect("Failed to build UTXO scanner service")
+                .await
+                .expect("Failed to build UTXO scanner service")
                 .run();
 
             futures::pin_mut!(scanning_service);
