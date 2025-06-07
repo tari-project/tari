@@ -1,7 +1,7 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::string::{String, ToString};
+use alloc::{string::{String, ToString}, vec::Vec};
 
 /// Convert a u16 to a string
 pub fn u16_to_string(number: u16) -> String {
@@ -33,12 +33,17 @@ pub fn u16_to_string(number: u16) -> String {
     String::from_utf8_lossy(&buffer[..pos]).to_string()
 }
 
-/// The Tari dual address size
-pub const TARI_DUAL_ADDRESS_SIZE: usize = 67;
+/// The Tari dual address minimum size (standard dual address)
+pub const TARI_DUAL_ADDRESS_MIN_SIZE: usize = 67;
+/// The Tari dual address maximum size (with maximum 256-byte payment ID)
+pub const TARI_DUAL_ADDRESS_MAX_SIZE: usize = 323; // 67 + 256
 
 /// Convert a serialized Tari dual address to a base58 string
-pub fn tari_dual_address_display(address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE]) -> Result<String, String> {
-    validate_checksum(address_bytes.as_ref())?;
+pub fn tari_dual_address_display(address_bytes: &[u8]) -> Result<String, String> {
+    if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err("Invalid address size".to_string());
+    }
+    validate_checksum(address_bytes)?;
     let mut base58 = "".to_string();
     base58.push_str(&bs58::encode(&address_bytes[0..1]).into_string());
     base58.push_str(&bs58::encode(&address_bytes[1..2].to_vec()).into_string());
@@ -48,12 +53,36 @@ pub fn tari_dual_address_display(address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE]) -
 
 /// Get the public spend key bytes from a serialized Tari dual address
 pub fn get_public_spend_key_bytes_from_tari_dual_address(
-    address_bytes: &[u8; TARI_DUAL_ADDRESS_SIZE],
+    address_bytes: &[u8],
 ) -> Result<[u8; 32], String> {
-    validate_checksum(address_bytes.as_ref())?;
+    if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err("Invalid address size".to_string());
+    }
+    validate_checksum(address_bytes)?;
     let mut public_spend_key_bytes = [0u8; 32];
     public_spend_key_bytes.copy_from_slice(&address_bytes[34..66]);
     Ok(public_spend_key_bytes)
+}
+
+/// Extract payment ID bytes from integrated address, if present
+pub fn get_payment_id_bytes_from_tari_dual_address(
+    address_bytes: &[u8],
+) -> Result<Vec<u8>, String> {
+    validate_checksum(address_bytes)?;
+    if address_bytes.len() <= TARI_DUAL_ADDRESS_MIN_SIZE {
+        return Ok(Vec::new()); // No payment ID
+    }
+    
+    // Payment ID data is between spend key and checksum
+    let payment_id_start = 66;
+    let payment_id_end = address_bytes.len() - 1; // Exclude checksum
+    Ok(address_bytes[payment_id_start..payment_id_end].to_vec())
+}
+
+/// Check if address has payment ID
+pub fn address_has_payment_id(address_bytes: &[u8]) -> Result<bool, String> {
+    validate_checksum(address_bytes)?;
+    Ok(address_bytes.len() > TARI_DUAL_ADDRESS_MIN_SIZE)
 }
 
 // Determine whether a byte slice ends with a valid checksum
