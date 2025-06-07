@@ -26,42 +26,41 @@ Feature: Wallet FFI
         Given I have a seed node SEED
         When I have a base node BASE connected to all seed nodes
 
-        When I have wallet WALLET1 connected to base node BASE
-        When I have mining node MINER1 connected to base node BASE and wallet WALLET1
+        When I have wallet OTHER_WALLET connected to base node BASE
+        When I have mining node OTHER_MINER connected to base node BASE and wallet OTHER_WALLET
 
-        When I have wallet WALLET2 connected to base node BASE
-        When I have mining node MINER2 connected to base node BASE and wallet WALLET2
+        When I have wallet MY_WALLET connected to base node BASE
+        When I have mining node MY_MINER connected to base node BASE and wallet MY_WALLET
 
-        Then I export wallet WALLET2 view and spend keys as VIEW_SPEND_KEYS
-        Then I create view wallet VIEW_WALLET2 from view and spend keys VIEW_SPEND_KEYS on node BASE
+        Then I export wallet MY_WALLET view and spend keys as VIEW_SPEND_KEYS
+        Then I create view wallet VIEW_MY_WALLET from view and spend keys VIEW_SPEND_KEYS on node BASE
 
-        When mining node MINER1 mines 12 blocks
-        Then I wait for wallet WALLET1 to have at least 166164000000 uT
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
+        Then I recover wallet MY_WALLET into wallet MY_WALLET2 from seed words on node BASE
 
-        When mining node MINER2 mines 12 blocks
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
+        Then I recover wallet MY_WALLET into ffi wallet FFI_WALLET from seed words on node BASE
 
-        When mining node MINER1 mines 1 blocks
+        When mining node OTHER_MINER mines 12 blocks
+        When I wait for wallet OTHER_WALLET to have scanned to height 12
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
 
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet WALLET1 to wallet WALLET2 at fee 1
-        Then I wait for wallet WALLET2 to have at least 184640500000 uT
-        Then I remember wallet WALLET2 balance BALANCE
+        When mining node MY_MINER mines 12 blocks
+        When I wait for wallet MY_WALLET to have scanned to height 24
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet MY_WALLET to wallet OTHER_WALLET at fee 1
 
-        Then I wait for wallet VIEW_WALLET2 to have at least 184640500000 uT
-        Then wallet VIEW_WALLET2 balance is BALANCE
+        When mining node OTHER_MINER mines 1 blocks
+        When I wait for wallet MY_WALLET to have scanned to height 25
+        Then I wait for wallet MY_WALLET to have less than 166164000000 uT
+        Then I remember wallet MY_WALLET balance BALANCE_STATE_ON_BLOCKCHAIN
 
-        Then I recover wallet WALLET2 into ffi wallet FFI_WALLET from seed words on node BASE
-        And I wait for ffi wallet FFI_WALLET to have at least 184640500000 uT
-        Then ffi wallet FFI_WALLET balance is BALANCE
+        When I wait for wallet MY_WALLET2 to have scanned to height 25
+        Then wallet MY_WALLET2 balance is BALANCE_STATE_ON_BLOCKCHAIN
+
+        Then ffi wallet FFI_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
         And I stop ffi wallet FFI_WALLET
 
-        Then I recover wallet WALLET2 into wallet WALLET3 from seed words on node BASE
-        Then I wait for wallet WALLET3 to have at least 184640500000 uT
-        Then wallet WALLET3 balance is BALANCE
+        When I wait for wallet VIEW_MY_WALLET to have scanned to height 25
+        Then wallet VIEW_MY_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
 
     @critical
     Scenario: As a client I want to retrieve the mnemonic word list for a given language

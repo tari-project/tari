@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io::BufRead, path::PathBuf, str::FromStr, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, str::FromStr, time::Duration};
 
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::Empty;
@@ -46,6 +46,8 @@ use tari_integration_tests::{
 };
 use tari_key_manager::SeedWords;
 use tari_utilities::hex::Hex;
+
+use crate::steps::get_saved_seed_words;
 
 #[then(expr = "I change base node of {word} to {word} via command line")]
 async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
@@ -365,18 +367,6 @@ async fn recover_wallet_via_cli(
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
-    let source_wallet = world.get_wallet(&source_wallet_name).unwrap();
-    let seed_words_path = source_wallet.temp_dir_path.clone().join("seed_words.txt");
-    let seed_words_file = std::fs::File::open(seed_words_path).unwrap();
-    let reader = std::io::BufReader::new(seed_words_file);
-    let line = reader.lines().next().unwrap().unwrap();
-    let saved_seed_words = line
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|v| v.to_string())
-        .collect::<Vec<_>>();
-
     let mut cli = get_default_cli();
 
     let mut node_client = world.get_node_client(&node).await.unwrap();
@@ -389,6 +379,7 @@ async fn recover_wallet_via_cli(
     cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
 
     cli.recovery = true;
+    let saved_seed_words = get_saved_seed_words(world, &source_wallet_name);
     let mut seed_words = SeedWords::new(vec![]);
     for word in &saved_seed_words {
         seed_words.push(word.to_string());
@@ -465,10 +456,15 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
     } else {
         panic!("View and spend keys file not found for '{}'", view_and_spend_key);
     };
-    let keys_content = std::fs::read_to_string(keys_file).unwrap();
-    let keys_json: serde_json::Value = serde_json::from_str(&keys_content).unwrap();
-    let view_key = keys_json["view_key"].as_str().unwrap();
-    let spend_key = keys_json["spend_key"].as_str().unwrap();
+    let keys_content = std::fs::read_to_string(keys_file).unwrap_or_else(|e| panic!("Failed to read keys file: {}", e));
+    let keys_json: serde_json::Value =
+        serde_json::from_str(&keys_content).unwrap_or_else(|e| panic!("Failed to parse keys JSON: {}", e));
+    let view_key = keys_json["view_key"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Missing 'view_key' in keys file"));
+    let spend_key = keys_json["spend_key"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Missing 'spend_key' in keys file"));
 
     let mut cli = get_default_cli();
 
