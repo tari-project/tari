@@ -170,6 +170,21 @@ see `MinoTari Wallet` displayed on the screen. Now your device is ready to be us
 
 _**Note:** To manually exit the application, press both buttons on the Ledger._
 
+## Integrated Address Support
+
+The Ledger wallet supports integrated addresses (addresses with embedded payment IDs):
+- Standard dual addresses: 67 bytes
+- Integrated addresses: 67-323 bytes (depending on payment ID size)
+- Payment IDs can be up to 256 bytes
+- The wallet will display payment ID information during transaction confirmation
+
+When processing a transaction to an integrated address, the Ledger will show:
+- Transaction amount
+- Receiver address
+- Payment ID size (if present)
+
+Users must confirm each field during the transaction review process.
+
 **Errors**
 
 When trying to access the `MinoTari Wallet` Ledger application with a Tari desktop application, watch out for these 
