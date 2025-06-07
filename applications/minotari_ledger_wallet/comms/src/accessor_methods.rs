@@ -590,7 +590,10 @@ pub fn ledger_get_one_sided_metadata_signature(
     }
 
     // Check for integrated address support
-    if receiver_address.features().contains(tari_common_types::tari_address::TariAddressFeatures::PAYMENT_ID) {
+    if receiver_address
+        .features()
+        .contains(tari_common_types::tari_address::TariAddressFeatures::PAYMENT_ID)
+    {
         debug!(
             target: LOG_TARGET,
             "Processing integrated address with embedded payment ID"
