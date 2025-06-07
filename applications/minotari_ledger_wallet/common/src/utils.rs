@@ -1,7 +1,10 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 /// Convert a u16 to a string
 pub fn u16_to_string(number: u16) -> String {
@@ -52,9 +55,7 @@ pub fn tari_dual_address_display(address_bytes: &[u8]) -> Result<String, String>
 }
 
 /// Get the public spend key bytes from a serialized Tari dual address
-pub fn get_public_spend_key_bytes_from_tari_dual_address(
-    address_bytes: &[u8],
-) -> Result<[u8; 32], String> {
+pub fn get_public_spend_key_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Result<[u8; 32], String> {
     if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
         return Err("Invalid address size".to_string());
     }
@@ -65,14 +66,12 @@ pub fn get_public_spend_key_bytes_from_tari_dual_address(
 }
 
 /// Extract payment ID bytes from integrated address, if present
-pub fn get_payment_id_bytes_from_tari_dual_address(
-    address_bytes: &[u8],
-) -> Result<Vec<u8>, String> {
+pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Result<Vec<u8>, String> {
     validate_checksum(address_bytes)?;
     if address_bytes.len() <= TARI_DUAL_ADDRESS_MIN_SIZE {
         return Ok(Vec::new()); // No payment ID
     }
-    
+
     // Payment ID data is between spend key and checksum
     let payment_id_start = 66;
     let payment_id_end = address_bytes.len() - 1; // Exclude checksum
@@ -142,10 +141,10 @@ mod tests {
     // Helper function to create a test address with checksum
     fn create_test_address(size: usize) -> Vec<u8> {
         let mut address = vec![0u8; size - 1]; // -1 for checksum
-        // Set some test data
+                                               // Set some test data
         address[0] = 0x01; // Network/version
         address[1] = 0x02; // Features
-        // Public spend key at positions 34..66
+                           // Public spend key at positions 34..66
         for i in 34..66 {
             if i < address.len() {
                 address[i] = (i - 34) as u8;
@@ -159,7 +158,7 @@ mod tests {
                 }
             }
         }
-        
+
         // Compute and append checksum
         let checksum = compute_checksum(&address);
         address.push(checksum);
@@ -170,7 +169,7 @@ mod tests {
     fn test_standard_dual_address_display() {
         let address = create_test_address(TARI_DUAL_ADDRESS_MIN_SIZE);
         assert_eq!(address.len(), TARI_DUAL_ADDRESS_MIN_SIZE);
-        
+
         let result = tari_dual_address_display(&address);
         assert!(result.is_ok());
     }
@@ -237,7 +236,7 @@ mod tests {
     fn test_public_spend_key_extraction() {
         let address = create_test_address(TARI_DUAL_ADDRESS_MIN_SIZE + 50);
         let spend_key = get_public_spend_key_bytes_from_tari_dual_address(&address).unwrap();
-        
+
         // Verify the spend key matches our test data
         for (i, &byte) in spend_key.iter().enumerate() {
             assert_eq!(byte, i as u8);

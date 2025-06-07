@@ -18,19 +18,10 @@
 use dialoguer::{theme::ColorfulTheme, Select};
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
-        ledger_get_app_name,
-        ledger_get_dh_shared_secret,
-        ledger_get_one_sided_metadata_signature,
-        ledger_get_public_key,
-        ledger_get_public_spend_key,
-        ledger_get_raw_schnorr_signature,
-        ledger_get_script_offset,
-        ledger_get_script_schnorr_signature,
-        ledger_get_script_signature,
-        ledger_get_version,
-        ledger_get_view_key,
-        verify_ledger_application,
-        ScriptSignatureKey,
+        ledger_get_app_name, ledger_get_dh_shared_secret, ledger_get_one_sided_metadata_signature,
+        ledger_get_public_key, ledger_get_public_spend_key, ledger_get_raw_schnorr_signature, ledger_get_script_offset,
+        ledger_get_script_schnorr_signature, ledger_get_script_signature, ledger_get_version, ledger_get_view_key,
+        verify_ledger_application, ScriptSignatureKey,
     },
     error::LedgerDeviceError,
     ledger_wallet::get_transport,
