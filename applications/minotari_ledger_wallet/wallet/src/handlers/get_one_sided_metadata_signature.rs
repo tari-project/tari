@@ -79,6 +79,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let commitment_mask: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
 
     // Parse variable-length address
+    if data.len() < 74 {
+        return Err(AppSW::WrongApduLength);
+    }
     let address_size_bytes = &data[72..74]; 
     let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
 
@@ -87,6 +90,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     }
 
     let address_end = 74 + address_size;
+    if data.len() < address_end {
+        return Err(AppSW::WrongApduLength);
+    }
     let receiver_address_bytes = &data[74..address_end];
 
     let receiver_address = match tari_dual_address_display(receiver_address_bytes) {
@@ -110,6 +116,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // Update subsequent data offset calculations
     let metadata_signature_message_common_start = address_end;
     let metadata_signature_message_common_end = metadata_signature_message_common_start + 32;
+    if data.len() < metadata_signature_message_common_end {
+        return Err(AppSW::WrongApduLength);
+    }
     let mut metadata_signature_message_common = [0u8; 32];
     metadata_signature_message_common.clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
 
