@@ -137,6 +137,7 @@ fn mask() -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     // Helper function to create a test address with checksum
     fn create_test_address(size: usize) -> Vec<u8> {
