@@ -114,12 +114,7 @@ pub async fn recovery_event_monitoring(
                     rate,
                 );
                 unsafe {
-                    (recovery_progress_callback)(
-                        context.0,
-                        RecoveryEvent::Completed as u8,
-                        0u64,
-                        0u64
-                    );
+                    (recovery_progress_callback)(context.0, RecoveryEvent::Completed as u8, 0u64, 0u64);
                 }
                 break;
             },

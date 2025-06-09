@@ -107,8 +107,7 @@ pub async fn wallet_recovery(
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let mut recovery_task =
-        UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder()
+    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager>::builder()
         .with_http_node_url(base_node_config.http_client_url.clone())
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)

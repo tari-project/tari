@@ -81,7 +81,7 @@ use log4rs::{
 };
 use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityInterface,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -9971,7 +9971,6 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
-    base_node_public_keys: *mut TariPublicKeys,
     http_base_node: *const c_char,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     recovered_output_message: *const c_char,
@@ -9995,20 +9994,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
         },
     };
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys = if base_node_public_keys.is_null() {
-        let peer_manager = (*wallet).wallet.comms.peer_manager();
-        match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
-            Ok(peers) => peers.iter().map(|p| p.public_key.clone()).collect::<Vec<_>>(),
-            Err(e) => {
-                *error_out = LibWalletError::from(e).code;
-                return false;
-            },
-        }
-    } else {
-        (*base_node_public_keys).0.clone()
-    };
-    let mut recovery_task_builder =
-        UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>::builder();
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {

@@ -26,15 +26,13 @@ use futures::future;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_core::transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories};
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
@@ -42,16 +40,14 @@ use crate::{
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
         service::UtxoScannerService,
-        uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
+        uxto_scanner_service_builder::UtxoScannerMode,
     },
-    WalletKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
 
 pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     backend: Option<WalletDatabase<T>>,
-    factories: CryptoFactories,
     network: Network,
     birthday_offset: u16,
     http_node_url: Url,
@@ -61,16 +57,9 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(
-        backend: WalletDatabase<T>,
-        factories: CryptoFactories,
-        network: Network,
-        birthday_offset: u16,
-        http_node_url: Url,
-    ) -> Self {
+    pub fn new(backend: WalletDatabase<T>, network: Network, birthday_offset: u16, http_node_url: Url) -> Self {
         Self {
             backend: Some(backend),
-            factories,
             network,
             phantom: PhantomData,
             birthday_offset,
@@ -105,7 +94,6 @@ where
             .backend
             .take()
             .expect("Cannot start Utxo scanner service without setting a storage backend");
-        let factories = self.factories.clone();
         let network = self.network;
         let birthday_offset = self.birthday_offset;
         let node_url = self.http_node_url.clone();
@@ -113,8 +101,6 @@ where
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let comms_connectivity = handles.expect_handle::<ConnectivityRequester>();
-            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
@@ -135,18 +121,15 @@ where
             )
             .expect("Could not create one-sided Tari address");
 
-            let scanning_service = UtxoScannerService::<T, WalletConnectivityHandle, TKeyManagerInterface>::builder()
+            let scanning_service = UtxoScannerService::<T, TKeyManagerInterface>::builder()
                 .with_http_node_url(node_url)
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
-                .build_with_resources::<T, WalletConnectivityHandle, TKeyManagerInterface>(
+                .build_with_resources::<T, TKeyManagerInterface>(
                     backend,
-                    comms_connectivity,
-                    wallet_connectivity.clone(),
                     output_manager_service,
                     transaction_service,
                     one_sided_tari_address,
-                    factories,
                     handles.get_shutdown_signal(),
                     event_sender,
                     base_node_service_handle,

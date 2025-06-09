@@ -34,7 +34,6 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use clap::Command;
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use futures::FutureExt;

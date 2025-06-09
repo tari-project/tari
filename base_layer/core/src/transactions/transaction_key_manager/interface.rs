@@ -51,7 +51,6 @@ use crate::transactions::{
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
     },
     transaction_key_manager::error::KeyManagerServiceError,

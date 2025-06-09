@@ -1,13 +1,10 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
-use tari_core::base_node::{
-    rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse},
-    state_machine_service::states::Shutdown,
-};
+use tari_core::base_node::rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;

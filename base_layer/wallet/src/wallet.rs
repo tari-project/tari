@@ -261,7 +261,6 @@ where
             ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
-                factories.clone(),
                 config.network,
                 config.birthday_offset,
                 Url::parse(

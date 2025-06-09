@@ -23,7 +23,6 @@
 use std::time::Duration;
 
 use tari_comms::peer_manager::NodeId;
-use tari_core::transactions::tari_amount::MicroMinotari;
 use tokio::sync::{broadcast, watch};
 
 use crate::util::watch::Watch;

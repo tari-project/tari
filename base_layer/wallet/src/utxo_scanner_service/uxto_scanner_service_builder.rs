@@ -20,23 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::any;
-
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{
-    transaction_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerInterface},
-    CryptoFactories,
-};
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
-    schema::client_key_values::key,
     storage::{
         database::{WalletBackend, WalletDatabase},
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -110,8 +102,7 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle, WalletKeyManager>, anyhow::Error>
-    {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletKeyManager>, anyhow::Error> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
         let http_client_url = match &self.node_url {
             Some(url) => url.clone(),
@@ -123,13 +114,9 @@ impl UtxoScannerServiceBuilder {
         };
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
-            comms_connectivity: wallet.comms.connectivity(),
-            wallet_connectivity: wallet.wallet_connectivity.clone(),
-            current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
             one_sided_tari_address,
-            factories: wallet.factories.clone(),
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
@@ -153,17 +140,13 @@ impl UtxoScannerServiceBuilder {
 
     pub async fn build_with_resources<
         TBackend: WalletBackend + 'static,
-        TWalletConnectivity: WalletConnectivityInterface,
         TKeyManager: TransactionKeyManagerInterface + 'static,
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
-        comms_connectivity: ConnectivityRequester,
-        wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
         one_sided_tari_address: TariAddress,
-        factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
@@ -171,7 +154,7 @@ impl UtxoScannerServiceBuilder {
         recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
         key_manager: TKeyManager,
-    ) -> Result<UtxoScannerService<TBackend, TWalletConnectivity, TKeyManager>, anyhow::Error> {
+    ) -> Result<UtxoScannerService<TBackend, TKeyManager>, anyhow::Error> {
         let http_client_url = match &self.node_url {
             Some(url) => url.clone(),
             None => {
@@ -182,13 +165,9 @@ impl UtxoScannerServiceBuilder {
         };
         let resources = UtxoScannerResources {
             db,
-            comms_connectivity,
-            current_base_node_watcher: wallet_connectivity.get_current_base_node_watcher(),
-            wallet_connectivity,
             output_manager_service,
             transaction_service,
             one_sided_tari_address,
-            factories,
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset,

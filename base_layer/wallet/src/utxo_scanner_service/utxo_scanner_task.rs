@@ -35,46 +35,23 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
 use tari_core::{
-    base_node::rpc::{
-        models::{BlockHeader, GetUtxosByBlockResponse, MinimalUtxoSyncInfo, TipInfoResponse},
-        BaseNodeWalletRpcClient,
-    },
+    base_node::rpc::models::MinimalUtxoSyncInfo,
     one_sided::public_key_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{
-            encrypted_data::PaymentId,
-            EncryptedData,
-            TransactionError,
-            TransactionOutput,
-            WalletOutput,
-        },
+        transaction_components::{encrypted_data::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
-use tari_crypto::{
-    compressed_commitment::CompressedCommitment,
-    dhke::DiffieHellmanSharedSecret,
-    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
-};
+use tari_crypto::{compressed_commitment::CompressedCommitment, ristretto::RistrettoPublicKey};
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-use url::{form_urlencoded::Target, Url};
 
 use crate::{
-    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    schema::outputs::encrypted_data,
     storage::database::WalletBackend,
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
@@ -87,21 +64,19 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub struct UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManager> {
-    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
+pub struct UtxoScannerTask<TBackend, TKeyManager> {
+    pub(crate) resources: UtxoScannerResources<TBackend>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
-    pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub birthday_offset: u16,
     pub key_manager: TKeyManager,
 }
-impl<TBackend, TWalletConnectivity, TKeyManager> UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManager>
+impl<TBackend, TKeyManager> UtxoScannerTask<TBackend, TKeyManager>
 where
     TBackend: WalletBackend + 'static,
-    TWalletConnectivity: WalletConnectivityInterface,
     TKeyManager: TransactionKeyManagerInterface,
 {
     pub async fn run(mut self) -> Result<(), anyhow::Error> {
@@ -123,10 +98,9 @@ where
                 return Ok(());
             }
             match self.attempt_sync().await {
-                Ok(( final_height,  elapsed)) => {
+                Ok((final_height, elapsed)) => {
                     debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                    self.finalize( final_height,  elapsed)
-                        .await?;
+                    self.finalize(final_height, elapsed).await?;
                     return Ok(());
                 },
                 Err(e) => {
@@ -147,11 +121,7 @@ where
         }
     }
 
-    async fn finalize(
-        &mut self,
-        final_height: u64,
-        elapsed: Duration,
-    ) -> Result<(), anyhow::Error> {
+    async fn finalize(&mut self, final_height: u64, elapsed: Duration) -> Result<(), anyhow::Error> {
         // if num_outputs_recovered > 0 {
         //     // this is a best effort, if this fails, its very likely that it's already busy with a validation.
         //     let _result = self.resources.output_manager_service.validate_txos().await;
@@ -173,32 +143,6 @@ where
         Ok(())
     }
 
-    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, anyhow::Error> {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
-        );
-        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
-            Ok(conn) => Ok(conn),
-            Err(e) => {
-                self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                    peer: peer.clone(),
-                    num_retries: self.num_retries,
-                    retry_limit: self.retry_limit,
-                    error: e.to_string(),
-                });
-
-                if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
-                        debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
-                    }
-                }
-
-                Err(e.into())
-            },
-        }
-    }
-
     /// Try to instantiate a Base Node Wallet Service client.
     fn base_node_wallet_service_client(&self) -> Result<http::Client, anyhow::Error> {
         // let address = rpc_client.get_wallet_query_http_service_address().await?;
@@ -216,7 +160,7 @@ where
     ) -> Result<ScannedBlock, anyhow::Error> {
         if let Some(last_scanned_block) = last_scanned_block {
             let mut height = last_scanned_block.height;
-            let mut next_header = None;
+            let mut next_header;
             // Keep going backwards until we find a header that is known to the base node
             loop {
                 next_header = wallet_service_client
@@ -275,9 +219,7 @@ where
                         last_scanned_block.height,
                         timer.elapsed()
                     );
-                    return Ok(
-                        (last_scanned_block.height, timer.elapsed()),
-                    );
+                    return Ok((last_scanned_block.height, timer.elapsed()));
                 }
             }
 
@@ -287,9 +229,7 @@ where
                 .await?;
 
             if self.shutdown_signal.is_triggered() {
-                return Ok(
-                (0,timer.elapsed()),
-                );
+                return Ok((0, timer.elapsed()));
             }
 
             info!(
@@ -316,17 +256,6 @@ where
                 num_scanned,
             );
         }
-    }
-
-    async fn establish_new_rpc_connection(
-        &mut self,
-        peer: &NodeId,
-    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, anyhow::Error> {
-        let mut connection = self.new_connection_to_peer(peer.clone()).await?;
-        let client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
-            .await?;
-        Ok(RpcClientLease::new(client))
     }
 
     async fn get_chain_tip_header(&self, client: &http::Client) -> Result<(BlockHash, u64), anyhow::Error> {
@@ -364,8 +293,6 @@ where
         // valid block the blocks before it are also valid and don't need to be checked
         let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
-        let mut num_outputs = 0u64;
-        let mut amount = MicroMinotari::from(0);
         for sb in scanned_blocks {
             // The scanned block has a higher height than the current tip, meaning the previously scanned block was
             // reorged out.
@@ -519,7 +446,6 @@ where
                                 tip_height,
                             });
                         }
-
                     }
                 }
                 prev_scanned_block = Some(ScannedBlock {
@@ -545,7 +471,7 @@ where
         &mut self,
         outputs: Vec<MinimalUtxoSyncInfo>,
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
-        let mut found_outputs: Vec<(MinimalUtxoSyncInfo)> = Vec::new();
+        let mut found_outputs: Vec<MinimalUtxoSyncInfo> = Vec::new();
         let start = Instant::now();
         let view_key = self.key_manager.get_private_view_key().await?;
         for output in outputs {
@@ -554,8 +480,9 @@ where
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Change outputs just use the view key.
-            if let Some((value, private_key, payment_id)) =
-                EncryptedData::decrypt_data(&view_key, &commitment, &encrypted).ok()
+            if EncryptedData::decrypt_data(&view_key, &commitment, &encrypted)
+                .ok()
+                .is_some()
             {
                 found_outputs.push(output.clone());
                 continue;
@@ -569,8 +496,9 @@ where
 
             let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key))
                 .map_err(|e| anyhow!("Could not convert to encryption key: {}", e.to_string()))?;
-            if let Some((value, private_key, payment_id)) =
-                EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted).ok()
+            if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
+                .ok()
+                .is_some()
             {
                 found_outputs.push(output.clone());
             }

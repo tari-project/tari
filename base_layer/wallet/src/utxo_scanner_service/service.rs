@@ -24,12 +24,7 @@ use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_key_manager::{key_manager, TransactionKeyManagerInterface},
-    CryptoFactories,
-};
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -39,7 +34,6 @@ use url::Url;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -56,8 +50,8 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
-pub struct UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
-    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
+pub struct UtxoScannerService<TBackend, TKeyManagerInterface> {
+    pub(crate) resources: UtxoScannerResources<TBackend>,
     pub(crate) retry_limit: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -65,20 +59,18 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterfac
     pub(crate) base_node_service: BaseNodeServiceHandle,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
-    pub key_manager: TKeyManagerInterface,
+    pub(crate) key_manager: TKeyManagerInterface,
 }
 
-impl<TBackend, TWalletConnectivity, TKeyManagerInterface: Clone>
-    UtxoScannerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TKeyManagerInterface: Clone> UtxoScannerService<TBackend, TKeyManagerInterface>
 where
     TBackend: WalletBackend + 'static,
-    TWalletConnectivity: WalletConnectivityInterface,
     TKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static,
 {
     pub fn new(
         retry_limit: usize,
         mode: UtxoScannerMode,
-        resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
+        resources: UtxoScannerResources<TBackend>,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
@@ -99,15 +91,11 @@ where
         }
     }
 
-    fn create_task(
-        &self,
-        shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerTask<TBackend, TWalletConnectivity, TKeyManagerInterface> {
+    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TKeyManagerInterface> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             event_sender: self.event_sender.clone(),
             retry_limit: self.retry_limit,
-            peer_index: 0,
             num_retries: 1,
             mode: self.mode.clone(),
             shutdown_signal,
@@ -194,19 +182,15 @@ where
 }
 
 #[derive(Clone)]
-pub(crate) struct UtxoScannerResources<TBackend, TWalletConnectivity> {
-    pub db: WalletDatabase<TBackend>,
-    pub comms_connectivity: ConnectivityRequester,
-    pub wallet_connectivity: TWalletConnectivity,
-    pub current_base_node_watcher: watch::Receiver<Option<BaseNodePeerManager>>,
-    pub output_manager_service: OutputManagerHandle,
-    pub transaction_service: TransactionServiceHandle,
-    pub one_sided_tari_address: TariAddress,
-    pub factories: CryptoFactories,
-    pub recovery_message: String,
-    pub one_sided_payment_message: String,
-    pub birthday_offset: u16,
-    pub http_client_url: Url,
+pub struct UtxoScannerResources<TBackend> {
+    pub(crate) db: WalletDatabase<TBackend>,
+    pub(crate) output_manager_service: OutputManagerHandle,
+    pub(crate) transaction_service: TransactionServiceHandle,
+    pub(crate) one_sided_tari_address: TariAddress,
+    pub(crate) recovery_message: String,
+    pub(crate) one_sided_payment_message: String,
+    pub(crate) birthday_offset: u16,
+    pub(crate) http_client_url: Url,
 }
 
 #[derive(Debug, Clone)]
