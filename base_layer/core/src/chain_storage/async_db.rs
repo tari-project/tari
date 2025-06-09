@@ -277,8 +277,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
 
     make_async_fn!(fetch_output_by_payref(payref: FixedHash) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
-
-    make_async_fn!(check_output_spent_status(output_hash: HashOutput) -> Option<InputMinedInfo>, "check_output_spent_status");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

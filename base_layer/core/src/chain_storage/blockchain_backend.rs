@@ -113,9 +113,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the OutputMinedInfo if found, None if PayRef doesn't exist
     fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
-    /// Check if an output is spent and return spent information
-    fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
-
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
 

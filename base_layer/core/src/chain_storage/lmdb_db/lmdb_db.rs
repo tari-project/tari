@@ -2473,11 +2473,6 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_output_by_payref_in_txn(&txn, payref)
     }
 
-    fn check_output_spent_status(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, output_hash.as_slice())
-    }
-
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash.as_slice()).map(|rows| {

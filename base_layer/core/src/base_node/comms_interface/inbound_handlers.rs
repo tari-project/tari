@@ -459,7 +459,7 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::OutputMinedInfo(output_info))
             },
             NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {
-                let input_info = self.blockchain_db.check_output_spent_status(output_hash).await?;
+                let input_info = self.blockchain_db.fetch_input(output_hash).await?;
                 Ok(NodeCommsResponse::InputMinedInfo(input_info))
             },
         }

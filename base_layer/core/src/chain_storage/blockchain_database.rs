@@ -460,15 +460,6 @@ where B: BlockchainBackend
         db.fetch_output_by_payref(&payref)
     }
 
-    /// Check if an output is spent and return spent information
-    pub fn check_output_spent_status(
-        &self,
-        output_hash: HashOutput,
-    ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.check_output_spent_status(output_hash)
-    }
-
     pub fn fetch_unspent_output_hash_by_commitment(
         &self,
         commitment: CompressedCommitment,
