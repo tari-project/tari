@@ -31,6 +31,7 @@ use minotari_console_wallet::{
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
+    ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
@@ -43,7 +44,10 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
+use tari_key_manager::SeedWords;
 use tari_utilities::hex::Hex;
+
+use crate::steps::get_saved_seed_words;
 
 #[then(expr = "I change base node of {word} to {word} via command line")]
 async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
@@ -349,4 +353,124 @@ async fn whois(world: &mut TariWorld, node: String, wallet: String) {
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
     let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
     spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
+}
+
+#[then(expr = "I recover wallet {word} into wallet {word} from seed words on node {word}")]
+async fn recover_wallet_via_cli(
+    world: &mut TariWorld,
+    source_wallet_name: String,
+    target_wallet_name: String,
+    node: String,
+) {
+    if let Some(wallet_ps) = world.wallets.get_mut(&target_wallet_name) {
+        wallet_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    let mut cli = get_default_cli();
+
+    let mut node_client = world.get_node_client(&node).await.unwrap();
+    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
+
+    let args = SetBaseNodeArgs {
+        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
+        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
+    };
+    cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
+
+    cli.recovery = true;
+    let saved_seed_words = get_saved_seed_words(world, &source_wallet_name);
+    let mut seed_words = SeedWords::new(vec![]);
+    for word in &saved_seed_words {
+        seed_words.push(word.to_string());
+    }
+    cli.seed_words = Some(seed_words);
+
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(
+        world,
+        target_wallet_name,
+        Some(node.clone()),
+        seed_nodes,
+        None,
+        Some(cli),
+    )
+    .await;
+}
+
+#[then(expr = "I export wallet {word} view and spend keys as {word}")]
+async fn export_wallet_view_and_spend_keys_via_cli(
+    world: &mut TariWorld,
+    wallet_name: String,
+    view_and_spend_key: String,
+) {
+    let wallet_ps = if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
+        wallet_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        wallet_ps.clone()
+    } else {
+        panic!("Wallet '{}' not found", wallet_name);
+    };
+
+    let mut cli = get_default_cli();
+
+    let output_file = wallet_ps.temp_dir_path.clone().join("view_and_spend_key.txt");
+    let args = ExportViewKeyAndSpendKeyArgs {
+        output_file: Some(output_file.clone()),
+    };
+    cli.command2 = Some(CliCommands::ExportViewKeyAndSpendKey(args));
+
+    world.view_and_spend_keys.insert(view_and_spend_key, output_file);
+
+    spawn_wallet(
+        world,
+        wallet_name,
+        wallet_ps.base_node_name.clone(),
+        wallet_ps.peer_seeds.clone(),
+        None,
+        Some(cli),
+    )
+    .await;
+}
+
+#[then(expr = "I create view wallet {word} from view and spend keys {word} on node {word}")]
+async fn recover_wallet_from_view_and_spend_keys_via_cli(
+    world: &mut TariWorld,
+    wallet_name: String,
+    view_and_spend_key: String,
+    node: String,
+) {
+    if let Some(wallet_ps) = world.wallets.get_mut(&wallet_name) {
+        wallet_ps.kill();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        world.wallets.remove(&wallet_name);
+    }
+
+    // Extract view_key and spend_key from the file with format:
+    // {"view_key":"c593a5d131d46ece6d08c39693b1260aeb502d25c0e898358e6fc1b2b19fe404","public_view_key":"
+    // 5ade435cc6947ac2979c0ea2f3d6a1f64d0c35b1995d48a60e2720c283dd3e38","spend_key":"
+    // 9e9c7d4eedb70a1e31bfaad1ad38ffc7340a4b61120e6c911afcd702219c1764","birthday":1252}
+    let keys_file = world.view_and_spend_keys.get(&view_and_spend_key);
+    let keys_file = if let Some(file) = keys_file {
+        file
+    } else {
+        panic!("View and spend keys file not found for '{}'", view_and_spend_key);
+    };
+    let keys_content = std::fs::read_to_string(keys_file).unwrap_or_else(|e| panic!("Failed to read keys file: {}", e));
+    let keys_json: serde_json::Value =
+        serde_json::from_str(&keys_content).unwrap_or_else(|e| panic!("Failed to parse keys JSON: {}", e));
+    let view_key = keys_json["view_key"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Missing 'view_key' in keys file"));
+    let spend_key = keys_json["spend_key"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Missing 'spend_key' in keys file"));
+
+    let mut cli = get_default_cli();
+
+    cli.view_private_key = Some(view_key.to_string());
+    cli.spend_key = Some(spend_key.to_string());
+
+    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
+    spawn_wallet(world, wallet_name, Some(node.clone()), seed_nodes, None, Some(cli)).await;
 }

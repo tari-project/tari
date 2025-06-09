@@ -63,9 +63,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
-// Maximum time allowed for deleting stale peers from database
-
-const STALE_PEER_DELETE_TIMEOUT: Duration = Duration::from_millis(500);
 
 // Maximum time allowed for refreshing the connection pool
 const POOL_REFRESH_TIMEOUT: Duration = Duration::from_millis(2500);
@@ -228,8 +225,7 @@ impl ConnectivityManagerActor {
 
                 _ = connection_pool_timer.tick() => {
                     let task_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Pool refresh & delete stale peers task ({})", task_id);
-                    self.delete_stale_peers_from_db(task_id).await;
+                    trace!(target: LOG_TARGET, "Pool refresh peers task ({})", task_id);
                     self.cleanup_connection_stats();
                     match tokio::time::timeout(POOL_REFRESH_TIMEOUT, self.refresh_connection_pool(task_id)).await {
                         Ok(res) => {
@@ -245,7 +241,7 @@ impl ConnectivityManagerActor {
                             );
                         },
                     }
-                    trace!(target: LOG_TARGET, "Pool refresh & delete stale peers task ({}) done", task_id);
+                    trace!(target: LOG_TARGET, "Pool refresh task ({}) done", task_id);
                 },
 
                 _ = self.shutdown_signal.wait() => {
@@ -463,44 +459,6 @@ impl ConnectivityManagerActor {
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
-    }
-
-    async fn delete_stale_peers_from_db(&mut self, task_id: u64) {
-        let start = Instant::now();
-        match tokio::time::timeout(
-            STALE_PEER_DELETE_TIMEOUT,
-            self.peer_manager.hard_delete_all_stale_peers(),
-        )
-        .await
-        {
-            Ok(res) => match res {
-                Ok(deleted) => {
-                    let len = deleted.len();
-                    if len > 0 {
-                        for node_id in deleted {
-                            if let Some(removed) = self.pool.remove(&node_id) {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "Stale connection {} encountered - removed",
-                                    removed.peer_node_id()
-                                );
-                            }
-                        }
-                        debug!(
-                            target: LOG_TARGET,
-                            "({}) Deleted {} stale peers from the db in {:.2?}",
-                            task_id, len, start.elapsed()
-                        );
-                    }
-                },
-                Err(err) => {
-                    error!(target: LOG_TARGET, "({}) Error deleting stale peers from the db: {:?}", task_id, err);
-                },
-            },
-            Err(_) => {
-                warn!(target: LOG_TARGET, "({}) Timeout deleting all stale peers from the db", task_id);
-            },
-        }
     }
 
     async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {

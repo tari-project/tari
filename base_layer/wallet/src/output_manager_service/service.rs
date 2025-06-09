@@ -1935,8 +1935,7 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.one_sided_tari_address.clone(),
             true,
             amount,
@@ -2825,8 +2824,7 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
             amount,
