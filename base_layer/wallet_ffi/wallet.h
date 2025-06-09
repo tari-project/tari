@@ -290,15 +290,6 @@ struct TariPayRefConfig {
   unsigned int refresh_interval_seconds;
 };
 
-/**
- * PayRef Status FFI Types
- */
-struct TariPayRefStatus {
-  unsigned int status_type;
-  unsigned char payment_reference[32];
-  unsigned long long confirmations;
-  unsigned long long blocks_remaining;
-};
 
 /**
  * Payment Record FFI Types

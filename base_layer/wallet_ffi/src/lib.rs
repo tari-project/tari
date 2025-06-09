@@ -122,6 +122,7 @@ use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
     payment_reference,
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
@@ -234,62 +235,6 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
-
-/// PayRef Configuration FFI Types
-#[repr(C)]
-pub struct TariPayRefConfig {
-    pub required_confirmations: c_ulonglong,
-    pub display_format: c_uint, // 0=Full, 1=Shortened, 2=Custom
-    pub auto_copy_on_click: bool,
-    pub show_pending_progress: bool,
-    pub refresh_interval_seconds: c_uint,
-}
-
-/// PayRef Status FFI Types  
-#[repr(C)]
-pub struct TariPayRefStatus {
-    pub status_type: c_uint, // 0=Available, 1=Pending, 2=NotMined, 3=Invalid
-    pub payment_reference: [c_uchar; 32],
-    pub confirmations: c_ulonglong,
-    pub blocks_remaining: c_ulonglong,
-}
-
-/// Individual output with its PayRef
-#[repr(C)]
-pub struct TariOutputWithPayRef {
-    pub output_hash: [c_uchar; 32],
-    pub payment_reference: [c_uchar; 32],
-    pub has_payment_reference: c_int, // 0 = false, 1 = true
-    pub output_type: c_uint,          // 0 = Sent, 1 = Received, 2 = Change
-    pub amount: c_ulonglong,
-    pub status: c_uint, // 0 = Available, 1 = Pending, 2 = NotMined, 3 = Spent
-}
-
-/// Collection of outputs with PayRefs
-#[repr(C)]
-pub struct TariOutputsWithPayRefs {
-    pub outputs: *mut TariOutputWithPayRef,
-    pub length: c_uint,
-}
-
-/// Enhanced transaction info with per-output PayRefs
-#[repr(C)]
-pub struct TariTransactionWithPayRefs {
-    pub transaction: *mut TariCompletedTransaction,
-    pub outputs_with_payrefs: TariOutputsWithPayRefs,
-    pub recipient_count: c_uint,
-}
-
-/// Payment Details FFI Types
-#[repr(C)]
-pub struct TariPaymentDetails {
-    pub payment_reference: [c_uchar; 32],
-    pub commitment: *mut c_char, // Hex string
-    pub amount: c_ulonglong,
-    pub block_height: c_ulonglong,
-    pub confirmations: c_ulonglong,
-    pub mined_timestamp: c_ulonglong,
-}
 
 /// Payment Record FFI Types
 #[derive(Clone)]
@@ -9551,17 +9496,17 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut ByteVector` - returns a byte vector containing all PayRefs (32 bytes each) for the transaction,
-/// note that ptr::null_mut() is returned if wallet is null or an error occurs
+/// `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
 ///
 /// # Safety
-/// The ```byte_vector_destroy``` method must be called when finished with a ByteVector to prevent a memory leak
+/// The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+/// leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_transaction_payrefs(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut ByteVector {
+) -> *mut TariPaymentRecords {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -9571,20 +9516,55 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
         *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
         return ptr::null_mut();
     }
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .transaction_service
-            .get_transaction_payrefs(TxId::from(transaction_id)),
-    ) {
-        Ok(payrefs) => {
-            // Flatten the Vec<FixedHash> into a single Vec<u8>
-            let mut flattened = Vec::new();
-            for payref in payrefs {
-                flattened.extend_from_slice(payref.as_slice());
+    let mut records = Vec::new();
+    let tx_id = TxId::from(transaction_id);
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.get_completed_transaction(tx_id))
+    {
+        Ok(tx) => {
+            for hash in tx.sent_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 1,
+                });
             }
-            Box::into_raw(Box::new(ByteVector(flattened)))
+            for hash in tx.received_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 0,
+                });
+            }
+            for hash in tx.change_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 2,
+                });
+            }
         },
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -9597,7 +9577,7 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `payref` - The 32-byte PayRef to look up
+/// `payref` - The 32-byte ByteVector of the payment reference
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -9608,10 +9588,12 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
 /// # Safety
 /// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
 /// prevent a memory leak
+/// The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
+/// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_payment_by_reference(
+pub unsafe extern "C" fn wallet_get_transaction_by_payref(
     wallet: *mut TariWallet,
-    payref: *const u8,
+    payref: *mut ByteVector,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction {
     if error_out.is_null() {
@@ -9628,294 +9610,28 @@ pub unsafe extern "C" fn wallet_get_payment_by_reference(
         *error_out = LibWalletError::from(InterfaceError::NullError("payref".to_string())).code;
         return ptr::null_mut();
     }
-
-    // Convert the 32-byte pointer to a FixedHash
-    let payref_fixedhash = {
-        let slice = std::slice::from_raw_parts(payref, 32);
-        let mut array = [0u8; 32];
-        array.copy_from_slice(slice);
-        FixedHash::from(array)
+    let vec_bytes = (*payref).0.clone();
+    let payref_fixedhash = match FixedHash::try_from(vec_bytes) {
+        Ok(hash) => hash,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("payref".to_string())).code;
+            return ptr::null_mut();
+        },
     };
 
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .transaction_service
-            .get_payment_by_reference(payref_fixedhash),
+            .get_transaction_by_payref(payref_fixedhash),
     ) {
-        Ok(Some(payment_details)) => {
-            // For FFI compatibility, we need to return the transaction
-            // First, get the transaction by ID
-            match (*wallet).runtime.block_on(
-                (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_completed_transaction(payment_details.tx_id),
-            ) {
-                Ok(tx) => Box::into_raw(Box::new(tx)),
-                Err(e) => {
-                    *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                    ptr::null_mut()
-                },
-            }
-        },
+        Ok(Some(tx)) => Box::into_raw(Box::new(tx)),
         Ok(None) => ptr::null_mut(), // PayRef not found
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::null_mut()
         },
     }
-}
-
-/// Get PayRefs for a specific output hash
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `output_hash` - The 32-byte output hash to look up
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur
-///
-/// ## Returns
-/// `*mut TariOutputWithPayRef` - returns the output with its PayRef, null if not found
-///
-/// # Safety
-/// The caller must call output_with_payref_destroy when finished with the result
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_payref_for_output_hash(
-    wallet: *mut TariWallet,
-    output_hash: *const u8,
-    error_out: *mut c_int,
-) -> *mut TariOutputWithPayRef {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() || output_hash.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet or output_hash".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    // Convert the 32-byte pointer to a HashOutput
-    let hash_array: [u8; 32] = {
-        let slice = std::slice::from_raw_parts(output_hash, 32);
-        let mut array = [0u8; 32];
-        array.copy_from_slice(slice);
-        array
-    };
-    use tari_common_types::types::HashOutput;
-    let hash_output = HashOutput::from(hash_array);
-
-    // Get all transactions with PayRefs and search for the specific output
-    match (*wallet)
-        .runtime
-        .block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .get_transactions_with_payref(None, None, Some(true)),
-        ) {
-        Ok(transactions_with_payrefs) => {
-            // Search through all transactions for the output hash
-            for tx_with_payrefs in transactions_with_payrefs {
-                for output in &tx_with_payrefs.outputs_with_payrefs {
-                    if output.output_hash == hash_output {
-                        // Found the output, convert to FFI structure
-                        let ffi_output = TariOutputWithPayRef {
-                            output_hash: {
-                                let bytes = output.output_hash.as_bytes();
-                                let mut array = [0u8; 32];
-                                array.copy_from_slice(bytes);
-                                array
-                            },
-                            payment_reference: output
-                                .payment_reference
-                                .map(|p| {
-                                    let mut array = [0u8; 32];
-                                    array.copy_from_slice(p.as_slice());
-                                    array
-                                })
-                                .unwrap_or([0u8; 32]),
-                            has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
-                            output_type: match output.output_type {
-                                minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
-                                minotari_wallet::transaction_service::handle::OutputType::Received => 1,
-                                minotari_wallet::transaction_service::handle::OutputType::Change => 2,
-                            },
-                            amount: output.amount.as_u64(),
-                            status: match output.status {
-                                minotari_wallet::transaction_service::handle::OutputStatus::Available => 0,
-                                minotari_wallet::transaction_service::handle::OutputStatus::Pending => 1,
-                                minotari_wallet::transaction_service::handle::OutputStatus::NotMined => 2,
-                                minotari_wallet::transaction_service::handle::OutputStatus::Spent => 3,
-                            },
-                        };
-
-                        return Box::into_raw(Box::new(ffi_output));
-                    }
-                }
-            }
-
-            // Output hash not found
-            ptr::null_mut()
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Get per-output PayRefs for a specific transaction
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer  
-/// `transaction_id` - The transaction ID to get outputs for
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur
-///
-/// ## Returns
-/// `*mut TariOutputsWithPayRefs` - Collection of outputs with their PayRefs
-///
-/// # Safety
-/// The caller must call outputs_with_payrefs_destroy when finished with the result
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_output_payrefs_for_transaction(
-    wallet: *mut TariWallet,
-    transaction_id: c_ulonglong,
-    error_out: *mut c_int,
-) -> *mut TariOutputsWithPayRefs {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let tx_id = TxId::from(transaction_id);
-
-    match (*wallet)
-        .runtime
-        .block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .get_transactions_with_payrefs(Some(1), None, Some(true)),
-        ) {
-        Ok(txs_with_payrefs) => {
-            // Find the specific transaction
-            if let Some(tx_with_payrefs) = txs_with_payrefs.into_iter().find(|tx| tx.transaction.tx_id == tx_id) {
-                // Convert to FFI structure
-                let mut ffi_outputs = Vec::new();
-
-                for output in &tx_with_payrefs.outputs_with_payrefs {
-                    let ffi_output = TariOutputWithPayRef {
-                        output_hash: {
-                            let bytes = output.output_hash.as_bytes();
-                            let mut array = [0u8; 32];
-                            array.copy_from_slice(bytes);
-                            array
-                        },
-                        payment_reference: output
-                            .payment_reference
-                            .map(|p| {
-                                let mut array = [0u8; 32];
-                                array.copy_from_slice(p.as_slice());
-                                array
-                            })
-                            .unwrap_or([0u8; 32]),
-                        has_payment_reference: if output.payment_reference.is_some() { 1 } else { 0 },
-                        output_type: match output.output_type {
-                            minotari_wallet::transaction_service::handle::OutputType::Sent => 0,
-                            minotari_wallet::transaction_service::handle::OutputType::Received => 1,
-                            minotari_wallet::transaction_service::handle::OutputType::Change => 2,
-                        },
-                        amount: output.amount.as_u64(),
-                        status: match output.status {
-                            minotari_wallet::transaction_service::handle::OutputStatus::Available => 0,
-                            minotari_wallet::transaction_service::handle::OutputStatus::Pending => 1,
-                            minotari_wallet::transaction_service::handle::OutputStatus::NotMined => 2,
-                            minotari_wallet::transaction_service::handle::OutputStatus::Spent => 3,
-                        },
-                    };
-                    ffi_outputs.push(ffi_output);
-                }
-
-                let outputs_array = ffi_outputs.into_boxed_slice();
-                let outputs_ptr = Box::into_raw(outputs_array) as *mut TariOutputWithPayRef;
-
-                let result = TariOutputsWithPayRefs {
-                    outputs: outputs_ptr,
-                    length: tx_with_payrefs.outputs_with_payrefs.len() as c_uint,
-                };
-
-                Box::into_raw(Box::new(result))
-            } else {
-                ptr::null_mut() // Transaction not found
-            }
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Destroy a TariOutputWithPayRef
-#[no_mangle]
-pub unsafe extern "C" fn output_with_payref_destroy(ptr: *mut TariOutputWithPayRef) {
-    if !ptr.is_null() {
-        drop(Box::from_raw(ptr));
-    }
-}
-
-/// Destroy a TariOutputsWithPayRefs
-#[no_mangle]
-pub unsafe extern "C" fn outputs_with_payrefs_destroy(ptr: *mut TariOutputsWithPayRefs) {
-    if !ptr.is_null() {
-        let outputs_with_payrefs = Box::from_raw(ptr);
-        if !outputs_with_payrefs.outputs.is_null() {
-            let outputs_slice =
-                std::slice::from_raw_parts_mut(outputs_with_payrefs.outputs, outputs_with_payrefs.length as usize);
-            drop(Box::from_raw(outputs_slice.as_mut_ptr()));
-        }
-    }
-}
-
-/// Get length of TariOutputsWithPayRefs
-#[no_mangle]
-pub unsafe extern "C" fn outputs_with_payrefs_get_length(ptr: *mut TariOutputsWithPayRefs) -> c_uint {
-    if ptr.is_null() {
-        return 0;
-    }
-    (*ptr).length
-}
-
-/// Get output at index from TariOutputsWithPayRefs
-#[no_mangle]
-pub unsafe extern "C" fn outputs_with_payrefs_get_at(
-    ptr: *mut TariOutputsWithPayRefs,
-    index: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariOutputWithPayRef {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if ptr.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("outputs_with_payrefs".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let outputs_with_payrefs = &*ptr;
-    if index >= outputs_with_payrefs.length {
-        *error_out = LibWalletError::from(InterfaceError::InvalidArgument("Index out of bounds".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    outputs_with_payrefs.outputs.add(index as usize)
 }
 
 /// Get all transactions that have PayRefs with optional filtering
@@ -11099,77 +10815,6 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
         drop(Box::from_raw(contacts_handle))
     }
 }
-/// Find payment details by PayRef
-/// Returns null if PayRef not found
-/// Find payment details by payment reference
-///
-/// # Safety
-/// This function is unsafe because it dereferences raw pointers. The caller must ensure:
-/// - `wallet` is a valid pointer to a TariWallet
-/// - `payment_reference` points to a valid 32-byte array
-/// - `error_out` is a valid pointer to a c_int
-/// - All pointers remain valid for the duration of the call
-#[no_mangle]
-pub unsafe extern "C" fn wallet_find_payment_by_reference(
-    wallet: *mut TariWallet,
-    payment_reference: *const c_uchar, // 32-byte array
-    error_out: *mut c_int,
-) -> *mut TariPaymentDetails {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-    if payment_reference.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    // Convert C array to FixedHash
-    let mut payref = [0u8; 32];
-    payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
-    let payref_fixedhash = FixedHash::from(payref);
-
-    // Call wallet service method
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .find_payment_by_reference(payref_fixedhash),
-    ) {
-        Ok(Some(payment_details)) => {
-            // Convert to FFI type and return
-            let commitment_hex = CString::new(payment_details.commitment.to_hex())
-                .expect("Failed to create CString")
-                .into_raw();
-
-            Box::into_raw(Box::new(TariPaymentDetails {
-                payment_reference: {
-                    let mut array = [0u8; 32];
-                    array.copy_from_slice(payment_details.payment_reference.as_slice());
-                    array
-                },
-                commitment: commitment_hex,
-                amount: payment_details.amount.as_u64(),
-                block_height: payment_details.block_height,
-                confirmations: payment_details.confirmations,
-                mined_timestamp: payment_details
-                    .mined_timestamp
-                    .map(|ts| ts.timestamp() as c_ulonglong)
-                    .unwrap_or(0),
-            }))
-        },
-        Ok(None) => ptr::null_mut(),
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::null_mut()
-        },
-    }
-}
 
 /// Helper function to convert payment records to FFI format
 unsafe fn convert_payment_records_to_ffi(payment_records: Vec<PaymentRecord>) -> *mut TariPaymentRecords {
@@ -11252,96 +10897,6 @@ pub unsafe extern "C" fn wallet_get_all_payment_references(
     }
 }
 
-/// Get PayRef configuration
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_payment_reference_config(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> *mut TariPayRefConfig {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config())
-    {
-        Ok(config) => Box::into_raw(Box::new(TariPayRefConfig {
-            required_confirmations: config.required_confirmations,
-            display_format: match config.display_format {
-                PayRefDisplayFormat::Full => 0,
-                PayRefDisplayFormat::Shortened => 1,
-                PayRefDisplayFormat::Custom { .. } => 2,
-            },
-            auto_copy_on_click: config.auto_copy_on_click,
-            show_pending_progress: config.show_pending_progress,
-            refresh_interval_seconds: config.refresh_interval_seconds as c_uint,
-        })),
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// Set PayRef configuration
-#[no_mangle]
-pub unsafe extern "C" fn wallet_set_payment_reference_config(
-    wallet: *mut TariWallet,
-    config: *mut TariPayRefConfig,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-    if config.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("config".to_string())).code;
-        return false;
-    }
-
-    // Convert FFI config to internal config structure
-    let internal_config = PayRefConfig {
-        required_confirmations: (*config).required_confirmations,
-        display_format: match (*config).display_format {
-            0 => PayRefDisplayFormat::Full,
-            1 => PayRefDisplayFormat::Shortened,
-            2 => PayRefDisplayFormat::Custom {
-                prefix_chars: 8,
-                suffix_chars: 8,
-            },
-            _ => PayRefDisplayFormat::Full,
-        },
-        auto_copy_on_click: (*config).auto_copy_on_click,
-        show_pending_progress: (*config).show_pending_progress,
-        refresh_interval_seconds: (*config).refresh_interval_seconds as u64,
-    };
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .set_payment_reference_config(internal_config),
-    ) {
-        Ok(_) => true,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            false
-        },
-    }
-}
-
 /// Parse payment reference from hex string
 #[no_mangle]
 pub unsafe extern "C" fn parse_payment_reference_hex(hex_str: *const c_char, error_out: *mut c_int) -> *mut c_uchar {
@@ -11420,39 +10975,11 @@ pub unsafe extern "C" fn payment_reference_to_hex(
     }
 }
 
-/// Destroy TariPaymentDetails
-#[no_mangle]
-pub unsafe extern "C" fn payment_details_destroy(details: *mut TariPaymentDetails) {
-    if !details.is_null() {
-        // Free the commitment string
-        if !(*details).commitment.is_null() {
-            string_destroy((*details).commitment);
-        }
-        drop(Box::from_raw(details));
-    }
-}
-
 /// Destroy TariPaymentRecords
 #[no_mangle]
 pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecords) {
     if !records.is_null() {
         drop(Box::from_raw(records));
-    }
-}
-
-/// Destroy TariPayRefConfig
-#[no_mangle]
-pub unsafe extern "C" fn payref_config_destroy(config: *mut TariPayRefConfig) {
-    if !config.is_null() {
-        drop(Box::from_raw(config));
-    }
-}
-
-/// Destroy TariPayRefStatus
-#[no_mangle]
-pub unsafe extern "C" fn payref_status_destroy(status: *mut TariPayRefStatus) {
-    if !status.is_null() {
-        drop(Box::from_raw(status));
     }
 }
 
@@ -11577,81 +11104,6 @@ pub unsafe extern "C" fn wallet_generate_payment_reference_from_data(
     // Copy the proper payment reference to allocated memory
     ptr::copy_nonoverlapping(payment_ref.as_ptr(), payment_ref_ptr, 32);
     payment_ref_ptr
-}
-
-/// Get PayRef status by checking confirmations
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_payment_reference_status(
-    wallet: *mut TariWallet,
-    payment_reference: *const c_uchar, // 32-byte array
-    error_out: *mut c_int,
-) -> *mut TariPayRefStatus {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-    if payment_reference.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("payment_reference".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    // Convert C array to FixedHash
-    let mut payref = [0u8; 32];
-    payref.copy_from_slice(slice::from_raw_parts(payment_reference, 32));
-    let payref_fixedhash = FixedHash::from(payref);
-
-    // Find the output with this PayRef
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .find_payment_by_reference(payref_fixedhash),
-    ) {
-        Ok(Some(payment_details)) => {
-            // Get config to check required confirmations
-            let config = (*wallet)
-                .runtime
-                .block_on((*wallet).wallet.output_manager_service.get_payment_reference_config())
-                .unwrap_or_default();
-
-            if payment_details.confirmations >= config.required_confirmations {
-                // Available
-                Box::into_raw(Box::new(TariPayRefStatus {
-                    status_type: 0, // Available
-                    payment_reference: payref,
-                    confirmations: payment_details.confirmations,
-                    blocks_remaining: 0,
-                }))
-            } else {
-                // Pending more confirmations
-                let remaining = config.required_confirmations - payment_details.confirmations;
-                Box::into_raw(Box::new(TariPayRefStatus {
-                    status_type: 1, // Pending
-                    payment_reference: payref,
-                    confirmations: payment_details.confirmations,
-                    blocks_remaining: remaining,
-                }))
-            }
-        },
-        Ok(None) => {
-            // PayRef not found - could be not mined yet or invalid
-            Box::into_raw(Box::new(TariPayRefStatus {
-                status_type: 2, // NotMined
-                payment_reference: payref,
-                confirmations: 0,
-                blocks_remaining: 0,
-            }))
-        },
-        Err(_) => {
-            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("Invalid PayRef".to_string())).code;
-            ptr::null_mut()
-        },
-    }
 }
 
 /// Format PayRef for display according to config
