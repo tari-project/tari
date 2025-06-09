@@ -282,9 +282,19 @@ where
             ));
         }
 
+        let change_hashes = sender_protocol
+            .get_change_output()?
+            .map(|o| o.hash(&self.resources.transaction_key_manager_service))
+            .collect::<Vec<HashOutput>>();
+        let spent_inputs = sender_protocol
+            .get_spent_inputs()?
+            .into_iter()
+            .map(|input| input.output.hash(&self.resources.transaction_key_manager_service))
+            .collect::<Vec<_>>();
+
         // Calculate the size of the transaction - initial send transaction to the peer (always a small message) should
         // not be attempted if the final transaction size will be too large to be broadcast
-        let outbound_tx_check = OutboundTransaction::new(
+        let mut outbound_tx = OutboundTransaction::new_with_output_hashes(
             tx_id,
             self.dest_address.clone(),
             self.amount,
@@ -294,6 +304,8 @@ where
             self.payment_id.clone(),
             Utc::now(),
             true, // This does not matter for the check
+            spent_inputs.clone(),
+            change_hashes.clone(),
         );
 
         // Attempt to send the initial transaction
@@ -302,7 +314,7 @@ where
             store_and_forward_send_result: false,
             transaction_status: TransactionStatus::Queued,
         };
-        if let Err(e) = check_transaction_size(&outbound_tx_check, self.id) {
+        if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
             info!(
                 target: LOG_TARGET,
                 "Initial Transaction TxId: {:?} will not be sent due to it being oversize ({:?})", self.id, e
@@ -338,17 +350,9 @@ where
             let fee = sender_protocol
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let outbound_tx = OutboundTransaction::new(
-                tx_id,
-                self.dest_address.clone(),
-                self.amount,
-                fee,
-                sender_protocol.clone(),
-                initial_send.transaction_status.clone(),
-                self.payment_id.clone(),
-                Utc::now(),
-                initial_send.direct_send_result,
-            );
+            outbound_tx.fee = fee;
+            outbound_tx.status = initial_send.transaction_status.clone();
+            outbound_tx.direct_send_success = true;
             self.resources
                 .db
                 .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
@@ -594,7 +598,8 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         // Categorize outputs for PayRef functionality
-        let (sent_hashes, change_hashes) = self.categorize_output_hashes(tx, &outbound_tx).await?;
+        let sent_hashes = outbound_tx.sent_output_hashes.clone();
+        let change_hashes = outbound_tx.change_output_hashes.clone();
 
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
@@ -992,52 +997,6 @@ where
             });
 
         Ok(())
-    }
-
-    /// Categorize transaction outputs into sent, change, and received hashes for PayRef functionality
-    async fn categorize_output_hashes(
-        &mut self,
-        tx: &tari_core::transactions::transaction_components::Transaction,
-        _outbound_tx: &OutboundTransaction,
-    ) -> Result<(Vec<HashOutput>, Vec<HashOutput>), TransactionServiceProtocolError<TxId>> {
-        let mut sent_hashes = Vec::new();
-        let mut change_hashes = Vec::new();
-
-        for output in tx.body.outputs() {
-            let output_hash = output.hash();
-
-            // Check if this output belongs to our wallet using the output manager
-            match self.resources.output_manager_service.is_output_ours(output).await {
-                Ok(true) => {
-                    // This is our output, check if it's change
-                    match self.resources.output_manager_service.is_change_output(output).await {
-                        Ok(true) => change_hashes.push(output_hash),
-                        Ok(false) => {
-                            // It's ours but not change - could be a self-send, treat as sent
-                            sent_hashes.push(output_hash);
-                        },
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Error checking if output is change: {:?}", e);
-                            return Err(TransactionServiceProtocolError::new(
-                                self.id,
-                                TransactionServiceError::OutputManagerError(e),
-                            ));
-                        },
-                    }
-                },
-                Ok(false) => {
-                    // Not ours, so it's being sent to recipient
-                    sent_hashes.push(output_hash);
-                },
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "Error checking output ownership: {:?}", e);
-                    // Default to treating as sent to be safe
-                    sent_hashes.push(output_hash);
-                },
-            }
-        }
-
-        Ok((sent_hashes, change_hashes))
     }
 }
 

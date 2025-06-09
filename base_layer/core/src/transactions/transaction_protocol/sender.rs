@@ -337,6 +337,21 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Returns the change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// is returned.
+    pub fn get_spent_inputs(&self) -> Result<Vec<OutputPair>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
+                Ok(info.inputs.as_ref().map(|inputs| inputs.clone()).unwrap_or_default())
+            },
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// This function will return the script offset private keys for a single recipient
     pub fn get_recipient_sender_offset_private_key(&self) -> Result<Option<TariKeyId>, TPE> {
         match &self.state {

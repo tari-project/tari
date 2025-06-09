@@ -135,6 +135,37 @@ impl OutboundTransaction {
             change_output_hashes: Vec::new(),
         }
     }
+
+    pub fn new_with_output_hashes(
+        tx_id: TxId,
+        destination_address: TariAddress,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
+        sender_protocol: SenderTransactionProtocol,
+        status: TransactionStatus,
+        payment_id: PaymentId,
+        timestamp: DateTime<Utc>,
+        direct_send_success: bool,
+        sent_output_hashes: Vec<FixedHash>,
+        change_output_hashes: Vec<FixedHash>,
+    ) -> Self {
+        Self {
+            tx_id,
+            destination_address,
+            amount,
+            fee,
+            sender_protocol,
+            status,
+            payment_id,
+            timestamp,
+            cancelled: false,
+            direct_send_success,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes,
+            change_output_hashes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
