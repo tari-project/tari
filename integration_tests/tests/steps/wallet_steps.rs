@@ -745,6 +745,22 @@ async fn wait_for_wallet_to_have_scanned_to_height(world: &mut TariWorld, wallet
     );
 }
 
+#[then(expr = "all wallets validate their transactions")]
+#[when(expr = "all wallets validate their transactions")]
+async fn all_wallets_validate_their_transactions(world: &mut TariWorld) {
+    let wallets = world.wallets.keys().cloned().collect::<Vec<_>>();
+    for wallet in &wallets {
+        let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+        let result = client.validate_all_transactions(ValidateRequest {}).await;
+        if let Err(e) = result {
+            cucumber_steps_log(format!(
+                "Error! Wallet {} failed to validate transactions, error: {:?}",
+                wallet, e
+            ));
+        }
+    }
+}
+
 #[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 #[given(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {

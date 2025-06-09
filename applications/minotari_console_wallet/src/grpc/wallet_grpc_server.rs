@@ -179,6 +179,10 @@ impl WalletGrpcServer {
         })
     }
 
+    pub async fn start_balance_debouncer_event_monitor(&self) {
+        self.debouncer.lock().await.start_event_monitor_if_needed().await
+    }
+
     fn get_transaction_service(&self) -> TransactionServiceHandle {
         self.wallet.transaction_service.clone()
     }

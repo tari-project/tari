@@ -23,7 +23,10 @@
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::{tari_address::TariAddress, types::HashOutput};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{BlockHash, HashOutput},
+};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -40,9 +43,11 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
+        error::UtxoScannerError,
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
+        RECOVERY_KEY,
     },
 };
 
@@ -59,6 +64,8 @@ pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) base_node_service: BaseNodeServiceHandle,
+    block_tip_to_scan_to: Option<BlockHash>,
+    last_block_tip_scanned: Option<BlockHash>,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
 }
@@ -79,6 +86,7 @@ where
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
     ) -> Self {
+        debug!(target: LOG_TARGET, "{:?}: New scanning service created", mode);
         Self {
             resources,
             peer_seeds,
@@ -87,6 +95,8 @@ where
             shutdown_signal,
             event_sender,
             base_node_service,
+            block_tip_to_scan_to: None,
+            last_block_tip_scanned: None,
             one_sided_message_watch,
             recovery_message_watch,
         }
@@ -114,14 +124,16 @@ where
         self.event_sender.subscribe()
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn run(mut self) -> Result<(), WalletError> {
-        info!(target: LOG_TARGET, "UTXO scanning service starting");
+        info!(target: LOG_TARGET, "{:?}: UTXO scanning service starting", self.mode);
 
         if self.mode == UtxoScannerMode::Recovery {
             let task = self.create_task(self.shutdown_signal.clone());
             task::spawn(async move {
+                trace!(target: LOG_TARGET, "{:?}: Spawning new UTXO recovery task", self.mode);
                 if let Err(err) = task.run().await {
-                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                    error!(target: LOG_TARGET, "{:?}: Error scanning UTXOs: {}", self.mode, err);
                 }
             });
             return Ok(());
@@ -132,36 +144,117 @@ where
 
         loop {
             let mut local_shutdown = Shutdown::new();
+
+            // No use to try scanning when we do not have a base node connection, typically at startup
+            if !self.is_base_node_connected() {
+                local_shutdown.trigger();
+                debug!(
+                    target: LOG_TARGET,
+                    "{:?}: Base node is not connected - waiting for base node connection.",
+                    self.mode
+                );
+                tokio::select! {
+                    _ = main_shutdown.wait() => {
+                        info!(
+                            target: LOG_TARGET,
+                            "{:?}: UTXO scanning service shutting down because it received the shutdown signal",
+                            self.mode
+                        );
+                        return Ok(());
+                    }
+                    _ = self.resources.current_base_node_watcher.changed() => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "{:?}: Base node change detected waiting for initial connection.",
+                            self.mode
+                        );
+                        let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                        if let Some(peer) = selected_peer {
+                            self.peer_seeds = vec![peer.get_current_peer().public_key];
+                        }
+                    },
+                }
+                continue;
+            }
+
+            // If we have a base node connection, we can spawn a task to scanning UTXOs
             let task = self.create_task(local_shutdown.to_signal());
+            let mode = self.mode.clone();
             let mut task_join_handle = task::spawn(async move {
+                trace!(target: LOG_TARGET, "{:?}: Spawning new UTXO scanning task", mode);
                 if let Err(err) = task.run().await {
-                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                    error!(target: LOG_TARGET, "{:?}: Error scanning UTXOs: {}", mode, err);
                 }
             })
             .fuse();
 
+            // These events will change the scanning behaviour:
+            // - Base node state changes will trigger a new scanning round if the block tip has changed and not yet
+            //   scanned.
+            // - A successfully completed scanning round will update the last scanned block tip.
+            // - A newly established base node connection will reset the last and current scanned block tip states to
+            //   force a new scanning round when the next base node state change is received.
+            // - One-sided payment message changes will update the message used in one-sided payments.
+            // - Recovery message changes will update the message used in recovery.
+            // - Shutdown signal will stop the task if it is running, and let that thread exit gracefully.
             loop {
                 tokio::select! {
                     event = base_node_service_event_stream.recv() => {
+                        if self.check_recovery_mode()? {
+                            debug!(
+                                target: LOG_TARGET,
+                                "{:?}: Ignoring base node events while recovery is in progress",
+                                self.mode,
+                            );
+                            local_shutdown.trigger();
+                            self.last_block_tip_scanned = None;
+                            self.block_tip_to_scan_to = None;
+                            continue;
+                        }
                         match event {
                             Ok(e) => {
-                                if let BaseNodeEvent::NewBlockDetected(_hash, h) = (*e).clone() {
-                                        debug!(target: LOG_TARGET, "New block event received: {}", h);
-                                        if local_shutdown.is_triggered() {
-                                            debug!(target: LOG_TARGET, "Starting new round of UTXO scanning");
-                                            break;
-                                        }
+                                if let Some((hash, height)) = match *e {
+                                    BaseNodeEvent::BaseNodeStateChanged(ref state) => state
+                                        .chain_metadata
+                                        .as_ref()
+                                        .map(|metadata| (*metadata.best_block_hash(), metadata.best_block_height())),
+                                    BaseNodeEvent::NewBlockDetected(hash, height) => Some((hash, height)),
+                                } {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "{:?}: New base node data received: height: {}, hash: {}",
+                                        self.mode, height, hash
+                                    );
+                                    if self.should_scan(hash) {
+                                        self.block_tip_to_scan_to = Some(hash);
+                                        local_shutdown.trigger();
+                                        debug!(
+                                            target: LOG_TARGET,
+                                            "{:?}: Base node state changed, starting new round of UTXO scanning to \
+                                            height: {}, hash: {}",
+                                            self.mode, height, hash
+                                        );
+                                        // Trigger the scanning task to start a new round
+                                        break;
+                                    }
                                 }
                             },
-                            Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                            Err(e) => debug!(
+                                target: LOG_TARGET,
+                                "{:?}: Lagging read on base node event broadcast channel: {}",
+                                self.mode, e
+                            ),
                         };
                     },
                     _ = &mut task_join_handle => {
-                        debug!(target: LOG_TARGET, "UTXO scanning round completed");
+                        debug!(target: LOG_TARGET, "{:?}: UTXO scanning round completed", self.mode);
+                        self.last_block_tip_scanned = self.block_tip_to_scan_to;
                         local_shutdown.trigger();
                     }
                     _ = self.resources.current_base_node_watcher.changed() => {
-                        debug!(target: LOG_TARGET, "Base node change detected.");
+                        self.last_block_tip_scanned = None;
+                        self.block_tip_to_scan_to = None;
+                        debug!(target: LOG_TARGET, "{:?}: Base node change detected.", self.mode);
                         let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
                         if let Some(peer) = selected_peer {
                             self.peer_seeds = vec![peer.get_current_peer().public_key];
@@ -169,9 +262,13 @@ where
                         local_shutdown.trigger();
                     },
                     _ = main_shutdown.wait() => {
-                        // this will stop the task if its running, and let that thread exit gracefully
+                        // This will stop the task if its running, and let that thread exit gracefully
                         local_shutdown.trigger();
-                        info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
+                        info!(
+                            target: LOG_TARGET,
+                            "{:?}: UTXO scanning service shutting down because it received the shutdown signal",
+                            self.mode
+                        );
                         return Ok(());
                     }
                     Ok(_) = self.one_sided_message_watch.changed() => {
@@ -183,6 +280,39 @@ where
                 }
             }
         }
+    }
+
+    pub fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+        self.resources
+            .db
+            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
+            .map(|x| x.is_some())
+            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
+    }
+
+    fn should_scan(&self, new_hash: BlockHash) -> bool {
+        let mut should_trigger_scanning = false;
+        if let Some(last_block_tip_scanned) = self.last_block_tip_scanned {
+            if let Some(block_tip_to_scan_to) = self.block_tip_to_scan_to {
+                if last_block_tip_scanned != new_hash && block_tip_to_scan_to != new_hash {
+                    should_trigger_scanning = true;
+                }
+            }
+        } else if self.block_tip_to_scan_to.is_none() || self.block_tip_to_scan_to != Some(new_hash) {
+            should_trigger_scanning = true;
+        } else {
+            // Nothing here
+        }
+        should_trigger_scanning
+    }
+
+    fn is_base_node_connected(&self) -> bool {
+        self.resources
+            .current_base_node_watcher
+            .borrow()
+            .as_ref()
+            .cloned()
+            .is_some()
     }
 }
 

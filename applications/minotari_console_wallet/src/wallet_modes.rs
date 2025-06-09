@@ -25,8 +25,13 @@
 use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
+use futures::TryFutureExt;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    tari_rpc::{wallet_server::Wallet, GetBalanceRequest},
+    tls::identity::read_identity,
+};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::{
@@ -39,6 +44,7 @@ use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
+    Request,
 };
 use tui::backend::CrosstermBackend;
 use url::Url;
@@ -476,6 +482,8 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
                     Err(e) => return Err(e),
                 }
             }
+
+            handle.block_on(async { grpc.start_balance_debouncer_event_monitor().await });
 
             handle
                 .block_on(run_grpc(grpc, address, auth, tls_identity, wallet))

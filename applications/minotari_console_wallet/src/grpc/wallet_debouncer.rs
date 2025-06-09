@@ -84,14 +84,16 @@ impl WalletDebouncer {
         }
     }
 
-    async fn start_event_monitor(&mut self) {
-        trace!(target: LOG_TARGET, "start_event_monitor");
-        let self_clone = self.clone();
-        tokio::spawn(async move {
-            self_clone.monitor_events().await;
-        });
-        let mut lock = self.event_monitor_started.lock().await;
-        *lock = true;
+    pub async fn start_event_monitor_if_needed(&mut self) {
+        if !self.is_event_monitor_started().await {
+            trace!(target: LOG_TARGET, "start_event_monitor");
+            let self_clone = self.clone();
+            tokio::spawn(async move {
+                self_clone.monitor_events().await;
+            });
+            let mut lock = self.event_monitor_started.lock().await;
+            *lock = true;
+        }
     }
 
     async fn is_event_monitor_started(&self) -> bool {
@@ -102,9 +104,7 @@ impl WalletDebouncer {
     /// fetch the balance from the output manager service if new wallet events were received that could change the
     /// balance.
     pub async fn get_balance(&mut self) -> Result<GetBalanceResponse, Status> {
-        if !self.is_event_monitor_started().await {
-            self.start_event_monitor().await;
-        }
+        self.start_event_monitor_if_needed().await;
         let balance = if self.is_refresh_needed().await {
             let mut output_manager_service = self.output_manager_service.clone();
             let balance = match output_manager_service.get_balance().await {
@@ -153,9 +153,7 @@ impl WalletDebouncer {
     }
 
     pub async fn get_scanned_height(&mut self) -> u64 {
-        if !self.is_event_monitor_started().await {
-            self.start_event_monitor().await;
-        }
+        self.start_event_monitor_if_needed().await;
         *self.scanned_height.lock().await
     }
 
@@ -181,8 +179,9 @@ impl WalletDebouncer {
                                 TransactionEvent::TransactionBroadcast(..) |
                                 TransactionEvent::DetectedTransactionUnconfirmed { .. } |
                                 TransactionEvent::DetectedTransactionConfirmed { .. } |
-                                TransactionEvent::TransactionMinedUnconfirmed { .. } |
                                 TransactionEvent::TransactionMined { .. } |
+                                TransactionEvent::TransactionMinedUnconfirmed { .. } |
+                                TransactionEvent::TransactionImported(_)  |
                                 TransactionEvent::TransactionValidationStateChanged(..) => {
                                     self.set_refresh_needed(true).await;
                                 },
@@ -212,6 +211,7 @@ impl WalletDebouncer {
                 result = utxo_scanner_events.recv() => {
                     match result {
                         Ok(event) => {
+                            trace!(target: LOG_TARGET, "utxo_scanner_events '{:?}'", event);
                             match event {
                                 UtxoScannerEvent::Progress {
                                     current_height,..

@@ -110,6 +110,7 @@ pub struct TariWorld {
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
     pub consensus_manager: ConsensusManager,
+    pub assigned_ports: IndexMap<u64, u64>,
 }
 
 impl Default for TariWorld {
@@ -149,6 +150,7 @@ impl Default for TariWorld {
             wallet_private_key,
             default_payment_address,
             consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),
+            assigned_ports: Default::default(),
         }
     }
 }

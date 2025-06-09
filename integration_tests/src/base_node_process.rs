@@ -113,8 +113,8 @@ pub async fn spawn_base_node_with_config(
         base_node_identity = node_ps.identity.clone();
     } else {
         // each spawned base node will use different ports
-        port = get_port(18000..18499).unwrap();
-        grpc_port = get_port(18500..18999).unwrap();
+        port = get_port(world, 18000..18499).unwrap();
+        grpc_port = get_port(world, 18500..18999).unwrap();
         // create a new temporary directory
         temp_dir_path = world
             .current_base_dir

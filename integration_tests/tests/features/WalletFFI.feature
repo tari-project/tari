@@ -33,11 +33,6 @@ Feature: Wallet FFI
         When I have mining node MY_MINER connected to base node BASE and wallet MY_WALLET
 
         Then I export wallet MY_WALLET view and spend keys as VIEW_SPEND_KEYS
-        Then I create view wallet VIEW_MY_WALLET from view and spend keys VIEW_SPEND_KEYS on node BASE
-
-        Then I recover wallet MY_WALLET into wallet MY_WALLET2 from seed words on node BASE
-
-        Then I recover wallet MY_WALLET into ffi wallet FFI_WALLET from seed words on node BASE
 
         When mining node OTHER_MINER mines 12 blocks
         When I wait for wallet OTHER_WALLET to have scanned to height 12
@@ -49,16 +44,22 @@ Feature: Wallet FFI
         Then I send a one-sided stealth transaction of 10000123 uT from wallet MY_WALLET to wallet OTHER_WALLET at fee 1
 
         When mining node OTHER_MINER mines 1 blocks
+        Then I stop wallet OTHER_WALLET
         When I wait for wallet MY_WALLET to have scanned to height 25
         Then I wait for wallet MY_WALLET to have less than 166164000000 uT
         Then I remember wallet MY_WALLET balance BALANCE_STATE_ON_BLOCKCHAIN
+        Then I stop wallet MY_WALLET
 
+        Then I recover wallet MY_WALLET into wallet MY_WALLET2 from seed words on node BASE
         When I wait for wallet MY_WALLET2 to have scanned to height 25
         Then wallet MY_WALLET2 balance is BALANCE_STATE_ON_BLOCKCHAIN
+        Then I stop wallet MY_WALLET2
 
+        Then I recover wallet MY_WALLET into ffi wallet FFI_WALLET from seed words on node BASE
         Then ffi wallet FFI_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
         And I stop ffi wallet FFI_WALLET
 
+        Then I create view wallet VIEW_MY_WALLET from view and spend keys VIEW_SPEND_KEYS on node BASE
         When I wait for wallet VIEW_MY_WALLET to have scanned to height 25
         Then wallet VIEW_MY_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
 
