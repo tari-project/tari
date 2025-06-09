@@ -571,17 +571,7 @@ message GetTransactionPayRefsResponse {
 }
 ```
 
-#### GetTransactionsWithPayRefs
-**Purpose**: Streams transactions that have PayRefs with filtering.
 
-**Request**: `GetTransactionsWithPayRefsRequest`
-```protobuf
-message GetTransactionsWithPayRefsRequest {
-    uint64 limit = 1;     // Maximum results
-    uint64 offset = 2;    // Pagination offset
-    bool mined_only = 3;  // Only mined transactions
-}
-```
 
 **Response**: `stream GetTransactionsWithPayRefsResponse`
 

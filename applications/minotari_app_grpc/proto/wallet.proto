@@ -471,73 +471,6 @@ service Wallet {
   // ```
   rpc GetTransactionPayRefs (GetTransactionPayRefsRequest) returns (GetTransactionPayRefsResponse);
 
-  // Returns all transactions that have PayRefs with optional filtering.
-  //
-  // The `GetTransactionsWithPayRefs` call streams all wallet transactions that have
-  // associated PayRefs, with support for filtering by mined status and pagination.
-  // Only transactions with at least one PayRef (sent or received outputs) are included.
-  //
-  // ### Request Parameters:
-  //
-  // - `limit` (optional):
-  //   - **Type**: `uint64`
-  //   - **Description**: Maximum number of transactions to return.
-  //   - **Default**: No limit (returns all matching transactions).
-  //   - **Restrictions**: Must be greater than 0 if specified.
-  //
-  // - `offset` (optional):
-  //   - **Type**: `uint64`
-  //   - **Description**: Number of transactions to skip (for pagination).
-  //   - **Default**: 0 (start from the beginning).
-  //
-  // - `mined_only` (optional):
-  //   - **Type**: `bool`
-  //   - **Description**: If true, only return mined transactions.
-  //   - **Default**: false (includes all transactions with PayRefs).
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const request = {
-  //   limit: 50,
-  //   offset: 0,
-  //   mined_only: true
-  // };
-  // const call = client.getTransactionsWithPayRefs(request);
-  // call.on('data', (response) => {
-  //   console.log("Transaction with PayRefs:", response.transaction);
-  //   console.log("PayRefs count:", response.payment_references.length);
-  // });
-  // call.on('error', console.error);
-  // call.on('end', () => console.log("Stream ended"));
-  // ```
-  //
-  // ### Sample Streamed JSON Response:
-  //
-  // ```json
-  // {
-  //   "transaction": {
-  //     "tx_id": 12345,
-  //     "source_address": "0x1234abcd...",
-  //     "dest_address": "0x5678efgh...",
-  //     "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
-  //     "direction": "TRANSACTION_DIRECTION_OUTBOUND",
-  //     "amount": 500000,
-  //     "fee": 20,
-  //     "is_cancelled": false,
-  //     "excess_sig": "0xabcdef...",
-  //     "timestamp": 1681234567,
-  //     "payment_id": "0xdeadbeef...",
-  //     "mined_in_block_height": 1523493
-  //   },
-  //   "payment_references": [
-  //     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  //     "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
-  //   ],
-  //   "recipient_count": 2
-  // }
-  // ```
-  rpc GetTransactionsWithPayRefs (GetTransactionsWithPayRefsRequest) returns (stream GetTransactionsWithPayRefsResponse);
 
   // Returns the wallet balance details.
   //
@@ -1612,15 +1545,6 @@ message GetTransactionPayRefsResponse {
   repeated bytes payment_references = 1;
 }
 
-// Request message for GetTransactionsWithPayRefs RPC.
-message GetTransactionsWithPayRefsRequest {
-  // Maximum number of transactions to return (0 = no limit).
-  uint64 limit = 1;
-  // Number of transactions to skip (for pagination).
-  uint64 offset = 2;
-  // If true, only return mined transactions.
-  bool mined_only = 3;
-}
 
 // Response message for GetTransactionsWithPayRefs RPC.
 message GetTransactionsWithPayRefsResponse {
