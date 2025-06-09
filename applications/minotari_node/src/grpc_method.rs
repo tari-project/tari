@@ -23,6 +23,7 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use tonic::GrpcMethod;
 
 /// A list of all the GRPC methods that can be enabled/disabled
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
@@ -65,11 +66,12 @@ pub enum GrpcMethod {
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
+    SearchPaymentReferences,
 }
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 36] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 37] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -106,11 +108,12 @@ impl GrpcMethod {
         GrpcMethod::GetShardKey,
         GrpcMethod::GetTemplateRegistrations,
         GrpcMethod::GetSideChainUtxos,
+        GrpcMethod::SearchPaymentReferences,
     ];
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 36>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 37>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -161,6 +164,7 @@ impl FromStr for GrpcMethod {
             "get_shard_key" => Ok(GrpcMethod::GetShardKey),
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
+            "search_payment_references" => OK(GrpcMethod::SearchPaymentReferences),
             _ => Err(format!("'{}' not supported", s)),
         }
     }

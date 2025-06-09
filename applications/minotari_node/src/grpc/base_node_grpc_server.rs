@@ -2948,6 +2948,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         &self,
         request: Request<tari_rpc::SearchPaymentReferencesRequest>,
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        self.check_method_enabled(GrpcMethod::SearchPaymentReferences)?;
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
 
@@ -2975,16 +2976,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
 
                 // Convert hex to FixedHash
-                let payref_bytes = match Vec::<u8>::from_hex(&payref_hex) {
-                    Ok(bytes) if bytes.len() == 32 => {
-                        let mut arr = [0u8; 32];
-                        arr.copy_from_slice(&bytes);
-                        FixedHash::from(arr)
-                    },
-                    _ => {
+                let payref_bytes = match FixedHash::from_hex(&payref_hex) {
+                    Ok(v) => v,
+                    Err(e) => {
                         let error = obscure_error_if_true(
                             report_error_flag,
-                            Status::invalid_argument(format!("Invalid PayRef hex: {}", payref_hex)),
+                            Status::invalid_argument(format!("Invalid PayRef hex: {}, {}", payref_hex, e.to_string())),
                         );
                         if tx.send(Err(error)).await.is_err() {
                             break;
@@ -2993,7 +2990,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
-                // Use efficient LMDB PayRef index lookup
                 match node_service.fetch_output_by_payref(&payref_bytes).await {
                     Ok(Some(output_info)) => {
                         // Check if output is spent
@@ -3042,106 +3038,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         Ok(Response::new(rx))
-    }
-
-    async fn get_public_payment_info(
-        &self,
-        request: Request<tari_rpc::GetPublicPaymentInfoRequest>,
-    ) -> Result<Response<tari_rpc::PublicPaymentInfoResponse>, Status> {
-        let request = request.into_inner();
-        let report_error_flag = self.report_error_flag();
-
-        trace!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for GetPublicPaymentInfo: PayRef {}",
-            request.payment_reference_hex
-        );
-
-        // Validate PayRef format
-        if request.payment_reference_hex.len() != 64 ||
-            !request.payment_reference_hex.chars().all(|c| c.is_ascii_hexdigit())
-        {
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Invalid PayRef format"),
-            ));
-        }
-
-        // Convert hex to FixedHash
-        let payref_bytes = match Vec::<u8>::from_hex(&request.payment_reference_hex) {
-            Ok(bytes) if bytes.len() == 32 => {
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                FixedHash::from(arr)
-            },
-            _ => {
-                return Err(obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument("Invalid PayRef hex"),
-                ));
-            },
-        };
-
-        let mut node_service = self.node_service.clone();
-
-        // Get current tip height for confirmation calculation
-        let tip_height = match node_service.get_metadata().await {
-            Ok(metadata) => metadata.best_block_height(),
-            Err(e) => {
-                return Err(obscure_error_if_true(
-                    report_error_flag,
-                    Status::internal(format!("Failed to get chain metadata: {}", e)),
-                ));
-            },
-        };
-
-        // Use efficient LMDB PayRef index lookup
-        match node_service.fetch_output_by_payref(&payref_bytes).await {
-            Ok(Some(output_info)) => {
-                let confirmations = tip_height.saturating_sub(output_info.mined_height) + 1;
-
-                // Check if output is spent
-                let output_hash = output_info.output.hash();
-                let (is_spent, spent_height, spending_transaction_hash) = match node_service
-                    .check_output_spent_status(output_hash)
-                    .await
-                {
-                    Ok(Some(input_info)) => (true, input_info.spent_height, input_info.input.output_hash().to_vec()),
-                    Ok(None) => (false, 0, vec![]),
-                    Err(_) => (false, 0, vec![]), // Default to not spent on error
-                };
-
-                Ok(Response::new(tari_rpc::PublicPaymentInfoResponse {
-                    status: tari_rpc::PaymentReferenceStatus::Found as i32,
-                    block_height: output_info.mined_height,
-                    block_hash: output_info.header_hash.to_vec(),
-                    mined_timestamp: output_info.mined_timestamp,
-                    confirmations,
-                    is_spent,
-                    spent_height,
-                    spending_transaction_hash,
-                    revealed_amount: Some(output_info.output.minimum_value_promise.as_u64()),
-                }))
-            },
-            Ok(None) => {
-                // PayRef not found
-                Ok(Response::new(tari_rpc::PublicPaymentInfoResponse {
-                    status: tari_rpc::PaymentReferenceStatus::NotFound as i32,
-                    block_height: 0,
-                    block_hash: vec![],
-                    mined_timestamp: 0,
-                    confirmations: 0,
-                    is_spent: false,
-                    spent_height: 0,
-                    spending_transaction_hash: vec![],
-                    revealed_amount: None,
-                }))
-            },
-            Err(e) => Err(obscure_error_if_true(
-                report_error_flag,
-                Status::internal(format!("PayRef lookup error: {}", e)),
-            )),
-        }
     }
 }
 

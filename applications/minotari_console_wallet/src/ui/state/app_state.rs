@@ -785,7 +785,6 @@ impl AppStateInner {
         Ok(())
     }
 
-
     async fn calculate_payment_references_for_specific_transactions(
         &mut self,
         completed_transactions: &[CompletedTransaction],

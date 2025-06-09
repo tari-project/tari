@@ -102,8 +102,6 @@ service BaseNode {
     rpc GetNetworkState(GetNetworkStateRequest) returns (GetNetworkStateResponse);
     // PayRef (Payment Reference) lookup for block explorers and external services
     rpc SearchPaymentReferences(SearchPaymentReferencesRequest) returns (stream PaymentReferenceResponse);
-    // Get public payment information by PayRef (without revealing wallet ownership)
-    rpc GetPublicPaymentInfo(GetPublicPaymentInfoRequest) returns (PublicPaymentInfoResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -595,33 +593,6 @@ message PaymentReferenceResponse {
     optional uint64 revealed_amount = 9;
 }
 
-// Request for public payment information by PayRef
-message GetPublicPaymentInfoRequest {
-    // Payment reference as hex string (64 characters)
-    string payment_reference_hex = 1;
-}
-
-// Public payment information response (safe for block explorers)
-message PublicPaymentInfoResponse {
-    // Status of the payment reference lookup
-    PaymentReferenceStatus status = 1;
-    // Block height where the output was mined (if found)
-    uint64 block_height = 2;
-    // Block hash where the output was mined (if found)
-    bytes block_hash = 3;
-    // Timestamp when the output was mined (if found)
-    uint64 mined_timestamp = 4;
-    // Number of confirmations
-    uint64 confirmations = 5;
-    // Whether this output has been spent
-    bool is_spent = 6;
-    // Height where output was spent (if spent)
-    uint64 spent_height = 7;
-    // Hash of the transaction that spent this output (if spent)
-    bytes spending_transaction_hash = 8;
-    // Revealed amount (only if output has a range proof that reveals the amount)
-    optional uint64 revealed_amount = 9;
-}
 
 // Status of payment reference lookup
 enum PaymentReferenceStatus {
