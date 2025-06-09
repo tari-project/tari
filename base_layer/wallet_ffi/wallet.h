@@ -244,18 +244,6 @@ typedef struct P2pConfig TariCommsConfig;
 typedef struct Balance TariBalance;
 
 /**
- * Individual output with its PayRef
- */
-struct TariOutputWithPayRef {
-  unsigned char output_hash[32];
-  unsigned char payment_reference[32];
-  int has_payment_reference;
-  unsigned int output_type;
-  unsigned long long amount;
-  unsigned int status;
-};
-
-/**
  * Collection of outputs with PayRefs
  */
 struct TariOutputsWithPayRefs {
