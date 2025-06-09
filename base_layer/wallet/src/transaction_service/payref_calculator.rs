@@ -186,5 +186,4 @@ mod tests {
         assert_eq!(payment_details.payment_reference, target_payref);
         assert_eq!(payment_details.amount, MicroMinotari::from(1000));
     }
-
 }
