@@ -1201,48 +1201,6 @@ service Wallet {
   // }
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
-
-   // Gets all payment references (both spent and unspent)
-  //
-  // The `GetAllPaymentReferences` call retrieves all payment references in the wallet history.
-  // This includes both spent and unspent outputs without any filtering or pagination.
-  //
-  // ### Request Parameters:
-  //
-  // - *(none)*
-  //   - This method uses an empty request body.
-  //   - No filters or arguments are required.
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const request = {};
-  // client.getAllPaymentReferences(request, (err, response) => {
-  //   if (err) console.error(err);
-  //   else console.log('All payments:', response.payment_references);
-  // });
-  // ```
-  //
-  // ### Sample JSON Response:
-  //
-  // ```json
-  // {
-  //   "payment_references": [
-  //     {
-  //       "payment_reference": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
-  //       "tx_id": 12345,
-  //       "amount": 1000000,
-  //       "direction": "PAYMENT_DIRECTION_INBOUND",
-  //       "status": "PAYREF_STATUS_AVAILABLE",
-  //       "mined_height": 150000,
-  //       "confirmations": 10,
-  //       "payment_id": "aGVsbG8gd29ybGQ="
-  //     }
-  //   ],
-  //   "total_count": 523
-  // }
-  // ```
-  rpc GetAllPaymentReferences(GetAllPaymentReferencesRequest) returns (GetAllPaymentReferencesResponse);
 }
 
 
@@ -1683,42 +1641,10 @@ message GetPaymentByReferenceRequest {
 // Response message containing transaction information for a payment reference
 message GetPaymentByReferenceResponse {
   // The transaction information if PayRef is found (optional).
-  // Returns full transaction details rather than summary PaymentDetails.
+  // Returns full transaction details
   TransactionInfo transaction = 1;
 }
 
-// Request message for getting all payment references (spent and unspent)
-message GetAllPaymentReferencesRequest {
-  // This request has no parameters - returns all payment references
-}
-
-// Response message containing a list of all payment references
-message GetAllPaymentReferencesResponse {
-  // List of all payment references (both spent and unspent)
-  repeated PaymentDetails payment_references = 1;
-}
-
-// Payment details structure containing all relevant information about a payment
-message PaymentDetails {
-  // The 32-byte payment reference hash (as hex string)
-  string payment_reference = 1;
-  // The transaction ID associated with this payment
-  uint64 tx_id = 2;
-  // The amount of the payment in microTari
-  uint64 amount = 3;
-  // The direction of the payment (inbound/outbound)
-  PaymentDirection direction = 4;
-  // The current status of the payment reference
-  PayRefStatus status = 5;
-  // The block height where this payment was mined (0 if not mined)
-  uint64 mined_height = 6;
-  // Number of confirmations for this payment
-  uint64 confirmations = 7;
-  // Optional message or note associated with the payment
-  string message = 8;
-  // The payment ID associated with this payment
-  bytes payment_id = 9;
-}
 
 // Enum for payment direction
 enum PaymentDirection {
