@@ -249,9 +249,9 @@ where
                 Some(WalletType::ProvidedKeys(wallet)) => wallet.birthday,
                 _ => None,
             };
-            let scanning_start_height_hash = 
-                    self.get_scanning_start_header_height_hash(&wallet_service_client, wallet_birthday)
-                        .await?;
+            let scanning_start_height_hash = self
+                .get_scanning_start_header_height_hash(&wallet_service_client, wallet_birthday)
+                .await?;
 
             Ok(ScannedBlock {
                 height: scanning_start_height_hash.height,
@@ -330,9 +330,7 @@ where
                 )
                 .await?;
             if num_scanned == 0 {
-                return Err(anyhow!(
-                    "Peer returned 0 UTXOs to scan"
-                ));
+                return Err(anyhow!("Peer returned 0 UTXOs to scan"));
             }
             debug!(
                 target: LOG_TARGET,
@@ -421,8 +419,7 @@ where
             // Sum up the number of outputs recovered starting from the first found block
             if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
-                amount = amount
-                    .saturating_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)));
+                amount = amount.saturating_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)));
             }
         }
 
@@ -608,12 +605,10 @@ where
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
         let mut found_outputs: Vec<(MinimalUtxoSyncInfo)> = Vec::new();
         let start = Instant::now();
-        let view_key = self
-            .key_manager
-            .get_private_view_key()
-            .await?;
+        let view_key = self.key_manager.get_private_view_key().await?;
         for output in outputs {
-            let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment).map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
+            let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
+                .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Change outputs just use the view key.
@@ -625,11 +620,13 @@ where
             }
 
             // Received output use the DH of view key and sender offset.
-            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key).map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
+            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key)
+                .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
 
             let recovery_key = offfset_pub_key * &view_key;
 
-            let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key)).map_err(|e| anyhow!("Could not convert to encryption key: {}", e.to_string()))?;
+            let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key))
+                .map_err(|e| anyhow!("Could not convert to encryption key: {}", e.to_string()))?;
             if let Some((value, private_key, payment_id)) =
                 EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted).ok()
             {
@@ -668,9 +665,10 @@ where
                     } else {
                         ImportStatus::Imported
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        anyhow!("Output '{}' not found", ro.hash.to_hex())
-                    })?;
+                    let output = outputs
+                        .iter()
+                        .find(|o| o.hash() == ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -691,9 +689,10 @@ where
                     } else {
                         ImportStatus::OneSidedUnconfirmed
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        anyhow!("Output '{}' not found", ro.hash.to_hex())
-                    })?;
+                    let output = outputs
+                        .iter()
+                        .find(|o| o.hash() == ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -869,9 +868,7 @@ where
                     block_height_scanning_start,
                     birthday
                 );
-                return Err(anyhow!(
-                    "No block header found at scanning start height"
-                ));
+                return Err(anyhow!("No block header found at scanning start height"));
             },
         };
         let header_hash_scanning_start = header.hash;

@@ -1,5 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
+use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
@@ -11,9 +12,8 @@ use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
-use anyhow::{ anyhow, Error};
 
-use crate::{BaseNodeWalletClient};
+use crate::BaseNodeWalletClient;
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
@@ -47,13 +47,17 @@ impl BaseNodeWalletClient for Client {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
-            Err(anyhow!("Received error response from Base Node wallet service: {}. {}", status, body))
+            Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ))
         } else {
             Ok(res.json::<TipInfoResponse>().await?)
         }
     }
 
-    async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>,anyhow::Error> {
+    async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, anyhow::Error> {
         debug!(target: LOG_TARGET, "Requesting block header at height {} from Base Node wallet service at {}", height, self.api_address);
         let mut target_url = self.api_address.join("/get_header_by_height")?;
         target_url.set_query(Some(format!("height={}", height).as_str()));
@@ -66,7 +70,11 @@ impl BaseNodeWalletClient for Client {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
-            return Err( anyhow!("Received error response from Base Node wallet service: {}. {}", status, body));
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
         } else {
             let text = res.text().await?;
             match serde_json::from_str::<BlockHeader>(&text) {
@@ -91,7 +99,11 @@ impl BaseNodeWalletClient for Client {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
-            Err(anyhow!("Received error response from Base Node wallet service: {}. {}", status, body))
+            Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ))
         } else {
             Ok(res.json::<u64>().await?)
         }
@@ -111,7 +123,8 @@ impl BaseNodeWalletClient for Client {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
-            return Err(anyhow!("Received error response from Base Node wallet service: {}. {}",
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
                 status,
                 body,
             ));

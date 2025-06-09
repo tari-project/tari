@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pub mod http;
 
+use anyhow::Error;
 use tari_core::base_node::rpc::{
     models,
     models::{BlockHeader, SyncUtxosByBlockResponse},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
-use anyhow::Error;
-
 
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
