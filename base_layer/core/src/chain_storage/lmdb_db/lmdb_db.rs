@@ -1238,19 +1238,6 @@ impl LMDBDatabase {
             if utxo.output.is_burned() {
                 continue;
             }
-            // Done outside of this
-            // let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
-            // match output_smt.delete(&smt_key)? {
-            //     DeleteResult::Deleted(_value_hash) => {},
-            //     DeleteResult::KeyNotFound => {
-            //         error!(
-            //             target: LOG_TARGET,
-            //             "Could not find input({}) in SMT",
-            //             utxo.output.commitment.to_hex(),
-            //         );
-            //         return Err(ChainStorageError::UnspendableInput);
-            //     },
-            // };
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -1299,17 +1286,16 @@ impl LMDBDatabase {
                 utxo_mined_info.output.metadata_signature,
                 rp_hash,
                 utxo_mined_info.output.minimum_value_promise,
-            );
-            // let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-            // let smt_node = ValueHash::try_from(input.smt_hash(utxo_mined_info.mined_height).as_slice())?;
-            // // if let Err(e) = output_smt.insert(smt_key, smt_node) {
-            //     error!(
-            //         target: LOG_TARGET,
-            //         "Output commitment({}) already in SMT",
-            //         input.commitment()?.to_hex(),
-            //     );
-            //     return Err(e.into());
-            // }
+            ); // Generate PayRef and add to index.
+
+            let payref = Self::generate_payment_reference_for_output(utxo_mined_info.header_hash, &input.output_hash());
+            lmdb_insert(
+                txn,
+                &self.payref_to_output_index,
+                payref.as_slice(),
+                &output_hash,
+                "payref_to_output_index",
+            )?;
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
