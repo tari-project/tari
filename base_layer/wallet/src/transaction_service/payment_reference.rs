@@ -239,26 +239,3 @@ impl PaymentRecord {
     }
 }
 
-/// Parse Payment Reference from hex string
-pub fn parse_payref_hex(hex_str: &str) -> Result<FixedHash, String> {
-    if hex_str.len() != 64 {
-        return Err("Payment Reference must be exactly 64 hexadecimal characters".to_string());
-    }
-
-    let bytes = Vec::<u8>::from_hex(hex_str)
-        .map_err(|_| "Payment Reference must contain only valid hexadecimal characters".to_string())?;
-
-    if bytes.len() != 32 {
-        return Err("Payment Reference must decode to exactly 32 bytes".to_string());
-    }
-
-    let mut payref = [0u8; 32];
-    payref.copy_from_slice(&bytes);
-    Ok(FixedHash::from(payref))
-}
-
-/// Validate Payment Reference format
-pub fn is_valid_payref_format(hex_str: &str) -> bool {
-    hex_str.len() == 64 && hex_str.chars().all(|c| c.is_ascii_hexdigit())
-}
-

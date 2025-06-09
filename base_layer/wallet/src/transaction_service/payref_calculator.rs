@@ -48,34 +48,34 @@ use crate::{
 ///
 /// # Returns
 /// A vector of PaymentReferences for the transaction outputs, or empty if not mined
-pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentReference> {
-    let mut payrefs = Vec::new();
-
-    // Only generate PayRefs if transaction is mined
-    if let Some(block_hash) = tx.mined_in_block.as_ref() {
-        match tx.direction {
-            TransactionDirection::Outbound => {
-                // For outbound: PayRefs for sent outputs (already excludes change)
-                for output_hash in &tx.sent_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payrefs.push(payref);
-                }
-            },
-            TransactionDirection::Inbound => {
-                // For inbound: PayRefs for received outputs (already excludes change)
-                for output_hash in &tx.received_output_hashes {
-                    let payref = generate_payment_reference(block_hash, output_hash);
-                    payrefs.push(payref);
-                }
-            },
-            TransactionDirection::Unknown => {
-                // Skip unknown direction transactions
-            },
-        }
-    }
-
-    payrefs
-}
+// pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentReference> {
+//     let mut payrefs = Vec::new();
+//
+//     // Only generate PayRefs if transaction is mined
+//     if let Some(block_hash) = tx.mined_in_block.as_ref() {
+//         match tx.direction {
+//             TransactionDirection::Outbound => {
+//                 // For outbound: PayRefs for sent outputs (already excludes change)
+//                 for output_hash in &tx.sent_output_hashes {
+//                     let payref = generate_payment_reference(block_hash, output_hash);
+//                     payrefs.push(payref);
+//                 }
+//             },
+//             TransactionDirection::Inbound => {
+//                 // For inbound: PayRefs for received outputs (already excludes change)
+//                 for output_hash in &tx.received_output_hashes {
+//                     let payref = generate_payment_reference(block_hash, output_hash);
+//                     payrefs.push(payref);
+//                 }
+//             },
+//             TransactionDirection::Unknown => {
+//                 // Skip unknown direction transactions
+//             },
+//         }
+//     }
+//
+//     payrefs
+// }
 
 /// Get all PayRefs for a specific transaction ID
 ///
@@ -85,13 +85,13 @@ pub fn calculate_transaction_payrefs(tx: &CompletedTransaction) -> Vec<PaymentRe
 ///
 /// # Returns
 /// Vector of PaymentReferences for the transaction, empty if not found or not mined
-pub fn get_transaction_payrefs(transactions: &[CompletedTransaction], tx_id: TxId) -> Vec<PaymentReference> {
-    if let Some(tx) = transactions.iter().find(|t| t.tx_id == tx_id) {
-        calculate_transaction_payrefs(tx)
-    } else {
-        Vec::new()
-    }
-}
+// pub fn get_transaction_payrefs(transactions: &[CompletedTransaction], tx_id: TxId) -> Vec<PaymentReference> {
+//     if let Some(tx) = transactions.iter().find(|t| t.tx_id == tx_id) {
+//         calculate_transaction_payrefs(tx)
+//     } else {
+//         Vec::new()
+//     }
+// }
 
 /// Create payment details from a transaction and PayRef
 fn create_payment_details(
@@ -110,15 +110,6 @@ fn create_payment_details(
         mined_timestamp: tx.mined_timestamp,
         confirmations: tx.confirmations.unwrap_or(0),
         payment_id: Some(tx.payment_id.to_bytes().to_vec()),
-    }
-}
-
-/// Helper to calculate current confirmations for a transaction
-pub fn calculate_confirmations(mined_height: Option<u64>, current_tip_height: u64) -> u64 {
-    match mined_height {
-        Some(height) if current_tip_height >= height => current_tip_height - height + 1,
-        Some(_) => 0, // Mined height is somehow greater than current tip
-        None => 0,    // Not mined yet
     }
 }
 
@@ -196,11 +187,4 @@ mod tests {
         assert_eq!(payment_details.amount, MicroMinotari::from(1000));
     }
 
-    #[test]
-    fn test_calculate_confirmations() {
-        assert_eq!(calculate_confirmations(Some(100), 105), 6);
-        assert_eq!(calculate_confirmations(Some(100), 100), 1);
-        assert_eq!(calculate_confirmations(Some(100), 99), 0);
-        assert_eq!(calculate_confirmations(None, 100), 0);
-    }
 }

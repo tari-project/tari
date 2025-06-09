@@ -2766,7 +2766,7 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ShowPayRef error! {}", e),
                 }
             },
-            FindPayRef(args) => match parse_payref_hex(&args.payment_reference_hex) {
+            FindPayRef(args) => match FixedHash::from_hex(&args.payment_reference_hex) {
                 Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
                     Ok(Some(payment_details)) => {
                         println!("Found PayRef: {}", args.payment_reference_hex);
