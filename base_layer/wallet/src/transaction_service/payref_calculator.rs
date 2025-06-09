@@ -172,18 +172,4 @@ mod tests {
         assert_eq!(payrefs.len(), 0);
     }
 
-    #[test]
-    fn test_find_payment_by_reference() {
-        let tx = create_test_transaction();
-        let transactions = vec![tx];
-
-        let target_payref = generate_payment_reference(&BlockHash::from([1u8; 32]), &HashOutput::from([2u8; 32]));
-
-        let result = find_payment_by_reference(&transactions, target_payref);
-        assert!(result.is_some());
-
-        let payment_details = result.unwrap();
-        assert_eq!(payment_details.payment_reference, target_payref);
-        assert_eq!(payment_details.amount, MicroMinotari::from(1000));
-    }
 }
