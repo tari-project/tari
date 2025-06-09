@@ -134,67 +134,8 @@ pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutp
 /// }
 /// ```
 pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, PayRefError> {
-    if hex_str.len() != 64 {
-        return Err(PayRefError::InvalidFormat(format!(
-            "expected 64 characters, got {}",
-            hex_str.len()
-        )));
-    }
-
-    let bytes = Vec::<u8>::from_hex(hex_str).map_err(|_| PayRefError::InvalidHex)?;
-
-    if bytes.len() != 32 {
-        return Err(PayRefError::InvalidLength(bytes.len()));
-    }
-
-    let mut payref = [0u8; 32];
-    payref.copy_from_slice(&bytes);
-    Ok(FixedHash::from(payref))
-}
-
-/// Validate the format of a Payment Reference hex string
-///
-/// Checks that the string is exactly 64 characters and contains only valid hexadecimal digits.
-///
-/// # Arguments
-/// * `hex_str` - String to validate
-///
-/// # Returns
-/// * `true` - Valid PayRef format
-/// * `false` - Invalid format
-///
-/// # Example
-/// ```rust
-/// use tari_common_types::payment_reference::is_valid_payment_reference_format;
-///
-/// assert!(is_valid_payment_reference_format(
-///     "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-/// ));
-/// assert!(!is_valid_payment_reference_format("invalid"));
-/// assert!(!is_valid_payment_reference_format("123")); // too short
-/// ```
-pub fn is_valid_payment_reference_format(hex_str: &str) -> bool {
-    hex_str.len() == 64 && hex_str.chars().all(|c| c.is_ascii_hexdigit())
-}
-
-/// Convert a Payment Reference to a hexadecimal string
-///
-/// # Arguments
-/// * `payref` - 32-byte Payment Reference
-///
-/// # Returns
-/// 64-character lowercase hexadecimal string representation
-///
-/// # Example
-/// ```rust
-/// use tari_common_types::payment_reference::payment_reference_to_hex;
-///
-/// let payref = FixedHash::from([1u8; 32]);
-/// let hex_str = payment_reference_to_hex(&payref);
-/// assert_eq!(hex_str.len(), 64);
-/// ```
-pub fn payment_reference_to_hex(payref: &PaymentReference) -> String {
-    payref.to_hex()
+    let hash = FixedHash::from_hex(hex_str)?;
+    Ok(hash)
 }
 
 /// Format a Payment Reference for display according to the specified format
@@ -206,7 +147,7 @@ pub fn payment_reference_to_hex(payref: &PaymentReference) -> String {
 /// # Returns
 /// Formatted string representation of the PayRef
 pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDisplayFormat) -> String {
-    let hex = payment_reference_to_hex(payref);
+    let hex = payref.to_hex();
     match format {
         PayRefDisplayFormat::Full => hex,
         PayRefDisplayFormat::Shortened => {
@@ -280,32 +221,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_valid_payment_reference_format() {
-        assert!(is_valid_payment_reference_format(
-            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        ));
-        assert!(!is_valid_payment_reference_format("invalid"));
-        assert!(!is_valid_payment_reference_format("123")); // too short
-        assert!(!is_valid_payment_reference_format(
-            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefgg"
-        )); // too long
-    }
-
-    #[test]
-    fn test_payment_reference_to_hex() {
-        let payref = FixedHash::from([
-            0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34,
-            0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef,
-        ]);
-
-        let hex_str = payment_reference_to_hex(&payref);
-        assert_eq!(
-            hex_str,
-            "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        );
-    }
-
-    #[test]
     fn test_format_payment_reference() {
         let payref = FixedHash::from([
             0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34,
@@ -332,7 +247,7 @@ mod tests {
     fn test_round_trip_hex_conversion() {
         let original_hex = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
         let payref = parse_payment_reference_hex(original_hex).unwrap();
-        let converted_hex = payment_reference_to_hex(&payref);
+        let converted_hex = payref.to_hex();
         assert_eq!(original_hex, converted_hex);
     }
 }
