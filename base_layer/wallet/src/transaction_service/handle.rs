@@ -217,11 +217,7 @@ pub enum TransactionServiceRequest {
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
     GetPaymentByReference(FixedHash),
     /// Get all transactions with their PayRefs (for listing/filtering)
-    GetTransactionsWithPayRefs {
-        limit: Option<u64>,
-        offset: Option<u64>,
-        mined_only: Option<bool>,
-    },
+    GetTransactionByPaymentReference(FixedHash),
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -411,20 +407,11 @@ impl fmt::Display for TransactionServiceRequest {
             TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
-            Self::GetTransactionPayRefs(tx_id) => write!(f, "GetTransactionPayRefs({})", tx_id),
             Self::GetPaymentByReference(payref) => {
-                write!(f, "GetPaymentByReference({})", tari_utilities::hex::Hex::to_hex(payref))
+                write!(f, "GetPaymentByReference({})", payref)
             },
-            Self::GetTransactionsWithPayRefs {
-                limit,
-                offset,
-                mined_only,
-            } => {
-                write!(
-                    f,
-                    "GetTransactionsWithPayRefs(limit: {:?}, offset: {:?}, mined_only: {:?})",
-                    limit, offset, mined_only
-                )
+            Self::GetTransactionByPaymentReference(payref) => {
+                write!(f, "GetPaymentByReference({})", payref)
             },
         }
     }
@@ -1330,7 +1317,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// Get transaction details for a PayRef (enhanced with multiple recipients)
+    /// Get details for a PayRef (enhanced with multiple recipients)
     pub async fn get_payment_by_reference(
         &mut self,
         payref: FixedHash,
@@ -1345,23 +1332,17 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// Get all transactions with their PayRefs (for listing/filtering)
-    pub async fn get_transactions_with_payref(
+    /// Get transaction details for a PayRef (enhanced with multiple recipients)
+    pub async fn get_transaction_by_payref(
         &mut self,
-        limit: Option<u64>,
-        offset: Option<u64>,
-        mined_only: Option<bool>,
-    ) -> Result<Vec<TransactionWithPayRefs>, TransactionServiceError> {
+        payref: FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetTransactionsWithPayRefs {
-                limit,
-                offset,
-                mined_only,
-            })
+            .call(TransactionServiceRequest::GetTransactionByPaymentReference(payref))
             .await??
         {
-            TransactionServiceResponse::TransactionsWithPayRefs(txs) => Ok(txs),
+            TransactionServiceResponse::PaymentDetails(details) => Ok(details),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

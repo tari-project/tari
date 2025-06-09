@@ -1710,48 +1710,45 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .payment_reference
             .try_into()
             .map_err(|_| Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string()))?;
-        let tms = self.get_transaction_service();
+        let mut tms = self.get_transaction_service();
 
-        match tms.get_transactions_with_payref(payment_ref).await {
-            Ok(transactions_with_payrefs) => {
-                if transactions_with_payrefs.is_empty() {
+        match tms.get_transaction_by_payref(payment_ref).await {
+            Ok(transaction_with_payref) => {
+                if transaction_with_payref.is_none() {
                     debug!(
                         target: LOG_TARGET,
-                        "get_payment_by_reference: PayRef not found: {}",
+                        "get_transaction_by_payref: No transaction found: {}",
                         payment_ref.to_hex()
                     );
                     return Err(Status::not_found("Payment reference not found".to_string()));
                 }
                 let trace!(
                     target: LOG_TARGET,
-                    "get_payment_by_reference: Found payment details for PayRef: {}",
-                    transactions_with_payrefs.to_hex()
+                    "get_transaction_by_payref: Found tx for PayRef: {}",
+                    transaction_with_payref
                 );
-
-                let direction = payment_direction_to_grpc(&payment_details.direction);
-
-                // Calculate status based on confirmations since PaymentDetails doesn't have a status field
-                let status =
-                    calculate_payref_status(payment_details.confirmations, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS);
-
-                // TODO: Convert payment_details to TransactionInfo
-                // For now, return a basic TransactionInfo with available data
+                let txn = transaction_with_payref.expect("We already check its not none");
                 let transaction_info = TransactionInfo {
-                    tx_id: 0, // PaymentDetails doesn't contain tx_id
-                    source_address: vec![],
-                    dest_address: vec![],
-                    status,
-                    amount: payment_details.amount.into(),
-                    is_cancelled: false,
-                    direction,
-                    fee: 0,
-                    timestamp: 0,
-                    excess_sig: vec![],
-                    raw_payment_id: payment_details.payment_id.unwrap_or_default(),
-                    user_payment_id: vec![],
-                    mined_in_block_height: payment_details.block_height,
-                    output_commitments: vec![],
-                    input_commitments: vec![],
+                    tx_id: txn.tx_id.into(),
+                    source_address: txn.source_address.to_vec(),
+                    dest_address: txn.destination_address.to_vec(),
+                    status: TransactionStatus::from(txn.status.clone()) as i32,
+                    amount: txn.amount.into(),
+                    is_cancelled: txn.cancelled.is_some(),
+                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                    fee: txn.fee.into(),
+                    timestamp: txn.timestamp.timestamp() as u64,
+                    excess_sig: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .unwrap_or(&Signature::default())
+                        .get_signature()
+                        .to_vec(),
+                    raw_payment_id: txn.payment_id.to_bytes(),
+                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    output_commitments,
+                    input_commitments,
                     payment_references_sent: txn
                         .calculate_sent_payment_references()
                         .into_iter()
@@ -1767,9 +1764,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
-                    payment_references: vec![payment_details.payment_reference.to_hex()],
                 };
-
                 Ok(Response::new(GetPaymentByReferenceResponse {
                     transaction: Some(transaction_info),
                 }))
@@ -1777,7 +1772,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "get_payment_by_reference: Error looking up PayRef {}: {}",
+                    "get_transaction_by_payref: Error looking up PayRef {}: {}",
                     payment_ref.to_hex(),
                     e
                 );

@@ -1027,8 +1027,8 @@ where
             TransactionServiceRequest::GetPaymentByReference(payref) => self
                 .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
-            TransactionServiceRequest::GetTransactionsWithPayRef { hash } => self
-                .get_transactions_with_payref(hash)
+            TransactionServiceRequest::GetTransactionByPaymentReference { payref } => self
+                .get_transaction_with_payref(payref)
                 .await
                 .map(TransactionServiceResponse::TransactionsWithPayRef),
         };
@@ -4113,57 +4113,13 @@ where
         Ok(outputs)
     }
 
-    async fn get_transactions_with_payrefs(
+    async fn get_transaction_with_payref(
         &self,
-        hash: FixedHash,
-    ) -> Result<Vec<TransactionWithPayRefs>, TransactionServiceError> {
-        let mut transactions = self.db.get_completed_transactions(None, None, None)?;
+        payref: FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
+        let transactions = self.db.get_transaction_with_payref(&payref).await?;
 
-        // Filter to only mined transactions if requested
-        if let Some(true) = mined_only {
-            transactions.retain(|tx| {
-                tx.status == TransactionStatus::MinedUnconfirmed || tx.status == TransactionStatus::MinedConfirmed
-            });
-        }
-
-        // Filter to only transactions that have PayRefs (output hashes)
-        transactions.retain(|tx| !tx.sent_output_hashes.is_empty() || !tx.received_output_hashes.is_empty());
-
-        // Sort by timestamp (most recent first)
-        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-        // Apply pagination
-        let offset = usize::try_from(offset.unwrap_or(0)).expect("we dont support non 64-bit systems");
-        let limit = limit.map(|l| usize::try_from(l).expect("we dont support non 64-bit systems"));
-
-        let transactions: Vec<CompletedTransaction> = if let Some(limit) = limit {
-            transactions.into_iter().skip(offset).take(limit).collect()
-        } else {
-            transactions.into_iter().skip(offset).collect()
-        };
-
-        // Convert to TransactionWithPayRefs
-        let mut result = Vec::new();
-        for tx in transactions {
-            // Skip transactions that are not mined (no block hash available for PayRef generation)
-            let block_hash = match tx.mined_in_block {
-                Some(hash) => hash,
-                None => continue,
-            };
-
-            let outputs_with_payrefs = self.generate_outputs_with_payrefs(&tx, &block_hash).await?;
-
-            // Calculate recipient count based on sent outputs (excluding change)
-            let recipient_count = tx.sent_output_hashes.len();
-
-            result.push(TransactionWithPayRefs {
-                transaction: tx,
-                outputs_with_payrefs,
-                recipient_count,
-            });
-        }
-
-        Ok(result)
+        Ok(transactions)
     }
 }
 
