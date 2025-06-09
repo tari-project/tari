@@ -25,13 +25,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use log::*;
 use minotari_node_wallet_client::{http, BaseNodeWalletClient};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{CompressedPublicKey, FixedHash, HashOutput},
+    types::{BlockHash, CompressedPublicKey, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
 use tari_comms::{
@@ -43,7 +44,7 @@ use tari_comms::{
 };
 use tari_core::{
     base_node::rpc::{
-        models::{BlockHeader, GetUtxosByBlockResponse, MinimalUtxoSyncInfo},
+        models::{BlockHeader, GetUtxosByBlockResponse, MinimalUtxoSyncInfo, TipInfoResponse},
         BaseNodeWalletRpcClient,
     },
     one_sided::public_key_to_output_encryption_key,
@@ -67,7 +68,7 @@ use tari_crypto::{
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, time::sleep};
 use url::{form_urlencoded::Target, Url};
 
 use crate::{
@@ -77,7 +78,6 @@ use crate::{
     storage::database::WalletBackend,
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
-        error::UtxoScannerError,
         handle::UtxoScannerEvent,
         service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
         uxto_scanner_service_builder::UtxoScannerMode,
@@ -104,7 +104,7 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
     TKeyManager: TransactionKeyManagerInterface,
 {
-    pub async fn run(mut self) -> Result<(), UtxoScannerError> {
+    pub async fn run(mut self) -> Result<(), anyhow::Error> {
         if self.mode == UtxoScannerMode::Recovery {
             self.set_recovery_mode()?;
         } else {
@@ -139,6 +139,8 @@ where
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
+                    // Wait a bit of time otherwise we spam the node with requests
+                    sleep(Duration::from_secs(5)).await;
                     continue;
                 },
             };
@@ -151,7 +153,7 @@ where
         final_height: u64,
         total_value: MicroMinotari,
         elapsed: Duration,
-    ) -> Result<(), UtxoScannerError> {
+    ) -> Result<(), anyhow::Error> {
         if num_outputs_recovered > 0 {
             // this is a best effort, if this fails, its very likely that it's already busy with a validation.
             let _result = self.resources.output_manager_service.validate_txos().await;
@@ -175,7 +177,7 @@ where
         Ok(())
     }
 
-    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
+    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, anyhow::Error> {
         debug!(
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
@@ -202,10 +204,10 @@ where
     }
 
     /// Try to instantiate a Base Node Wallet Service client.
-    fn base_node_wallet_service_client(&self) -> Result<http::Client, UtxoScannerError> {
+    fn base_node_wallet_service_client(&self) -> Result<http::Client, anyhow::Error> {
         // let address = rpc_client.get_wallet_query_http_service_address().await?;
         // if address.http_address.is_empty() {
-        // Err(UtxoScannerError::BaseNodeWalletServiceUrlEmpty)
+        // Err(anyhow::Error::BaseNodeWalletServiceUrlEmpty)
         // } else {
         Ok(http::Client::new(self.resources.http_client_url.clone()))
         // }
@@ -215,11 +217,21 @@ where
         &self,
         last_scanned_block: &Option<ScannedBlock>,
         wallet_service_client: &http::Client,
-    ) -> Result<ScannedBlock, UtxoScannerError> {
+    ) -> Result<ScannedBlock, anyhow::Error> {
         if let Some(last_scanned_block) = last_scanned_block {
-            let next_header = wallet_service_client
-                .get_header_by_height(last_scanned_block.height + 1)
-                .await?;
+            let mut height = last_scanned_block.height;
+            let mut next_header = None;
+            // Keep going backwards until we find a header that is known to the base node
+            loop {
+                next_header = wallet_service_client
+                    .get_header_by_height(last_scanned_block.height + 1)
+                    .await?;
+                if !next_header.is_none() {
+                    break;
+                }
+                height = height.saturating_sub(1);
+            }
+            let next_header = next_header.unwrap();
             let next_header_hash = next_header.hash;
 
             Ok(ScannedBlock {
@@ -233,16 +245,13 @@ where
             // The node does not know of any of our cached headers so we will start the scan anew from the
             // wallet birthday
             self.resources.db.clear_scanned_blocks()?;
-            let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
-                Some(WalletType::ProvidedKeys(wallet)) => {
-                    self.get_scanning_start_header_height_hash(&wallet_service_client, wallet.birthday)
-                        .await?
-                },
-                _ => {
-                    self.get_scanning_start_header_height_hash(&wallet_service_client, None)
-                        .await?
-                },
+            let wallet_birthday = match self.resources.db.get_wallet_type()? {
+                Some(WalletType::ProvidedKeys(wallet)) => wallet.birthday,
+                _ => None,
             };
+            let scanning_start_height_hash = 
+                    self.get_scanning_start_header_height_hash(&wallet_service_client, wallet_birthday)
+                        .await?;
 
             Ok(ScannedBlock {
                 height: scanning_start_height_hash.height,
@@ -255,7 +264,7 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), anyhow::Error> {
         info!(target: LOG_TARGET, "Starting UTXO scanning task");
 
         let wallet_service_client = self.base_node_wallet_service_client()?;
@@ -263,14 +272,15 @@ where
         let timer = Instant::now();
         loop {
             info!(target: LOG_TARGET, "here");
-            let tip_header = self.get_chain_tip_header(&wallet_service_client).await?;
-            let last_scanned_block = self
-                .get_last_scanned_block(&wallet_service_client, tip_header.height)
-                .await?;
+            let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
+            info!(target: LOG_TARGET, "here");
+            let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
 
+            info!(target: LOG_TARGET, "here");
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block {
-                if last_scanned_block.header_hash == tip_header.hash {
+                info!(target: LOG_TARGET, "here");
+                if last_scanned_block.header_hash == tip_hash {
                     debug!(
                         target: LOG_TARGET,
                         "Scanning complete to current tip (height: {}) in {:.2?}",
@@ -286,11 +296,13 @@ where
                 }
             }
 
+            info!(target: LOG_TARGET, "here");
             // Otherwise choose a starting point for the scan
             let next_block_to_scan = self
                 .determine_next_block_to_scan(&last_scanned_block, &wallet_service_client)
                 .await?;
 
+            info!(target: LOG_TARGET, "here");
             if self.shutdown_signal.is_triggered() {
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
@@ -300,11 +312,11 @@ where
                 ));
             }
 
-            debug!(
+            info!(
                 target: LOG_TARGET,
                 "Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
                 next_block_to_scan.height,
-                tip_header.height,
+                tip_height,
                 next_block_to_scan.header_hash.to_hex(),
             );
 
@@ -313,19 +325,19 @@ where
                 .scan_utxos(
                     &wallet_service_client,
                     next_block_to_scan.header_hash,
-                    tip_header.hash,
-                    tip_header.height,
+                    tip_hash,
+                    tip_height,
                 )
                 .await?;
             if num_scanned == 0 {
-                return Err(UtxoScannerError::UtxoScanningError(
-                    "Peer returned 0 UTXOs to scan".to_string(),
+                return Err(anyhow!(
+                    "Peer returned 0 UTXOs to scan"
                 ));
             }
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed up to height {} in {:.2?} ({} outputs scanned, {} recovered with value {})",
-                tip_header.height,
+                tip_height,
                 timer.elapsed(),
                 num_scanned,
                 num_recovered,
@@ -337,7 +349,7 @@ where
     async fn establish_new_rpc_connection(
         &mut self,
         peer: &NodeId,
-    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
+    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, anyhow::Error> {
         let mut connection = self.new_connection_to_peer(peer.clone()).await?;
         let client = connection
             .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
@@ -345,19 +357,24 @@ where
         Ok(RpcClientLease::new(client))
     }
 
-    async fn get_chain_tip_header(&self, client: &http::Client) -> Result<BlockHeader, UtxoScannerError> {
+    async fn get_chain_tip_header(&self, client: &http::Client) -> Result<(BlockHash, u64), anyhow::Error> {
         let tip_info = client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = client.get_header_by_height(chain_height).await?;
 
-        Ok(end_header)
+        Ok((
+            tip_info
+                .metadata
+                .as_ref()
+                .map(|m| m.best_block_hash().clone())
+                .unwrap_or_else(|| FixedHash::default()),
+            tip_info.metadata.as_ref().map(|m| m.best_block_height()).unwrap_or(0),
+        ))
     }
 
     async fn get_last_scanned_block(
         &self,
         client: &http::Client,
         current_tip_height: u64,
-    ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
+    ) -> Result<Option<ScannedBlock>, anyhow::Error> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
@@ -386,7 +403,7 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = client.get_header_by_height(sb.height).await.ok();
+                let header = client.get_header_by_height(sb.height).await?;
                 match header {
                     Some(header) => {
                         let header_hash = header.hash;
@@ -405,8 +422,7 @@ where
             if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
                 amount = amount
-                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)))
-                    .ok_or(UtxoScannerError::OverflowError)?;
+                    .saturating_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)));
             }
         }
 
@@ -451,7 +467,7 @@ where
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
+    ) -> Result<(u64, u64, MicroMinotari), anyhow::Error> {
         info!(
             target: LOG_TARGET,
             "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
@@ -483,7 +499,7 @@ where
                 return Ok((num_recovered, total_scanned as u64, total_amount));
             }
 
-            let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
+            let response = response?;
             for response in response.blocks {
                 let current_height = response.height;
                 let current_header_hash = response.header_hash;
@@ -589,19 +605,16 @@ where
     async fn search_for_owned_outputs(
         &mut self,
         outputs: Vec<MinimalUtxoSyncInfo>,
-    ) -> Result<Vec<MinimalUtxoSyncInfo>, UtxoScannerError> {
+    ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
         let mut found_outputs: Vec<(MinimalUtxoSyncInfo)> = Vec::new();
         let start = Instant::now();
         let view_key = self
             .key_manager
             .get_private_view_key()
-            .await
-            .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Failed to get private view key: {}", e)))?;
+            .await?;
         for output in outputs {
-            let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
-                .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid commitment: {}", e)))?;
-            let encrypted = EncryptedData::from_bytes(&output.encrypted_data)
-                .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid encrypted data: {}", e)))?;
+            let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment).map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
+            let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Change outputs just use the view key.
             if let Some((value, private_key, payment_id)) =
@@ -612,13 +625,11 @@ where
             }
 
             // Received output use the DH of view key and sender offset.
-            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key)
-                .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Invalid sender offset: {}", e)))?;
+            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key).map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
 
             let recovery_key = offfset_pub_key * &view_key;
 
-            let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key))
-                .map_err(|e| UtxoScannerError::UtxoScanningError(format!("Failed to convert recovery key: {}", e)))?;
+            let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key)).map_err(|e| anyhow!("Could not convert to encryption key: {}", e.to_string()))?;
             if let Some((value, private_key, payment_id)) =
                 EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted).ok()
             {
@@ -641,7 +652,7 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
         let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         let start = Instant::now();
         found_outputs.append(
@@ -651,14 +662,14 @@ where
                 .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
-                .map(|ro| -> Result<_, UtxoScannerError> {
+                .map(|ro| -> Result<_, anyhow::Error> {
                     let status = if ro.output.features.is_coinbase() {
                         ImportStatus::CoinbaseUnconfirmed
                     } else {
                         ImportStatus::Imported
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
+                        anyhow!("Output '{}' not found", ro.hash.to_hex())
                     })?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
@@ -674,14 +685,14 @@ where
                 .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
-                .map(|ro| -> Result<_, UtxoScannerError> {
+                .map(|ro| -> Result<_, anyhow::Error> {
                     let status = if ro.output.features.is_coinbase() {
                         ImportStatus::CoinbaseUnconfirmed
                     } else {
                         ImportStatus::OneSidedUnconfirmed
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
+                        anyhow!("Output '{}' not found", ro.hash.to_hex())
                     })?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
@@ -702,7 +713,7 @@ where
         utxos: &[(WalletOutput, ImportStatus, TxId, TransactionOutput)],
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
-    ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
+    ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
         for (wo, import_status, tx_id, to) in utxos {
@@ -745,28 +756,28 @@ where
                         tx_id
                     );
                 },
-                Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
+                Err(e) => return Err(e.into()),
             }
         }
         Ok((num_recovered, total_amount))
     }
 
-    fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn set_recovery_mode(&self) -> Result<(), anyhow::Error> {
         self.resources
             .db
             .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+    fn check_recovery_mode(&self) -> Result<bool, anyhow::Error> {
         self.resources
             .db
             .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
             .map(|x| x.is_some())
-            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
+            .map_err(anyhow::Error::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
-    fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn clear_recovery_mode(&self) -> Result<(), anyhow::Error> {
         let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
@@ -820,19 +831,25 @@ where
         &self,
         client: &http::Client,
         option_birthday: Option<u16>,
-    ) -> Result<HeightHash, UtxoScannerError> {
+    ) -> Result<HeightHash, anyhow::Error> {
         let birthday = match option_birthday {
             Some(birthday) => birthday,
             None => self.resources.db.get_wallet_birthday()?,
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
-        let block_height_birthday = client
-            .get_height_at_time(epoch_time_birthday)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
-                0
-            });
+        debug!(
+            target: LOG_TARGET,
+            "Wallet birthday is {} at epoch time {}",
+            birthday,
+            epoch_time_birthday
+        );
+        // let block_height_birthday = client
+        //     .get_height_at_time(epoch_time_birthday)
+        //     .await
+        //     .unwrap_or_else(|e| {
+        //         warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+        //         0
+        //     });
         // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
@@ -843,15 +860,27 @@ where
                 warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
                 0
             });
-        let header = client.get_header_by_height(block_height_scanning_start).await?;
+        let header = match client.get_header_by_height(block_height_scanning_start).await? {
+            Some(header) => header,
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "No block header found at height {} for birthday {}",
+                    block_height_scanning_start,
+                    birthday
+                );
+                return Err(anyhow!(
+                    "No block header found at scanning start height"
+                ));
+            },
+        };
         let header_hash_scanning_start = header.hash;
         info!(
             target: LOG_TARGET,
-            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', scanning \
+            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' , scanning \
             from epoch time '{}' at block height '{}' with header hash '{}'",
             birthday,
             epoch_time_birthday,
-            block_height_birthday,
             epoch_time_scanning_start,
             block_height_scanning_start,
             header_hash_scanning_start.to_hex(),

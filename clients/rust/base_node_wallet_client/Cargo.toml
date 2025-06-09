@@ -13,10 +13,11 @@ tari_core = { workspace = true, default-features = false, features = [
 ] }
 tari_utilities = { workspace = true }
 tari_shutdown = { workspace = true }
-
+anyhow = { workspace = true }
 url = { version = "2.5.4", features = ["default", "serde"] }
 reqwest = { version = "0.12.15", features = ["default", "json"] }
 thiserror = "^1.0.26"
 async-trait = "0.1.88"
 tokio = { version = "1.45.1", features = ["sync"] }
 log = { version = "0.4.22", features = [] }
+serde_json = { workspace = true }

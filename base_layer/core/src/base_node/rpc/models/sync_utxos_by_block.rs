@@ -20,13 +20,13 @@ pub struct SyncUtxosByBlockRequest {
     pub page: u64,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
 pub struct SyncUtxosByBlockResponse {
     pub blocks: Vec<BlockUtxoInfo>,
     pub has_next_page: bool,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
 pub struct BlockUtxoInfo {
     pub header_hash: Vec<u8>,
     pub height: u64,

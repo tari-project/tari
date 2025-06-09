@@ -85,6 +85,7 @@ minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }
+serde_json = "1.0.39"
 
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error

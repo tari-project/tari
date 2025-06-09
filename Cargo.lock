@@ -4435,9 +4435,11 @@ dependencies = [
 name = "minotari_node_wallet_client"
 version = "4.3.1-pre.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "log",
  "reqwest 0.12.17",
+ "serde_json",
  "tari_core",
  "tari_shutdown",
  "tari_utilities",
