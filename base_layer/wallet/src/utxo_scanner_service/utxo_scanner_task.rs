@@ -271,15 +271,11 @@ where
 
         let timer = Instant::now();
         loop {
-            info!(target: LOG_TARGET, "here");
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
-            info!(target: LOG_TARGET, "here");
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
 
-            info!(target: LOG_TARGET, "here");
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block {
-                info!(target: LOG_TARGET, "here");
                 if last_scanned_block.header_hash == tip_hash {
                     debug!(
                         target: LOG_TARGET,
@@ -296,13 +292,11 @@ where
                 }
             }
 
-            info!(target: LOG_TARGET, "here");
             // Otherwise choose a starting point for the scan
             let next_block_to_scan = self
                 .determine_next_block_to_scan(&last_scanned_block, &wallet_service_client)
                 .await?;
 
-            info!(target: LOG_TARGET, "here");
             if self.shutdown_signal.is_triggered() {
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
@@ -320,7 +314,6 @@ where
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            info!(target: LOG_TARGET, "here");
             let (num_recovered, num_scanned, amount) = self
                 .scan_utxos(
                     &wallet_service_client,
@@ -479,8 +472,6 @@ where
         let mut total_amount = MicroMinotari::from(0);
         let mut total_scanned = 0;
 
-        let start = Instant::now();
-        info!(target: LOG_TARGET, "here");
         let mut utxo_stream = client
             .sync_utxos_by_block(
                 start_header_hash.to_vec(),
@@ -491,7 +482,6 @@ where
 
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = utxo_stream.recv().await {
-            info!(target: LOG_TARGET, "here");
             if self.shutdown_signal.is_triggered() {
                 return Ok((num_recovered, total_scanned as u64, total_amount));
             }
@@ -504,11 +494,9 @@ where
                     .unwrap_or(DateTime::<Utc>::MIN_UTC);
                 let outputs = response.outputs;
                 total_scanned += outputs.len();
-                info!(target: LOG_TARGET, "here");
 
                 let found_outputs = self.search_for_owned_outputs(outputs).await?;
 
-                info!(target: LOG_TARGET, "here");
                 if found_outputs.is_empty() {
                     debug!(
                         target: LOG_TARGET,
@@ -536,21 +524,11 @@ where
 
                     let imported_outputs = self.scan_for_outputs(outputs).await?;
 
-                    info!(target: LOG_TARGET, "here: {:?}", &block);
                     self.import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
                         .await?;
-                    // todo!();
                 }
 
-                info!(target: LOG_TARGET, "here");
-
-                // todo!();
-
-                info!(target: LOG_TARGET, "here");
-
                 let block_hash = current_header_hash.try_into()?;
-                info!(target: LOG_TARGET, "here: {:?}", block_hash);
-                info!(target: LOG_TARGET, "here: {:?}", prev_scanned_block);
                 if let Some(scanned_block) = prev_scanned_block {
                     if block_hash == scanned_block.header_hash {
                         // count += scanned_block.num_outputs.unwrap_or(0);
@@ -586,7 +564,6 @@ where
                 });
             }
         }
-        info!(target: LOG_TARGET, "here");
         // We need to update the last one
         if let Some(scanned_block) = prev_scanned_block {
             self.resources.db.clear_scanned_blocks_before_height(
