@@ -213,7 +213,5 @@ pub(crate) struct UtxoScannerResources<TBackend, TWalletConnectivity> {
 pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,
-    pub num_outputs: Option<u64>,
-    pub amount: Option<MicroMinotari>,
     pub timestamp: NaiveDateTime,
 }

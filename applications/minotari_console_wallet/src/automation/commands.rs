@@ -2454,15 +2454,11 @@ pub async fn command_runner(
                             },
                             UtxoScannerEvent::Completed {
                                 final_height,
-                                num_recovered,
-                                value_recovered,
                                 time_taken,
                             } => {
                                 println!(
-                                    "Completed! Height: {}, UTXOs recovered: {}, Value recovered: {}, Time taken: {}",
+                                    "Completed! Height: {},  Time taken: {}",
                                     final_height,
-                                    num_recovered,
-                                    value_recovered,
                                     time_taken.as_secs()
                                 );
 

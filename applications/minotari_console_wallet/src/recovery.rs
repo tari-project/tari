@@ -177,14 +177,12 @@ pub async fn wallet_recovery(
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
-                num_recovered,
-                value_recovered,
                 time_taken,
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
-                    final_height, time_taken, rate, num_recovered, value_recovered
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s)",
+                    final_height, time_taken, rate
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);

@@ -123,9 +123,9 @@ where
                 return Ok(());
             }
             match self.attempt_sync().await {
-                Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
+                Ok(( final_height,  elapsed)) => {
                     debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                    self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
+                    self.finalize( final_height,  elapsed)
                         .await?;
                     return Ok(());
                 },
@@ -149,24 +149,20 @@ where
 
     async fn finalize(
         &mut self,
-        num_outputs_recovered: u64,
         final_height: u64,
-        total_value: MicroMinotari,
         elapsed: Duration,
     ) -> Result<(), anyhow::Error> {
-        if num_outputs_recovered > 0 {
-            // this is a best effort, if this fails, its very likely that it's already busy with a validation.
-            let _result = self.resources.output_manager_service.validate_txos().await;
-            let _result = self.resources.transaction_service.validate_transactions().await;
-        }
+        // if num_outputs_recovered > 0 {
+        //     // this is a best effort, if this fails, its very likely that it's already busy with a validation.
+        //     let _result = self.resources.output_manager_service.validate_txos().await;
+        //     let _result = self.resources.transaction_service.validate_transactions().await;
+        // }
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,
         });
         self.publish_event(UtxoScannerEvent::Completed {
             final_height,
-            num_recovered: num_outputs_recovered,
-            value_recovered: total_value,
             time_taken: elapsed,
         });
 
@@ -236,8 +232,6 @@ where
 
             Ok(ScannedBlock {
                 height: next_header.height,
-                num_outputs: last_scanned_block.num_outputs,
-                amount: last_scanned_block.amount,
                 header_hash: next_header_hash,
                 timestamp: Utc::now().naive_utc(),
             })
@@ -255,8 +249,6 @@ where
 
             Ok(ScannedBlock {
                 height: scanning_start_height_hash.height,
-                num_outputs: None,
-                amount: None,
                 header_hash: scanning_start_height_hash.header_hash,
                 timestamp: Utc::now().naive_utc(),
             })
@@ -264,7 +256,7 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self) -> Result<(u64, u64, MicroMinotari, Duration), anyhow::Error> {
+    async fn attempt_sync(&mut self) -> Result<(u64, Duration), anyhow::Error> {
         info!(target: LOG_TARGET, "Starting UTXO scanning task");
 
         let wallet_service_client = self.base_node_wallet_service_client()?;
@@ -283,12 +275,9 @@ where
                         last_scanned_block.height,
                         timer.elapsed()
                     );
-                    return Ok((
-                        last_scanned_block.num_outputs.unwrap_or(0),
-                        last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
-                        timer.elapsed(),
-                    ));
+                    return Ok(
+                        (last_scanned_block.height, timer.elapsed()),
+                    );
                 }
             }
 
@@ -298,12 +287,9 @@ where
                 .await?;
 
             if self.shutdown_signal.is_triggered() {
-                return Ok((
-                    next_block_to_scan.num_outputs.unwrap_or(0),
-                    next_block_to_scan.height,
-                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
-                    timer.elapsed(),
-                ));
+                return Ok(
+                (0,timer.elapsed()),
+                );
             }
 
             info!(
@@ -314,7 +300,7 @@ where
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            let (num_recovered, num_scanned, amount) = self
+            let num_scanned = self
                 .scan_utxos(
                     &wallet_service_client,
                     next_block_to_scan.header_hash,
@@ -322,17 +308,12 @@ where
                     tip_height,
                 )
                 .await?;
-            if num_scanned == 0 {
-                return Err(anyhow!("Peer returned 0 UTXOs to scan"));
-            }
             debug!(
                 target: LOG_TARGET,
-                "Scanning round completed up to height {} in {:.2?} ({} outputs scanned, {} recovered with value {})",
+                "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
                 tip_height,
                 timer.elapsed(),
                 num_scanned,
-                num_recovered,
-                amount
             );
         }
     }
@@ -409,11 +390,6 @@ where
                     },
                 }
             }
-            // Sum up the number of outputs recovered starting from the first found block
-            if found_scanned_block.is_some() {
-                num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
-                amount = amount.saturating_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)));
-            }
         }
 
         if let Some(block) = last_missing_scanned_block {
@@ -433,8 +409,6 @@ where
             );
             Ok(Some(ScannedBlock {
                 height: sb.height,
-                num_outputs: Some(num_outputs),
-                amount: Some(amount),
                 header_hash: sb.header_hash,
                 timestamp: Utc::now().naive_utc(),
             }))
@@ -457,7 +431,7 @@ where
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroMinotari), anyhow::Error> {
+    ) -> Result<usize, anyhow::Error> {
         info!(
             target: LOG_TARGET,
             "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
@@ -468,8 +442,6 @@ where
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 10;
 
-        let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinotari::from(0);
         let mut total_scanned = 0;
 
         let mut utxo_stream = client
@@ -483,7 +455,7 @@ where
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = utxo_stream.recv().await {
             if self.shutdown_signal.is_triggered() {
-                return Ok((num_recovered, total_scanned as u64, total_amount));
+                return Ok(total_scanned);
             }
 
             let response = response?;
@@ -530,10 +502,7 @@ where
 
                 let block_hash = current_header_hash.try_into()?;
                 if let Some(scanned_block) = prev_scanned_block {
-                    if block_hash == scanned_block.header_hash {
-                        // count += scanned_block.num_outputs.unwrap_or(0);
-                        // amount += scanned_block.amount.unwrap_or_else(|| 0.into())
-                    } else {
+                    if block_hash != scanned_block.header_hash {
                         self.resources.db.save_scanned_block(scanned_block)?;
                         self.resources.db.clear_scanned_blocks_before_height(
                             current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
@@ -551,15 +520,11 @@ where
                             });
                         }
 
-                        // num_recovered = num_recovered.saturating_add(count);
-                        // total_amount += amount;
                     }
                 }
                 prev_scanned_block = Some(ScannedBlock {
                     header_hash: block_hash,
                     height: current_height,
-                    num_outputs: Some(0),
-                    amount: None,
                     timestamp: Utc::now().naive_utc(),
                 });
             }
@@ -573,7 +538,7 @@ where
             self.resources.db.save_scanned_block(scanned_block)?;
         }
 
-        Ok((num_recovered, total_scanned as u64, total_amount))
+        Ok(total_scanned)
     }
 
     async fn search_for_owned_outputs(

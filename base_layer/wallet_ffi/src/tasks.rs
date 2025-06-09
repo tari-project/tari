@@ -103,26 +103,22 @@ pub async fn recovery_event_monitoring(
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
-                num_recovered,
-                value_recovered,
                 time_taken: elapsed,
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (elapsed.as_millis() as f32);
                 info!(
                     target: LOG_TARGET,
-                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s)",
                     final_height,
                     elapsed,
                     rate,
-                    num_recovered,
-                    value_recovered
                 );
                 unsafe {
                     (recovery_progress_callback)(
                         context.0,
                         RecoveryEvent::Completed as u8,
-                        num_recovered,
-                        u64::from(value_recovered),
+                        0u64,
+                        0u64
                     );
                 }
                 break;
