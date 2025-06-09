@@ -175,12 +175,14 @@ impl BaseNodeWalletClient for Client {
                             if let Err(send_error) = resp_tx.send(Err(error.into())).await {
                                 error!(target: LOG_TARGET, "Error sending error result: {:?}", send_error);
                             }
+                            break;
                         },
                     },
                     Err(error) => {
                         if let Err(send_error) = resp_tx.send(Err(error.into())).await {
                             error!(target: LOG_TARGET, "Error sending error result: {:?}", send_error);
                         }
+                        break;
                     },
                 }
 

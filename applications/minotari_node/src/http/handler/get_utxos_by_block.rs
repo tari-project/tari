@@ -37,20 +37,19 @@ impl From<GetUtxosByBlockQueryParams> for GetUtxosByBlockRequest {
 
 #[utoipa::path(
     get,
-    operation_id = "sync_utxos_by_block",
+    operation_id = "get_utxos_by_block",
     params(GetUtxosByBlockQueryParams),
-    path = "/sync_utxos_by_block",
+    path = "/get_utxos_by_block",
     responses(
-        (status = 200, description = "UTXOs returned successfully in the given headers' hash range", body = SyncUtxosByBlockResponse),
+        (status = 200, description = "UTXOs returned successfully for the header", body = SyncUtxosByBlockResponse),
         (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
-        (status = INTERNAL_SERVER_ERROR, description = "Start/end header hash not found or header height mismatch", body = ErrorResponse),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Query(params): Query<GetUtxosByBlockQueryParams>,
 ) -> Result<Json<GetUtxosByBlockResponse>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received sync_utxos_by_block request: {params:?}");
+    debug!(target: LOG_TARGET, "Received get_utxos_by_block request: {params:?}");
     let request = params.into();
 
     let response = query_service
