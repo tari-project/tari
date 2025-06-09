@@ -77,8 +77,6 @@ use minotari_app_grpc::tari_rpc::{
     GetTransactionsWithPayRefsRequest,
     GetTransactionsWithPayRefsResponse,
     GetUnspentAmountsResponse,
-    GetUnspentPaymentReferencesRequest,
-    GetUnspentPaymentReferencesResponse,
     GetVersionRequest,
     GetVersionResponse,
     ImportTransactionsRequest,
@@ -1777,68 +1775,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     e
                 );
                 Err(Status::internal(format!("Error looking up payment reference: {}", e)))
-            },
-        }
-    }
-
-    async fn get_unspent_payment_references(
-        &self,
-        _: Request<GetUnspentPaymentReferencesRequest>,
-    ) -> Result<Response<GetUnspentPaymentReferencesResponse>, Status> {
-        debug!(
-            target: LOG_TARGET,
-            "get_available_payment_references: Getting all available payment references"
-        );
-
-        let mut output_service = self.get_output_manager_service();
-
-        match output_service.get_available_payment_references().await {
-            Ok(payment_records) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "get_available_payment_references: Found {} available payment references",
-                    payment_records.len()
-                );
-
-                let payment_references: Vec<PaymentDetails> = payment_records
-                    .into_iter()
-                    .map(|payment_record| {
-                        let direction = payment_direction_to_grpc(&payment_record.direction);
-
-                        // Calculate status based on confirmations (PaymentRecord doesn't have status field)
-                        let status = calculate_payref_status(
-                            payment_record.confirmations,
-                            DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS,
-                        );
-
-                        PaymentDetails {
-                            payment_reference: payment_record.payment_reference.to_hex(),
-                            tx_id: 0, // PaymentRecord doesn't have tx_id field
-                            amount: payment_record.amount.into(),
-                            direction,
-                            status,
-                            mined_height: payment_record.block_height,
-                            confirmations: payment_record.confirmations,
-                            message: String::new(), // PaymentRecord doesn't have message field
-                            payment_id: payment_record.payment_id.unwrap_or_default(),
-                        }
-                    })
-                    .collect();
-
-                Ok(Response::new(GetUnspentPaymentReferencesResponse {
-                    payment_references,
-                }))
-            },
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "get_available_payment_references: Error retrieving available payment references: {}",
-                    e
-                );
-                Err(Status::internal(format!(
-                    "Error retrieving available payment references: {}",
-                    e
-                )))
             },
         }
     }

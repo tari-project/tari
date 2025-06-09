@@ -1202,49 +1202,7 @@ service Wallet {
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
 
-  // Gets all unspent payment references
-  //
-  // The `GetUnspentPaymentReferences` call retrieves all payment references that are unspent
-  // (have sufficient confirmations and are still available) without any filtering or pagination.
-  //
-  // ### Request Parameters:
-  //
-  // - *(none)*
-  //   - This method uses an empty request body.
-  //   - No filters or arguments are required.
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const request = {};
-  // client.getUnspentPaymentReferences(request, (err, response) => {
-  //   if (err) console.error(err);
-  //   else console.log('Unspent payments:', response.payment_references);
-  // });
-  // ```
-  //
-  // ### Sample JSON Response:
-  //
-  // ```json
-  // {
-  //   "payment_references": [
-  //     {
-  //       "payment_reference": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
-  //       "tx_id": 12345,
-  //       "amount": 1000000,
-  //       "direction": "PAYMENT_DIRECTION_INBOUND",
-  //       "status": "PAYREF_STATUS_AVAILABLE",
-  //       "mined_height": 150000,
-  //       "confirmations": 10,
-  //       "payment_id": "aGVsbG8gd29ybGQ="
-  //     }
-  //   ],
-  //   "total_count": 156
-  // }
-  // ```
-  rpc GetUnspentPaymentReferences(GetUnspentPaymentReferencesRequest) returns (GetUnspentPaymentReferencesResponse);
-
-  // Gets all payment references (both spent and unspent)
+   // Gets all payment references (both spent and unspent)
   //
   // The `GetAllPaymentReferences` call retrieves all payment references in the wallet history.
   // This includes both spent and unspent outputs without any filtering or pagination.
@@ -1727,17 +1685,6 @@ message GetPaymentByReferenceResponse {
   // The transaction information if PayRef is found (optional).
   // Returns full transaction details rather than summary PaymentDetails.
   TransactionInfo transaction = 1;
-}
-
-// Request message for getting unspent payment references
-message GetUnspentPaymentReferencesRequest {
-  // This request has no parameters - returns all unspent payment references
-}
-
-// Response message containing a list of unspent payment references
-message GetUnspentPaymentReferencesResponse {
-  // List of unspent payment references
-  repeated PaymentDetails payment_references = 1;
 }
 
 // Request message for getting all payment references (spent and unspent)
