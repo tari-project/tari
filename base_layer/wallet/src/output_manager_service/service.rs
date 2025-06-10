@@ -541,16 +541,6 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
-            OutputManagerRequest::GetOutputsByTxId(tx_id) => {
-                let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id)?;
-                let wallet_outputs: Vec<WalletOutput> =
-                    outputs.into_iter().map(|db_output| db_output.wallet_output).collect();
-                Ok(OutputManagerResponse::Outputs(wallet_outputs))
-            },
-            OutputManagerRequest::GetOutputByHash(hash) => {
-                let output = self.get_output_by_hash(hash)?;
-                Ok(OutputManagerResponse::OutputByHash(Box::new(output)))
-            },
         }
     }
 
@@ -3559,26 +3549,6 @@ where
         }
 
         Ok(transaction_linked_outputs)
-    }
-
-    /// Batch query outputs by commitments for efficient PayRef calculation
-    fn get_outputs_by_commitments(
-        &self,
-        commitments: Vec<CompressedCommitment>,
-    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        use crate::output_manager_service::storage::{database::OutputBackendQuery, OutputStatus};
-
-        let query = OutputBackendQuery {
-            tip_height: i64::MAX,
-            status: vec![OutputStatus::Unspent, OutputStatus::Spent], // Include both spent and unspent
-            commitments,
-            pagination: None,
-            value_min: None,
-            value_max: None,
-            sorting: vec![],
-        };
-
-        Ok(self.resources.db.fetch_outputs_by_query(query)?)
     }
 
     fn get_output_by_hash(&self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {

@@ -411,7 +411,7 @@ impl fmt::Display for TransactionServiceRequest {
                 write!(f, "GetPaymentByReference({})", payref)
             },
             Self::GetTransactionByPaymentReference(payref) => {
-                write!(f, "GetPaymentByReference({})", payref)
+                write!(f, "GetTransactionByPaymentReference({})", payref)
             },
         }
     }
@@ -1322,7 +1322,7 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// Get transaction details for a PayRef (enhanced with multiple recipients)
+    /// Get a transaction by PayRef
     pub async fn get_transaction_by_payref(
         &mut self,
         payref: FixedHash,

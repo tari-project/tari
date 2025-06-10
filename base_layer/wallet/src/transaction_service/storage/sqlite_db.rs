@@ -984,6 +984,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
+        match PayrefSql::delete_by_tx_id(tx_id, &mut conn) {
+            Ok(_) => {},
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {},
+            Err(e) => return Err(e),
+        }
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -2419,6 +2424,12 @@ impl PayrefSql {
 
     pub fn delete(hash: &Vec<u8>, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
         diesel::delete(payrefs::table.filter(payrefs::output_hash.eq(hash))).execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn delete_by_tx_id(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        diesel::delete(payrefs::table.filter(payrefs::tx_id.eq(tx_id.as_u64() as i64))).execute(conn)?;
 
         Ok(())
     }

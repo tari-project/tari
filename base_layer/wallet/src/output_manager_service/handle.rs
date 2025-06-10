@@ -161,21 +161,6 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
-    GetOutputsByTxId(TxId),
-    /// Check if a transaction output belongs to this wallet
-    IsOutputOurs(Box<TransactionOutput>),
-    /// Check if this is a change output from our own transaction
-    IsChangeOutput(Box<TransactionOutput>),
-    // PayRef operations
-    FindPaymentByReference(FixedHash),
-    GetAvailablePaymentReferences,
-    GetAllPaymentReferences,
-    GetPaymentReferenceConfig,
-    SetPaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
-    /// Batch query outputs by commitments for efficient PayRef calculation
-    GetOutputsByCommitments(Vec<CompressedCommitment>),
-    /// Get output by hash (any status - unspent, spent, invalid)
-    GetOutputByHash(HashOutput),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -305,23 +290,6 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
-            GetOutputsByTxId(t) => write!(f, "GetOutputsByTxId: {}", t),
-            IsOutputOurs(_) => write!(f, "IsOutputOurs"),
-            IsChangeOutput(_) => write!(f, "IsChangeOutput"),
-            FindPaymentByReference(payref) => write!(
-                f,
-                "FindPaymentByReference({})",
-                payref.iter().fold(String::new(), |mut output, b| {
-                    let _ = write!(output, "{b:02x}");
-                    output
-                })
-            ),
-            GetAvailablePaymentReferences => write!(f, "GetAvailablePaymentReferences"),
-            GetAllPaymentReferences => write!(f, "GetAllPaymentReferences"),
-            GetPaymentReferenceConfig => write!(f, "GetPaymentReferenceConfig"),
-            SetPaymentReferenceConfig(_) => write!(f, "SetPaymentReferenceConfig"),
-            GetOutputsByCommitments(commitments) => write!(f, "GetOutputsByCommitments({})", commitments.len()),
-            GetOutputByHash(hash) => write!(f, "GetOutputByHash({})", hash),
         }
     }
 }
@@ -1047,28 +1015,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_outputs_by_commitments(
-        &mut self,
-        commitments: Vec<CompressedCommitment>,
-    ) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetOutputsByCommitments(commitments))
-            .await??
-        {
-            OutputManagerResponse::OutputsByCommitments(outputs) => Ok(outputs),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    /// Get output by hash (any status - unspent, spent, invalid)
-    pub async fn get_output_by_hash(&mut self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetOutputByHash(hash)).await?? {
-            OutputManagerResponse::OutputByHash(output) => Ok(*output),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
