@@ -87,7 +87,6 @@ pub enum DbKey {
     SpentOutput(String),
     UnspentOutput(String),
     UnspentOutputHash(HashOutput),
-    AnyOutputByHash(HashOutput),
     AnyOutputByCommitment(CompressedCommitment),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
@@ -242,15 +241,6 @@ where T: OutputManagerBackend + 'static
             Some(DbValue::AnyOutput(output)) => Ok(*output),
             Some(other) => unexpected_result(req, other),
             None => Err(OutputManagerStorageError::ValueNotFound),
-        }
-    }
-
-    pub fn fetch_by_hash(&self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
-        let req = DbKey::AnyOutputByHash(hash);
-        match self.db.fetch(&req)? {
-            Some(DbValue::AnyOutput(output)) => Ok(Some(*output)),
-            Some(other) => unexpected_result(req, other),
-            None => Ok(None),
         }
     }
 
@@ -476,7 +466,6 @@ impl Display for DbKey {
             DbKey::SpentOutput(_) => f.write_str("Spent Output Key"),
             DbKey::UnspentOutput(_) => f.write_str("Unspent Output Key"),
             DbKey::UnspentOutputHash(_) => f.write_str("Unspent Output Hash Key"),
-            DbKey::AnyOutputByHash(_) => f.write_str("AnyOutputByHash"),
             DbKey::UnspentOutputs => f.write_str("Unspent Outputs Key"),
             DbKey::SpentOutputs => f.write_str("Spent Outputs Key"),
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),

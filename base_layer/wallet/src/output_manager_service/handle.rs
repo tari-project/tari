@@ -343,19 +343,6 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
-    /// Response for output ownership check
-    OutputOwnership(bool),
-    /// Response for change output check  
-    ChangeOutput(bool),
-    // PayRef responses
-    PaymentDetails(Option<crate::output_manager_service::payment_reference::PaymentDetails>),
-    PaymentReferences(Vec<crate::output_manager_service::payment_reference::PaymentRecord>),
-    PaymentReferenceConfig(crate::output_manager_service::payment_reference::PayRefConfig),
-    PaymentReferenceConfigSet,
-    /// Response for batch commitment queries
-    OutputsByCommitments(Vec<DbWalletOutput>),
-    /// Response for output by hash query
-    OutputByHash(Box<Option<DbWalletOutput>>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;

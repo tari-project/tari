@@ -3522,38 +3522,6 @@ where
     fn get_fee_calc(&self) -> Fee {
         Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
-
-    /// Collect all outputs that are linked to transactions (have received_in_tx_id)
-    /// DEPRECATED: This method was primarily used for PayRef operations.
-    /// PayRef operations now use transaction service + payref_calculator for better performance.
-    #[deprecated(note = "Use transaction service + payref_calculator instead for PayRef operations")]
-    #[allow(dead_code)]
-    fn collect_transaction_linked_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
-        let all_unspent_outputs = self.resources.db.fetch_all_unspent_outputs()?;
-        let all_spent_outputs = self.resources.db.fetch_spent_outputs()?;
-
-        let mut transaction_linked_outputs = Vec::new();
-
-        // Add unspent outputs that have received_in_tx_id (received transactions)
-        for output in all_unspent_outputs {
-            if output.received_in_tx_id.is_some() {
-                transaction_linked_outputs.push(output);
-            }
-        }
-
-        // Add spent outputs that have received_in_tx_id (sent transactions)
-        for output in all_spent_outputs {
-            if output.received_in_tx_id.is_some() {
-                transaction_linked_outputs.push(output);
-            }
-        }
-
-        Ok(transaction_linked_outputs)
-    }
-
-    fn get_output_by_hash(&self, hash: HashOutput) -> Result<Option<DbWalletOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_by_hash(hash)?)
-    }
 }
 
 /// Use the provided output when encumbering an aggregate UTXO or not, for use with

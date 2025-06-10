@@ -157,16 +157,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     },
                 }
             },
-            DbKey::AnyOutputByHash(hash) => match OutputSql::find_by_hash_any_status(hash.as_slice(), &mut conn) {
-                Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))),
-                Err(e) => {
-                    match e {
-                        OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
-                        e => return Err(e),
-                    };
-                    None
-                },
-            },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &mut conn) {
                     Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))),
@@ -377,7 +367,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
                 DbKey::SpentOutput(_s) => Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutputHash(_h) => Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::AnyOutputByHash(_h) => Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutput(_k) => Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutputs => Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => Err(OutputManagerStorageError::OperationNotSupported),
