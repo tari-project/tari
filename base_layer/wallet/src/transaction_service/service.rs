@@ -3924,47 +3924,73 @@ where
 
     /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
-        for transaction in transactions {
-            // Skip transactions that are not mined (no block hash available)
-            let block_hash = match transaction.mined_in_block {
-                Some(hash) => hash,
-                None => continue,
-            };
+        let txn = self.db.get_transaction_with_payref(&payref)??;
 
-            let payment_id_bytes = transaction.payment_id.user_data_as_bytes();
+        let block_hash = match txn.mined_in_block {
+            Some(hash) => hash,
+            None => return Ok(None), // This should not happen, but just in case
+        };
 
-            // Check if PayRef matches any sent output by generating proper PayRef
-            for output_hash in &transaction.sent_output_hashes {
-                let generated_payref = generate_payment_reference(&block_hash, output_hash);
-                if generated_payref == payref {
-                    return Ok(Some(PaymentDetails {
-                        tx_id: transaction.tx_id,
-                        payment_reference: payref,
-                        amount: transaction.amount,
-                        direction: transaction.direction,
-                        block_height: transaction.mined_height.unwrap_or(0),
-                        confirmations: transaction.confirmations.unwrap_or(0),
-                        timestamp: Some(transaction.timestamp),
-                        payment_id: Some(payment_id_bytes),
-                    }));
-                }
+        let mined_height = match txn.mined_height {
+            Some(height) => height,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let confirmations = match txn.confirmations {
+            Some(confirmations) => confirmations,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let payment_id_bytes = txn.payment_id.user_data_as_bytes();
+
+        // Check if PayRef matches any sent output by generating proper PayRef
+        for output_hash in &txn.sent_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
             }
+        }
 
-            // Check if PayRef matches any received output by generating proper PayRef
-            for output_hash in &transaction.received_output_hashes {
-                let generated_payref = generate_payment_reference(&block_hash, output_hash);
-                if generated_payref == payref {
-                    return Ok(Some(PaymentDetails {
-                        tx_id: transaction.tx_id,
-                        payment_reference: payref,
-                        amount: transaction.amount,
-                        direction: transaction.direction,
-                        block_height: transaction.mined_height.unwrap_or(0),
-                        confirmations: transaction.confirmations.unwrap_or(0),
-                        timestamp: Some(transaction.timestamp),
-                        payment_id: Some(payment_id_bytes),
-                    }));
-                }
+        // Check if PayRef matches any received output by generating proper PayRef
+        for output_hash in &txn.received_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        // Check if PayRef matches any change output by generating proper PayRef
+        for output_hash in &txn.change_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
             }
         }
 

@@ -621,39 +621,39 @@ pub struct PaymentDetails {
 }
 
 /// Individual output with its PayRef
-#[derive(Debug, Clone)]
-pub struct OutputWithPayRef {
-    pub output_hash: HashOutput,
-    pub payment_reference: Option<FixedHash>,
-    pub output_type: OutputType,
-    pub amount: MicroMinotari,
-    pub status: OutputStatus,
-}
-
-#[derive(Debug, Clone)]
-pub enum OutputType {
-    Sent,
-    Received,
-    Change,
-}
-
-impl Display for OutputType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            OutputType::Sent => write!(f, "Sent"),
-            OutputType::Received => write!(f, "Received"),
-            OutputType::Change => write!(f, "Change"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum OutputStatus {
-    Available,
-    Pending,
-    NotMined,
-    Spent,
-}
+// #[derive(Debug, Clone)]
+// pub struct OutputWithPayRef {
+//     pub output_hash: HashOutput,
+//     pub payment_reference: Option<FixedHash>,
+//     pub output_type: OutputType,
+//     pub amount: MicroMinotari,
+//     pub status: OutputStatus,
+// }
+//
+// #[derive(Debug, Clone)]
+// pub enum OutputType {
+//     Sent,
+//     Received,
+//     Change,
+// }
+//
+// impl Display for OutputType {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         match self {
+//             OutputType::Sent => write!(f, "Sent"),
+//             OutputType::Received => write!(f, "Received"),
+//             OutputType::Change => write!(f, "Change"),
+//         }
+//     }
+// }
+//
+// #[derive(Debug, Clone)]
+// pub enum OutputStatus {
+//     Available,
+//     Pending,
+//     NotMined,
+//     Spent,
+// }
 
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
 /// Transaction Service

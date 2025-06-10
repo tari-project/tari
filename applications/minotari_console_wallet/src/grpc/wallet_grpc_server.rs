@@ -224,8 +224,6 @@ impl WalletGrpcServer {
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
-    type GetTransactionsWithPayRefsStream =
-        Pin<Box<dyn Stream<Item = Result<GetTransactionsWithPayRefsResponse, Status>> + Send>>;
     type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
@@ -1718,12 +1716,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     );
                     return Err(Status::not_found("Payment reference not found".to_string()));
                 }
-                let trace!(
+                let txn = transaction_with_payref.expect("We already check its not none");
+                trace!(
                     target: LOG_TARGET,
                     "get_transaction_by_payref: Found tx for PayRef: {}",
-                    transaction_with_payref
+                    txn
                 );
-                let txn = transaction_with_payref.expect("We already check its not none");
                 let transaction_info = TransactionInfo {
                     tx_id: txn.tx_id.into(),
                     source_address: txn.source_address.to_vec(),
@@ -2029,24 +2027,5 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                     .collect(),
             }
         },
-    }
-}
-
-/// Calculate payment reference status based on confirmations and required confirmations
-fn calculate_payref_status(confirmations: u64, required_confirmations: u64) -> i32 {
-    if confirmations >= required_confirmations {
-        1 // PAYREF_STATUS_AVAILABLE
-    } else if confirmations > 0 {
-        2 // PAYREF_STATUS_PENDING
-    } else {
-        3 // PAYREF_STATUS_NOT_MINED
-    }
-}
-
-/// Convert PaymentDirection to gRPC direction value
-fn payment_direction_to_grpc(direction: &PaymentDirection) -> i32 {
-    match direction {
-        PaymentDirection::Received => 1,                            // PAYMENT_DIRECTION_INBOUND
-        PaymentDirection::Sent | PaymentDirection::SentChange => 2, // PAYMENT_DIRECTION_OUTBOUND
     }
 }
