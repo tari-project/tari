@@ -723,12 +723,6 @@ where
         Ok(tx_id)
     }
 
-    // fn get_next_peer(&mut self) -> Option<NodeId> {
-    //     let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
-    //     self.peer_index += 1;
-    //     peer
-    // }
-
     async fn get_scanning_start_header_height_hash(
         &self,
         client: &http::Client,
@@ -745,15 +739,6 @@ where
             birthday,
             epoch_time_birthday
         );
-        // let block_height_birthday = client
-        //     .get_height_at_time(epoch_time_birthday)
-        //     .await
-        //     .unwrap_or_else(|e| {
-        //         warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
-        //         0
-        //     });
-        // Calculate the unix epoch time of 2 days, in seconds, before the
-        // wallet birthday. The latter avoids any possible issues with reorgs.
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = client
             .get_height_at_time(epoch_time_scanning_start)

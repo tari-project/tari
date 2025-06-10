@@ -158,11 +158,6 @@ where
                         debug!(target: LOG_TARGET, "UTXO scanning round completed");
                         local_shutdown.trigger();
                     }
-                    // _ = self.resources.current_base_node_watcher.changed() => {
-                    //     debug!(target: LOG_TARGET, "Base node change detected.");
-                    //     let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                    //     local_shutdown.trigger();
-                    // },
                     _ = main_shutdown.wait() => {
                         // this will stop the task if its running, and let that thread exit gracefully
                         local_shutdown.trigger();
