@@ -33,7 +33,6 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
-    wallet_types::WalletType,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
@@ -60,12 +59,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::{
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::{OutputManagerRequest, OutputManagerResponse},
-        service::UseOutput,
-        UtxoSelectionCriteria,
-    },
+    output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
@@ -1326,13 +1320,13 @@ impl TransactionServiceHandle {
     pub async fn get_transaction_by_payref(
         &mut self,
         payref: FixedHash,
-    ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<CompletedTransaction, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetTransactionByPaymentReference(payref))
             .await??
         {
-            TransactionServiceResponse::PaymentDetails(details) => Ok(details),
+            TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

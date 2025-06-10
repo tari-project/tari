@@ -1288,7 +1288,8 @@ impl LMDBDatabase {
                 utxo_mined_info.output.minimum_value_promise,
             ); // Generate PayRef and add to index.
 
-            let payref = Self::generate_payment_reference_for_output(utxo_mined_info.header_hash, &input.output_hash());
+            let payref =
+                Self::generate_payment_reference_for_output(&utxo_mined_info.header_hash, &input.output_hash());
             lmdb_insert(
                 txn,
                 &self.payref_to_output_index,

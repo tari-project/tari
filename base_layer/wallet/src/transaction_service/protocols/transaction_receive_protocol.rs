@@ -28,7 +28,6 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::HashOutput,
 };
 use tari_core::transactions::{
     transaction_components::Transaction,

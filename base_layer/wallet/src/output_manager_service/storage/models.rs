@@ -25,7 +25,6 @@ use std::{cmp::Ordering, convert::TryFrom};
 use chrono::{DateTime, Utc};
 use derivative::Derivative;
 use tari_common_types::{
-    payment_reference::{generate_payment_reference, PaymentReference},
     transaction::TxId,
     types::{BlockHash, CompressedCommitment, HashOutput},
 };
@@ -37,7 +36,6 @@ use tari_script::{ExecutionStack, TariScript};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    payment_reference::{PayRefStatus, PaymentDetails, PaymentDirection},
     storage::{OutputSource, OutputStatus},
 };
 

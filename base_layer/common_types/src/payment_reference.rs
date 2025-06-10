@@ -44,10 +44,9 @@ use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
 use tari_hashing::PaymentReferenceHashDomain;
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{Hex, HexError};
 
 use crate::types::{BlockHash, FixedHash, HashOutput};
-
 /// A Payment Reference (PayRef) - a 32-byte globally unique identifier for transaction outputs
 pub type PaymentReference = FixedHash;
 
@@ -57,26 +56,29 @@ pub enum PayRefError {
     /// Invalid PayRef format (must be 64-character hex string)
     #[error("Invalid PayRef format: expected 64 hexadecimal characters, got {0}")]
     InvalidFormat(String),
-
     /// PayRef hex string contains invalid characters
     #[error("Invalid PayRef hex: contains non-hexadecimal characters")]
     InvalidHex,
-
     /// PayRef decodes to wrong length (must be exactly 32 bytes)
     #[error("Invalid PayRef length: expected 32 bytes, got {0}")]
     InvalidLength(usize),
-
     /// Missing required data for PayRef generation
     #[error("Missing required data: {0}")]
     MissingData(String),
-
     /// PayRef not found in database or index
     #[error("PayRef not found")]
     NotFound,
-
     /// Database error during PayRef operations
     #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Hex conversion error: {0}")]
+    HexError(String),
+}
+
+impl From<HexError> for PayRefError {
+    fn from(err: HexError) -> Self {
+        PayRefError::HexError(err.to_string())
+    }
 }
 
 /// Generate a Payment Reference from block hash and output hash

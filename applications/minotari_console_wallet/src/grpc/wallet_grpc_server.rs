@@ -22,7 +22,6 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    pin::Pin,
     str::FromStr,
     sync::Arc,
 };
@@ -31,7 +30,6 @@ use futures::{
     channel::mpsc::{self, Sender},
     future,
     SinkExt,
-    Stream,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
@@ -53,8 +51,6 @@ use minotari_app_grpc::tari_rpc::{
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
     GetAllCompletedTransactionsResponse,
-    GetAllPaymentReferencesRequest,
-    GetAllPaymentReferencesResponse,
     GetBalanceRequest,
     GetBalanceResponse,
     GetBlockHeightTransactionsRequest,
@@ -81,7 +77,6 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
-    PaymentDetails,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -105,11 +100,7 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
-    output_manager_service::{
-        handle::OutputManagerHandle,
-        payment_reference::{PaymentDirection, DEFAULT_PAYREF_REQUIRED_CONFIRMATIONS},
-        UtxoSelectionCriteria,
-    },
+    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::models::{self, WalletTransaction},
@@ -140,10 +131,7 @@ use tari_core::{
     },
 };
 use tari_script::script;
-use tari_utilities::{
-    hex::{to_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
@@ -1098,7 +1086,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
 
         let (mut sender, receiver) = mpsc::channel(transactions.len());
-        let output_manager = self.get_output_manager_service();
         task::spawn(async move {
             for (i, txn) in transactions.iter().enumerate() {
                 let output_commitments: Vec<Vec<u8>> = txn
@@ -1707,21 +1694,27 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut tms = self.get_transaction_service();
 
         match tms.get_transaction_by_payref(payment_ref).await {
-            Ok(transaction_with_payref) => {
-                if transaction_with_payref.is_none() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "get_transaction_by_payref: No transaction found: {}",
-                        payment_ref.to_hex()
-                    );
-                    return Err(Status::not_found("Payment reference not found".to_string()));
-                }
-                let txn = transaction_with_payref.expect("We already check its not none");
-                trace!(
-                    target: LOG_TARGET,
-                    "get_transaction_by_payref: Found tx for PayRef: {}",
-                    txn
-                );
+            Ok(txn) => {
+                let output_commitments: Vec<Vec<u8>> = txn
+                    .transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments: Vec<Vec<u8>> = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
                 let transaction_info = TransactionInfo {
                     tx_id: txn.tx_id.into(),
                     source_address: txn.source_address.to_vec(),

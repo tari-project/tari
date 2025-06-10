@@ -132,8 +132,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    payrefs (commitment) {
-        commitment -> Binary,
+    payrefs (output_hash) {
+        output_hash -> Binary,
         payref -> Binary,
         tx_id -> BigInt,
     }

@@ -23,7 +23,6 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use tonic::GrpcMethod;
 
 /// A list of all the GRPC methods that can be enabled/disabled
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
@@ -164,7 +163,7 @@ impl FromStr for GrpcMethod {
             "get_shard_key" => Ok(GrpcMethod::GetShardKey),
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
-            "search_payment_references" => OK(GrpcMethod::SearchPaymentReferences),
+            "search_payment_references" => Ok(GrpcMethod::SearchPaymentReferences),
             _ => Err(format!("'{}' not supported", s)),
         }
     }

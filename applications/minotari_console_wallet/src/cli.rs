@@ -176,7 +176,7 @@ pub enum CliCommands {
     ImportPaperWallet(ImportPaperWalletArgs),
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
-    ListTx(ListTxArgs),
+    ListTx,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -484,14 +484,4 @@ pub struct ShowPayRefArgs {
 #[derive(Debug, Args, Clone)]
 pub struct FindPayRefArgs {
     pub payment_reference_hex: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct ListTxArgs {
-    #[clap(short, long)]
-    pub limit: Option<usize>,
-    #[clap(long)]
-    pub status_filter: Option<String>, // "available", "pending", "all"
-    #[clap(long)]
-    pub show_private_info: bool,
 }

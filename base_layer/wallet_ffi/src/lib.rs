@@ -85,7 +85,6 @@ use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
-        payment_reference::{PayRefConfig, PayRefDisplayFormat, PaymentDirection, PaymentRecord},
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
             models::DbWalletOutput,
@@ -121,17 +120,14 @@ use tari_common::{
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
-    payment_reference,
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
-        BlockHash,
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
         FixedHash,
-        HashOutput,
         RangeProof,
         SignatureWithDomain,
         UncompressedPublicKey,
@@ -9526,7 +9522,7 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
             for hash in tx.sent_output_hashes {
                 let mut payref = [0u8; 32];
                 if let Some(block_hash) = tx.mined_in_block {
-                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
                     payref.copy_from_slice(pay_ref.as_slice());
                 };
                 records.push(TariPaymentRecord {
@@ -9540,7 +9536,7 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
             for hash in tx.received_output_hashes {
                 let mut payref = [0u8; 32];
                 if let Some(block_hash) = tx.mined_in_block {
-                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
                     payref.copy_from_slice(pay_ref.as_slice());
                 };
                 records.push(TariPaymentRecord {
@@ -9554,7 +9550,7 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
             for hash in tx.change_output_hashes {
                 let mut payref = [0u8; 32];
                 if let Some(block_hash) = tx.mined_in_block {
-                    let pay_ref = generate_payment_reference(&block_hash, hash);
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
                     payref.copy_from_slice(pay_ref.as_slice());
                 };
                 records.push(TariPaymentRecord {
@@ -9565,6 +9561,7 @@ pub unsafe extern "C" fn wallet_get_transaction_payrefs(
                     direction: 2,
                 });
             }
+            Box::into_raw(Box::new(TariPaymentRecords(records)))
         },
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -9625,8 +9622,7 @@ pub unsafe extern "C" fn wallet_get_transaction_by_payref(
             .transaction_service
             .get_transaction_by_payref(payref_fixedhash),
     ) {
-        Ok(Some(tx)) => Box::into_raw(Box::new(tx)),
-        Ok(None) => ptr::null_mut(), // PayRef not found
+        Ok(tx) => Box::into_raw(Box::new(tx)),
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::null_mut()

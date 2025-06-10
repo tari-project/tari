@@ -28,7 +28,6 @@ use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::HashOutput,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{
@@ -282,15 +281,31 @@ where
             ));
         }
 
-        let change_hashes = sender_protocol
-            .get_change_output()?
-            .map(|o| o.hash(&self.resources.transaction_key_manager_service))
-            .collect::<Vec<HashOutput>>();
-        let spent_inputs = sender_protocol
-            .get_spent_inputs()?
-            .into_iter()
-            .map(|input| input.output.hash(&self.resources.transaction_key_manager_service))
-            .collect::<Vec<_>>();
+        let mut change_hashes = Vec::new();
+        let change_output = sender_protocol
+            .get_change_output()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        if let Some(output) = change_output {
+            change_hashes.push(
+                output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+            );
+        };
+        let mut spent_inputs = Vec::new();
+        let spent_outputs = sender_protocol
+            .get_spent_inputs()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        for output in spent_outputs {
+            spent_inputs.push(
+                output
+                    .output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+            );
+        }
 
         // Calculate the size of the transaction - initial send transaction to the peer (always a small message) should
         // not be attempted if the final transaction size will be too large to be broadcast

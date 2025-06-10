@@ -28,14 +28,12 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    payment_reference::PaymentReference,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
-        FixedHash,
         HashOutput,
         PrivateKey,
         UncompressedCommitment,
@@ -106,7 +104,6 @@ use crate::{
             RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
-        payment_reference::PaymentDetails,
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -118,7 +115,7 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
-    transaction_service::{handle::TransactionServiceHandle, payref_calculator},
+    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 const LOG_TARGET: &str = "wallet::output_manager_service";

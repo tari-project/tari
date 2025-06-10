@@ -43,7 +43,6 @@ use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
-        payment_reference::parse_payref_hex,
         service::UseOutput,
         UtxoSelectionCriteria,
     },
@@ -2734,15 +2733,15 @@ pub async fn command_runner(
                                 }
                                 if completed_tx.mined_in_block.is_some() {
                                     println!("\nReceived PayRefs for this transaction:");
-                                    for (i, pay_ref) in completed_tx.calculate_received_payment_references().enumerate() {
+                                    for (i, pay_ref) in completed_tx.calculate_received_payment_references().iter().enumerate() {
                                         println!("{}. PayRef: {}", i + 1, pay_ref);
                                     }
                                     println!("\nSent PayRefs for this transaction:");
-                                    for (i, pay_ref) in completed_tx.calculate_sent_payment_references().enumerate() {
+                                    for (i, pay_ref) in completed_tx.calculate_sent_payment_references().iter().enumerate() {
                                         println!("{}. PayRef: {}", i + 1, pay_ref);
                                     }
                                     println!("\nChange PayRefs for this transaction:");
-                                    for (i, pay_ref) in completed_tx.calculate_change_payment_references().enumerate() {
+                                    for (i, pay_ref) in completed_tx.calculate_change_payment_references().iter().enumerate() {
                                         println!("{}. PayRef: {}", i + 1, pay_ref);
                                     }
                                 } else {
@@ -2791,25 +2790,12 @@ pub async fn command_runner(
                     eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
                 },
             },
-            ListTx(args) => {
+            ListTx => {
                 debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
-
-                // Apply status filter to determine mined_only
-                let mined_only = match args.status_filter.as_deref() {
-                    Some("available") => Some(true),
-                    Some("pending") => Some(false),
-                    Some("all") | None => None,
-                    _ => {
-                        eprintln!("Invalid status filter. Use 'available', 'pending', or 'all'");
-                        return Ok(false);
-                    },
-                };
-
-                let limit = args.limit.map(|l| l as u64);
 
                 match transaction_service.get_completed_transactions(None, None, None).await {
                     Ok(txs) => {
-                        debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs_with_payrefs.len());
+                        debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs.len());
 
                         if txs.is_empty() {
                             println!("No transactions.");
@@ -2831,15 +2817,15 @@ pub async fn command_runner(
                             }
                             if tx.mined_in_block.is_some() {
                                 println!("\nReceived PayRefs for this transaction:");
-                                for (i, pay_ref) in tx.calculate_received_payment_references().enumerate() {
+                                for (i, pay_ref) in tx.calculate_received_payment_references().iter().enumerate() {
                                     println!("{}. PayRef: {}", i + 1, pay_ref);
                                 }
                                 println!("\nSent PayRefs for this transaction:");
-                                for (i, pay_ref) in tx.calculate_sent_payment_references().enumerate() {
+                                for (i, pay_ref) in tx.calculate_sent_payment_references().iter().enumerate() {
                                     println!("{}. PayRef: {}", i + 1, pay_ref);
                                 }
                                 println!("\nChange PayRefs for this transaction:");
-                                for (i, pay_ref) in tx.calculate_change_payment_references().enumerate() {
+                                for (i, pay_ref) in tx.calculate_change_payment_references().iter().enumerate() {
                                     println!("{}. PayRef: {}", i + 1, pay_ref);
                                 }
                             } else {

@@ -243,41 +243,9 @@ typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
 
-/**
- * Collection of outputs with PayRefs
- */
-struct TariOutputsWithPayRefs {
-  struct TariOutputWithPayRef *outputs;
-  unsigned int length;
-};
-
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
-
-/**
- * Payment Details FFI Types
- */
-struct TariPaymentDetails {
-  unsigned char payment_reference[32];
-  char *commitment;
-  unsigned long long amount;
-  unsigned long long block_height;
-  unsigned long long confirmations;
-  unsigned long long mined_timestamp;
-};
-
-/**
- * PayRef Configuration FFI Types
- */
-struct TariPayRefConfig {
-  unsigned long long required_confirmations;
-  unsigned int display_format;
-  bool auto_copy_on_click;
-  bool show_pending_progress;
-  unsigned int refresh_interval_seconds;
-};
-
 
 /**
  * Payment Record FFI Types
@@ -4215,22 +4183,22 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet,
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `*mut ByteVector` - returns a byte vector containing all PayRefs (32 bytes each) for the transaction,
- * note that ptr::null_mut() is returned if wallet is null or an error occurs
+ * `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
  *
  * # Safety
- * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to prevent a memory leak
+ * The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+ * leak
  */
-struct ByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
-                                                  unsigned long long transaction_id,
-                                                  int *error_out);
+struct TariPaymentRecords *wallet_get_transaction_payrefs(struct TariWallet *wallet,
+                                                          unsigned long long transaction_id,
+                                                          int *error_out);
 
 /**
  * Get payment details for a specific PayRef (payment reference)
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
- * `payref` - The 32-byte PayRef to look up
+ * `payref` - The 32-byte ByteVector of the payment reference
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4241,93 +4209,12 @@ struct ByteVector *wallet_get_transaction_payrefs(struct TariWallet *wallet,
  * # Safety
  * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
  * prevent a memory leak
- */
-TariCompletedTransaction *wallet_get_payment_by_reference(struct TariWallet *wallet,
-                                                          const uint8_t *payref,
-                                                          int *error_out);
-
-/**
- * Get PayRefs for a specific output hash
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `output_hash` - The 32-byte output hash to look up
- * `error_out` - Pointer to an int which will be modified to an error code should one occur
- *
- * ## Returns
- * `*mut TariOutputWithPayRef` - returns the output with its PayRef, null if not found
- *
- * # Safety
- * The caller must call output_with_payref_destroy when finished with the result
- */
-struct TariOutputWithPayRef *wallet_get_payref_for_output_hash(struct TariWallet *wallet,
-                                                               const uint8_t *output_hash,
-                                                               int *error_out);
-
-/**
- * Get per-output PayRefs for a specific transaction
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `transaction_id` - The transaction ID to get outputs for
- * `error_out` - Pointer to an int which will be modified to an error code should one occur
- *
- * ## Returns
- * `*mut TariOutputsWithPayRefs` - Collection of outputs with their PayRefs
- *
- * # Safety
- * The caller must call outputs_with_payrefs_destroy when finished with the result
- */
-struct TariOutputsWithPayRefs *wallet_get_output_payrefs_for_transaction(struct TariWallet *wallet,
-                                                                         unsigned long long transaction_id,
-                                                                         int *error_out);
-
-/**
- * Destroy a TariOutputWithPayRef
- */
-void output_with_payref_destroy(struct TariOutputWithPayRef *ptr);
-
-/**
- * Destroy a TariOutputsWithPayRefs
- */
-void outputs_with_payrefs_destroy(struct TariOutputsWithPayRefs *ptr);
-
-/**
- * Get length of TariOutputsWithPayRefs
- */
-unsigned int outputs_with_payrefs_get_length(struct TariOutputsWithPayRefs *ptr);
-
-/**
- * Get output at index from TariOutputsWithPayRefs
- */
-struct TariOutputWithPayRef *outputs_with_payrefs_get_at(struct TariOutputsWithPayRefs *ptr,
-                                                         unsigned int index,
-                                                         int *error_out);
-
-/**
- * Get all transactions that have PayRefs with optional filtering
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `limit` - Maximum number of transactions to return (0 = no limit)
- * `offset` - Number of transactions to skip
- * `mined_only` - If true, only return mined transactions
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariCompletedTransactions` - returns the transactions with PayRefs,
- * note that ptr::null_mut() is returned if wallet is null or an error occurs
- *
- * # Safety
- * The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+ * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
  * prevent a memory leak
  */
-struct TariCompletedTransactions *wallet_get_transactions_with_payrefs(struct TariWallet *wallet,
-                                                                       unsigned long long limit,
-                                                                       unsigned long long offset,
-                                                                       bool mined_only,
-                                                                       int *error_out);
+TariCompletedTransaction *wallet_get_transaction_by_payref(struct TariWallet *wallet,
+                                                           struct ByteVector *payref,
+                                                           int *error_out);
 
 /**
  * This function will tell the wallet to query the set base node to confirm the status of transaction outputs
@@ -4879,75 +4766,9 @@ struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
 void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
- * Find payment details by PayRef
- * Returns null if PayRef not found
- * Find payment details by payment reference
- *
- * # Safety
- * This function is unsafe because it dereferences raw pointers. The caller must ensure:
- * - `wallet` is a valid pointer to a TariWallet
- * - `payment_reference` points to a valid 32-byte array
- * - `error_out` is a valid pointer to a c_int
- * - All pointers remain valid for the duration of the call
- */
-struct TariPaymentDetails *wallet_find_payment_by_reference(struct TariWallet *wallet,
-                                                            const unsigned char *payment_reference,
-                                                            int *error_out);
-
-/**
- * Get available payment references
- */
-struct TariPaymentRecords *wallet_get_available_payment_references(struct TariWallet *wallet,
-                                                                   int *error_out);
-
-/**
- * Get all payment references
- */
-struct TariPaymentRecords *wallet_get_all_payment_references(struct TariWallet *wallet,
-                                                             int *error_out);
-
-/**
- * Get PayRef configuration
- */
-struct TariPayRefConfig *wallet_get_payment_reference_config(struct TariWallet *wallet,
-                                                             int *error_out);
-
-/**
- * Set PayRef configuration
- */
-bool wallet_set_payment_reference_config(struct TariWallet *wallet,
-                                         struct TariPayRefConfig *config,
-                                         int *error_out);
-
-/**
- * Parse payment reference from hex string
- */
-unsigned char *parse_payment_reference_hex(const char *hex_str, int *error_out);
-
-/**
- * Convert payment reference to hex string
- */
-char *payment_reference_to_hex(const unsigned char *payment_reference, int *error_out);
-
-/**
- * Destroy TariPaymentDetails
- */
-void payment_details_destroy(struct TariPaymentDetails *details);
-
-/**
  * Destroy TariPaymentRecords
  */
 void payment_records_destroy(struct TariPaymentRecords *records);
-
-/**
- * Destroy TariPayRefConfig
- */
-void payref_config_destroy(struct TariPayRefConfig *config);
-
-/**
- * Destroy TariPayRefStatus
- */
-void payref_status_destroy(struct TariPayRefStatus *status);
 
 /**
  * Get length of TariPaymentRecords
@@ -4965,46 +4786,6 @@ struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords
  * Destroy TariPaymentRecord
  */
 void payment_record_destroy(struct TariPaymentRecord *record);
-
-/**
- * Free payment reference memory allocated by parse_payment_reference_hex
- */
-void payment_reference_destroy(unsigned char *payment_reference);
-
-/**
- * Generate PayRef from block hash and commitment (for external use)
- * Note: This is a utility function - actual PayRefs are generated automatically for wallet outputs
- */
-unsigned char *wallet_generate_payment_reference_from_data(const unsigned char *block_hash,
-                                                           const unsigned char *commitment,
-                                                           int *error_out);
-
-/**
- * Get PayRef status by checking confirmations
- */
-struct TariPayRefStatus *wallet_get_payment_reference_status(struct TariWallet *wallet,
-                                                             const unsigned char *payment_reference,
-                                                             int *error_out);
-
-/**
- * Format PayRef for display according to config
- */
-char *wallet_format_payment_reference(const unsigned char *payment_reference,
-                                      unsigned int format_type,
-                                      int *error_out);
-
-/**
- * Validate PayRef hex format
- */
-bool wallet_validate_payment_reference_format(const char *payref_hex, int *error_out);
-
-/**
- * Get PayRef verification result for exchanges/merchants
- */
-char *wallet_verify_payment_reference(struct TariWallet *wallet,
-                                      const unsigned char *payment_reference,
-                                      unsigned long long required_confirmations,
-                                      int *error_out);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`

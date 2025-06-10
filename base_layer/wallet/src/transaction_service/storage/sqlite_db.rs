@@ -62,7 +62,7 @@ use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
-    schema::{completed_transactions, inbound_transactions, outbound_transactions},
+    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     transaction_service::{
         error::{TransactionKeyError, TransactionStorageError},
@@ -819,7 +819,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             status.mined_unconfirm()
         };
 
-        let cipher = acquire_read_lock!(self.cipher);
         match CompletedTransactionSql::update_mined_height(
             tx_id,
             num_confirmations,
@@ -828,7 +827,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             mined_in_block,
             mined_timestamp,
             &mut conn,
-            &cipher,
         ) {
             Ok(_) => {},
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -1159,11 +1157,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        let payref = PayrefSql::find_by_output_hash(&payref.to_vec())?;
+        let payref = PayrefSql::find_by_output_hash(&payref.to_vec(), &mut conn)?;
         if payref.is_none() {
             return Ok(None);
         }
-        let tx_id = payref.unwrap().tx_id;
+        let tx_id = (payref.expect("Already checked").tx_id as u64).into();
         let tx = match CompletedTransactionSql::find(tx_id, &mut conn) {
             Ok(c) => Some(CompletedTransaction::try_from(c, &cipher)?),
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
@@ -2000,6 +1998,18 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
+    pub fn update(
+        &self,
+        updated_tx: UpdateCompletedTransactionSql,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), TransactionStorageError> {
+        diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(&self.tx_id)))
+            .set(updated_tx)
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+        Ok(())
+    }
+
     pub fn update_mined_height(
         tx_id: TxId,
         num_confirmations: u64,
@@ -2045,35 +2055,44 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        let sent = bytes_to_fixedhash_vec(&existing_tx.sent_output_hashes);
+        let sent = match existing_tx.sent_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
         for output in sent {
-            let pay_ref = generate_payment_reference(&mined_in_block, output);
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
                 output_hash: output.to_vec(),
                 tx_id: tx_id.as_u64() as i64,
-                payment_reference: pay_ref.to_vec(),
+                payref: pay_ref.to_vec(),
             };
             pay_ref_sql.commit_or_update(conn)?;
         }
 
-        let received = bytes_to_fixedhash_vec(&existing_tx.received_output_hashes);
-        for output in existing_tx.received_output_hashes {
-            let pay_ref = generate_payment_reference(&mined_in_block, output);
+        let received = match existing_tx.received_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in received {
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
                 output_hash: output.to_vec(),
                 tx_id: tx_id.as_u64() as i64,
-                payment_reference: pay_ref.to_vec(),
+                payref: pay_ref.to_vec(),
             };
             pay_ref_sql.commit_or_update(conn)?;
         }
 
-        let change = bytes_to_fixedhash_vec(&existing_tx.change_output_hashes);
+        let change = match existing_tx.change_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
         for output in change {
-            let pay_ref = generate_payment_reference(&mined_in_block, output);
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
                 output_hash: output.to_vec(),
                 tx_id: tx_id.as_u64() as i64,
-                payment_reference: pay_ref.to_vec(),
+                payref: pay_ref.to_vec(),
             };
             pay_ref_sql.commit_or_update(conn)?;
         }
@@ -2126,19 +2145,24 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        // Ideally the outputs should be marked unmined here as well, but because of the separation of classes,
-        // that will be done in the outputs service.
-        let sent = bytes_to_fixedhash_vec(&existing_tx.sent_output_hashes);
+        let sent = match existing_tx.sent_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
         for output in sent {
             PayrefSql::delete(output.as_ref(), conn)?;
         }
-
-        let received = bytes_to_fixedhash_vec(&existing_tx.received_output_hashes);
-        for output in existing_tx.received_output_hashes {
+        let received = match existing_tx.received_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in received {
             PayrefSql::delete(output.as_ref(), conn)?;
         }
-
-        let change = bytes_to_fixedhash_vec(&existing_tx.change_output_hashes);
+        let change = match existing_tx.change_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
         for output in change {
             PayrefSql::delete(output.as_ref(), conn)?;
         }
@@ -2391,7 +2415,7 @@ impl UnconfirmedTransactionInfoSql {
     }
 }
 
-#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq, AsChangeset)]
 #[diesel(table_name = payrefs)]
 pub struct PayrefSql {
     output_hash: Vec<u8>,
@@ -2415,14 +2439,14 @@ impl PayrefSql {
     pub fn commit_or_update(&self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
         diesel::insert_into(payrefs::table)
             .values(self.clone())
-            .on_conflict(diesel::dsl::DuplicatedKeys)
+            .on_conflict(payrefs::output_hash)
             .do_update()
-            .set(&self)
+            .set(self.clone())
             .execute(conn)?;
         Ok(())
     }
 
-    pub fn delete(hash: &Vec<u8>, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+    pub fn delete(hash: &[u8], conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
         diesel::delete(payrefs::table.filter(payrefs::output_hash.eq(hash))).execute(conn)?;
 
         Ok(())

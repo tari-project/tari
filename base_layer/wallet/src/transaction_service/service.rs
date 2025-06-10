@@ -115,12 +115,9 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
             FeePerGramStatsResponse,
-            OutputStatus,
-            OutputType,
-            OutputWithPayRef,
             PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
@@ -135,7 +132,7 @@ use crate::{
             transaction_validation_protocol::TransactionValidationProtocol,
         },
         storage::{
-            database::{TransactionBackend, TransactionDatabase},
+            database::{DbKey, TransactionBackend, TransactionDatabase},
             models::{
                 CompletedTransaction,
                 TxCancellationReason,
@@ -1023,10 +1020,14 @@ where
             TransactionServiceRequest::GetPaymentByReference(payref) => self
                 .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
-            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => self
-                .get_transaction_with_payref(payref)
-                .await
-                .map(TransactionServiceResponse::TransactionsWithPayRef),
+            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
+                match self.get_transaction_with_payref(payref)? {
+                    Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
+                    None => Err(TransactionServiceError::TransactionStorageError(
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions).into(),
+                    ))?,
+                }
+            },
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -3924,7 +3925,10 @@ where
 
     /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
-        let txn = self.db.get_transaction_with_payref(&payref)??;
+        let txn = match self.db.get_transaction_with_payref(&payref)? {
+            Some(txn) => txn,
+            None => return Ok(None), // No transaction found with the given PayRef
+        };
 
         let block_hash = match txn.mined_in_block {
             Some(hash) => hash,
@@ -3997,11 +4001,11 @@ where
         Ok(None)
     }
 
-    async fn get_transaction_with_payref(
+    fn get_transaction_with_payref(
         &self,
         payref: FixedHash,
     ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
-        let transactions = self.db.get_transaction_with_payref(&payref).await?;
+        let transactions = self.db.get_transaction_with_payref(&payref)?;
 
         Ok(transactions)
     }
