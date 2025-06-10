@@ -393,7 +393,7 @@ mod test {
                     .unwrap());
 
                 let (recovered_key_id, recovered_value, _) =
-                    key_manager.try_output_key_recovery(&output, None).await.unwrap();
+                    key_manager.try_output_key_recovery(output.commitment(), output.encrypted_data(), None).await.unwrap();
                 assert_eq!(recovered_key_id, commitment_mask_key.key_id);
                 assert_eq!(recovered_value, value);
             },

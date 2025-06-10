@@ -171,6 +171,7 @@ use tokio::{
     task,
     time::sleep,
 };
+use url::Url;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -236,6 +237,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         private_comms_key: Some(node_identity.secret_key().clone()),
         birthday: None,
     }));
+    let http_node_url = Url::parse("http://127.0.0.1:5434").unwrap();
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -280,9 +282,9 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
         .add_initializer(UtxoScannerServiceInitializer::<_, MemoryDbKeyManager>::new(
             db,
-            factories.clone(),
             Network::LocalNet,
             14,
+            http_node_url,
         ))
         .build()
         .await
@@ -1558,7 +1560,7 @@ async fn single_transaction_burn_tari() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_output_key_recovery(output, Some(&recovery_key_id))
+                .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(&recovery_key_id))
                 .await
             {
                 Ok((spending_key_id, value, _)) => {

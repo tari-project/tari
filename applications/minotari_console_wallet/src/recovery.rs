@@ -177,6 +177,7 @@ pub async fn wallet_recovery(
             Ok(UtxoScannerEvent::Completed {
                 final_height,
                 time_taken,
+                ..
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(

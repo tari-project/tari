@@ -30,7 +30,6 @@ use std::{
 use chrono::{Duration as ChronoDuration, Utc};
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::storage::{models::DbWalletOutput, OutputSource},
     storage::{
         database::WalletDatabase,
@@ -64,7 +63,6 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, WalletOutput},
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
-        CryptoFactories,
     },
 };
 use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
@@ -88,7 +86,7 @@ use crate::support::{
 };
 
 pub struct UtxoScannerTestInterface {
-    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityMock>>,
+    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, MemoryDbKeyManager>>,
     scanner_handle: UtxoScannerHandle,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
     base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
@@ -110,7 +108,6 @@ async fn setup(
     one_sided_message: Option<String>,
 ) -> UtxoScannerTestInterface {
     let shutdown = Shutdown::new();
-    let factories = CryptoFactories::default();
 
     // Base Node Service Mock
     let (sender, receiver_bns) = reply_channel::unbounded();
@@ -133,14 +130,12 @@ async fn setup(
         .create_connection(server_node_identity.to_peer(), protocol_name.into())
         .await;
 
-    let (comms_connectivity, connectivity_mock) = create_connectivity_mock();
+    let (_comms_connectivity, connectivity_mock) = create_connectivity_mock();
     let comms_connectivity_mock_state = connectivity_mock.get_shared_state();
     comms_connectivity_mock_state
         .add_active_connection(rpc_server_connection)
         .await;
     task::spawn(connectivity_mock.run());
-
-    let wallet_connectivity_mock = create_wallet_connectivity_mock();
 
     let (ts_mock, ts_handle) = make_transaction_service_mock(shutdown.to_signal());
     let transaction_service_mock_state = ts_mock.get_state();
@@ -179,12 +174,9 @@ async fn setup(
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
-    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityMock>::builder();
+    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase, MemoryDbKeyManager>::builder();
 
-    scanner_service_builder
-        .with_peers(vec![server_node_identity.public_key().clone()])
-        .with_retry_limit(1)
-        .with_mode(mode);
+    scanner_service_builder.with_retry_limit(1).with_mode(mode);
 
     if let Some(message) = one_sided_message {
         scanner_service_builder.with_one_sided_message(message);
@@ -202,22 +194,21 @@ async fn setup(
     )
     .unwrap();
     let scanner_service = scanner_service_builder
-        .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
+        .build_with_resources::<WalletSqliteDatabase, MemoryDbKeyManager>(
             wallet_db.clone(),
-            comms_connectivity,
-            wallet_connectivity_mock,
             oms_handle,
             ts_handle,
             tari_address,
-            factories,
             shutdown.to_signal(),
             event_sender,
             base_node_service_handle,
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
             14,
+            key_manager.clone(),
         )
-        .await;
+        .await
+        .unwrap();
 
     UtxoScannerTestInterface {
         scanner_service: Some(scanner_service),
@@ -380,9 +371,9 @@ async fn test_utxo_scanner_recovery() {
             event = scanner_event_stream.recv() => {
                 if let UtxoScannerEvent::Completed {
                     final_height,
+                    time_taken: _,
                     num_recovered,
                     value_recovered,
-                    time_taken: _,
                 } = event.unwrap() {
                     assert_eq!(final_height, NUM_BLOCKS - 1);
                     assert_eq!(num_recovered, total_outputs_to_recover);
@@ -528,9 +519,10 @@ async fn test_utxo_scanner_recovery_with_restart() {
             event = scanner_event_stream.recv() => {
                 if let UtxoScannerEvent::Completed {
                     final_height,
+                    time_taken: _,
                     num_recovered,
-                    value_recovered,
-                    time_taken: _,} = event.unwrap() {
+                    value_recovered
+                } = event.unwrap() {
                     assert_eq!(final_height, NUM_BLOCKS-1);
                     assert_eq!(num_recovered, total_outputs_to_recover);
                     assert_eq!(value_recovered, total_amount_to_recover);
@@ -710,9 +702,9 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
             event = scanner_event_stream.recv() => {
                 if let UtxoScannerEvent::Completed {
                     final_height,
-                    num_recovered,
-                    value_recovered,
                     time_taken: _,
+                    num_recovered,
+                    value_recovered
                 } = event.unwrap()
                 {
                     assert_eq!(final_height, 9);
@@ -732,7 +724,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
     for h in 0u64..800u64 {
-        let num_outputs = if h % 2 == 1 { Some(1) } else { None };
+        // let num_outputs = if h % 2 == 1 { Some(1) } else { None };
         let mut header_hash = h.to_le_bytes().to_vec();
         header_hash.extend([0u8; 24].to_vec());
         let header_hash = header_hash.try_into().unwrap();
@@ -741,8 +733,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
             .save_scanned_block(ScannedBlock {
                 header_hash,
                 height: h,
-                num_outputs,
-                amount: None,
                 timestamp: Utc::now()
                     .naive_utc()
                     .checked_sub_signed(ChronoDuration::days(1000))
@@ -807,8 +797,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         .save_scanned_block(ScannedBlock {
             header_hash: first_block_header.hash(),
             height: first_block_header.height,
-            num_outputs: Some(0),
-            amount: None,
             timestamp: Utc::now().naive_utc(),
         })
         .unwrap();

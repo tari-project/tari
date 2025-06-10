@@ -23,6 +23,7 @@
 use std::time::Duration;
 
 use tari_comms::peer_manager::NodeId;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tokio::sync::{broadcast, watch};
 
 use crate::util::watch::Watch;
@@ -50,6 +51,8 @@ pub enum UtxoScannerEvent {
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {
         final_height: u64,
+        num_recovered: u64,
+        value_recovered: MicroMinotari,
         time_taken: Duration,
     },
     /// Scanning process has failed and scanning process has exited

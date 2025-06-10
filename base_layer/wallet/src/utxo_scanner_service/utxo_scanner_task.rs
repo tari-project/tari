@@ -64,6 +64,13 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
+struct SyncResult {
+    final_height: u64,
+    num_recovered: u64,
+    value_recovered: MicroMinotari,
+    elapsed: Duration,
+}
+
 pub struct UtxoScannerTask<TBackend, TKeyManager> {
     pub(crate) resources: UtxoScannerResources<TBackend>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
@@ -98,9 +105,15 @@ where
                 return Ok(());
             }
             match self.attempt_sync().await {
-                Ok((final_height, elapsed)) => {
+                Ok(SyncResult {
+                    final_height,
+                    num_recovered,
+                    value_recovered,
+                    elapsed,
+                }) => {
                     debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                    self.finalize(final_height, elapsed).await?;
+                    self.finalize(num_recovered, value_recovered, final_height, elapsed)
+                        .await?;
                     return Ok(());
                 },
                 Err(e) => {
@@ -121,18 +134,26 @@ where
         }
     }
 
-    async fn finalize(&mut self, final_height: u64, elapsed: Duration) -> Result<(), anyhow::Error> {
-        // if num_outputs_recovered > 0 {
-        //     // this is a best effort, if this fails, its very likely that it's already busy with a validation.
-        //     let _result = self.resources.output_manager_service.validate_txos().await;
-        //     let _result = self.resources.transaction_service.validate_transactions().await;
-        // }
+    async fn finalize(
+        &mut self,
+        num_recovered: u64,
+        value_recovered: MicroMinotari,
+        final_height: u64,
+        elapsed: Duration,
+    ) -> Result<(), anyhow::Error> {
+        if num_recovered > 0 {
+            // this is a best effort, if this fails, its very likely that it's already busy with a validation.
+            let _result = self.resources.output_manager_service.validate_txos().await;
+            let _result = self.resources.transaction_service.validate_transactions().await;
+        }
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,
         });
         self.publish_event(UtxoScannerEvent::Completed {
             final_height,
+            num_recovered,
+            value_recovered,
             time_taken: elapsed,
         });
 
@@ -200,12 +221,14 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self) -> Result<(u64, Duration), anyhow::Error> {
+    async fn attempt_sync(&mut self) -> Result<SyncResult, anyhow::Error> {
         info!(target: LOG_TARGET, "Starting UTXO scanning task");
 
         let wallet_service_client = self.base_node_wallet_service_client()?;
 
         let timer = Instant::now();
+        let mut total_num_recovered = 0;
+        let mut total_value_recovered = MicroMinotari::zero();
         loop {
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
@@ -219,7 +242,12 @@ where
                         last_scanned_block.height,
                         timer.elapsed()
                     );
-                    return Ok((last_scanned_block.height, timer.elapsed()));
+                    return Ok(SyncResult {
+                        final_height: last_scanned_block.height,
+                        num_recovered: total_num_recovered,
+                        value_recovered: total_value_recovered,
+                        elapsed: timer.elapsed(),
+                    });
                 }
             }
 
@@ -229,7 +257,7 @@ where
                 .await?;
 
             if self.shutdown_signal.is_triggered() {
-                return Ok((0, timer.elapsed()));
+                return Err(anyhow!("Shutdown signal received, stopping UTXO scanning task"));
             }
 
             info!(
@@ -240,7 +268,7 @@ where
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            let num_scanned = self
+            let (num_scanned, num_recovered, amount_recovered) = self
                 .scan_utxos(
                     &wallet_service_client,
                     next_block_to_scan.header_hash,
@@ -248,6 +276,8 @@ where
                     tip_height,
                 )
                 .await?;
+            total_num_recovered += num_recovered;
+            total_value_recovered += amount_recovered;
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
@@ -350,15 +380,13 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    // converting u64 to i64 is its only used for timestamps
-    #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
         client: &http::Client,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<usize, anyhow::Error> {
+    ) -> Result<(usize, u64, MicroMinotari), anyhow::Error> {
         info!(
             target: LOG_TARGET,
             "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
@@ -370,6 +398,8 @@ where
         const PROGRESS_REPORT_INTERVAL: u64 = 10;
 
         let mut total_scanned = 0;
+        let mut total_num_recovered = 0;
+        let mut total_value_recovered = MicroMinotari::zero();
 
         let mut utxo_stream = client
             .sync_utxos_by_block(
@@ -382,7 +412,7 @@ where
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = utxo_stream.recv().await {
             if self.shutdown_signal.is_triggered() {
-                return Ok(total_scanned);
+                return Ok((total_scanned, total_num_recovered, total_value_recovered));
             }
 
             let response = response?;
@@ -423,8 +453,11 @@ where
 
                     let imported_outputs = self.scan_for_outputs(outputs).await?;
 
-                    self.import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
+                    let (num_recovered, amount) = self
+                        .import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
                         .await?;
+                    total_num_recovered += num_recovered;
+                    total_value_recovered += amount;
                 }
 
                 let block_hash = current_header_hash.try_into()?;
@@ -464,7 +497,7 @@ where
             self.resources.db.save_scanned_block(scanned_block)?;
         }
 
-        Ok(total_scanned)
+        Ok((total_scanned, total_num_recovered, total_value_recovered))
     }
 
     async fn search_for_owned_outputs(

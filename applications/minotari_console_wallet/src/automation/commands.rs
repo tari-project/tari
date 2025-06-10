@@ -2454,6 +2454,7 @@ pub async fn command_runner(
                             UtxoScannerEvent::Completed {
                                 final_height,
                                 time_taken,
+                                ..
                             } => {
                                 println!(
                                     "Completed! Height: {},  Time taken: {}",
