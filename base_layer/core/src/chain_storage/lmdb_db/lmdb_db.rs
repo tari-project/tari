@@ -1322,9 +1322,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         body: AggregateBody,
-        // smt_writer: &mut LmdbTreeWriter,
     ) -> Result<(), ChainStorageError> {
-        // let smt_reader = LmdbTreeReader::new();
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
@@ -3269,12 +3267,21 @@ fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), Chain
     // Get all outputs for this block
     let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> =
         lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
-
+    let mut payrefs = Vec::new();
+    for (_, output_data) in outputs {
+        let exist = lmdb_exists(
+            &read_txn,
+            &db.utxo_commitment_index,
+            output_data.output.commitment().as_bytes(),
+        )?;
+        if exist {
+            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
+            payrefs.push((payref, output_data.hash));
+        }
+    }
     drop(read_txn);
     let write_txn = db.write_transaction()?;
-    for (_, output_data) in outputs {
-        let output_hash = &output_data.hash;
-        let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
+    for (payref, output_hash) in payrefs {
         lmdb_insert(
             &write_txn,
             &db.payref_to_output_index,
