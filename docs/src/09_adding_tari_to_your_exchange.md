@@ -548,24 +548,24 @@ class PayRefVerificationService {
                 payment_reference_hex: payrefHex
             });
 
-            if (!response.payment_details) {
+            if (!response.transaction) {
                 return {
                     status: 'NOT_FOUND',
                     message: 'PayRef not found in received payments'
                 };
             }
 
-            const payment = response.payment_details;
-            const confirmations = parseInt(payment.confirmations);
+            const transaction = response.transaction;
+            const confirmations = check_status(transaction.status);
             
             if (confirmations >= requiredConfirmations) {
                 return {
                     status: 'VERIFIED',
                     paymentReference: payrefHex,
-                    amount: parseFloat(payment.amount),
-                    blockHeight: parseInt(payment.block_height),
+                    amount: parseFloat(transaction.amount),
+                    blockHeight: parseInt(transaction.mined_in_block_height),
                     confirmations: confirmations,
-                    receivedTimestamp: new Date(parseInt(payment.mined_timestamp) * 1000),
+                    receivedTimestamp: new Date(parseInt(payment.timestamp) * 1000),
                     sufficientConfirmations: true
                 };
             } else {
@@ -573,7 +573,7 @@ class PayRefVerificationService {
                 return {
                     status: 'INSUFFICIENT_CONFIRMATIONS',
                     paymentReference: payrefHex,
-                    amount: parseFloat(payment.amount),
+                    amount: parseFloat(transaction.amount),
                     confirmations: confirmations,
                     requiredConfirmations: requiredConfirmations,
                     blocksRemaining: blocksRemaining,

@@ -260,6 +260,7 @@ mod tests {
                 GrpcMethod::GetShardKey => count += 1,
                 GrpcMethod::GetTemplateRegistrations => count += 1,
                 GrpcMethod::GetSideChainUtxos => count += 1,
+                GrpcMethod::SearchPaymentReferences => count += 1,
             }
         }
         assert_eq!(count, GrpcMethod::ALL_VARIANTS.len());

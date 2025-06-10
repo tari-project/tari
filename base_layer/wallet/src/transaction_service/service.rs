@@ -1024,7 +1024,7 @@ where
                 match self.get_transaction_with_payref(payref)? {
                     Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
                     None => Err(TransactionServiceError::TransactionStorageError(
-                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions).into(),
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions),
                     ))?,
                 }
             },

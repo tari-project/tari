@@ -432,7 +432,7 @@ where
             }
 
             // Categorize outputs for PayRef functionality
-            let received_hashes = vec![rtp_output.hash().clone()];
+            let received_hashes = vec![rtp_output.hash()];
 
             let completed_transaction = CompletedTransaction::new_with_output_hashes(
                 self.id,

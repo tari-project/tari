@@ -366,7 +366,7 @@ where
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             outbound_tx.fee = fee;
-            outbound_tx.status = initial_send.transaction_status.clone();
+            outbound_tx.status = initial_send.transaction_status;
             outbound_tx.direct_send_success = true;
             self.resources
                 .db

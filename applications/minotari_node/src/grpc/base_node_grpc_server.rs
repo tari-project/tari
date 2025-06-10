@@ -2981,7 +2981,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Err(e) => {
                         let error = obscure_error_if_true(
                             report_error_flag,
-                            Status::invalid_argument(format!("Invalid PayRef hex: {}, {}", payref_hex, e.to_string())),
+                            Status::invalid_argument(format!("Invalid PayRef hex: {}, {}", payref_hex, e)),
                         );
                         if tx.send(Err(error)).await.is_err() {
                             break;

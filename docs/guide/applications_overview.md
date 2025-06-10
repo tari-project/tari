@@ -303,8 +303,7 @@ The wallet supports extensive subcommands for various operations:
 **Payment References**:
 - `show-pay-ref` - Show payment reference
 - `find-pay-ref` - Find payment reference
-- `list-pay-refs` - List payment references
-- `pay-ref-config` - Configure payment references
+- `list-tx` - List all transactions
 
 #### All Configuration Overrides (-p options)
 

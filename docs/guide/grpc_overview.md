@@ -348,14 +348,6 @@ message PaymentReferenceResponse {
 }
 ```
 
-#### GetPublicPaymentInfo
-**Purpose**: Gets public payment information by PayRef (safe for block explorers).
-
-**Request**: `GetPublicPaymentInfoRequest`
-**Response**: `PublicPaymentInfoResponse`
-
----
-
 ## Wallet Service
 
 **Service Definition**: `tari.rpc.Wallet`
@@ -571,9 +563,6 @@ message GetTransactionPayRefsResponse {
 }
 ```
 
-
-
-**Response**: `stream GetTransactionsWithPayRefsResponse`
 
 ### Balance Methods
 

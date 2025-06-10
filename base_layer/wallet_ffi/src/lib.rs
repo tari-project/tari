@@ -4655,7 +4655,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -5513,7 +5513,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 

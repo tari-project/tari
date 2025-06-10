@@ -1178,11 +1178,11 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
-        // output_smt: &mut OutputSmt,
     ) -> Result<(), ChainStorageError> {
         let output_rows =
             lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
