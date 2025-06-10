@@ -1051,7 +1051,6 @@ impl OutputManagerHandle {
         }
     }
 
-
     pub async fn get_outputs_by_commitments(
         &mut self,
         commitments: Vec<CompressedCommitment>,

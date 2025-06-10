@@ -3560,6 +3560,7 @@ where
 
         Ok(transaction_linked_outputs)
     }
+
     /// Batch query outputs by commitments for efficient PayRef calculation
     fn get_outputs_by_commitments(
         &self,

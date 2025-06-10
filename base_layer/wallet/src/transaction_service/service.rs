@@ -126,7 +126,6 @@ use crate::{
             TransactionEventSender,
             TransactionServiceRequest,
             TransactionServiceResponse,
-            TransactionWithPayRefs,
         },
         protocols::{
             check_transaction_size,
@@ -1021,13 +1020,10 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
-            TransactionServiceRequest::GetTransactionPayRefs(tx_id) => self
-                .get_transaction_payrefs(tx_id)
-                .map(TransactionServiceResponse::TransactionPayRefs),
             TransactionServiceRequest::GetPaymentByReference(payref) => self
                 .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
-            TransactionServiceRequest::GetTransactionByPaymentReference { payref } => self
+            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => self
                 .get_transaction_with_payref(payref)
                 .await
                 .map(TransactionServiceResponse::TransactionsWithPayRef),
@@ -3926,39 +3922,6 @@ where
         Ok(())
     }
 
-    /// Verify that a transaction is mined and has sufficient confirmations
-    fn verify_transaction_mined_and_confirmed(
-        &self,
-        transaction: &CompletedTransaction,
-    ) -> Result<(), TransactionServiceError> {
-        // Check if transaction is mined
-        match transaction.status {
-            TransactionStatus::MinedUnconfirmed |
-            TransactionStatus::MinedConfirmed |
-            TransactionStatus::OneSidedConfirmed => {
-                // Transaction is mined, check confirmations
-            },
-            _ => {
-                return Err(TransactionServiceError::InvalidMessageError(
-                    "Transaction is not mined".to_string(),
-                ));
-            },
-        }
-
-        // Enforce minimum confirmation requirement (default: 5 confirmations)
-        let required_confirmations = self.config.num_confirmations_required;
-        let confirmations = transaction.confirmations.unwrap_or(0);
-
-        if confirmations < required_confirmations {
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Transaction requires {} confirmations for PayRef stability, only has {}",
-                required_confirmations, confirmations
-            )));
-        }
-
-        Ok(())
-    }
-
     /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         for transaction in transactions {
@@ -4006,111 +3969,6 @@ where
         }
 
         Ok(None)
-    }
-
-    /// Get output details (amount and status) by hash from output manager
-    async fn get_output_details_by_hash(
-        &self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<(MicroMinotari, OutputStatus)>, TransactionServiceError> {
-        match self
-            .resources
-            .output_manager_service
-            .clone()
-            .get_output_by_hash(*output_hash)
-            .await
-        {
-            Ok(Some(output)) => {
-                let amount = output.wallet_output.value;
-                let status = match output.status {
-                    // Map from output manager status to our OutputStatus enum
-                    crate::output_manager_service::storage::OutputStatus::Unspent => OutputStatus::Available,
-                    crate::output_manager_service::storage::OutputStatus::Spent => OutputStatus::Spent,
-                    crate::output_manager_service::storage::OutputStatus::EncumberedToBeReceived => {
-                        OutputStatus::Pending
-                    },
-                    crate::output_manager_service::storage::OutputStatus::EncumberedToBeSpent => OutputStatus::Pending,
-                    crate::output_manager_service::storage::OutputStatus::Invalid => OutputStatus::NotMined,
-                    crate::output_manager_service::storage::OutputStatus::CancelledInbound => OutputStatus::NotMined,
-                    crate::output_manager_service::storage::OutputStatus::UnspentMinedUnconfirmed => {
-                        OutputStatus::Pending
-                    },
-                    crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeReceived => {
-                        OutputStatus::Pending
-                    },
-                    crate::output_manager_service::storage::OutputStatus::ShortTermEncumberedToBeSpent => {
-                        OutputStatus::Pending
-                    },
-                    crate::output_manager_service::storage::OutputStatus::SpentMinedUnconfirmed => OutputStatus::Spent,
-                    crate::output_manager_service::storage::OutputStatus::NotStored => OutputStatus::NotMined,
-                };
-                Ok(Some((amount, status)))
-            },
-            Ok(None) => Ok(None),
-            Err(e) => Err(TransactionServiceError::OutputManagerError(e)),
-        }
-    }
-
-    /// Get transactions that have PayRefs with filtering options
-    async fn generate_outputs_with_payrefs(
-        &self,
-        tx: &CompletedTransaction,
-        block_hash: &FixedHash,
-    ) -> Result<Vec<OutputWithPayRef>, TransactionServiceError> {
-        let mut outputs = Vec::new();
-
-        // Process sent outputs
-        for output_hash in &tx.sent_output_hashes {
-            let payref = generate_payment_reference(block_hash, output_hash);
-            let (amount, status) = self
-                .get_output_details_by_hash(output_hash)
-                .await?
-                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
-
-            outputs.push(OutputWithPayRef {
-                output_hash: *output_hash,
-                payment_reference: Some(payref),
-                output_type: OutputType::Sent,
-                amount,
-                status,
-            });
-        }
-
-        // Process received outputs
-        for output_hash in &tx.received_output_hashes {
-            let payref = generate_payment_reference(block_hash, output_hash);
-            let (amount, status) = self
-                .get_output_details_by_hash(output_hash)
-                .await?
-                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
-
-            outputs.push(OutputWithPayRef {
-                output_hash: *output_hash,
-                payment_reference: Some(payref),
-                output_type: OutputType::Received,
-                amount,
-                status,
-            });
-        }
-
-        // Process change outputs
-        for output_hash in &tx.change_output_hashes {
-            let payref = generate_payment_reference(block_hash, output_hash);
-            let (amount, status) = self
-                .get_output_details_by_hash(output_hash)
-                .await?
-                .unwrap_or((MicroMinotari::from(0), OutputStatus::NotMined));
-
-            outputs.push(OutputWithPayRef {
-                output_hash: *output_hash,
-                payment_reference: Some(payref),
-                output_type: OutputType::Change,
-                amount,
-                status,
-            });
-        }
-
-        Ok(outputs)
     }
 
     async fn get_transaction_with_payref(

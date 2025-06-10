@@ -2424,7 +2424,7 @@ impl PayrefSql {
     }
 
     pub fn find_by_output_hash(
-        output_hash: &Vec<u8>,
+        output_hash: &[u8],
         conn: &mut SqliteConnection,
     ) -> Result<Option<PayrefSql>, TransactionStorageError> {
         let result = payrefs::table

@@ -69,7 +69,6 @@ use crate::{
 pub mod config;
 pub mod error;
 pub mod handle;
-pub mod payref_calculator;
 pub mod protocols;
 pub mod service;
 pub mod storage;

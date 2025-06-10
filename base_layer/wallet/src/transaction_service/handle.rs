@@ -462,8 +462,6 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
-    /// Response containing transactions with their PayRefs
-    TransactionsWithPayRefs(Vec<TransactionWithPayRefs>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -655,14 +653,6 @@ pub enum OutputStatus {
     Pending,
     NotMined,
     Spent,
-}
-
-/// Enhanced transaction info with PayRefs
-#[derive(Debug, Clone)]
-pub struct TransactionWithPayRefs {
-    pub transaction: CompletedTransaction,
-    pub outputs_with_payrefs: Vec<OutputWithPayRef>,
-    pub recipient_count: usize,
 }
 
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running

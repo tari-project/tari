@@ -111,7 +111,7 @@ use minotari_wallet::{
         UtxoSelectionCriteria,
     },
     transaction_service::{
-        handle::{TransactionServiceHandle, TransactionWithPayRefs},
+        handle::TransactionServiceHandle,
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
