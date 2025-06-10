@@ -10,6 +10,7 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         When I have wallet SPECTATOR connected to base node BASE
@@ -19,6 +20,47 @@ Feature: Wallet FFI
         Then I recover wallet SPECTATOR into ffi wallet FFI_WALLET from seed words on node BASE
         And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
+
+    @critical
+    Scenario: As a client I want to be able to check my balance from restored wallets
+        Given I have a seed node SEED
+        When I have a base node BASE connected to all seed nodes
+
+        When I have wallet OTHER_WALLET connected to base node BASE
+        When I have mining node OTHER_MINER connected to base node BASE and wallet OTHER_WALLET
+
+        When I have wallet MY_WALLET connected to base node BASE
+        When I have mining node MY_MINER connected to base node BASE and wallet MY_WALLET
+
+        Then I export wallet MY_WALLET view and spend keys as VIEW_SPEND_KEYS
+        Then I create view wallet VIEW_MY_WALLET from view and spend keys VIEW_SPEND_KEYS on node BASE
+
+        Then I recover wallet MY_WALLET into wallet MY_WALLET2 from seed words on node BASE
+
+        Then I recover wallet MY_WALLET into ffi wallet FFI_WALLET from seed words on node BASE
+
+        When mining node OTHER_MINER mines 12 blocks
+        When I wait for wallet OTHER_WALLET to have scanned to height 12
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
+
+        When mining node MY_MINER mines 12 blocks
+        When I wait for wallet MY_WALLET to have scanned to height 24
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
+        Then I send a one-sided stealth transaction of 10000123 uT from wallet MY_WALLET to wallet OTHER_WALLET at fee 1
+
+        When mining node OTHER_MINER mines 1 blocks
+        When I wait for wallet MY_WALLET to have scanned to height 25
+        Then I wait for wallet MY_WALLET to have less than 166164000000 uT
+        Then I remember wallet MY_WALLET balance BALANCE_STATE_ON_BLOCKCHAIN
+
+        When I wait for wallet MY_WALLET2 to have scanned to height 25
+        Then wallet MY_WALLET2 balance is BALANCE_STATE_ON_BLOCKCHAIN
+
+        Then ffi wallet FFI_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
+        And I stop ffi wallet FFI_WALLET
+
+        When I wait for wallet VIEW_MY_WALLET to have scanned to height 25
+        Then wallet VIEW_MY_WALLET balance is BALANCE_STATE_ON_BLOCKCHAIN
 
     @critical
     Scenario: As a client I want to retrieve the mnemonic word list for a given language
@@ -46,7 +88,7 @@ Feature: Wallet FFI
         When I have mining node MINER connected to base node BASE and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send 2000000 uT one-sided without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And wallet SENDER detects all transactions are at least Broadcast
         When mining node MINER mines 10 blocks
@@ -86,8 +128,8 @@ Feature: Wallet FFI
         And mining node MINER2 mines 5 blocks
         Then I wait for wallet WALLET1 to have at least 100000000 uT
         And I wait for wallet WALLET2 to have at least 100000000 uT
-        When I send 100000000 uT without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
-        And I send 100000000 uT without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
+        When I send 100000000 uT one-sided without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
+        And I send 100000000 uT one-sided without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
         # If the FFI wallet can send the transactions, P2P connectivity has been established
         Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
@@ -105,7 +147,7 @@ Feature: Wallet FFI
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 2000000 uT
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send a one-sided stealth transaction of 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 10 blocks
         Then all nodes are at height 20
@@ -144,7 +186,7 @@ Feature: Wallet FFI
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 129239250000 uT
-        And I send 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+        And I send a one-sided stealth transaction of 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 10 blocks
@@ -154,13 +196,13 @@ Feature: Wallet FFI
 
         # We have established comms, so now we can go offline and receive a transaction while offline
         And I stop ffi wallet FFI_WALLET
-        And I send 1000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send 1000000 uT one-sided without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
 
         # Let's restart the wallet and see if it can receive the offline transaction
         And I restart ffi wallet FFI_WALLET connected to base node BASE1
         When I add contact with alias ALIAS2 and address of SENDER to ffi wallet FFI_WALLET
         # BROKEN
-        And I send 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+        And I send a one-sided stealth transaction of 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 2 blocks
         Then all nodes are at height 22
@@ -188,8 +230,8 @@ Feature: Wallet FFI
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 129239250000 uT
-        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
-        And I send 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+        And I send a one-sided stealth transaction of 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
+        And I send a one-sided stealth transaction of 2400000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
         Then wallet SENDER has at least 2 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 10 blocks
@@ -218,11 +260,11 @@ Feature: Wallet FFI
         When I have mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 5000000 uT
-        Then I send a one-sided transaction of 1000000 uT from SENDER to FFI_RECEIVER at fee 20
+        Then I send a one-sided transaction of 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         When mining node MINER mines 2 blocks
         Then all nodes are at height 12
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED
-        And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
+        And I send a one-sided stealth transaction of 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         When mining node MINER mines 5 blocks
         Then all nodes are at height 17
@@ -238,11 +280,11 @@ Feature: Wallet FFI
         Then I wait for wallet WALLET_A to have at least 10000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE
         And The fee per gram stats for FFI_WALLET are 1, 1, 1
-        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+        And I send a one-sided stealth transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
         And The fee per gram stats for FFI_WALLET are 20, 20, 20
-        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 40
+        And I send a one-sided stealth transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 40
         And The fee per gram stats for FFI_WALLET are 20, 30, 40
-        And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 60
+        And I send a one-sided stealth transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 60
         And The fee per gram stats for FFI_WALLET are 20, 40, 60
         When mining node MINER mines 1 blocks
         And The fee per gram stats for FFI_WALLET are 1, 1, 1

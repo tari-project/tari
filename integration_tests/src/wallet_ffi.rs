@@ -226,7 +226,7 @@ pub fn create_contact(alias: String, address: String) -> ffi::Contact {
 }
 
 pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
-    let seed_words = ffi::SeedWords::create();
+    let seed_words = ffi::SeedWords::create_empty_seed_words();
     for word in words {
         seed_words.push_word(word.to_string());
     }

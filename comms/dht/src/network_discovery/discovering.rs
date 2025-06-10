@@ -246,9 +246,9 @@ impl Discovering {
                 Ok(())
             },
             Err(err) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
-                    "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
+                    "Received invalid peer from sync peer '{}': {}.", sync_peer, err
                 );
                 Err(err.into())
             },
@@ -266,7 +266,6 @@ impl Discovering {
                 match &err {
                     NetworkDiscoveryError::EmptyPeerMessageReceived |
                     NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) |
                     NetworkDiscoveryError::DuplicatePeerReceived |
                     NetworkDiscoveryError::TooManyPeersReceived => {
                         self.ban_peer(peer, OffenceSeverity::High, &err).await;
@@ -283,6 +282,7 @@ impl Discovering {
                     NetworkDiscoveryError::PeerManagerError(_) |
                     NetworkDiscoveryError::RpcError(_) |
                     NetworkDiscoveryError::ConnectivityError(_) |
+                    NetworkDiscoveryError::PeerValidationError(_) |
                     NetworkDiscoveryError::JoinError(_) => {},
                 }
                 Err(err)

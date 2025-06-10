@@ -92,12 +92,6 @@ impl PeerManager {
         Ok(())
     }
 
-    /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let deleted_peers = self.peer_storage_sql.hard_delete_all_stale_peers()?;
-        Ok(deleted_peers)
-    }
-
     /// Get all peers based on a list of their node_ids
     pub async fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.get_peers_by_node_ids(node_ids)

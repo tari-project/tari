@@ -32,6 +32,7 @@ use tari_utilities::ByteArray;
 
 use crate::proto::dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage};
 
+#[derive(Debug)]
 pub struct UnvalidatedPeerInfo {
     pub public_key: CommsPublicKey,
     pub claims: Vec<PeerIdentityClaim>,

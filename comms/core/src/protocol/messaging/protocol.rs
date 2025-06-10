@@ -378,7 +378,7 @@ impl MessagingProtocol {
                         self.spawn_inbound_handler(conn, substream);
                     },
                     None => {
-                        error!(target: LOG_TARGET, "No active connection for new inbound substream for node {node_id}");
+                        info!(target: LOG_TARGET, "No active connection for new inbound substream for node {node_id}");
                     },
                 }
             },

@@ -45,9 +45,6 @@ const PEER_MANAGER_SYNC_PEERS: usize = 100;
 // The maximum amount of time a peer can be inactive before being considered stale:
 // ((5 days, 24h, 60m, 60s)/2 = 2.5 days)
 pub const STALE_PEER_THRESHOLD_DURATION: Duration = Duration::from_secs(5 * 24 * 60 * 60 / 2);
-// Wallet peer connections are not verified in the way node peer connections are, thus a stale wallet connection may be
-// totally valid, just not verified. Any stale wallet peers that are not neighbours will be deleted.
-const MAX_NEIGHBOUR_WALLET_PEER_COUNT: usize = 25;
 
 /// PeerStorageSql provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast
 /// searches using the node_id, public key or net_address of a peer.
@@ -241,13 +238,6 @@ impl PeerStorageSql {
 
     pub fn get_seed_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_seed_peers()?)
-    }
-
-    /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        Ok(self
-            .peer_db
-            .hard_delete_all_stale_peers(STALE_PEER_THRESHOLD_DURATION, MAX_NEIGHBOUR_WALLET_PEER_COUNT)?)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline

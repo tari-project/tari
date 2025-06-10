@@ -185,6 +185,7 @@ pub async fn create_network_with_multiple_nodes(
             node_interface.local_nci.clone(),
             node_interface.comms.connectivity(),
             node_interface.chain_metadata_handle.get_event_stream(),
+            node_interface.comms.peer_manager(),
             node_interface.dht.subscribe_dht_events(),
             BaseNodeStateMachineConfig::default(),
             SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
