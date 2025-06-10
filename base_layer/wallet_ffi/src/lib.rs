@@ -6743,7 +6743,7 @@ pub unsafe extern "C" fn wallet_create(
     dns_seeds_str: *const c_char,
     dns_seed_name_servers_str: *const c_char,
     use_dns_sec: bool,
-
+    http_base_node: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
@@ -6892,6 +6892,16 @@ pub unsafe extern "C" fn wallet_create(
         return ptr::null_mut();
     };
 
+    let http_base_node = if http_base_node.is_null() {
+        None
+    } else {
+        let base_node = CStr::from_ptr(http_base_node)
+            .to_str()
+            .expect("A non-null base node should be able to be converted to string")
+            .to_owned();
+        Some(base_node)
+    };
+
     let runtime = match Runtime::new() {
         Ok(r) => r,
         Err(e) => {
@@ -6997,6 +7007,7 @@ pub unsafe extern "C" fn wallet_create(
         },
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
+        http_client_url: http_base_node,
         ..Default::default()
     };
 
@@ -11597,6 +11608,8 @@ mod test {
 
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
 
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -11612,6 +11625,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11648,6 +11662,8 @@ mod test {
 
             drop(wallet_backend);
 
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             // Check that the same key is returned when the wallet is started a second time
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet2 = wallet_create(
@@ -11664,6 +11680,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11770,6 +11787,8 @@ mod test {
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let alice_wallet = wallet_create(
                 void_ptr,
                 alice_config,
@@ -11784,6 +11803,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12004,6 +12024,8 @@ mod test {
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let wallet = wallet_create(
                 void_ptr,
                 config,
@@ -12018,6 +12040,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12074,7 +12097,8 @@ mod test {
                 CString::into_raw(CString::new(temp_dir.path().join("asdf").to_str().unwrap()).unwrap())
                     as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
-
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let recovered_wallet = wallet_create(
                 void_ptr,
@@ -12090,6 +12114,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12158,6 +12183,8 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12173,6 +12200,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12376,6 +12404,8 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12391,6 +12421,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12519,6 +12550,8 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12534,6 +12567,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12669,6 +12703,8 @@ mod test {
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -12684,6 +12720,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12939,6 +12976,8 @@ mod test {
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
 
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
@@ -12955,6 +12994,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13218,6 +13258,8 @@ mod test {
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::into_raw(CString::new("http://127.0.0.1:2222").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let alice_wallet = wallet_create(
                 void_ptr,
@@ -13233,6 +13275,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13485,6 +13528,8 @@ mod test {
             );
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.0.1:2222").unwrap().into_raw() as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let wallet_ptr = wallet_create(
                 void_ptr,
@@ -13500,6 +13545,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13870,6 +13916,8 @@ mod test {
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.0.1:2222").unwrap().into_raw() as *const c_char;
             let alice_wallet_ptr = wallet_create(
                 void_ptr,
                 alice_config,
@@ -13884,6 +13932,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13938,6 +13987,8 @@ mod test {
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let dns_string: *const c_char = CString::into_raw(CString::new("").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
+            let http_base_node_address: *const c_char =
+                CString::new("http://127.0.1:2222").unwrap().into_raw() as *const c_char;
             let bob_wallet_ptr = wallet_create(
                 void_ptr,
                 bob_config,
@@ -13952,6 +14003,7 @@ mod test {
                 dns_string,
                 ptr::null(),
                 true,
+                http_base_node_address,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
