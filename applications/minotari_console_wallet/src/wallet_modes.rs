@@ -648,8 +648,7 @@ mod test {
                 CliCommands::ExportViewKeyAndSpendKey(_) => {},
                 CliCommands::ShowPayRef(_) => {},
                 CliCommands::FindPayRef(_) => {},
-                CliCommands::ListPayRefs(_) => {},
-                CliCommands::PayRefConfig(_) => {},
+                CliCommands::ListTx => {},
             }
         }
         assert!(

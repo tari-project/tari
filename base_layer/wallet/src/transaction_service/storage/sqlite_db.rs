@@ -2059,6 +2059,10 @@ impl CompletedTransactionSql {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
         };
+        info!(
+            target: LOG_TARGET,
+            "Transaction has {} sent outputs", sent.len()
+        );
         for output in sent {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2072,7 +2076,10 @@ impl CompletedTransactionSql {
         let received = match existing_tx.received_output_hashes.as_ref() {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
-        };
+        };info!(
+            target: LOG_TARGET,
+            "Transaction has {} received outputs", received.len()
+        );
         for output in received {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2087,6 +2094,10 @@ impl CompletedTransactionSql {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
         };
+        info!(
+            target: LOG_TARGET,
+            "Transaction has {} change outputs", change.len()
+        );
         for output in change {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2431,18 +2442,27 @@ pub struct UpdatePayrefSql {
 }
 
 impl PayrefSql {
-    pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        diesel::insert_into(payrefs::table).values(self.clone()).execute(conn)?;
+    pub fn commit(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        diesel::insert_into(payrefs::table).values(self).execute(conn)?;
         Ok(())
     }
 
-    pub fn commit_or_update(&self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        diesel::insert_into(payrefs::table)
+    pub fn commit_or_update(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        info!(
+            target: LOG_TARGET,
+            "payref: {:?}", self
+        );
+        let res = diesel::insert_into(payrefs::table)
             .values(self.clone())
             .on_conflict(payrefs::output_hash)
             .do_update()
-            .set(self.clone())
-            .execute(conn)?;
+            .set(self)
+            .execute(conn);
+        info!(
+            target: LOG_TARGET,
+            "result: {:?}", res
+        );
+        res?;
         Ok(())
     }
 

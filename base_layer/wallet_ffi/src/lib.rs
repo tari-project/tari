@@ -5801,7 +5801,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -10753,6 +10753,8 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
 }
 
 /// Destroy TariPaymentRecords
+/// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecords) {
     if !records.is_null() {
@@ -10761,7 +10763,13 @@ pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecord
 }
 
 /// Get length of TariPaymentRecords
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
 #[no_mangle]
+#[allow(clippy::cast_possible_truncation)]
 pub unsafe extern "C" fn payment_records_get_length(
     records: *const TariPaymentRecords,
     error_out: *mut c_int,
@@ -10780,6 +10788,11 @@ pub unsafe extern "C" fn payment_records_get_length(
 }
 
 /// Get TariPaymentRecord at index
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn payment_records_get_at(
     records: *const TariPaymentRecords,
@@ -10806,6 +10819,8 @@ pub unsafe extern "C" fn payment_records_get_at(
 }
 
 /// Destroy TariPaymentRecord
+/// # Safety
+/// None
 #[no_mangle]
 pub unsafe extern "C" fn payment_record_destroy(record: *mut TariPaymentRecord) {
     if !record.is_null() {

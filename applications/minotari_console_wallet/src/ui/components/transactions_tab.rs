@@ -218,7 +218,7 @@ impl TransactionsTab {
             let cancelled = tx.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
 
-            let mut transaction_status = tx.status.clone();
+            let mut transaction_status = tx.status;
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
             if let Some(
                 PaymentId::Open { tx_type, .. } |
@@ -396,12 +396,12 @@ impl TransactionsTab {
                     let status = match tx.status {
                         TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
                         TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
-                        _ => tx.status.clone(),
+                        _ => tx.status,
                     };
 
                     (
                         status,
-                        tx.direction.clone(),
+                        tx.direction,
                         tx.amount,
                         fee,
                         tx.weight,
@@ -413,8 +413,8 @@ impl TransactionsTab {
                     )
                 } else {
                     (
-                        tx.status.clone(),
-                        tx.direction.clone(),
+                        tx.status,
+                        tx.direction,
                         tx.amount,
                         tx.fee,
                         tx.weight,
@@ -678,6 +678,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
         if self.error_message.is_some() && '\n' == c {
             self.error_message = None;
