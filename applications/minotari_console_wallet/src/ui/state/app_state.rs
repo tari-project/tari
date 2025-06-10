@@ -808,19 +808,19 @@ impl AppStateInner {
             // Check if transaction has been mined
             if let Some(block_hash) = &completed_transaction.mined_in_block {
                 let mined_height = completed_transaction.mined_height.unwrap_or(0);
-                let confirmations = if current_tip_height >= mined_height {
-                    current_tip_height - mined_height + 1
-                } else {
-                    0
-                };
+                let confirmations = current_tip_height.saturating_sub(mined_height);
 
+                // this might change in future, but currently we only have a single "sent" output per transaction
+                // So we can make some assumptions here
+                let output_hash = if completed_transaction.direction == TransactionDirection::Inbound {
+                    completed_transaction.received_output_hashes.first()
+                } else {
+                    completed_transaction.sent_output_hashes.first()
+                };
                 // For the first output in the transaction, calculate PayRef directly
-                // This is not necessarily correct, we probably should display all here
-                if let Some(output) = completed_transaction.transaction.body.outputs().iter().next() {
-                    let output_hash = &output.hash();
+                if let Some(output_hash) = output_hash {
                     let payref = generate_payment_reference(block_hash, output_hash);
                     let payref_hex = payref.to_hex();
-
                     // Determine status based on confirmations
                     let required_confirmations = 5; // Default confirmation requirement
                     let (payref_hex_opt, status_text) = if confirmations >= required_confirmations {
@@ -838,15 +838,13 @@ impl AppStateInner {
                             ),
                         )
                     };
-
                     if let Some(payref_hex) = payref_hex_opt {
                         payref_by_tx_id.insert(tx_id.as_u64(), payref_hex.clone());
-                        debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}", 
-                               tx_id, payref_hex);
+                        debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}: {}",
+                               tx_id, payref_hex, status_text);
                     }
 
                     payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
-                    // Only process first output for PayRef (all outputs in same block have same PayRef)
                 }
             } else {
                 // Transaction not mined yet
@@ -865,9 +863,6 @@ impl AppStateInner {
                 tx.payment_reference_hex = Some(payref_hex.clone());
                 debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
                        tx.tx_id, payref_hex);
-            } else {
-                debug!(target: LOG_TARGET, "payref_debug: No payment reference found for tx {} (not mined or no outputs)", 
-                       tx.tx_id);
             }
 
             // Always set the status, regardless of whether PayRef is available
@@ -918,10 +913,12 @@ impl AppStateInner {
                         None
                     });
             },
-            Some(tx) => {
-                let tx =
-                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight())
-                        .map_err(|e| UiError::TransactionError(e.to_string()))?;
+            Some(txn) => {
+                let tx = CompletedTransactionInfo::from_completed_transaction(
+                    txn.clone().into(),
+                    &self.get_transaction_weight(),
+                )
+                .map_err(|e| UiError::TransactionError(e.to_string()))?;
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
@@ -953,6 +950,8 @@ impl AppStateInner {
                         .partial_cmp(&a.timestamp)
                         .expect("Should be able to compare timestamps")
                 });
+                self.calculate_payment_references_for_specific_transactions(&vec![txn.into()])
+                    .await?;
             },
         }
         self.updated = true;

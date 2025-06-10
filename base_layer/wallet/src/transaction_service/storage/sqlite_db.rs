@@ -1264,8 +1264,8 @@ struct InboundTransactionSql {
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
-    user_payment_id: Option<Vec<u8>>,
     received_output_hashes: Option<Vec<u8>>,
+    user_payment_id: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1540,9 +1540,9 @@ struct OutboundTransactionSql {
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
-    user_payment_id: Option<Vec<u8>>,
     sent_output_hashes: Option<Vec<u8>>,
     change_output_hashes: Option<Vec<u8>>,
+    user_payment_id: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1819,10 +1819,10 @@ pub struct CompletedTransactionSql {
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
+    pub sent_output_hashes: Option<Vec<u8>>,
+    pub received_output_hashes: Option<Vec<u8>>,
+    pub change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
-    sent_output_hashes: Option<Vec<u8>>,
-    received_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -2074,10 +2074,6 @@ impl CompletedTransactionSql {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
         };
-        info!(
-            target: LOG_TARGET,
-            "Transaction has {} sent outputs", sent.len()
-        );
         for output in sent {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2092,10 +2088,6 @@ impl CompletedTransactionSql {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
         };
-        info!(
-            target: LOG_TARGET,
-            "Transaction has {} received outputs", received.len()
-        );
         for output in received {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2110,10 +2102,6 @@ impl CompletedTransactionSql {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
         };
-        info!(
-            target: LOG_TARGET,
-            "Transaction has {} change outputs", change.len()
-        );
         for output in change {
             let pay_ref = generate_payment_reference(&mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
@@ -2464,20 +2452,12 @@ impl PayrefSql {
     }
 
     pub fn commit_or_update(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        info!(
-            target: LOG_TARGET,
-            "payref: {:?}", self
-        );
         let res = diesel::insert_into(payrefs::table)
             .values(self.clone())
             .on_conflict(payrefs::output_hash)
             .do_update()
             .set(self)
             .execute(conn);
-        info!(
-            target: LOG_TARGET,
-            "result: {:?}", res
-        );
         res?;
         Ok(())
     }

@@ -1142,6 +1142,7 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn send_transaction(
         &mut self,
         destination: TariAddress,
@@ -1218,7 +1219,7 @@ where
                 .body
                 .outputs()
                 .iter()
-                .map(|o| o.hash().clone())
+                .map(|o| o.hash())
                 .collect::<Vec<HashOutput>>();
 
             self.submit_transaction(
@@ -1362,7 +1363,7 @@ where
                     .body
                     .outputs()
                     .iter()
-                    .map(|o| o.hash().clone())
+                    .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
@@ -1423,7 +1424,7 @@ where
                     .body
                     .outputs()
                     .iter()
-                    .map(|o| o.hash().clone())
+                    .map(|o| o.hash())
                     .collect::<Vec<HashOutput>>();
                 let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
@@ -3544,6 +3545,7 @@ where
             self.resources.connectivity.clone(),
             self.resources.config.clone(),
             self.event_publisher.clone(),
+            self.resources.output_manager_service.clone(),
         );
 
         let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
@@ -3943,12 +3945,7 @@ where
         amount: MicroMinotari,
         payment_id: PaymentId,
     ) -> Result<(), TransactionServiceError> {
-        let all_outputs = tx
-            .body
-            .outputs()
-            .iter()
-            .map(|o| o.hash().clone())
-            .collect::<Vec<HashOutput>>();
+        let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
