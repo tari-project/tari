@@ -4767,16 +4767,28 @@ void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
  * Destroy TariPaymentRecords
+ * # Safety
+ * None
  */
 void payment_records_destroy(struct TariPaymentRecords *records);
 
 /**
  * Get length of TariPaymentRecords
+ * ## Returns
+ * `c_uint` - length of stats in TariFeePerGramStats
+ *
+ * # Safety
+ * None
  */
 unsigned int payment_records_get_length(const struct TariPaymentRecords *records, int *error_out);
 
 /**
  * Get TariPaymentRecord at index
+ * ## Returns
+ * `c_uint` - length of stats in TariFeePerGramStats
+ *
+ * # Safety
+ * None
  */
 struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords *records,
                                                  unsigned int index,
@@ -4784,6 +4796,8 @@ struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords
 
 /**
  * Destroy TariPaymentRecord
+ * # Safety
+ * None
  */
 void payment_record_destroy(struct TariPaymentRecord *record);
 

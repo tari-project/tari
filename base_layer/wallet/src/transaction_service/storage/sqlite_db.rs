@@ -2091,7 +2091,8 @@ impl CompletedTransactionSql {
         let received = match existing_tx.received_output_hashes.as_ref() {
             Some(bytes) => bytes_to_fixedhash_vec(bytes),
             _ => vec![],
-        };info!(
+        };
+        info!(
             target: LOG_TARGET,
             "Transaction has {} received outputs", received.len()
         );
