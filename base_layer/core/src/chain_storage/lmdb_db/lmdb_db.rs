@@ -173,7 +173,6 @@ const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
-
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
@@ -3143,7 +3142,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 },
             };
             drop(read_txn);
-            for height in 0..=chain_height{
+            for height in 0..=chain_height {
                 process_payref_for_height(db, height)?;
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");
@@ -3257,14 +3256,11 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
 }
 
 /// Process a batch of blocks for PayRef migration with error handling
-fn process_payref_for_height(
-    db: &LMDBDatabase,
-    height: u64,
-) -> Result<(), ChainStorageError> {
+fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
     info!(target: LOG_TARGET, "Processing PayRef migration for  {}", height);
     let read_txn = db.read_transaction()?;
-    let read_header:Option<BlockHeader > = lmdb_get(&read_txn, &db.headers_db, &height)?;
-    let header= read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
+    let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
+    let header = read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
         entity: "BlockHeader",
         field: "height",
         value: height.to_string(),
@@ -3276,7 +3272,7 @@ fn process_payref_for_height(
 
     drop(read_txn);
     let write_txn = db.write_transaction()?;
-    for (_, output_data) in outputs{
+    for (_, output_data) in outputs {
         let output_hash = &output_data.hash;
         let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, output_hash);
         lmdb_insert(

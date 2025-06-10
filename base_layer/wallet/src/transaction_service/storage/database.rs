@@ -743,7 +743,8 @@ where T: TransactionBackend + 'static
         payment_id: PaymentId,
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
-        let transaction = CompletedTransaction::new(
+        let hash = scanned_output.hash();
+        let transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
@@ -762,6 +763,9 @@ where T: TransactionBackend + 'static
             current_height,
             mined_timestamp,
             payment_id,
+            vec![],
+            vec![hash],
+            vec![],
         )?;
 
         self.db
