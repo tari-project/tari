@@ -50,6 +50,7 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Insert a new waiting request.
+    #[cfg(feature = "base_node")]
     pub async fn insert(&self, key: RequestKey, reply_tx: OneshotSender<T>) {
         self.requests
             .write()
@@ -58,6 +59,7 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Remove the waiting request corresponding to the provided key.
+    #[cfg(feature = "base_node")]
     pub async fn remove(&self, key: RequestKey) -> Option<(OneshotSender<T>, Instant)> {
         self.requests.write().await.remove(&key).unwrap_or(None)
     }

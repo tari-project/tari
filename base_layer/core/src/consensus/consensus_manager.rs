@@ -25,8 +25,15 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use thiserror::Error;
 
+#[cfg(feature = "base_node")]
 use crate::{
     blocks::pre_mine::pre_mine_spendable_at_height,
+    blocks::ChainBlock,
+    consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
+    proof_of_work::PowAlgorithm,
+    proof_of_work::TargetDifficultyWindow,
+};
+use crate::{
     consensus::{
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
@@ -34,13 +41,6 @@ use crate::{
     },
     proof_of_work::DifficultyAdjustmentError,
     transactions::{tari_amount::MicroMinotari, transaction_components::TransactionKernel},
-};
-#[cfg(feature = "base_node")]
-use crate::{
-    blocks::ChainBlock,
-    consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
-    proof_of_work::PowAlgorithm,
-    proof_of_work::TargetDifficultyWindow,
 };
 
 /// A simple struct to hold the maturity and effective height
@@ -187,12 +187,14 @@ impl ConsensusManager {
     }
 
     /// Get the total spendable block rewards and pre-mine at the specified height
+    #[cfg(feature = "base_node")]
     pub fn total_tokens_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
         Ok(self.block_rewards_spendable_at_height(height)? +
             pre_mine_spendable_at_height(height, self.network().as_network())?)
     }
 
     /// Get the total spendable pre-mine at the specified height
+    #[cfg(feature = "base_node")]
     pub fn pre_mine_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
         pre_mine_spendable_at_height(height, self.network().as_network())
     }
