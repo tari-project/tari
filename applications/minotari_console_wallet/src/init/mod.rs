@@ -990,10 +990,7 @@ pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
     let input = input.trim();
     match CompressedPublicKey::from_hex(input) {
         Ok(pk) => Some(pk),
-        Err(_) => match CompressedPublicKey::from_monero_base58(input) {
-            Ok(pk) => Some(pk),
-            Err(_) => None,
-        },
+        Err(_) => CompressedPublicKey::from_monero_base58(input).ok(),
     }
 }
 

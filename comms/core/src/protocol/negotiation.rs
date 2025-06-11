@@ -146,7 +146,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             let (proto, flags) = self.read_frame().await?;
 
             if flags.contains(Flags::OPTIMISTIC) {
-                return if supported_protocols.as_ref().iter().any(|p| proto == p) {
+                return if supported_protocols.as_ref().contains(&proto) {
                     Ok(proto.clone())
                 } else {
                     Err(ProtocolError::ProtocolOptimisticNegotiationFailed)

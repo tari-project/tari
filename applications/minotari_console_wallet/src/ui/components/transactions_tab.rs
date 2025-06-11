@@ -38,6 +38,8 @@ pub struct TransactionsTab {
     detailed_transaction: Option<CompletedTransactionInfo>,
     error_message: Option<String>,
     confirmation_dialog: bool,
+    payref_search: String,
+    payref_search_active: bool,
 }
 
 impl TransactionsTab {
@@ -50,6 +52,8 @@ impl TransactionsTab {
             detailed_transaction: None,
             error_message: None,
             confirmation_dialog: false,
+            payref_search: String::new(),
+            payref_search_active: false,
         }
     }
 
@@ -214,7 +218,7 @@ impl TransactionsTab {
             let cancelled = tx.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
 
-            let mut transaction_status = tx.status.clone();
+            let mut transaction_status = tx.status;
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
             if let Some(
                 PaymentId::Open { tx_type, .. } |
@@ -332,9 +336,10 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 13];
+        let constraints = [Constraint::Length(1); 14];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
+        let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
         let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
         let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
@@ -350,37 +355,39 @@ impl TransactionsTab {
         let payment_id = Span::styled("Payment Id:", Style::default().fg(Color::Magenta));
 
         let trim = Wrap { trim: true };
-        let paragraph = Paragraph::new(excess_sig).wrap(trim);
+        let paragraph = Paragraph::new(payment_ref).wrap(trim);
         f.render_widget(paragraph, label_layout[0]);
-        let paragraph = Paragraph::new(source_address).wrap(trim);
+        let paragraph = Paragraph::new(excess_sig).wrap(trim);
         f.render_widget(paragraph, label_layout[1]);
-        let paragraph = Paragraph::new(destination_address).wrap(trim);
+        let paragraph = Paragraph::new(source_address).wrap(trim);
         f.render_widget(paragraph, label_layout[2]);
-        let paragraph = Paragraph::new(direction).wrap(trim);
+        let paragraph = Paragraph::new(destination_address).wrap(trim);
         f.render_widget(paragraph, label_layout[3]);
-        let paragraph = Paragraph::new(amount).wrap(trim);
+        let paragraph = Paragraph::new(direction).wrap(trim);
         f.render_widget(paragraph, label_layout[4]);
-        let paragraph = Paragraph::new(fee).wrap(trim);
+        let paragraph = Paragraph::new(amount).wrap(trim);
         f.render_widget(paragraph, label_layout[5]);
-        let paragraph = Paragraph::new(status).wrap(trim);
+        let paragraph = Paragraph::new(fee).wrap(trim);
         f.render_widget(paragraph, label_layout[6]);
-        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(status).wrap(trim);
         f.render_widget(paragraph, label_layout[7]);
-        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+        let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[8]);
-        let paragraph = Paragraph::new(confirmations).wrap(trim);
+        let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
         f.render_widget(paragraph, label_layout[9]);
-        let paragraph = Paragraph::new(mined_height).wrap(trim);
+        let paragraph = Paragraph::new(confirmations).wrap(trim);
         f.render_widget(paragraph, label_layout[10]);
-        let paragraph = Paragraph::new(maturity).wrap(trim);
+        let paragraph = Paragraph::new(mined_height).wrap(trim);
         f.render_widget(paragraph, label_layout[11]);
-        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        let paragraph = Paragraph::new(maturity).wrap(trim);
         f.render_widget(paragraph, label_layout[12]);
+        let paragraph = Paragraph::new(payment_id).wrap(trim);
+        f.render_widget(paragraph, label_layout[13]);
 
         // Content
         let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
-            let constraints = [Constraint::Length(1); 13];
+            let constraints = [Constraint::Length(1); 14];
             let content_layout = Layout::default().constraints(constraints).split(columns[1]);
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
@@ -389,12 +396,12 @@ impl TransactionsTab {
                     let status = match tx.status {
                         TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
                         TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
-                        _ => tx.status.clone(),
+                        _ => tx.status,
                     };
 
                     (
                         status,
-                        tx.direction.clone(),
+                        tx.direction,
                         tx.amount,
                         fee,
                         tx.weight,
@@ -406,8 +413,8 @@ impl TransactionsTab {
                     )
                 } else {
                     (
-                        tx.status.clone(),
-                        tx.direction.clone(),
+                        tx.status,
+                        tx.direction,
                         tx.amount,
                         tx.fee,
                         tx.weight,
@@ -514,33 +521,79 @@ impl TransactionsTab {
 
             let payment_id = Span::styled(payment_id, Style::default().fg(Color::White));
 
-            let paragraph = Paragraph::new(excess_sig).wrap(trim);
+            let payment_ref_content = {
+                let payref_text = match (&tx.payment_reference_hex, &tx.payment_reference_status) {
+                    (Some(hex), Some(status)) => format!("{} Status: {}", hex, status),
+                    (None, Some(status)) => format!("PayRef: N/A Status: {}", status),
+                    (Some(hex), None) => hex.clone(),
+                    (None, None) => "N/A".to_string(),
+                };
+
+                // Color code based on status
+                let color = match &tx.payment_reference_status {
+                    Some(status) if status.starts_with("Available") => Color::Green,
+                    Some(status) if status.starts_with("Pending") => Color::Yellow,
+                    Some(status) if status.contains("Not mined") => Color::Gray,
+                    _ => Color::White,
+                };
+
+                Span::styled(payref_text, Style::default().fg(color))
+            };
+
+            let paragraph = Paragraph::new(payment_ref_content).wrap(trim);
             f.render_widget(paragraph, content_layout[0]);
-            let paragraph = Paragraph::new(source_address).wrap(trim);
+            let paragraph = Paragraph::new(excess_sig).wrap(trim);
             f.render_widget(paragraph, content_layout[1]);
-            let paragraph = Paragraph::new(destination_address).wrap(trim);
+            let paragraph = Paragraph::new(source_address).wrap(trim);
             f.render_widget(paragraph, content_layout[2]);
-            let paragraph = Paragraph::new(direction).wrap(trim);
+            let paragraph = Paragraph::new(destination_address).wrap(trim);
             f.render_widget(paragraph, content_layout[3]);
-            let paragraph = Paragraph::new(amount).wrap(trim);
+            let paragraph = Paragraph::new(direction).wrap(trim);
             f.render_widget(paragraph, content_layout[4]);
-            let paragraph = Paragraph::new(fee).wrap(trim);
+            let paragraph = Paragraph::new(amount).wrap(trim);
             f.render_widget(paragraph, content_layout[5]);
-            let paragraph = Paragraph::new(status).wrap(trim);
+            let paragraph = Paragraph::new(fee).wrap(trim);
             f.render_widget(paragraph, content_layout[6]);
-            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(status).wrap(trim);
             f.render_widget(paragraph, content_layout[7]);
-            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
+            let paragraph = Paragraph::new(mined_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[8]);
-            let paragraph = Paragraph::new(confirmations).wrap(trim);
+            let paragraph = Paragraph::new(imported_timestamp).wrap(trim);
             f.render_widget(paragraph, content_layout[9]);
-            let paragraph = Paragraph::new(mined_height).wrap(trim);
+            let paragraph = Paragraph::new(confirmations).wrap(trim);
             f.render_widget(paragraph, content_layout[10]);
-            let paragraph = Paragraph::new(maturity).wrap(trim);
+            let paragraph = Paragraph::new(mined_height).wrap(trim);
             f.render_widget(paragraph, content_layout[11]);
-            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            let paragraph = Paragraph::new(maturity).wrap(trim);
             f.render_widget(paragraph, content_layout[12]);
+            let paragraph = Paragraph::new(payment_id).wrap(trim);
+            f.render_widget(paragraph, content_layout[13]);
         }
+    }
+
+    fn search_by_payref(&mut self, app_state: &AppState) {
+        let search_term = self.payref_search.trim().replace(' ', "").to_lowercase();
+
+        // Search in completed transactions
+        let completed_txs = app_state.get_completed_txs();
+        for (index, tx) in completed_txs.iter().enumerate() {
+            if let Some(payref_hex) = &tx.payment_reference_hex {
+                if payref_hex.to_lowercase().contains(&search_term) {
+                    // Found a match - select this transaction
+                    self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                    self.completed_list_state.select(Some(index));
+                    self.pending_list_state.select(None);
+                    self.detailed_transaction = Some((*tx).clone());
+                    return;
+                }
+            }
+        }
+
+        // If no match found, show error
+        self.error_message = Some(format!(
+            "No transaction found with PayRef containing '{}'\nPress Enter to continue.",
+            search_term
+        ));
     }
 }
 
@@ -552,7 +605,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(9),
-                    Constraint::Length(15),
+                    Constraint::Length(16),
                 ]
                 .as_ref(),
             )
@@ -580,6 +633,8 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" show/hide mining "));
         span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" rebroadcast Txs "));
+        span_vec.push(Span::styled("(S)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" search PayRef "));
         span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exit list"));
 
@@ -604,8 +659,26 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 9,
             );
         }
+
+        // Draw PayRef search input if active
+        if self.payref_search_active {
+            let search_prompt = format!(
+                "Enter PayRef to search (partial match supported):\n{}\n\nPress Enter to search, Esc to cancel",
+                self.payref_search
+            );
+            draw_dialog(
+                f,
+                area,
+                "PayRef Search".to_string(),
+                search_prompt,
+                Color::Yellow,
+                120,
+                9,
+            );
+        }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
         if self.error_message.is_some() && '\n' == c {
             self.error_message = None;
@@ -636,7 +709,42 @@ impl<B: Backend> Component<B> for TransactionsTab {
             }
         }
 
+        // Handle PayRef search input mode
+        if self.payref_search_active {
+            match c {
+                '\n' => {
+                    // Perform search
+                    if !self.payref_search.is_empty() {
+                        self.search_by_payref(app_state);
+                    }
+                    self.payref_search_active = false;
+                },
+                '\u{1b}' => {
+                    // Escape key - cancel search
+                    self.payref_search_active = false;
+                    self.payref_search.clear();
+                },
+                '\u{7f}' => {
+                    // Backspace
+                    self.payref_search.pop();
+                },
+                c if c.is_ascii_hexdigit() || c == ' ' => {
+                    // Only allow hex characters and spaces
+                    self.payref_search.push(c);
+                },
+                _ => {
+                    // Ignore other characters
+                },
+            }
+            return;
+        }
+
         match c {
+            's' => {
+                // Activate PayRef search mode
+                self.payref_search_active = true;
+                self.payref_search.clear();
+            },
             'p' => {
                 if let Err(e) = Handle::current().block_on(app_state.restart_transaction_protocols()) {
                     error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);

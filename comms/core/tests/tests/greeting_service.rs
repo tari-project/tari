@@ -93,7 +93,7 @@ impl GreetingRpc for GreetingService {
 
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Response<Vec<u8>>, RpcStatus> {
         let size = usize::try_from(request.into_message()).unwrap();
-        Ok(Response::new(iter::repeat(0).take(size).collect()))
+        Ok(Response::new(std::iter::repeat_n(0, size).collect()))
     }
 
     async fn stream_large_items(
@@ -110,9 +110,7 @@ impl GreetingRpc for GreetingService {
         let (tx, rx) = mpsc::channel(10);
         let t = std::time::Instant::now();
         task::spawn(async move {
-            let item = iter::repeat(0u8)
-                .take(usize::try_from(item_size).unwrap())
-                .collect::<Vec<_>>();
+            let item = std::iter::repeat_n(0u8, usize::try_from(item_size).unwrap()).collect::<Vec<_>>();
             for (i, item) in iter::repeat_with(|| Ok(item.clone()))
                 .take(usize::try_from(num_items).unwrap())
                 .enumerate()

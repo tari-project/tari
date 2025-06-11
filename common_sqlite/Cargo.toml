@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 tari_utilities = { workspace = true }
 
-diesel = { version = "2.2.4", features = [
+diesel = { version = "2.2.10", features = [
     "sqlite",
     "r2d2",
     "serde_json",

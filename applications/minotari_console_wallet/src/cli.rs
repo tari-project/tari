@@ -174,6 +174,9 @@ pub enum CliCommands {
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
+    ShowPayRef(ShowPayRefArgs),
+    FindPayRef(FindPayRefArgs),
+    ListTx,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -471,4 +474,14 @@ pub struct RegisterValidatorNodeArgs {
 pub struct SyncArgs {
     #[clap(short, long, default_value = "0")]
     pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ShowPayRefArgs {
+    pub transaction_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FindPayRefArgs {
+    pub payment_reference_hex: String,
 }

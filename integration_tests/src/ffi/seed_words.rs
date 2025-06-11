@@ -20,14 +20,15 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::CString, ptr::null_mut};
+use std::{ffi::CString, ptr, ptr::null_mut};
 
-use libc::c_void;
+use libc::{c_char, c_void};
 
 use super::{ffi_import, FFIString};
+use crate::ffi::ffi_import::TariSeedWords;
 
 pub struct SeedWords {
-    ptr: *mut c_void,
+    ptr: *mut TariSeedWords,
 }
 
 impl Drop for SeedWords {
@@ -38,7 +39,7 @@ impl Drop for SeedWords {
 }
 
 impl SeedWords {
-    pub fn create() -> Self {
+    pub fn create_empty_seed_words() -> Self {
         let ptr;
         unsafe {
             ptr = ffi_import::seed_words_create();
@@ -96,7 +97,9 @@ impl SeedWords {
         let mut error = 0;
         let result;
         unsafe {
-            result = ffi_import::seed_words_push_word(self.ptr, CString::new(word).unwrap().into_raw(), &mut error);
+            let w = CString::new(word).unwrap();
+            let w_str: *const c_char = CString::into_raw(w) as *const c_char;
+            result = ffi_import::seed_words_push_word(self.ptr, w_str, ptr::null(), &mut error);
             if error > 0 {
                 println!("seed_words_push_word error {}", error);
                 panic!("seed_words_push_word error");

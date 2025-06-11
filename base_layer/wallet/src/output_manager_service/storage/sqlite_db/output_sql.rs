@@ -908,17 +908,11 @@ impl OutputSql {
             }
         })?;
         let mined_in_block = match self.mined_in_block {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
+            Some(v) => v.try_into().ok(),
             None => None,
         };
         let marked_deleted_in_block = match self.marked_deleted_in_block {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
+            Some(v) => v.try_into().ok(),
             None => None,
         };
         Ok(DbWalletOutput {

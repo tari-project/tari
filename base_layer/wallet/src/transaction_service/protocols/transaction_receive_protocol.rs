@@ -431,7 +431,10 @@ where
                 },
             }
 
-            let completed_transaction = CompletedTransaction::new(
+            // Categorize outputs for PayRef functionality
+            let received_hashes = vec![rtp_output.hash()];
+
+            let completed_transaction = CompletedTransaction::new_with_output_hashes(
                 self.id,
                 self.source_address.clone(),
                 self.resources.interactive_tari_address.clone(),
@@ -447,6 +450,9 @@ where
                 None,
                 None,
                 inbound_tx.payment_id.clone(),
+                Vec::new(),      // sent_output_hashes: empty for inbound transactions
+                received_hashes, // received_output_hashes: the outputs we received
+                Vec::new(),      // change_output_hashes: empty for inbound transactions
             )
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

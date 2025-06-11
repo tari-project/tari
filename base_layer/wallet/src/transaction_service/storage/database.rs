@@ -167,6 +167,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
         source_address: Option<TariAddress>,
         destination_address: Option<TariAddress>,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn get_transaction_with_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -739,7 +743,8 @@ where T: TransactionBackend + 'static
         payment_id: PaymentId,
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
-        let transaction = CompletedTransaction::new(
+        let hash = scanned_output.hash();
+        let transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
@@ -758,6 +763,9 @@ where T: TransactionBackend + 'static
             current_height,
             mined_timestamp,
             payment_id,
+            vec![],
+            vec![hash],
+            vec![],
         )?;
 
         self.db
@@ -809,6 +817,13 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
         }?;
         Ok(t)
+    }
+
+    pub fn get_transaction_with_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
+        self.db.get_transaction_with_payref(payref)
     }
 }
 

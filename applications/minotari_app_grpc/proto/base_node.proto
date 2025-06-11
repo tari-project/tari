@@ -100,6 +100,8 @@ service BaseNode {
     rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
     rpc GetSideChainUtxos(GetSideChainUtxosRequest) returns (stream GetSideChainUtxosResponse);
     rpc GetNetworkState(GetNetworkStateRequest) returns (GetNetworkStateResponse);
+    // PayRef (Payment Reference) lookup for block explorers and external services
+    rpc SearchPaymentReferences(SearchPaymentReferencesRequest) returns (stream PaymentReferenceResponse);
 }
 
 message GetAssetMetadataRequest {
@@ -561,5 +563,38 @@ message LivenessResult{
     uint64 discover_latency = 2;
     // Dial latency
     uint64 ping_latency = 3;
+}
+
+// PayRef (Payment Reference) search and lookup messages
+
+// Request to search for outputs by payment reference
+message SearchPaymentReferencesRequest {
+    // Payment reference as hex string (64 characters)
+    repeated string payment_reference_hex = 1;
+    repeated bytes payment_reference_bytes = 2;
+    // Optional: include spent outputs in results
+    bool include_spent = 3;
+}
+
+// Response containing payment reference match
+message PaymentReferenceResponse {
+    // The payment reference that was found
+    string payment_reference_hex = 1;
+    // Block height where the output was mined
+    uint64 block_height = 2;
+    // Block hash where the output was mined
+    bytes block_hash = 3;
+    // Timestamp when the output was mined
+    uint64 mined_timestamp = 4;
+    // Output commitment (32 bytes)
+    bytes commitment = 5;
+    // Whether this output has been spent
+    bool is_spent = 6;
+    // Height where output was spent (if spent)
+    uint64 spent_height = 7;
+    // Block hash where output was spent (if spent)
+    bytes spent_block_hash = 8;
+    // Transaction output amount will be 0 for non set a
+    uint64 min_value_promise = 9;
 }
 

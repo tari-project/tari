@@ -646,6 +646,9 @@ mod test {
                 CliCommands::PreMineSpendBackupUtxo(_) => {},
                 CliCommands::Sync(_) => {},
                 CliCommands::ExportViewKeyAndSpendKey(_) => {},
+                CliCommands::ShowPayRef(_) => {},
+                CliCommands::FindPayRef(_) => {},
+                CliCommands::ListTx => {},
             }
         }
         assert!(

@@ -51,4 +51,5 @@ grpc_server_allow_methods = [
     #"get_shard_key",
     #"get_template_registrations",
     #"get_side_chain_utxos",
+    #"search_payment_references",
 ]

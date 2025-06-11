@@ -455,3 +455,535 @@ To break it down:
 * The value is 01 (hexadecimal)
 * In binary, this is 00000001
 * The least significant bit (rightmost bit) is 1, indicating support for interactive transactions
+
+## Payment Reference (PayRef) Integration
+
+### What are Payment References?
+
+Payment References (PayRefs) are globally unique identifiers for individual transaction outputs that enable payment verification without compromising privacy. They solve the common problem of users claiming they sent payments that exchanges cannot verify.
+
+**Key Benefits for Exchanges:**
+* Instant payment verification (no manual blockchain searching)
+* Reduced customer support workload
+* Automated dispute resolution capability
+* Better audit trails for compliance
+
+### How PayRefs Work
+
+PayRefs are generated using the formula:
+```
+PayRef = Blake2b_256(block_hash || output_hash)
+```
+
+This ensures:
+- Global uniqueness across blockchain history
+- Privacy preservation (no additional information revealed)
+- Verifiability by any party with blockchain access
+- Stability after sufficient confirmations
+
+### PayRef Integration Examples
+
+#### Section 9: Verifying Customer Deposits with PayRefs
+
+When a customer claims they sent a deposit but you don't see it in your systems:
+
+**Traditional workflow (problematic):**
+1. Customer: "I sent 100 XTR 2 hours ago but don't see it credited"
+2. Support: "Can you provide your transaction details?"
+3. Customer: "I don't know what details to provide"
+4. Support: Manually searches blockchain, often unsuccessfully
+5. Result: Frustrated customer, high support workload
+
+**PayRef workflow (streamlined):**
+1. Customer: "I sent 100 XTR, PayRef: a1b2c3d4e5f6..."
+2. Support: Enters PayRef into verification system
+3. System: "Payment verified: 100 XTR received in block 150,000"
+4. Support: Credits customer account
+5. Result: Fast resolution, happy customer
+
+#### Implementation Example
+
+Here's how to implement PayRef verification in your exchange backend:
+
+```javascript
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
+
+// PayRef verification service
+class PayRefVerificationService {
+    constructor(walletGrpcEndpoint) {
+        // Load the protobuf
+        const PROTO_PATH = './proto/wallet.proto';
+        const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+            keepCase: true,
+            longs: String,
+            enums: String,
+            defaults: true,
+            oneofs: true
+        });
+        const walletProto = grpc.loadPackageDefinition(packageDefinition).tari.rpc;
+        
+        // Create secure gRPC client
+        this.client = new walletProto.Wallet(walletGrpcEndpoint, grpc.credentials.createInsecure());
+    }
+
+    /**
+     * Verify a PayRef provided by a customer
+     * @param {string} payrefHex - 64-character hex PayRef from customer
+     * @param {number} requiredConfirmations - Minimum confirmations needed (default: 10)
+     * @returns {Promise<VerificationResult>}
+     */
+    async verifyPayRef(payrefHex, requiredConfirmations = 10) {
+        // Validate PayRef format
+        if (!this.isValidPayRefFormat(payrefHex)) {
+            return {
+                status: 'INVALID_FORMAT',
+                message: 'PayRef must be 64-character hexadecimal string'
+            };
+        }
+
+        try {
+            // Call wallet gRPC to verify PayRef
+            const response = await this.callGrpcMethod('GetPaymentByReference', {
+                payment_reference_hex: payrefHex
+            });
+
+            if (!response.transaction) {
+                return {
+                    status: 'NOT_FOUND',
+                    message: 'PayRef not found in received payments'
+                };
+            }
+
+            const transaction = response.transaction;
+            const confirmations = check_status(transaction.status);
+            
+            if (confirmations >= requiredConfirmations) {
+                return {
+                    status: 'VERIFIED',
+                    paymentReference: payrefHex,
+                    amount: parseFloat(transaction.amount),
+                    blockHeight: parseInt(transaction.mined_in_block_height),
+                    confirmations: confirmations,
+                    receivedTimestamp: new Date(parseInt(payment.timestamp) * 1000),
+                    sufficientConfirmations: true
+                };
+            } else {
+                const blocksRemaining = requiredConfirmations - confirmations;
+                return {
+                    status: 'INSUFFICIENT_CONFIRMATIONS',
+                    paymentReference: payrefHex,
+                    amount: parseFloat(transaction.amount),
+                    confirmations: confirmations,
+                    requiredConfirmations: requiredConfirmations,
+                    blocksRemaining: blocksRemaining,
+                    message: `Payment found but needs ${blocksRemaining} more confirmations`
+                };
+            }
+        } catch (error) {
+            console.error('PayRef verification error:', error);
+            return {
+                status: 'ERROR',
+                message: 'Internal verification error'
+            };
+        }
+    }
+
+    /**
+     * Validate PayRef format
+     */
+    isValidPayRefFormat(payrefHex) {
+        return /^[0-9a-fA-F]{64}$/.test(payrefHex);
+    }
+
+    /**
+     * Helper to call gRPC methods with promises
+     */
+    callGrpcMethod(methodName, request) {
+        return new Promise((resolve, reject) => {
+            this.client[methodName](request, (error, response) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(response);
+                }
+            });
+        });
+    }
+}
+
+// Usage example
+async function handleCustomerPayRefInquiry(customerId, payrefHex) {
+    const verifier = new PayRefVerificationService('localhost:18143');
+    
+    try {
+        const result = await verifier.verifyPayRef(payrefHex);
+        
+        switch (result.status) {
+            case 'VERIFIED':
+                // Credit customer account
+                await creditCustomerAccount(customerId, result.amount, payrefHex);
+                console.log(`Payment verified: ${result.amount} XTR credited to customer ${customerId}`);
+                return {
+                    success: true,
+                    message: 'Payment verified and account credited',
+                    details: result
+                };
+                
+            case 'INSUFFICIENT_CONFIRMATIONS':
+                console.log(`Payment found but needs ${result.blocksRemaining} more confirmations`);
+                return {
+                    success: false,
+                    message: `Payment found but needs ${result.blocksRemaining} more confirmations`,
+                    details: result
+                };
+                
+            case 'NOT_FOUND':
+                console.log(`PayRef not found: ${payrefHex}`);
+                return {
+                    success: false,
+                    message: 'Payment not found. Please verify PayRef is correct and transaction has sufficient confirmations.'
+                };
+                
+            default:
+                console.error(`PayRef verification failed: ${result.message}`);
+                return {
+                    success: false,
+                    message: result.message
+                };
+        }
+    } catch (error) {
+        console.error('PayRef verification error:', error);
+        return {
+            success: false,
+            message: 'Internal verification error'
+        };
+    }
+}
+
+// Customer support integration
+async function creditCustomerAccount(customerId, amount, payrefHex) {
+    // Check if already credited to prevent double-spending
+    const existingCredit = await checkExistingPayRefCredit(payrefHex);
+    if (existingCredit) {
+        throw new Error(`PayRef ${payrefHex} already credited`);
+    }
+    
+    // Credit the account
+    await updateCustomerBalance(customerId, amount);
+    
+    // Log the PayRef for audit trail
+    await logPayRefCredit({
+        customerId,
+        payrefHex,
+        amount,
+        timestamp: new Date(),
+        verifiedBy: 'automated-system'
+    });
+    
+    console.log(`Credited ${amount} XTR to customer ${customerId} using PayRef ${payrefHex}`);
+}
+```
+
+#### Customer Support Workflow
+
+Integrate PayRef verification into your customer support system:
+
+```javascript
+// Customer support dashboard integration
+class CustomerSupportDashboard {
+    
+    async handlePaymentInquiry(ticketId, customerId, payrefHex) {
+        const verifier = new PayRefVerificationService('localhost:18143');
+        const verification = await verifier.verifyPayRef(payrefHex);
+        
+        // Log the support inquiry
+        await this.logSupportInquiry({
+            ticketId,
+            customerId,
+            payrefHex,
+            timestamp: new Date(),
+            verificationResult: verification
+        });
+        
+        // Generate appropriate response
+        const response = this.generateSupportResponse(verification);
+        
+        // Update ticket with resolution
+        await this.updateSupportTicket(ticketId, {
+            status: verification.status === 'VERIFIED' ? 'resolved' : 'pending',
+            response: response,
+            payrefVerification: verification
+        });
+        
+        return response;
+    }
+    
+    generateSupportResponse(verification) {
+        switch (verification.status) {
+            case 'VERIFIED':
+                return {
+                    template: 'payment_confirmed',
+                    message: `Your payment has been verified and your account has been credited with ${verification.amount} XTR. 
+                             Transaction was confirmed in block ${verification.blockHeight} with ${verification.confirmations} confirmations.`,
+                    actionTaken: 'account_credited',
+                    nextSteps: 'Your balance should now reflect the deposit.'
+                };
+                
+            case 'INSUFFICIENT_CONFIRMATIONS':
+                return {
+                    template: 'waiting_confirmations',
+                    message: `Your payment has been found but is waiting for more confirmations. 
+                             Currently has ${verification.confirmations}/${verification.requiredConfirmations} confirmations. 
+                             Estimated time: ${verification.blocksRemaining * 2} minutes.`,
+                    actionTaken: 'monitoring',
+                    nextSteps: 'We will automatically credit your account once sufficient confirmations are reached.'
+                };
+                
+            case 'NOT_FOUND':
+                return {
+                    template: 'payment_not_found',
+                    message: `We could not find a payment matching your PayRef. Please check:
+                             1. PayRef was copied correctly from your wallet
+                             2. Payment has at least 5 confirmations  
+                             3. You sent to the correct exchange address`,
+                    actionTaken: 'investigation_needed',
+                    nextSteps: 'Please provide additional transaction details or contact advanced support.'
+                };
+                
+            default:
+                return {
+                    template: 'technical_error',
+                    message: 'There was a technical error verifying your payment. Our technical team has been notified.',
+                    actionTaken: 'escalated',
+                    nextSteps: 'A specialist will review your case within 24 hours.'
+                };
+        }
+    }
+}
+```
+
+#### Section 10: Automated PayRef Processing
+
+For high-volume exchanges, implement automated PayRef processing:
+
+```javascript
+// Automated PayRef monitoring system
+class AutomatedPayRefProcessor {
+    constructor(walletGrpcEndpoint, databaseConnection) {
+        this.verifier = new PayRefVerificationService(walletGrpcEndpoint);
+        this.db = databaseConnection;
+        this.processingQueue = [];
+        this.isProcessing = false;
+    }
+    
+    /**
+     * Start automated monitoring for pending PayRef verifications
+     */
+    async startAutomatedProcessing() {
+        // Check for pending PayRef verifications every 30 seconds
+        setInterval(async () => {
+            await this.processPendingPayRefs();
+        }, 30000);
+        
+        console.log('Automated PayRef processing started');
+    }
+    
+    /**
+     * Process all pending PayRef verifications
+     */
+    async processPendingPayRefs() {
+        if (this.isProcessing) return;
+        
+        this.isProcessing = true;
+        try {
+            const pendingPayRefs = await this.db.getPendingPayRefVerifications();
+            
+            for (const pending of pendingPayRefs) {
+                await this.processSinglePayRef(pending);
+            }
+        } catch (error) {
+            console.error('Error processing pending PayRefs:', error);
+        } finally {
+            this.isProcessing = false;
+        }
+    }
+    
+    /**
+     * Process a single PayRef verification
+     */
+    async processSinglePayRef(pendingPayRef) {
+        try {
+            const verification = await this.verifier.verifyPayRef(
+                pendingPayRef.payrefHex, 
+                pendingPayRef.requiredConfirmations
+            );
+            
+            switch (verification.status) {
+                case 'VERIFIED':
+                    await this.handleVerifiedPayRef(pendingPayRef, verification);
+                    break;
+                    
+                case 'INSUFFICIENT_CONFIRMATIONS':
+                    await this.updatePendingPayRef(pendingPayRef, verification);
+                    break;
+                    
+                case 'NOT_FOUND':
+                    await this.handleNotFoundPayRef(pendingPayRef);
+                    break;
+                    
+                default:
+                    console.error(`Unexpected verification status: ${verification.status}`);
+            }
+        } catch (error) {
+            console.error(`Error processing PayRef ${pendingPayRef.payrefHex}:`, error);
+        }
+    }
+    
+    async handleVerifiedPayRef(pendingPayRef, verification) {
+        // Credit customer account
+        await this.creditCustomerAccount(
+            pendingPayRef.customerId, 
+            verification.amount, 
+            pendingPayRef.payrefHex
+        );
+        
+        // Remove from pending queue
+        await this.db.removePendingPayRef(pendingPayRef.id);
+        
+        // Notify customer
+        await this.notifyCustomer(pendingPayRef.customerId, {
+            type: 'deposit_confirmed',
+            amount: verification.amount,
+            payref: pendingPayRef.payrefHex,
+            confirmations: verification.confirmations
+        });
+        
+        console.log(`Auto-processed PayRef: ${pendingPayRef.payrefHex} - ${verification.amount} XTR`);
+    }
+}
+```
+
+### Best Practices for Exchanges
+
+#### Security Considerations
+
+1. **Higher confirmation requirements**: Use 10+ confirmations for deposits vs. 5 for general use
+2. **Rate limiting**: Limit PayRef verification requests to prevent abuse
+3. **Audit logging**: Log all PayRef verifications with timestamps
+4. **Double-spend prevention**: Check for duplicate PayRef credits
+
+#### Customer Experience
+
+1. **Clear instructions**: Provide step-by-step guides for finding PayRefs
+2. **Support training**: Train support staff on PayRef verification process
+3. **Automated notifications**: Alert customers when deposits are confirmed
+4. **Self-service options**: Allow customers to check PayRef status themselves
+
+#### Integration Checklist
+
+- [ ] Implement PayRef verification gRPC client
+- [ ] Set up automated PayRef monitoring
+- [ ] Configure appropriate confirmation requirements
+- [ ] Train customer support staff
+- [ ] Test with small amounts first
+- [ ] Set up audit logging
+- [ ] Implement duplicate prevention
+- [ ] Create customer documentation
+
+### PayRef Customer Support Templates
+
+#### Email Templates
+
+**PayRef Request Template:**
+```
+Subject: Tari Deposit Verification Required
+
+Dear [Customer Name],
+
+We see you have contacted us about a Tari deposit. To quickly verify your payment, please provide:
+
+1. Your Payment Reference (PayRef) from your wallet's transaction history
+2. The approximate amount sent
+3. The time/date of the transaction
+
+Your PayRef is a 64-character code that looks like this:
+a1b2c3d4e5f67890123456789012345678901234567890123456789012345678
+
+To find your PayRef:
+1. Open your Tari wallet
+2. Go to the Transactions tab
+3. Find your transaction to our exchange
+4. Copy the PayRef from the transaction details
+
+Once you provide this information, we can verify your deposit within minutes.
+
+Best regards,
+[Exchange Name] Support Team
+```
+
+**PayRef Confirmed Template:**
+```
+Subject: Tari Deposit Confirmed - Account Credited
+
+Dear [Customer Name],
+
+Your Tari deposit has been verified and your account has been credited!
+
+Payment Details:
+- Amount: [X] XTR
+- PayRef: [PayRef]
+- Block Height: [Block Height]
+- Confirmations: [Confirmations]
+- Account Credited: [Timestamp]
+
+Your new balance: [New Balance] XTR
+
+Thank you for using [Exchange Name]!
+
+Best regards,
+[Exchange Name] Support Team
+```
+
+### Error Handling and Edge Cases
+
+```javascript
+// Comprehensive error handling for PayRef verification
+class PayRefErrorHandler {
+    
+    static handleVerificationError(error, payrefHex) {
+        if (error.code === 'UNAVAILABLE') {
+            return {
+                userMessage: 'Our verification system is temporarily unavailable. Please try again in a few minutes.',
+                internalAction: 'retry_later',
+                severity: 'warning'
+            };
+        }
+        
+        if (error.message.includes('invalid hex')) {
+            return {
+                userMessage: 'Invalid PayRef format. Please ensure you copied the full 64-character code from your wallet.',
+                internalAction: 'user_education',
+                severity: 'info'
+            };
+        }
+        
+        if (error.code === 'DEADLINE_EXCEEDED') {
+            return {
+                userMessage: 'Verification timed out. This may indicate network issues. Please try again.',
+                internalAction: 'check_network',
+                severity: 'warning'
+            };
+        }
+        
+        // Default error handling
+        return {
+            userMessage: 'An unexpected error occurred during verification. Our technical team has been notified.',
+            internalAction: 'escalate_to_technical',
+            severity: 'error'
+        };
+    }
+}
+```
+
+This comprehensive PayRef integration will significantly improve your exchange's customer experience and reduce support workload while maintaining security and compliance requirements.

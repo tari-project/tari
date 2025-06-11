@@ -85,18 +85,18 @@ Scenario: Verify UTXO and kernel MMR size in header
         When I wait for wallet WALLET_11 to have at least 18462050000 uT
         When I wait for wallet WALLET_12 to have at least 18462050000 uT
 
-        Then I send 18462000000 uT from wallet WALLET_01 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_02 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_03 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_04 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_05 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_06 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_07 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_08 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_09 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_10 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_11 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_12 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_01 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_02 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_03 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_04 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_05 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_06 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_07 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_08 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_09 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_10 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_11 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_12 to wallet WALLET_DEFAULT at fee 1
 
         # Mempool now has 12 transactions, each with 1000 coinbases as inputs, so we can create a big block
         Then I generate a block BLOCK_18 with 1000 coinbases from node NODE_01 for wallet WALLET_DEFAULT

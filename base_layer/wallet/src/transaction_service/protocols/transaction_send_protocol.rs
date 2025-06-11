@@ -281,9 +281,35 @@ where
             ));
         }
 
+        let mut change_hashes = Vec::new();
+        let change_output = sender_protocol
+            .get_change_output()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        if let Some(output) = change_output {
+            change_hashes.push(
+                output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+            );
+        };
+        let mut spent_inputs = Vec::new();
+        let spent_outputs = sender_protocol
+            .get_spent_inputs()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        for output in spent_outputs {
+            spent_inputs.push(
+                output
+                    .output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+            );
+        }
+
         // Calculate the size of the transaction - initial send transaction to the peer (always a small message) should
         // not be attempted if the final transaction size will be too large to be broadcast
-        let outbound_tx_check = OutboundTransaction::new(
+        let mut outbound_tx = OutboundTransaction::new_with_output_hashes(
             tx_id,
             self.dest_address.clone(),
             self.amount,
@@ -293,6 +319,8 @@ where
             self.payment_id.clone(),
             Utc::now(),
             true, // This does not matter for the check
+            spent_inputs.clone(),
+            change_hashes.clone(),
         );
 
         // Attempt to send the initial transaction
@@ -301,7 +329,7 @@ where
             store_and_forward_send_result: false,
             transaction_status: TransactionStatus::Queued,
         };
-        if let Err(e) = check_transaction_size(&outbound_tx_check, self.id) {
+        if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
             info!(
                 target: LOG_TARGET,
                 "Initial Transaction TxId: {:?} will not be sent due to it being oversize ({:?})", self.id, e
@@ -337,17 +365,9 @@ where
             let fee = sender_protocol
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let outbound_tx = OutboundTransaction::new(
-                tx_id,
-                self.dest_address.clone(),
-                self.amount,
-                fee,
-                sender_protocol.clone(),
-                initial_send.transaction_status.clone(),
-                self.payment_id.clone(),
-                Utc::now(),
-                initial_send.direct_send_result,
-            );
+            outbound_tx.fee = fee;
+            outbound_tx.status = initial_send.transaction_status;
+            outbound_tx.direct_send_success = true;
             self.resources
                 .db
                 .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
@@ -592,7 +612,11 @@ where
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let completed_transaction = CompletedTransaction::new(
+        // Categorize outputs for PayRef functionality
+        let sent_hashes = outbound_tx.sent_output_hashes.clone();
+        let change_hashes = outbound_tx.change_output_hashes.clone();
+
+        let completed_transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             self.resources.interactive_tari_address.clone(),
             outbound_tx.destination_address,
@@ -605,6 +629,9 @@ where
             None,
             None,
             outbound_tx.payment_id.clone(),
+            sent_hashes,
+            Vec::new(), // No received outputs for outbound transactions
+            change_hashes,
         )
         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

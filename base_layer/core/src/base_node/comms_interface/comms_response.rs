@@ -32,7 +32,7 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::TemplateRegistrationEntry,
+    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -61,6 +61,8 @@ pub enum NodeCommsResponse {
     FetchValidatorNodesKeysResponse(Vec<(CompressedPublicKey, [u8; 32])>),
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
+    OutputMinedInfo(Option<OutputMinedInfo>),
+    InputMinedInfo(Option<InputMinedInfo>),
 }
 
 impl Display for NodeCommsResponse {
@@ -98,6 +100,8 @@ impl Display for NodeCommsResponse {
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
+            OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
+            InputMinedInfo(_) => write!(f, "InputMinedInfo"),
         }
     }
 }

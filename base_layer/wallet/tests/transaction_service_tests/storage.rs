@@ -147,6 +147,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
 
@@ -260,6 +262,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
         db.add_pending_inbound_transaction(tx_id, inbound_txs[i].clone())
@@ -348,6 +351,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
+            received_output_hashes: vec![],
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();

@@ -44,6 +44,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
@@ -52,6 +53,7 @@ use crate::{
             database::{TransactionBackend, TransactionDatabase},
             sqlite_db::UnconfirmedTransactionInfo,
         },
+        tasks::check_faux_transaction_status::check_detected_transactions,
     },
     OperationId,
 };
@@ -65,6 +67,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
+    output_manager: OutputManagerHandle,
 }
 
 #[allow(unused_variables)]
@@ -79,6 +82,7 @@ where
         connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
+        output_manager: OutputManagerHandle,
     ) -> Self {
         Self {
             operation_id,
@@ -86,6 +90,7 @@ where
             connectivity,
             config,
             event_publisher,
+            output_manager,
         }
     }
 
@@ -110,6 +115,7 @@ where
             .unwrap();
 
         let mut state_changed = false;
+        let mut tip = 0;
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
@@ -142,6 +148,7 @@ where
                 state_changed = true;
             }
             if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
+                tip = tip_height;
                 for unmined_tx in &unmined {
                     debug!(
                         target: LOG_TARGET,
@@ -152,6 +159,13 @@ where
                 }
             }
         }
+        check_detected_transactions(
+            self.output_manager.clone(),
+            self.db.clone(),
+            self.event_publisher.clone(),
+            tip,
+        )
+        .await;
         if state_changed {
             self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
         }

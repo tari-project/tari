@@ -119,7 +119,7 @@ impl Transport for TcpTransport {
             .dns_resolver
             .resolve(addr.clone())
             .await
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to resolve address: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Failed to resolve address: {}", err)))?;
         let listener = TcpListener::bind(&socket_addr).await?;
         let local_addr = socketaddr_to_multiaddr(&listener.local_addr()?);
         Ok((TcpInbound::new(self.clone(), listener), local_addr))
@@ -130,7 +130,7 @@ impl Transport for TcpTransport {
             .dns_resolver
             .resolve(addr.clone())
             .await
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Address resolution failed: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Address resolution failed: {}", err)))?;
 
         let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
         Ok(socket)

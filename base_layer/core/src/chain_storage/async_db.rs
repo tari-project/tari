@@ -26,7 +26,7 @@ use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -275,6 +275,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
+
+    make_async_fn!(fetch_output_by_payref(payref: FixedHash) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

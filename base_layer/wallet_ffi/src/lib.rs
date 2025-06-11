@@ -120,12 +120,14 @@ use tari_common::{
 use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         RangeProof,
         SignatureWithDomain,
         UncompressedPublicKey,
@@ -184,7 +186,6 @@ use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
     encoding::MBase58,
-    hex,
     hex::{Hex, HexError},
     SafePassword,
 };
@@ -230,6 +231,19 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
+
+/// Payment Record FFI Types
+#[derive(Clone)]
+#[repr(C)]
+pub struct TariPaymentRecord {
+    pub payment_reference: [c_uchar; 32],
+    pub amount: c_ulonglong,
+    pub block_height: c_ulonglong,
+    pub mined_timestamp: c_ulonglong,
+    pub direction: c_uint, // 0=Inbound, 1=Outbound
+}
+
+pub struct TariPaymentRecords(Vec<TariPaymentRecord>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -4641,7 +4655,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -5499,7 +5513,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -5787,7 +5801,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
         *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
         return -1;
     }
-    let status = (*transaction).status.clone();
+    let status = (*transaction).status;
     status as c_int
 }
 
@@ -6046,7 +6060,7 @@ pub unsafe extern "C" fn transport_tor_create(
     let tor_authentication = if tor_cookie.is_null() {
         TorControlAuthentication::None
     } else {
-        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+        let cookie_hex = (*tor_cookie).0.to_hex();
         TorControlAuthentication::hex(cookie_hex)
     };
 
@@ -9475,6 +9489,153 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
     }
 }
 
+/// Get all PayRefs (payment references) for a specific transaction
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `transaction_id` - The transaction ID to get PayRefs for
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
+///
+/// # Safety
+/// The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+/// leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transaction_payrefs(
+    wallet: *mut TariWallet,
+    transaction_id: c_ulonglong,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecords {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+    let mut records = Vec::new();
+    let tx_id = TxId::from(transaction_id);
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.get_completed_transaction(tx_id))
+    {
+        Ok(tx) => {
+            for hash in tx.sent_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 1,
+                });
+            }
+            for hash in tx.received_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 0,
+                });
+            }
+            for hash in tx.change_output_hashes {
+                let mut payref = [0u8; 32];
+                if let Some(block_hash) = tx.mined_in_block {
+                    let pay_ref = generate_payment_reference(&block_hash, &hash);
+                    payref.copy_from_slice(pay_ref.as_slice());
+                };
+                records.push(TariPaymentRecord {
+                    payment_reference: payref,
+                    amount: tx.amount.as_u64(),
+                    block_height: tx.mined_height.unwrap_or_default(),
+                    mined_timestamp: tx.mined_timestamp.map(|ts| ts.timestamp() as c_ulonglong).unwrap_or(0),
+                    direction: 2,
+                });
+            }
+            Box::into_raw(Box::new(TariPaymentRecords(records)))
+        },
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Get payment details for a specific PayRef (payment reference)
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `payref` - The 32-byte ByteVector of the payment reference
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut TariCompletedTransaction` - returns the transaction details for the PayRef,
+/// note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
+///
+/// # Safety
+/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// prevent a memory leak
+/// The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_transaction_by_payref(
+    wallet: *mut TariWallet,
+    payref: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCompletedTransaction {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    if payref.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("payref".to_string())).code;
+        return ptr::null_mut();
+    }
+    let vec_bytes = (*payref).0.clone();
+    let payref_fixedhash = match FixedHash::try_from(vec_bytes) {
+        Ok(hash) => hash,
+        Err(_) => {
+            *error_out = LibWalletError::from(InterfaceError::InvalidArgument("payref".to_string())).code;
+            return ptr::null_mut();
+        },
+    };
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_transaction_by_payref(payref_fixedhash),
+    ) {
+        Ok(tx) => Box::into_raw(Box::new(tx)),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::null_mut()
+        },
+    }
+}
+
 /// This function will tell the wallet to query the set base node to confirm the status of transaction outputs
 /// (TXOs).
 ///
@@ -10594,6 +10755,82 @@ pub unsafe extern "C" fn contacts_handle(wallet: *mut TariWallet, error_out: *mu
 pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsServiceHandle) {
     if !contacts_handle.is_null() {
         drop(Box::from_raw(contacts_handle))
+    }
+}
+
+/// Destroy TariPaymentRecords
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_destroy(records: *mut TariPaymentRecords) {
+    if !records.is_null() {
+        drop(Box::from_raw(records));
+    }
+}
+
+/// Get length of TariPaymentRecords
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+#[allow(clippy::cast_possible_truncation)]
+pub unsafe extern "C" fn payment_records_get_length(
+    records: *const TariPaymentRecords,
+    error_out: *mut c_int,
+) -> c_uint {
+    if error_out.is_null() {
+        return 0;
+    }
+    *error_out = 0;
+
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
+        return 0;
+    }
+
+    (*records).0.len() as c_uint
+}
+
+/// Get TariPaymentRecord at index
+/// ## Returns
+/// `c_uint` - length of stats in TariFeePerGramStats
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn payment_records_get_at(
+    records: *const TariPaymentRecords,
+    index: c_uint,
+    error_out: *mut c_int,
+) -> *mut TariPaymentRecord {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if records.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("records".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let length = (*records).0.len();
+    if index as usize >= length {
+        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
+        return ptr::null_mut();
+    }
+
+    Box::into_raw(Box::new((*records).0[index as usize].clone()))
+}
+
+/// Destroy TariPaymentRecord
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn payment_record_destroy(record: *mut TariPaymentRecord) {
+    if !record.is_null() {
+        drop(Box::from_raw(record));
     }
 }
 /// ------------------------------------------------------------------------------------------ ///

@@ -37,6 +37,7 @@ use crate::{
             models::CompletedTransaction,
         },
     },
+    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -113,6 +114,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         "Checking transaction statuses for {:?} ",
         all_detected_transactions.iter().map(|tx| tx.tx_id).collect::<Vec<_>>()
     );
+    let mut state_changed = false;
     for tx in all_detected_transactions {
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
@@ -121,6 +123,10 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                 return;
             },
         };
+        if tx.mined_height.unwrap_or_default() != output_info_for_tx_id.mined_height.unwrap_or_default() {
+            // If the mined height has changed, we need to update the transaction
+            state_changed = true;
+        }
         trace!(
             target: LOG_TARGET,
             "TxId: {}, {:?} ",
@@ -199,5 +205,19 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                 });
             }
         }
+    }
+    if state_changed {
+        let _size = event_publisher
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
+                OperationId::new_random(),
+            )))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
     }
 }
