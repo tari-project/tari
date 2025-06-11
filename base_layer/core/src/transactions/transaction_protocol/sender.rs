@@ -111,8 +111,8 @@ pub(super) struct RawTransactionInfo {
     pub payment_id: PaymentId,
     /// The senders address
     pub sender_address: TariAddress,
-    /// Encrypted precomputed script private key
-    pub encrypted_script_private_key: Option<Vec<u8>>,
+    /// Precomputed script offset
+    pub script_offset: Option<PrivateKey>,
 }
 
 impl RawTransactionInfo {
@@ -637,7 +637,7 @@ impl SenderTransactionProtocol {
         commitment_mask_key_ids: Vec<TariKeyId>,
     ) -> Result<(), TPE> {
         match &mut self.state {
-            SenderState::Finalizing(ref mut info) => {
+            SenderState::CollectingSingleSignature(ref mut info) => {
                 if info.inputs.len() != commitment_mask_key_ids.len() {
                     return Err(TPE::ValidationError(format!(
                         "Mismatch between inputs count ({}) and commitment mask key IDs count ({})",
@@ -658,35 +658,60 @@ impl SenderTransactionProtocol {
         }
     }
 
-    /// Persists script private key
-    pub async fn persist_script_private_key<KM: TransactionKeyManagerInterface>(
+    /// Persists script offset
+    pub async fn persist_script_offset<KM: TransactionKeyManagerInterface>(
         &mut self,
         key_manager: &KM,
+        change_sender_offset_key: Option<TariKeyId>,
     ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::Finalizing(ref mut info) => {
-                let script_private_key =
-                    SenderTransactionProtocol::calculate_script_private_key(info, key_manager).await?;
-                let encrypted_script_private_key = key_manager.encrypt_key(script_private_key).await?;
-                info.encrypted_script_private_key = Some(encrypted_script_private_key);
+                let script_offset =
+                    SenderTransactionProtocol::calculate_script_offset(info, key_manager, change_sender_offset_key)
+                        .await?;
+                info.script_offset = Some(script_offset);
                 Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
     }
 
-    async fn calculate_script_private_key<KM: TransactionKeyManagerInterface>(
+    async fn calculate_script_offset<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
+        change_sender_offset_key: Option<TariKeyId>,
     ) -> Result<PrivateKey, TPE> {
         let mut script_keys = Vec::new();
+        let mut sender_offset_keys = Vec::new();
 
         for input in &info.inputs {
             script_keys.push(input.output.script_key_id.clone());
         }
 
-        let script_private_key = key_manager.get_script_private_key(&script_keys).await?;
-        Ok(script_private_key)
+        for output in &info.outputs {
+            let sender_offset_key_id = output
+                .sender_offset_key_id
+                .clone()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+            sender_offset_keys.push(sender_offset_key_id);
+        }
+
+        if let Some(recipient_data) = &info.recipient_data {
+            sender_offset_keys.push(recipient_data.recipient_sender_offset_key_id.clone());
+        }
+
+        if let Some(key) = &change_sender_offset_key {
+            sender_offset_keys.push(key.clone());
+        } else if let Some(change) = &info.change_output {
+            let sender_offset_key_id = change
+                .sender_offset_key_id
+                .clone()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+            sender_offset_keys.push(sender_offset_key_id);
+        }
+
+        let script_offset = key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?;
+        Ok(script_offset)
     }
 
     /// Attempts to build the final transaction.
@@ -810,13 +835,8 @@ impl SenderTransactionProtocol {
         if let Some(received_output) = &info.recipient_output {
             tx_builder.add_output(received_output.clone());
         }
-        let script_offset = match &info.encrypted_script_private_key {
-            Some(encrypted_key) => {
-                let key = key_manager.decrypt_key(encrypted_key.clone()).await?;
-                key_manager
-                    .get_script_offset_from_private_key(key, &sender_offset_keys)
-                    .await?
-            },
+        let script_offset = match &info.script_offset {
+            Some(script_offset) => script_offset.clone(),
             None => key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?,
         };
 
@@ -963,6 +983,31 @@ impl SenderTransactionProtocol {
                     keys.push(key);
                 }
                 Ok(keys)
+            },
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    pub async fn get_encrypted_change_sender_offset_key<KM: TransactionKeyManagerInterface>(
+        &self,
+        km: &KM,
+    ) -> Result<Option<Vec<u8>>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
+                if let Some(change) = &info.change_output {
+                    let sender_offset_key_id = change
+                        .sender_offset_key_id
+                        .clone()
+                        .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                    let key = km.get_encrypted_key(&sender_offset_key_id).await?;
+                    Ok(Some(key))
+                } else {
+                    Ok(None)
+                }
             },
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),

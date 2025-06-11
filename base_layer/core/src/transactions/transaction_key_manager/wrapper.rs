@@ -420,26 +420,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn get_script_private_key(&self, script_key_ids: &[TariKeyId]) -> Result<PrivateKey, TransactionError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_script_private_key(script_key_ids)
-            .await
-    }
-
-    async fn get_script_offset_from_private_key(
-        &self,
-        script_private_key: PrivateKey,
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, TransactionError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_script_offset_from_private_key(script_private_key, sender_offset_key_ids)
-            .await
-    }
-
     async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],

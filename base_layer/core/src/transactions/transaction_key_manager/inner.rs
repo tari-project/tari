@@ -1062,44 +1062,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         })
     }
 
-    pub async fn get_script_private_key(&self, script_key_ids: &[TariKeyId]) -> Result<PrivateKey, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                let mut total_script_private_key = PrivateKey::default();
-                for script_key_id in script_key_ids {
-                    total_script_private_key = &total_script_private_key + self.get_private_key(script_key_id).await?
-                }
-                Ok(total_script_private_key)
-            },
-            WalletType::Ledger(ledger) => Err(TransactionError::LedgerNotSupported(format!(
-                "{} 'get_script_private_key' was called. ({})",
-                LEDGER_NOT_SUPPORTED, ledger
-            ))),
-        }
-    }
-
-    pub async fn get_script_offset_from_private_key(
-        &self,
-        script_private_key: PrivateKey,
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, TransactionError> {
-        match &*self.wallet_type {
-            WalletType::DerivedKeys | WalletType::ProvidedKeys(_) => {
-                let mut total_sender_offset_private_key = PrivateKey::default();
-                for sender_offset_key_id in sender_offset_key_ids {
-                    total_sender_offset_private_key =
-                        total_sender_offset_private_key + self.get_private_key(sender_offset_key_id).await?;
-                }
-                let script_offset = script_private_key - total_sender_offset_private_key;
-                Ok(script_offset)
-            },
-            WalletType::Ledger(ledger) => Err(TransactionError::LedgerNotSupported(format!(
-                "{} 'get_script_offset_from_private_key' was called. ({})",
-                LEDGER_NOT_SUPPORTED, ledger
-            ))),
-        }
-    }
-
     #[allow(clippy::too_many_lines)]
     pub async fn get_script_offset(
         &self,

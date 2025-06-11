@@ -391,14 +391,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
 
-    async fn get_script_private_key(&self, script_key_ids: &[TariKeyId]) -> Result<PrivateKey, TransactionError>;
-
-    async fn get_script_offset_from_private_key(
-        &self,
-        script_private_key: PrivateKey,
-        sender_offset_key_ids: &[TariKeyId],
-    ) -> Result<PrivateKey, TransactionError>;
-
     async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],

@@ -204,7 +204,7 @@ impl WalletOutput {
     pub async fn build_script_signature<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
-        spending_key_id: Option<&TariKeyId>,
+        commitment_mask_key_id: Option<&TariKeyId>,
     ) -> Result<ComAndPubSignature, TransactionError> {
         let value = self.value.into();
         let version = TransactionInputVersion::get_current_version();
@@ -212,7 +212,7 @@ impl WalletOutput {
         key_manager
             .get_script_signature(
                 &self.script_key_id,
-                spending_key_id.unwrap_or(&self.spending_key_id),
+                commitment_mask_key_id.unwrap_or(&self.spending_key_id),
                 &value,
                 &version,
                 &script_message,

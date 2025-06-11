@@ -19,7 +19,10 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
+        transaction_protocol::{
+            sender::{SingleRoundSenderData, TransactionSenderMessage},
+            TransactionMetadata,
+        },
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -79,6 +82,11 @@ pub struct PrepareOneSidedTransactionForSigningResult {
     pub tx_id: TxId,
     pub stp: SenderTransactionProtocol,
     pub encrypted_commitment_mask_keys: Vec<Vec<u8>>,
+    pub script: TariScript,
+    pub use_stealth_address: bool,
+    pub output_features: OutputFeatures,
+    pub single_round_sender_data: SingleRoundSenderData,
+    pub encrypted_change_sender_offset_key: Option<Vec<u8>>,
 }
 
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
@@ -153,8 +161,6 @@ where
         Ok(())
     }
 
-    /// Creates and locks a one sided transaction for offline signing
-    /// After the transaction is signed it will be broadcasted using ``
     pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
         dest_address: TariAddress,
@@ -173,7 +179,7 @@ where
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
             payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
-        let payment_id = match payment_id.clone() {
+        let payment_id = match payment_id {
             PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
                 payment_id,
                 self.resources.one_sided_tari_address.clone(),
@@ -195,7 +201,7 @@ where
         // For a stealth transaction, the script is not provided because the public key that should be included
         // is not known at this stage. This will only be known later. For now,
         // we include a default public key to ensure that the script size is correct.
-        let (mut script, use_stealth_address) = match recipient_script {
+        let (script, use_stealth_address) = match recipient_script {
             Some(s) => (s, false),
             None => (push_pubkey_script(&Default::default()), true),
         };
@@ -219,33 +225,84 @@ where
             )
             .await?;
 
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
-        // sender_offset_private_key for us, so we can use it to create the shared secret
-        let key = self
-            .resources
-            .transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-            .await?;
-
-        stp.change_recipient_sender_offset_private_key(key.key_id)?;
-        let _single_round_sender_data = stp
+        let single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let sender_offset_private_key = stp
-            .get_recipient_sender_offset_private_key()
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
-            .ok_or(TransactionServiceProtocolError::new(
-                tx_id,
-                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
-            ))?;
+        let encrypted_commitment_mask_keys = stp
+            .get_encrypted_input_keys(&self.resources.transaction_key_manager_service)
+            .await?;
+
+        let encrypted_change_sender_offset_key = stp
+            .get_encrypted_change_sender_offset_key(&self.resources.transaction_key_manager_service)
+            .await?;
+
+        Ok(PrepareOneSidedTransactionForSigningResult {
+            version: get_supported_version(),
+            dest_address,
+            amount,
+            payment_id,
+            tx_id,
+            stp,
+            encrypted_commitment_mask_keys,
+            script,
+            use_stealth_address,
+            output_features,
+            single_round_sender_data,
+            encrypted_change_sender_offset_key,
+        })
+    }
+
+    pub async fn sign_locked_transaction(
+        &self,
+        request: PrepareOneSidedTransactionForSigningResult,
+    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
+        if request.encrypted_commitment_mask_keys.is_empty() {
+            return Err(TransactionServiceError::NotSupported(
+                "No encrypted commitment mask keys found in the request".to_string(),
+            ));
+        }
+        debug!(target: LOG_TARGET, "Signing transaction {} with {} encrypted keys", 
+           request.tx_id, request.encrypted_commitment_mask_keys.len());
+
+        let tx_id = request.tx_id;
+        let dest_address = &request.dest_address;
+        let mut script = request.script.clone();
+        let use_stealth_address = request.use_stealth_address;
+        let amount = request.amount;
+        let payment_id = &request.payment_id;
+        let output_features = request.output_features.clone();
+        let sender_message =
+            TransactionSenderMessage::new_single_round_message(request.single_round_sender_data.clone());
+        let mut change_sender_offset_key = None;
+        if let Some(encrypted_change_sender_offset_key) = &request.encrypted_change_sender_offset_key {
+            change_sender_offset_key = Some(
+                self.decrypt_and_import_key(encrypted_change_sender_offset_key.clone())
+                    .await?,
+            );
+        }
+        let mut stp = request.stp.clone();
+
+        let mut commitment_mask_key_ids = Vec::new();
+        for encrypted_key in &request.encrypted_commitment_mask_keys {
+            commitment_mask_key_ids.push(self.decrypt_and_import_key(encrypted_key.clone()).await?);
+        }
+        stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, commitment_mask_key_ids)
+            .await?;
+
+        let sender_offset_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+            .await?;
+        stp.change_recipient_sender_offset_private_key(sender_offset_key_id.key_id.clone())?;
+
         let shared_secret = self
             .resources
             .transaction_key_manager_service
             .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key,
+                &sender_offset_key_id.key_id,
                 dest_address
                     .public_view_key()
                     .ok_or(TransactionServiceProtocolError::new(
@@ -262,6 +319,20 @@ where
             .import_key(commitment_mask_private_key.clone())
             .await?;
 
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(encryption_private_key)
+            .await?;
+
+        let sender_offset_public_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&sender_offset_key_id.key_id)
+            .await?;
+
+        let minimum_value_promise = MicroMinotari::zero();
         if use_stealth_address {
             let script_spending_key = self
                 .resources
@@ -271,43 +342,8 @@ where
             script = push_pubkey_script(&script_spending_key);
         }
 
-        let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
-                .await?,
-        );
-
-        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encryption_key = self
-            .resources
-            .transaction_key_manager_service
-            .import_key(encryption_private_key)
-            .await?;
-
-        let spending_key_id = self
-            .resources
-            .transaction_key_manager_service
-            .import_key(commitment_mask_private_key.clone())
-            .await?;
-
-        let sender_offset_public_key = self
-            .resources
-            .transaction_key_manager_service
-            .get_public_key_at_key_id(&sender_offset_private_key)
-            .await?;
-
-        let minimum_value_promise = MicroMinotari::zero();
-
-        let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(
-                sender_message
-                    .single()
-                    .ok_or(TransactionServiceProtocolError::new(
-                        tx_id,
-                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
-                    ))?
-                    .features
-                    .clone(),
-            )
+        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id.clone())
+            .with_features(output_features)
             .with_script(script.clone())
             .encrypt_data_for_recovery(
                 &self.resources.transaction_key_manager_service,
@@ -321,7 +357,7 @@ where
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.transaction_key_manager_service,
-                &sender_offset_private_key,
+                &sender_offset_key_id.key_id,
                 &dest_address,
             )
             .await?
@@ -339,60 +375,29 @@ where
         .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
-
-        // Start finalizing
         stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let encrypted_commitment_mask_keys = stp
-            .get_encrypted_input_keys(&self.resources.transaction_key_manager_service)
-            .await?;
-
-        Ok(PrepareOneSidedTransactionForSigningResult {
-            version: get_supported_version(),
-            dest_address,
-            amount,
-            payment_id,
-            tx_id,
-            stp,
-            encrypted_commitment_mask_keys,
-        })
-    }
-
-    pub async fn sign_locked_transaction(
-        &self,
-        request: PrepareOneSidedTransactionForSigningResult,
-    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
-        if request.encrypted_commitment_mask_keys.is_empty() {
-            return Err(TransactionServiceError::NotSupported(
-                "No encrypted commitment mask keys found in the request".to_string(),
-            ));
-        }
-        debug!(target: LOG_TARGET, "Signing transaction {} with {} encrypted keys", 
-           request.tx_id, request.encrypted_commitment_mask_keys.len());
-
-        let mut stp = request.stp.clone();
-
-        let mut commitment_mask_key_ids = Vec::new();
-        for encrypted_key in &request.encrypted_commitment_mask_keys {
-            let key = self
-                .resources
-                .transaction_key_manager_service
-                .decrypt_key(encrypted_key.clone())
-                .await?;
-            let key_id = self.resources.transaction_key_manager_service.import_key(key).await?;
-            commitment_mask_key_ids.push(key_id);
-        }
-
-        stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, commitment_mask_key_ids)
-            .await?;
-        stp.persist_script_private_key(&self.resources.transaction_key_manager_service)
-            .await?;
+        stp.persist_script_offset(
+            &self.resources.transaction_key_manager_service,
+            change_sender_offset_key,
+        )
+        .await?;
 
         Ok(SignedOneSidedTransactionResult {
             version: get_supported_version(),
             request,
             stp,
         })
+    }
+
+    async fn decrypt_and_import_key(&self, encrypted_key: Vec<u8>) -> Result<TariKeyId, TransactionServiceError> {
+        let key = self
+            .resources
+            .transaction_key_manager_service
+            .decrypt_key(encrypted_key)
+            .await?;
+        let key_id = self.resources.transaction_key_manager_service.import_key(key).await?;
+        Ok(key_id)
     }
 }
