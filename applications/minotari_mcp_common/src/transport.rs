@@ -202,7 +202,7 @@ impl JsonRpcTransport {
                     // Send response
                     let response_json = match response {
                         Ok(resp) => serde_json::to_string(&resp)
-                            .map_err(|e| McpError::serialization_error(e))?,
+                            .map_err(McpError::serialization_error)?,
                         Err(e) => {
                             let error_response = McpResponse {
                                 id: Value::Null,
@@ -219,7 +219,7 @@ impl JsonRpcTransport {
                                 }),
                             };
                             serde_json::to_string(&error_response)
-                                .map_err(|e| McpError::serialization_error(e))?
+                                .map_err(McpError::serialization_error)?
                         }
                     };
 

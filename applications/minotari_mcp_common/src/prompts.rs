@@ -132,7 +132,7 @@ pub fn resource_message(role: MessageRole, resource_uri: impl Into<String>) -> P
 macro_rules! simple_prompt {
     ($name:expr, $description:expr, $messages:expr) => {
         {
-            use crate::prompts::{McpPrompt, PromptContent};
+            use $crate::prompts::{McpPrompt, PromptContent};
             
             struct SimplePrompt {
                 name: String,

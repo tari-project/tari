@@ -30,7 +30,7 @@ impl NodeMcpConfig {
     pub fn load(cli: &Cli) -> McpResult<Self> {
         // Validate CLI arguments first
         cli.validate()
-            .map_err(|e| McpError::config_error(e))?;
+            .map_err(McpError::config_error)?;
 
         let mcp_config = McpConfig {
             enabled: cli.mcp_enabled,
@@ -65,7 +65,7 @@ impl NodeMcpConfig {
     pub fn validate(&self) -> McpResult<()> {
         // Validate MCP configuration
         self.mcp.validate()
-            .map_err(|e| McpError::config_error(e))?;
+            .map_err(McpError::config_error)?;
 
         // Validate node gRPC configuration
         if self.node_grpc.address.is_empty() {

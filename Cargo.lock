@@ -4218,7 +4218,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_common"
-version = "4.3.0-pre.0"
+version = "4.3.1-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4238,7 +4238,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_node"
-version = "4.3.0-pre.0"
+version = "4.3.1-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4264,7 +4264,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_wallet"
-version = "4.3.0-pre.0"
+version = "4.3.1-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",

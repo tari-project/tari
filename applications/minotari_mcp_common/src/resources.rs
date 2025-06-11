@@ -187,7 +187,7 @@ impl ResourceRegistry {
 macro_rules! static_resource {
     ($uri:expr, $name:expr, $description:expr, $content:expr) => {
         {
-            use crate::resources::McpResource;
+            use $crate::resources::McpResource;
             use async_trait::async_trait;
             
             struct StaticResource {

@@ -73,7 +73,7 @@ impl McpServerBuilder {
     pub fn build(self) -> McpResult<McpServerImpl> {
         // Validate configuration
         self.config.validate()
-            .map_err(|e| McpError::config_error(e))?;
+            .map_err(McpError::config_error)?;
 
         let security_context = Arc::new(RwLock::new(SecurityContext::new(
             self.config.are_control_operations_enabled(),

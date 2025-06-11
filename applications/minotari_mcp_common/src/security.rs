@@ -161,7 +161,7 @@ impl SecurityContext {
             .values()
             .find(|s| s.client_ip == client_ip)
             .map(|s| s.id)
-            .unwrap_or_else(|| Uuid::new_v4());
+            .unwrap_or_else(Uuid::new_v4);
 
         let session = Session {
             id: session_id,
@@ -193,7 +193,7 @@ impl RateLimiter {
         let now = Utc::now();
         let cutoff = now - chrono::Duration::minutes(1);
 
-        let requests = self.client_requests.entry(client_ip).or_insert_with(Vec::new);
+        let requests = self.client_requests.entry(client_ip).or_default();
         
         // Remove old requests
         requests.retain(|&timestamp| timestamp > cutoff);

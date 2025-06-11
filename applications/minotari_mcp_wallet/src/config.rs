@@ -45,7 +45,7 @@ impl WalletMcpConfig {
     pub fn load(cli: &Cli) -> McpResult<Self> {
         // Validate CLI arguments first
         cli.validate()
-            .map_err(|e| McpError::config_error(e))?;
+            .map_err(McpError::config_error)?;
 
         let mcp_config = McpConfig {
             enabled: cli.mcp_enabled,
@@ -87,7 +87,7 @@ impl WalletMcpConfig {
     pub fn validate(&self) -> McpResult<()> {
         // Validate MCP configuration
         self.mcp.validate()
-            .map_err(|e| McpError::config_error(e))?;
+            .map_err(McpError::config_error)?;
 
         // Validate wallet gRPC configuration
         if self.wallet_grpc.address.is_empty() {
