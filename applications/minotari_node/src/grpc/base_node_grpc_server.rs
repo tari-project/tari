@@ -3012,7 +3012,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             is_spent,
                             spent_height,
                             spent_block_hash,
-                            revealed_amount: Some(output_info.output.minimum_value_promise.as_u64()),
+                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
                         };
 
                         if tx.send(Ok(response)).await.is_err() {

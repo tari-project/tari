@@ -344,7 +344,7 @@ message PaymentReferenceResponse {
     bool is_spent = 6;
     uint64 spent_height = 7;
     bytes spent_block_hash = 8;
-    optional uint64 revealed_amount = 9;
+    uint64 min_value_promise = 9;
 }
 ```
 
