@@ -2854,8 +2854,10 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
-                    Ok(output) => {
-                        fs::write(&args.output_file, output).map_err(|err| CommandError::FileWriteError {
+                    Ok(data) => {
+                        let json_data = serde_json::to_string(&data)
+                            .map_err(|e| CommandError::SerializationError(e.to_string()))?;
+                        fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
                             file_path: args.output_file,
                             err,
                         })?;
@@ -2884,8 +2886,10 @@ pub async fn command_runner(
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
-                    Ok(output) => {
-                        fs::write(&args.output_file, output).map_err(|err| CommandError::FileWriteError {
+                    Ok(data) => {
+                        let json_data = serde_json::to_string(&data)
+                            .map_err(|e| CommandError::SerializationError(e.to_string()))?;
+                        fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
                             file_path: args.output_file,
                             err,
                         })?;

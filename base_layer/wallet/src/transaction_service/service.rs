@@ -688,7 +688,6 @@ where
                         payment_id,
                     )
                     .await
-                    .and_then(|result| result.to_string())
                     .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
@@ -708,7 +707,6 @@ where
                 offline_signing
                     .sign_locked_transaction(lock_request)
                     .await
-                    .and_then(|result| result.to_string())
                     .map(TransactionServiceResponse::SignedOneSidedTransaction)
             },
             TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => {

@@ -780,10 +780,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             )
             .await
         {
-            Ok(result) => PrepareOneSidedTransactionForSigningResponse {
-                is_success: true,
-                lock_details: result,
-                failure_message: Default::default(),
+            Ok(data) => {
+                let json_data = serde_json::to_string(&data).map_err(|e| Status::internal(e.to_string()))?;
+                PrepareOneSidedTransactionForSigningResponse {
+                    is_success: true,
+                    lock_details: json_data,
+                    failure_message: Default::default(),
+                }
             },
             Err(err) => {
                 warn!(

@@ -62,6 +62,7 @@ use crate::{
     output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
+        offline_signing::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
             CompletedTransaction,
             InboundTransaction,
@@ -484,8 +485,8 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
-    OneSidedTransactionPreparedForSigning(String),
-    SignedOneSidedTransaction(String),
+    OneSidedTransactionPreparedForSigning(PrepareOneSidedTransactionForSigningResult),
+    SignedOneSidedTransaction(SignedOneSidedTransactionResult),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -777,7 +778,7 @@ impl TransactionServiceHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
-    ) -> Result<String, TransactionServiceError> {
+    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
@@ -795,7 +796,10 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn sign_one_sided_transaction(&mut self, request: String) -> Result<String, TransactionServiceError> {
+    pub async fn sign_one_sided_transaction(
+        &mut self,
+        request: String,
+    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SignOneSidedTransaction { request })

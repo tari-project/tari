@@ -67,10 +67,6 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 
         Ok(deserialized_obj)
     }
-
-    fn to_string(&self) -> Result<String, TransactionServiceError> {
-        serde_json::to_string(&self).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

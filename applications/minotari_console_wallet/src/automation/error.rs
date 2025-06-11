@@ -103,6 +103,8 @@ pub enum CommandError {
     FileWriteError { file_path: PathBuf, err: io::Error },
     #[error("Failed to read file {file_path} - {err}.")]
     FileReadError { file_path: PathBuf, err: io::Error },
+    #[error("Serialization error: `{0}`")]
+    SerializationError(String),
 }
 
 impl From<SchnorrSignatureError> for CommandError {
