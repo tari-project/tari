@@ -125,7 +125,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
-        offline_signing::{OfflineSigning, PrepareOneSidedTransactionForSigningResult, TransactionResult},
+        offline_signing::OfflineSigning,
         protocols::{
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -691,30 +691,20 @@ where
                     .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
-                const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024; // 10MB limit
-                if request.len() > MAX_REQUEST_SIZE {
-                    return Err(TransactionServiceError::InvalidMessageError(format!(
-                        "Request size {} exceeds maximum allowed size",
-                        request.len()
-                    )));
-                }
-                let lock_request = PrepareOneSidedTransactionForSigningResult::from_string(&request)?;
                 let offline_signing = OfflineSigning::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
                     self.last_seen_tip_height,
                 );
                 offline_signing
-                    .sign_locked_transaction(lock_request)
+                    .sign_locked_transaction(request)
                     .await
                     .map(TransactionServiceResponse::SignedOneSidedTransaction)
             },
-            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => {
-                let signed_request = SignedOneSidedTransactionResult::from_string(&request)?;
-                self.submit_signed_one_sided_transaction(signed_request, transaction_broadcast_join_handles)
-                    .await
-                    .map(TransactionServiceResponse::TransactionSent)
-            },
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => self
+                .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
                 amount,

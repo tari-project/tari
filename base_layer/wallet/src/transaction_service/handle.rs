@@ -167,10 +167,10 @@ pub enum TransactionServiceRequest {
         payment_id: PaymentId,
     },
     SignOneSidedTransaction {
-        request: String,
+        request: PrepareOneSidedTransactionForSigningResult,
     },
     BroadcastSignedOneSidedTransaction {
-        request: String,
+        request: SignedOneSidedTransactionResult,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
@@ -371,9 +371,9 @@ impl fmt::Display for TransactionServiceRequest {
                 "PrepareOneSidedTransactionForSigning (to {}, {}, {})",
                 destination, amount, payment_id
             ),
-            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {})", request,),
+            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {:?})", request,),
             Self::BroadcastSignedOneSidedTransaction { request } => {
-                write!(f, "BroadcastSignedOneSidedTransaction (request {})", request,)
+                write!(f, "BroadcastSignedOneSidedTransaction (request {:?})", request,)
             },
             Self::SendOneSidedTransaction {
                 destination,
@@ -798,7 +798,7 @@ impl TransactionServiceHandle {
 
     pub async fn sign_one_sided_transaction(
         &mut self,
-        request: String,
+        request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         match self
             .handle
@@ -812,7 +812,7 @@ impl TransactionServiceHandle {
 
     pub async fn broadcast_signed_one_sided_transaction(
         &mut self,
-        request: String,
+        request: SignedOneSidedTransactionResult,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle

@@ -107,6 +107,7 @@ use minotari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
+        offline_signing::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
@@ -781,7 +782,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok(data) => {
-                let json_data = serde_json::to_string(&data).map_err(|e| Status::internal(e.to_string()))?;
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
                 PrepareOneSidedTransactionForSigningResponse {
                     is_success: true,
                     lock_details: json_data,
@@ -811,8 +812,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
+        let request = SignedOneSidedTransactionResult::from_json(&message.request)
+            .map_err(|err| Status::internal(err.to_string()))?;
         let response = match transaction_service
-            .broadcast_signed_one_sided_transaction(message.request)
+            .broadcast_signed_one_sided_transaction(request)
             .await
         {
             Ok(result) => BroadcastSignedOneSidedTransactionResponse {

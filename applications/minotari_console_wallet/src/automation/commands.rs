@@ -48,6 +48,11 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
+        offline_signing::{
+            PrepareOneSidedTransactionForSigningResult,
+            SignedOneSidedTransactionResult,
+            TransactionResult,
+        },
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
@@ -2855,7 +2860,8 @@ pub async fn command_runner(
                     .map_err(CommandError::TransactionServiceError);
                 match result {
                     Ok(data) => {
-                        let json_data = serde_json::to_string(&data)
+                        let json_data = data
+                            .to_json()
                             .map_err(|e| CommandError::SerializationError(e.to_string()))?;
                         fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
                             file_path: args.output_file,
@@ -2875,10 +2881,11 @@ pub async fn command_runner(
                     return Err(CommandError::InvalidArgument("Input file too large".to_string()));
                 }
 
-                let request = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
                     file_path: args.input_file,
                     err,
                 })?;
+                let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
@@ -2887,7 +2894,8 @@ pub async fn command_runner(
                     .map_err(CommandError::TransactionServiceError);
                 match result {
                     Ok(data) => {
-                        let json_data = serde_json::to_string(&data)
+                        let json_data = data
+                            .to_json()
                             .map_err(|e| CommandError::SerializationError(e.to_string()))?;
                         fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
                             file_path: args.output_file,
@@ -2898,10 +2906,11 @@ pub async fn command_runner(
                 }
             },
             BroadcastSignedOneSidedTransaction(args) => {
-                let request = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
                     file_path: args.input_file,
                     err,
                 })?;
+                let request = SignedOneSidedTransactionResult::from_json(&data)?;
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service

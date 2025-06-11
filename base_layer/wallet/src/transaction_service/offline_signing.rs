@@ -51,7 +51,7 @@ pub trait HasVersion {
 }
 
 pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
-    fn from_string(s: &str) -> Result<Self, TransactionServiceError> {
+    fn from_json(s: &str) -> Result<Self, TransactionServiceError> {
         let deserialized_obj: Self =
             serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
 
@@ -66,6 +66,10 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
         }
 
         Ok(deserialized_obj)
+    }
+
+    fn to_json(&self) -> Result<String, TransactionServiceError> {
+        serde_json::to_string(&self).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))
     }
 }
 
