@@ -1,0 +1,229 @@
+use std::{collections::HashMap, sync::Arc};
+
+use anyhow::Error;
+use async_trait::async_trait;
+use itertools::Itertools;
+use minotari_node_wallet_client::BaseNodeWalletClient;
+use minotari_wallet::{output_manager_service::resources, utxo_scanner_service::service::HttpClientFactory};
+use tari_core::{
+    base_node::rpc::models::{self, BlockHeader, BlockUtxoInfo, SyncUtxosByBlockResponse},
+    blocks,
+};
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
+use tokio::sync::{mpsc, RwLock};
+
+use crate::support::comms_rpc::UtxosByBlock;
+
+#[derive(Default)]
+struct State {
+    utxos_by_block: HashMap<u64, UtxosByBlock>,
+    blocks: HashMap<u64, tari_core::blocks::BlockHeader>,
+    tip_info: Option<models::TipInfoResponse>,
+}
+
+impl State {
+    fn set_utxos_by_block(&mut self, utxos_by_block: Vec<UtxosByBlock>) {
+        self.utxos_by_block = utxos_by_block.into_iter().map(|ub| (ub.height, ub)).collect();
+    }
+
+    fn set_blocks(&mut self, blocks: HashMap<u64, tari_core::blocks::BlockHeader>) {
+        self.blocks = blocks;
+    }
+
+    fn set_tip_info(&mut self, tip_info: models::TipInfoResponse) {
+        self.tip_info = Some(tip_info);
+    }
+}
+
+#[derive(Clone)]
+pub struct HttpBaseNodeMock {
+    state: Arc<RwLock<State>>,
+}
+
+impl HttpBaseNodeMock {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(State::default())),
+        }
+    }
+
+    pub async fn set_utxos_by_block(&self, utxos_by_block: Vec<UtxosByBlock>) -> Result<(), Error> {
+        let mut s = self.state.write().await;
+        s.set_utxos_by_block(utxos_by_block);
+        Ok(())
+    }
+
+    pub async fn set_blocks(&self, blocks: HashMap<u64, tari_core::blocks::BlockHeader>) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_blocks(blocks);
+
+        Ok(())
+    }
+
+    pub async fn set_tip_info(&self, tip_info: models::TipInfoResponse) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        state.set_tip_info(tip_info);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl BaseNodeWalletClient for HttpBaseNodeMock {
+    async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error> {
+        let state = self.state.read().await;
+        if let Some(tip_info) = &state.tip_info {
+            Ok(tip_info.clone())
+        } else {
+            Err(Error::msg("Tip info not set"))
+        }
+    }
+
+    async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error> {
+        let state = self.state.read().await;
+        if let Some(header) = state.blocks.get(&height) {
+            Ok(Some(BlockHeader::from(header.clone())))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Error> {
+        let state = self.state.read().await;
+        let mut last_header = 0;
+        let headers = state
+            .blocks
+            .values()
+            .sorted_by(|a, b| a.height.cmp(&b.height))
+            .into_iter();
+        for header in headers {
+            if header.timestamp.as_u64() >= epoch_time {
+                return Ok(last_header);
+            }
+            last_header = header.height;
+        }
+        Ok(last_header)
+    }
+
+    async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, Error> {
+        let state = self.state.read().await;
+        let mut utxos = Vec::new();
+        for ub in state.utxos_by_block.values() {
+            if ub.header_hash.to_vec() == header_hash {
+                utxos.extend(ub.utxos.iter().map(|o| o.clone()));
+            }
+        }
+        let header = state.blocks.values().find(|h| h.hash().to_vec() == header_hash);
+
+        let res = if let Some(header) = header {
+            models::GetUtxosByBlockResponse {
+                header_hash: header.hash().to_vec(),
+                height: header.height,
+                outputs: utxos,
+                mined_timestamp: header.timestamp.as_u64(),
+            }
+        } else {
+            return Err(Error::msg("Header not found for the given hash"));
+        };
+        Ok(res)
+    }
+
+    async fn sync_utxos_by_block(
+        &self,
+        start_header_hash: Vec<u8>,
+        end_header_hash: Vec<u8>,
+        shutdown: ShutdownSignal,
+    ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error> {
+        let (tx, rx) = mpsc::channel(100);
+        let state2 = self.state.read().await;
+
+        let start_height = state2
+            .blocks
+            .values()
+            .find(|b| b.hash().to_vec() == start_header_hash)
+            .map_or(0, |b| b.height);
+
+        let end_height = state2
+            .blocks
+            .values()
+            .find(|b| b.hash().to_vec() == end_header_hash)
+            .map_or(0, |b| b.height);
+        let state = self.state.clone();
+        tokio::spawn(async move {
+            let state = state.read().await;
+            let mut current_height = 0;
+            let mut blocks = vec![];
+            let page_size = 5;
+
+            for height in start_height..=end_height {
+                if shutdown.is_triggered() {
+                    break;
+                }
+                if let Some(ub) = state.utxos_by_block.get(&height) {
+                    let block_header = state.blocks.get(&height).cloned();
+                    if let Some(header) = block_header {
+                        blocks.push(BlockUtxoInfo {
+                            header_hash: header.hash().to_vec(),
+                            height: header.height,
+                            outputs: ub
+                                .utxos
+                                .iter()
+                                .map(|o| models::MinimalUtxoSyncInfo {
+                                    output_hash: o.hash().to_vec(),
+                                    commitment: o.commitment.as_bytes().to_vec(),
+                                    encrypted_data: o.encrypted_data.to_byte_vec(),
+                                    sender_offset_public_key: o.sender_offset_public_key.to_vec(),
+                                })
+                                .collect(),
+                            mined_timestamp: header.timestamp.as_u64(),
+                        });
+                        current_height = height;
+                    }
+                }
+                if blocks.len() >= page_size || height == end_height {
+                    let has_next_page = height < end_height;
+                    let response = SyncUtxosByBlockResponse {
+                        blocks: blocks.clone(),
+                        has_next_page,
+                    };
+                    blocks.clear();
+
+                    if tx.send(Ok(response)).await.is_err() {
+                        break; // Channel closed
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+}
+
+#[derive(Clone)]
+pub struct MockHttpClientFactory {
+    mock: HttpBaseNodeMock,
+}
+
+impl MockHttpClientFactory {
+    pub fn get_client(&self) -> HttpBaseNodeMock {
+        self.mock.clone()
+    }
+}
+
+impl Default for MockHttpClientFactory {
+    fn default() -> Self {
+        Self {
+            mock: HttpBaseNodeMock {
+                state: Arc::new(RwLock::new(State::default())),
+            },
+        }
+    }
+}
+
+impl HttpClientFactory for MockHttpClientFactory {
+    type Client = HttpBaseNodeMock;
+
+    fn create_http_client(&self) -> Self::Client {
+        self.mock.clone()
+    }
+}

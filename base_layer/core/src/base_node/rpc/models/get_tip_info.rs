@@ -7,7 +7,7 @@ use utoipa::{
     ToSchema,
 };
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
 pub struct TipInfoResponse {
     #[schema(schema_with = optional_chain_metadata_schema)]
     pub metadata: Option<tari_common_types::chain_metadata::ChainMetadata>,

@@ -36,7 +36,7 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
-        service::{UtxoScannerResources, UtxoScannerService},
+        service::{HttpClientFactory, UtxoScannerResources, UtxoScannerService},
     },
     WalletKeyManager,
     WalletSqlite,
@@ -50,27 +50,27 @@ pub enum UtxoScannerMode {
 }
 
 #[derive(Debug, Clone)]
-pub struct UtxoScannerServiceBuilder {
+pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
     retry_limit: usize,
     mode: Option<UtxoScannerMode>,
     one_sided_message: String,
     recovery_message: String,
-    node_url: Option<Url>,
+    client_factory: Option<TWalletClientFactory>,
 }
 
-impl Default for UtxoScannerServiceBuilder {
+impl<T> Default for UtxoScannerServiceBuilder<T> {
     fn default() -> Self {
         Self {
             retry_limit: 0,
             mode: None,
             one_sided_message: "Detected one-sided payment on blockchain".to_string(),
             recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
-            node_url: None,
+            client_factory: None,
         }
     }
 }
 
-impl UtxoScannerServiceBuilder {
+impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBuilder<T> {
     /// Set the maximum number of times we retry recovery. A failed recovery is counted as _all_ peers have failed.
     /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
     pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
@@ -93,8 +93,8 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
-    pub fn with_http_node_url(&mut self, node_url: Url) -> &mut Self {
-        self.node_url = Some(node_url);
+    pub fn with_client_factory(&mut self, factory: T) -> &mut Self {
+        self.client_factory = Some(factory);
         self
     }
 
@@ -102,10 +102,10 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletKeyManager>, anyhow::Error> {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletKeyManager, T>, anyhow::Error> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
-        let http_client_url = match &self.node_url {
-            Some(url) => url.clone(),
+        let client_factory = match &self.client_factory {
+            Some(t) => t.clone(),
             None => {
                 return Err(anyhow::anyhow!(
                     "Node URL must be set before building the UTXO scanner service."
@@ -120,10 +120,10 @@ impl UtxoScannerServiceBuilder {
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
-            http_client_url,
+            client_factory: client_factory.clone(),
         };
 
-        let (event_sender, _) = broadcast::channel(200);
+        let (event_sender, _) = broadcast::channel(2000);
 
         Ok(UtxoScannerService::new(
             self.retry_limit,
@@ -154,15 +154,16 @@ impl UtxoScannerServiceBuilder {
         recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
         key_manager: TKeyManager,
-    ) -> Result<UtxoScannerService<TBackend, TKeyManager>, anyhow::Error> {
-        let http_client_url = match &self.node_url {
-            Some(url) => url.clone(),
+    ) -> Result<UtxoScannerService<TBackend, TKeyManager, T>, anyhow::Error> {
+        let client_factory = match &self.client_factory {
+            Some(factory) => factory.clone(),
             None => {
                 return Err(anyhow::anyhow!(
-                    "Node URL must be set before building the UTXO scanner service."
+                    "No client factory was set before building the UTXO scanner service."
                 ))
             },
         };
+
         let resources = UtxoScannerResources {
             db,
             output_manager_service,
@@ -171,7 +172,7 @@ impl UtxoScannerServiceBuilder {
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset,
-            http_client_url,
+            client_factory,
         };
 
         Ok(UtxoScannerService::new(

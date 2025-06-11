@@ -21,7 +21,7 @@ pub struct SyncUtxosByBlockResponse {
     pub has_next_page: bool,
 }
 
-#[derive(Serialize, Deserialize, ToSchema, Debug)]
+#[derive(Serialize, Deserialize, ToSchema, Debug, Clone)]
 pub struct BlockUtxoInfo {
     pub header_hash: Vec<u8>,
     pub height: u64,

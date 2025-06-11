@@ -56,7 +56,7 @@ use crate::{
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
-        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
+        service::{HttpClientFactory, ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
         uxto_scanner_service_builder::UtxoScannerMode,
         RECOVERY_KEY,
     },
@@ -71,8 +71,12 @@ struct SyncResult {
     elapsed: Duration,
 }
 
-pub struct UtxoScannerTask<TBackend, TKeyManager> {
-    pub(crate) resources: UtxoScannerResources<TBackend>,
+pub struct UtxoScannerTask<
+    TBackend,
+    TKeyManager,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
+> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
@@ -81,10 +85,11 @@ pub struct UtxoScannerTask<TBackend, TKeyManager> {
     pub birthday_offset: u16,
     pub key_manager: TKeyManager,
 }
-impl<TBackend, TKeyManager> UtxoScannerTask<TBackend, TKeyManager>
+impl<TBackend, TKeyManager, TWalletClientFactory> UtxoScannerTask<TBackend, TKeyManager, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
     TKeyManager: TransactionKeyManagerInterface,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
     pub async fn run(mut self) -> Result<(), anyhow::Error> {
         if self.mode == UtxoScannerMode::Recovery {
@@ -165,19 +170,14 @@ where
     }
 
     /// Try to instantiate a Base Node Wallet Service client.
-    fn base_node_wallet_service_client(&self) -> Result<http::Client, anyhow::Error> {
-        // let address = rpc_client.get_wallet_query_http_service_address().await?;
-        // if address.http_address.is_empty() {
-        // Err(anyhow::Error::BaseNodeWalletServiceUrlEmpty)
-        // } else {
-        Ok(http::Client::new(self.resources.http_client_url.clone()))
-        // }
+    fn base_node_wallet_service_client(&self) -> Result<TWalletClientFactory::Client, anyhow::Error> {
+        Ok(self.resources.client_factory.create_http_client())
     }
 
     async fn determine_next_block_to_scan(
         &self,
         last_scanned_block: &Option<ScannedBlock>,
-        wallet_service_client: &http::Client,
+        wallet_service_client: &TWalletClientFactory::Client,
     ) -> Result<ScannedBlock, anyhow::Error> {
         if let Some(last_scanned_block) = last_scanned_block {
             let mut height = last_scanned_block.height;
@@ -209,7 +209,7 @@ where
                 _ => None,
             };
             let scanning_start_height_hash = self
-                .get_scanning_start_header_height_hash(&wallet_service_client, wallet_birthday)
+                .get_scanning_start_header_height_hash(wallet_service_client, wallet_birthday)
                 .await?;
 
             Ok(ScannedBlock {
@@ -288,7 +288,10 @@ where
         }
     }
 
-    async fn get_chain_tip_header(&self, client: &http::Client) -> Result<(BlockHash, u64), anyhow::Error> {
+    async fn get_chain_tip_header(
+        &self,
+        client: &TWalletClientFactory::Client,
+    ) -> Result<(BlockHash, u64), anyhow::Error> {
         let tip_info = client.get_tip_info().await?;
 
         Ok((
@@ -303,7 +306,7 @@ where
 
     async fn get_last_scanned_block(
         &self,
-        client: &http::Client,
+        client: &TWalletClientFactory::Client,
         current_tip_height: u64,
     ) -> Result<Option<ScannedBlock>, anyhow::Error> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
@@ -382,7 +385,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn scan_utxos(
         &mut self,
-        client: &http::Client,
+        client: &TWalletClientFactory::Client,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
@@ -725,7 +728,7 @@ where
 
     async fn get_scanning_start_header_height_hash(
         &self,
-        client: &http::Client,
+        client: &TWalletClientFactory::Client,
         option_birthday: Option<u16>,
     ) -> Result<HeightHash, anyhow::Error> {
         let birthday = match option_birthday {

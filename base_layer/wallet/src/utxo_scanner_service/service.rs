@@ -20,9 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -50,8 +53,12 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
-pub struct UtxoScannerService<TBackend, TKeyManagerInterface> {
-    pub(crate) resources: UtxoScannerResources<TBackend>,
+pub struct UtxoScannerService<
+    TBackend,
+    TKeyManagerInterface,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
+> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
     pub(crate) retry_limit: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -62,15 +69,17 @@ pub struct UtxoScannerService<TBackend, TKeyManagerInterface> {
     pub(crate) key_manager: TKeyManagerInterface,
 }
 
-impl<TBackend, TKeyManagerInterface: Clone> UtxoScannerService<TBackend, TKeyManagerInterface>
+impl<TBackend, TKeyManagerInterface: Clone, TWalletClientFactory>
+    UtxoScannerService<TBackend, TKeyManagerInterface, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
     TKeyManagerInterface: TransactionKeyManagerInterface + Clone + Send + Sync + 'static,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
     pub fn new(
         retry_limit: usize,
         mode: UtxoScannerMode,
-        resources: UtxoScannerResources<TBackend>,
+        resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
@@ -91,7 +100,10 @@ where
         }
     }
 
-    fn create_task(&self, shutdown_signal: ShutdownSignal) -> UtxoScannerTask<TBackend, TKeyManagerInterface> {
+    fn create_task(
+        &self,
+        shutdown_signal: ShutdownSignal,
+    ) -> UtxoScannerTask<TBackend, TKeyManagerInterface, TWalletClientFactory> {
         UtxoScannerTask {
             resources: self.resources.clone(),
             event_sender: self.event_sender.clone(),
@@ -104,8 +116,8 @@ where
         }
     }
 
-    pub fn builder() -> UtxoScannerServiceBuilder {
-        UtxoScannerServiceBuilder::default()
+    pub fn builder() -> UtxoScannerServiceBuilder<TWalletClientFactory> {
+        UtxoScannerServiceBuilder::<TWalletClientFactory>::default()
     }
 
     pub fn get_event_receiver(&mut self) -> broadcast::Receiver<UtxoScannerEvent> {
@@ -177,7 +189,9 @@ where
 }
 
 #[derive(Clone)]
-pub struct UtxoScannerResources<TBackend> {
+pub struct UtxoScannerResources<TBackend, THttpClientFactory>
+where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
+{
     pub(crate) db: WalletDatabase<TBackend>,
     pub(crate) output_manager_service: OutputManagerHandle,
     pub(crate) transaction_service: TransactionServiceHandle,
@@ -185,7 +199,31 @@ pub struct UtxoScannerResources<TBackend> {
     pub(crate) recovery_message: String,
     pub(crate) one_sided_payment_message: String,
     pub(crate) birthday_offset: u16,
-    pub(crate) http_client_url: Url,
+    pub(crate) client_factory: THttpClientFactory,
+}
+
+pub trait HttpClientFactory: Clone {
+    type Client: BaseNodeWalletClient;
+    fn create_http_client(&self) -> Self::Client;
+}
+
+#[derive(Clone)]
+pub struct DefaultHttpClientFactory {
+    node_url: Url,
+}
+
+impl DefaultHttpClientFactory {
+    pub fn new(node_url: Url) -> Self {
+        Self { node_url }
+    }
+}
+
+impl HttpClientFactory for DefaultHttpClientFactory {
+    type Client = minotari_node_wallet_client::http::Client;
+
+    fn create_http_client(&self) -> Self::Client {
+        minotari_node_wallet_client::http::Client::new(self.node_url.clone())
+    }
 }
 
 #[derive(Debug, Clone)]

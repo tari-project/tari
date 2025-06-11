@@ -31,7 +31,10 @@ use minotari_wallet::{
     connectivity_service::WalletConnectivityHandle,
     error::WalletError,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
+    utxo_scanner_service::{
+        handle::UtxoScannerEvent,
+        service::{DefaultHttpClientFactory, UtxoScannerService},
+    },
     WalletKeyManager,
     WalletSqlite,
 };
@@ -107,8 +110,9 @@ pub async fn wallet_recovery(
     let shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager>::builder()
-        .with_http_node_url(base_node_config.http_client_url.clone())
+    let mut recovery_task =
+        UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager, DefaultHttpClientFactory>::builder()
+        .with_client_factory(DefaultHttpClientFactory::new( base_node_config.http_client_url.clone()))
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal).await

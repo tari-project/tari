@@ -39,7 +39,7 @@ use crate::{
     util::watch::Watch,
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
-        service::UtxoScannerService,
+        service::{DefaultHttpClientFactory, UtxoScannerService},
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
@@ -121,8 +121,8 @@ where
             )
             .expect("Could not create one-sided Tari address");
 
-            let scanning_service = UtxoScannerService::<T, TKeyManagerInterface>::builder()
-                .with_http_node_url(node_url)
+            let scanning_service = UtxoScannerService::<T, TKeyManagerInterface, _>::builder()
+                .with_client_factory(DefaultHttpClientFactory::new(node_url))
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources::<T, TKeyManagerInterface>(

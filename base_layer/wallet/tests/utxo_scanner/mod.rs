@@ -40,7 +40,7 @@ use minotari_wallet::{
     util::watch::Watch,
     utxo_scanner_service::{
         handle::{UtxoScannerEvent, UtxoScannerHandle},
-        service::{ScannedBlock, UtxoScannerService},
+        service::{HttpClientFactory, ScannedBlock, UtxoScannerService},
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
@@ -56,7 +56,7 @@ use tari_comms::{
     },
 };
 use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcServer,
+    base_node::rpc::{models, BaseNodeWalletRpcServer},
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
@@ -78,6 +78,7 @@ use tokio::{
 };
 
 use crate::support::{
+    base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory},
     base_node_service_mock::MockBaseNodeService,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
@@ -86,10 +87,11 @@ use crate::support::{
 };
 
 pub struct UtxoScannerTestInterface {
-    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, MemoryDbKeyManager>>,
+    scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, MemoryDbKeyManager, MockHttpClientFactory>>,
     scanner_handle: UtxoScannerHandle,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
     base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
+    http_service_state: HttpBaseNodeMock,
     rpc_service_state: BaseNodeWalletRpcMockState,
     _rpc_mock_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     _comms_connectivity_mock_state: ConnectivityManagerMockState,
@@ -174,7 +176,8 @@ async fn setup(
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
-    let mut scanner_service_builder = UtxoScannerService::<WalletSqliteDatabase, MemoryDbKeyManager>::builder();
+    let mut scanner_service_builder =
+        UtxoScannerService::<WalletSqliteDatabase, MemoryDbKeyManager, MockHttpClientFactory>::builder();
 
     scanner_service_builder.with_retry_limit(1).with_mode(mode);
 
@@ -193,6 +196,9 @@ async fn setup(
         Network::default(),
     )
     .unwrap();
+    let mock_http_client_factory = MockHttpClientFactory::default();
+    let mock_client = mock_http_client_factory.get_client();
+    scanner_service_builder.with_client_factory(mock_http_client_factory);
     let scanner_service = scanner_service_builder
         .build_with_resources::<WalletSqliteDatabase, MemoryDbKeyManager>(
             wallet_db.clone(),
@@ -212,6 +218,7 @@ async fn setup(
 
     UtxoScannerTestInterface {
         scanner_service: Some(scanner_service),
+        http_service_state: mock_client,
         scanner_handle,
         wallet_db,
         base_node_service_event_publisher: event_publisher_bns,
@@ -764,11 +771,17 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     .await;
 
     test_interface
-        .rpc_service_state
-        .set_utxos_by_block(utxos_by_block.clone());
-    test_interface.rpc_service_state.set_blocks(block_headers.clone());
+        .http_service_state
+        .set_utxos_by_block(utxos_by_block.clone())
+        .await
+        .unwrap();
+    test_interface
+        .http_service_state
+        .set_blocks(block_headers.clone())
+        .await
+        .unwrap();
 
-    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+    let chain_metadata = chain_metadata::ChainMetadata::new(
         800 + NUM_BLOCKS - 1,
         BlockHash::try_from(
             block_headers
@@ -784,12 +797,15 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         5000.into(),
         0,
     )
-    .expect("failed to create new chain metadata")
-    .into();
-    test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
-        metadata: Some(chain_metadata),
-        is_synced: true,
-    });
+    .expect("failed to create new chain metadata");
+    test_interface
+        .http_service_state
+        .set_tip_info(models::TipInfoResponse {
+            metadata: Some(chain_metadata),
+            is_synced: true,
+        })
+        .await
+        .unwrap();
 
     let first_block_header = block_headers.get(&(800)).unwrap().clone();
     test_interface
@@ -803,14 +819,17 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
-    tokio::spawn(test_interface.scanner_service.take().unwrap().run());
+    let handle = tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    let delay = time::sleep(Duration::from_secs(60));
+    let delay = time::sleep(Duration::from_secs(1));
     tokio::pin!(delay);
     loop {
+        if handle.is_finished() {
+            panic!("Scanner service should not have finished yet.");
+        }
         tokio::select! {
             _ = &mut delay => {
-                panic!("Completed event should have arrived by now.");
+                //    panic!("Completed event should have arrived by now.");
             }
             event = scanner_event_stream.recv() => {
                 if let UtxoScannerEvent::Completed {

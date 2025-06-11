@@ -105,7 +105,10 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
-    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    utxo_scanner_service::{
+        service::{DefaultHttpClientFactory, UtxoScannerService},
+        RECOVERY_KEY,
+    },
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
     Wallet,
     WalletConfig,
@@ -10005,7 +10008,8 @@ pub unsafe extern "C" fn wallet_start_recovery(
         },
     };
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager>::builder();
+    let mut recovery_task_builder =
+        UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager, DefaultHttpClientFactory>::builder();
 
     if !recovered_output_message.is_null() {
         let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
@@ -10042,7 +10046,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     };
     let mut recovery_task = match runtime.block_on(async {
         recovery_task_builder
-            .with_http_node_url(http_url)
+            .with_client_factory(DefaultHttpClientFactory::new(http_url))
             .with_retry_limit(10)
             .build_with_wallet(&(*wallet).wallet, shutdown_signal)
             .await
