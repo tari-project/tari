@@ -21,6 +21,7 @@ class: subpage
 - [Descriptions of Common Activities](#descriptions-of-common-activities)
   - [Receiving funds / User Deposits](#receiving-funds--user-deposits)
   - [Performing withdrawals](#performing-withdrawals)
+  - [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)
 - [Payment Reference (PayRef) Integration](#payment-reference-payref-integration)
   - [What are Payment References?](#what-are-payment-references)
   - [How PayRefs Work](#how-payrefs-work)
@@ -528,8 +529,120 @@ To break it down:
 * In binary, this is 00000001
 * The least significant bit (rightmost bit) is 1, indicating support for interactive transactions
 
-# Payment Reference (PayRef) Integration
+## Confirming Deposits and Withdrawals
 
+There are three elements of confirming transactions: block confirmations, transaction status and the use of the Payment Reference (PayRef) system. The combination of these three methods can help ensure not only that a transaction has occurred, but provides auditability and the ability to check transactions on-chain with an identifier that is the same for both the sender and receiver without requiring the reveal of specific transaction values.
+
+The gRPC methods here are described in more detail in the [API GRPC Explanation Document](/docs/src/API_GRPC_Explanation.md)
+
+## Transaction Status
+
+Using the gRPC method `GetTransactionInfo`, a status value will be returned. Below is a list of the transaction statuses. For the purposes of transaction confirmation, statuses `6` and `9` can be considered effectively confirmed:
+
+Talking about this table:
+| Status Code | Enum Name | Description | Valid/Confirmed? |
+| --- | --- | --- | --- |
+| 0 | `TRANSACTION_STATUS_COMPLETED` | Completed between parties, not broadcast | ❌ No |
+| 1 | `TRANSACTION_STATUS_BROADCAST` | Broadcast to mempool, not mined | ❌ No |
+| 2 | `TRANSACTION_STATUS_MINED_UNCONFIRMED` | Mined but not confirmed | ⚠️ Not Yet |
+| 3 | `TRANSACTION_STATUS_IMPORTED` | Imported spendable UTXO, may not be confirmed | ❌ No |
+| 4 | `TRANSACTION_STATUS_PENDING` | Still being negotiated | ❌ No |
+| 5 | `TRANSACTION_STATUS_COINBASE` | Created coinbase transaction, not mined | ❌ No |
+| 6 | `TRANSACTION_STATUS_MINED_CONFIRMED` | Mined and confirmed | ✅ Yes |
+| 7 | `TRANSACTION_STATUS_REJECTED` | Rejected by mempool | ❌ No |
+| 8 | `TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED` | One-sided/faux transaction, not confirmed | ⚠️ Not Yet |
+| 9 | `TRANSACTION_STATUS_ONE_SIDED_CONFIRMED` | One-sided or imported transaction confirmed | ✅ Yes |
+| 10 | `TRANSACTION_STATUS_QUEUED` | Still queued for sending | ❌ No |
+| 11 | `TRANSACTION_STATUS_NOT_FOUND` | Not found in wallet DB | ❌ No |
+| 12 | `TRANSACTION_STATUS_COINBASE_UNCONFIRMED` | Detected coinbase, not yet confirmed | ⚠️ Not Yet |
+| 13 | `TRANSACTION_STATUS_COINBASE_CONFIRMED` | Detected and confirmed coinbase transaction | ✅ Yes |
+| 14 | `TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN` | Coinbase not yet mined | ❌ No |
+
+## Block Confirmations
+Once you have confirmed that the transaction has been mined, it is recommended that you wait a certain number of block confirmations to ensure that the transaction is not lost as the result of a reorganisation. We recommend a minimum of 6 block confirmations.
+
+When retrieving the transaction info, you will be provided with a mined height. This can be combined with the base node gRPC method `GetTipInfo` to get the chain's most current height.
+
+> Note: Because you will likely be communicating with your own base node, it is also important to ensure that your MinoTari Node is synced with chain. `GetSyncInfo` and `GetSyncProgress` are good indicators of the health of your node.
+
+## Payment Reference (PayRef)
+Lastly, the exchange can use the Payment Reference (PayRef). A PayRef is a 32-byte cryptographic identifier derived from an individual transaction output:
+
+`PayRef = Blake2b_256(block_hash || output_hash)`
+
+It enables privacy-preserving, output-level tracking of deposits and withdrawals without exposing sensitive transaction internals.
+
+### Get PayRefs for a Known Transaction
+If you know the transaction ID (e.g., from getCompletedTransactions), use:
+
+```javascript
+const request = {
+  transaction_id: 12345
+};
+const response = await client.getTransactionPayRefs(request);
+console.log("PayRefs:", response.payment_references.map(ref => Buffer.from(ref).toString('hex')));
+```
+
+Use this when:
+- You want to store PayRefs after sending a transaction.
+- You want to allow users to refer to their deposits via PayRef instead of wallet-local tx_id.
+
+Sample Response:
+```json
+{
+    "payment_references": [
+        "JdVIrY5P6hFJcxm4QkVGnPwPw4mMlMIQfuTEdedvHMI="
+    ]
+}
+```
+
+### Get Transaction Details from a PayRef
+If a user gives you a PayRef (e.g., as proof of deposit), use:
+
+```javascript
+const payref = Buffer.from('a1b2c3...7890', 'hex');
+const request = { payment_reference: payref };
+client.getPaymentByReference(request, (err, response) => {
+  if (err) console.error(err);
+  else console.log('Transaction found:', response.transaction);
+});
+```
+
+Use this when:
+- A customer provides a PayRef to confirm a deposit.
+- You want to audit a specific output in your records.
+
+Sample response:
+```json
+{
+    "transaction": {
+        "input_commitments": [],
+        "output_commitments": [
+            "igTiN+vtpok6DA72aTJdrQ6lzTcYMoUSKlgc9ozt2To="
+        ],
+        "payment_references_sent": [],
+        "payment_references_received": [
+            "26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk="
+        ],
+        "payment_references_change": [],
+        "tx_id": "14414927044058609657",
+        "source_address": "JgEaRCXRjdYUHDK3kwYkPjsNcwTtmWEY6lH1Nx1uGPNpI2go95RHW7ZKcJ49nIBS7Qxpuy1bnk+HdfyZWWiLA8hurQ==",
+        "dest_address": "JgHIxgRgLmHE/X0dSd5puCd0d4vzP5gLO1qdyb+zKFX7IqRynEKAG4yESxHJuGg09hgQ0A2sZpeUQGVJQR3Mjv5CPw==",
+        "status": "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED",
+        "direction": "TRANSACTION_DIRECTION_INBOUND",
+        "amount": "123000000",
+        "fee": "0",
+        "is_cancelled": false,
+        "excess_sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "timestamp": "1749565352",
+        "raw_payment_id": "A8DUVAcAAAAAAAAAAYAmARpEJdGN1hQcMreTBiQ+Ow1zBO2ZYRjqUfU3HW4Y82kjaCj3lEdbtkpwnj2cgFLtDGm7LVueT4d1/JlZaIsDyG6taGFsbG8=",
+        "mined_in_block_height": "30137",
+        "user_payment_id": "aGFsbG8="
+    }
+}
+```
+
+# Payment Reference (PayRef) Integration
 ## What are Payment References?
 
 Payment References (PayRefs) are globally unique identifiers for individual transaction outputs that enable payment verification without compromising privacy. They solve the common problem of users claiming they sent payments that exchanges cannot verify.
