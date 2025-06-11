@@ -1580,15 +1580,3 @@ enum PaymentDirection {
   // Payment sent from this wallet
   PAYMENT_DIRECTION_OUTBOUND = 2;
 }
-
-// Enum for PayRef status indicating availability
-enum PayRefStatus {
-  // Unknown or unspecified status
-  PAYREF_STATUS_UNKNOWN = 0;
-  // PayRef is available (has sufficient confirmations)
-  PAYREF_STATUS_AVAILABLE = 1;
-  // PayRef is pending (waiting for more confirmations)
-  PAYREF_STATUS_PENDING = 2;
-  // PayRef is not mined (transaction not yet in a block)
-  PAYREF_STATUS_NOT_MINED = 3;
-}

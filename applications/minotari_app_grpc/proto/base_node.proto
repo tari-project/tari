@@ -593,16 +593,3 @@ message PaymentReferenceResponse {
     optional uint64 revealed_amount = 9;
 }
 
-
-// Status of payment reference lookup
-enum PaymentReferenceStatus {
-    // Payment reference was found and confirmed
-    FOUND = 0;
-    // Payment reference was not found in the blockchain
-    NOT_FOUND = 1;
-    // Payment reference format is invalid
-    INVALID_FORMAT = 2;
-    // Payment reference is in mempool (unconfirmed)
-    PENDING = 3;
-}
-

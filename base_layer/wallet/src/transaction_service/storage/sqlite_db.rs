@@ -1168,7 +1168,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        let payref = PayrefSql::find_by_output_hash(&payref.to_vec(), &mut conn)?;
+        let payref = PayrefSql::find_by_payref(&payref.to_vec(), &mut conn)?;
         if payref.is_none() {
             return Ok(None);
         }
@@ -2474,12 +2474,12 @@ impl PayrefSql {
         Ok(())
     }
 
-    pub fn find_by_output_hash(
-        output_hash: &[u8],
+    pub fn find_by_payref(
+        payref: &[u8],
         conn: &mut SqliteConnection,
     ) -> Result<Option<PayrefSql>, TransactionStorageError> {
         let result = payrefs::table
-            .filter(payrefs::output_hash.eq(output_hash))
+            .filter(payrefs::payref.eq(payref))
             .first::<PayrefSql>(conn)
             .optional()?;
         Ok(result)

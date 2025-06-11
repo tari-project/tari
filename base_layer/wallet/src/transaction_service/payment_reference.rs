@@ -69,19 +69,6 @@ pub enum PayRefDisplayFormat {
     Custom { prefix_chars: u8, suffix_chars: u8 },
 }
 
-/// Status of a Payment Reference
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PayRefStatus {
-    /// PayRef is available with the specified number of confirmations
-    Available(FixedHash, u64),
-    /// PayRef is pending more confirmations
-    Pending(u64, u64), // current_confirmations, blocks_remaining
-    /// Output has not been mined yet
-    NotMined,
-    /// Output data is invalid for PayRef generation
-    InvalidOutput,
-}
-
 /// Direction of a payment
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaymentDirection {
