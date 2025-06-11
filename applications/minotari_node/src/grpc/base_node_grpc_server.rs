@@ -2962,6 +2962,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut node_service = self.node_service.clone();
 
         task::spawn(async move {
+            let mut payrefs = Vec::new();
             for payref_hex in request.payment_reference_hex {
                 // Validate PayRef format (64 hex chars = 32 bytes)
                 if payref_hex.len() != 64 || !payref_hex.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -2989,8 +2990,26 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         continue;
                     },
                 };
-
-                match node_service.fetch_output_by_payref(&payref_bytes).await {
+                payrefs.push(payref_bytes);
+            }
+            for payref_bytes in request.payment_reference_bytes {
+                let payref_fixed_hash = match FixedHash::try_from(payref_bytes.clone()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::invalid_argument(format!("Invalid PayRef bytes {}, {}", payref_bytes.to_hex(), e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    },
+                };
+                payrefs.push(payref_fixed_hash);
+            }
+            for payref in payrefs {
+                match node_service.fetch_output_by_payref(&payref).await {
                     Ok(Some(output_info)) => {
                         // Check if output is spent
                         let output_hash = output_info.output.hash();
@@ -3004,7 +3023,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         };
 
                         let response = tari_rpc::PaymentReferenceResponse {
-                            payment_reference_hex: payref_hex.clone(),
+                            payment_reference_hex: payref.to_hex(),
                             block_height: output_info.mined_height,
                             block_hash: output_info.header_hash.to_vec(),
                             mined_timestamp: output_info.mined_timestamp,
@@ -3024,7 +3043,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         continue;
                     },
                     Err(e) => {
-                        warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref_hex, e);
+                        warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref, e);
                         let error = obscure_error_if_true(
                             report_error_flag,
                             Status::internal(format!("PayRef lookup error: {}", e)),

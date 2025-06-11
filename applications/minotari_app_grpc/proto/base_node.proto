@@ -567,8 +567,9 @@ message LivenessResult{
 message SearchPaymentReferencesRequest {
     // Payment reference as hex string (64 characters)
     repeated string payment_reference_hex = 1;
+    repeated bytes payment_reference_bytes = 2;
     // Optional: include spent outputs in results
-    bool include_spent = 2;
+    bool include_spent = 3;
 }
 
 // Response containing payment reference match
