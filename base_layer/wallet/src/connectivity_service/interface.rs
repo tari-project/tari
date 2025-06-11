@@ -56,14 +56,6 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
             .flatten()
     }
 
-    /// Obtain a BaseNodeSyncRpcClient.
-    ///
-    /// This can be relied on to obtain a pooled BaseNodeSyncRpcClient rpc session from a currently selected base
-    /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
-    /// shutting down, where it will return None. Use this function whenever no work can be done without a
-    /// BaseNodeSyncRpcClient RPC session.
-    async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>>;
-
     async fn disconnect_base_node(&mut self, node_id: NodeId);
 
     fn get_connectivity_status(&mut self) -> OnlineStatus;

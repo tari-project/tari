@@ -103,22 +103,6 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
         reply_rx.await.ok()
     }
 
-    /// Obtain a BaseNodeSyncRpcClient.
-    ///
-    /// This can be relied on to obtain a pooled BaseNodeSyncRpcClient rpc session from a currently selected base
-    /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
-    /// shutting down, where it will return None. Use this function whenever no work can be done without a
-    /// BaseNodeSyncRpcClient RPC session.
-    async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(WalletConnectivityRequest::ObtainBaseNodeSyncRpcClient(reply_tx))
-            .await
-            .ok()?;
-
-        reply_rx.await.ok()
-    }
-
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
         let _unused = self
             .sender

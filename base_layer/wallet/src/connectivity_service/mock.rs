@@ -105,17 +105,6 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         borrow.as_ref().cloned()
     }
 
-    async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
-        let mut receiver = self.base_node_sync_rpc_client.get_receiver();
-        if let Some(client) = receiver.borrow().as_ref() {
-            return Some(client.clone());
-        }
-
-        receiver.changed().await.unwrap();
-        let borrow = receiver.borrow();
-        borrow.as_ref().cloned()
-    }
-
     async fn disconnect_base_node(&mut self, _node_id: NodeId) {
         self.send_shutdown();
     }
