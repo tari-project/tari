@@ -477,11 +477,17 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError>;
 
-    async fn encrypt_key(&self, key: PrivateKey) -> Result<Vec<u8>, KeyManagerServiceError>;
+    async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError>;
 
-    async fn get_encrypted_key(&self, key_id: &TariKeyId) -> Result<Vec<u8>, KeyManagerServiceError>;
-
-    async fn decrypt_key(&self, encrypted: Vec<u8>) -> Result<PrivateKey, KeyManagerServiceError>;
+    async fn decrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

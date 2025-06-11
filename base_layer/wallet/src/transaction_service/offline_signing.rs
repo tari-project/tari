@@ -278,7 +278,9 @@ where
         let mut change_sender_offset_key = None;
         if let Some(encrypted_change_sender_offset_key) = &request.encrypted_change_sender_offset_key {
             change_sender_offset_key = Some(
-                self.decrypt_and_import_key(encrypted_change_sender_offset_key.clone())
+                self.resources
+                    .transaction_key_manager_service
+                    .decrypted_key(encrypted_change_sender_offset_key.clone(), None)
                     .await?,
             );
         }
@@ -286,7 +288,12 @@ where
 
         let mut commitment_mask_key_ids = Vec::new();
         for encrypted_key in &request.encrypted_commitment_mask_keys {
-            commitment_mask_key_ids.push(self.decrypt_and_import_key(encrypted_key.clone()).await?);
+            commitment_mask_key_ids.push(
+                self.resources
+                    .transaction_key_manager_service
+                    .decrypted_key(encrypted_key.clone(), None)
+                    .await?,
+            );
         }
         stp.persist_input_script_signatures(&self.resources.transaction_key_manager_service, commitment_mask_key_ids)
             .await?;
@@ -389,15 +396,5 @@ where
             request,
             stp,
         })
-    }
-
-    async fn decrypt_and_import_key(&self, encrypted_key: Vec<u8>) -> Result<TariKeyId, TransactionServiceError> {
-        let key = self
-            .resources
-            .transaction_key_manager_service
-            .decrypt_key(encrypted_key)
-            .await?;
-        let key_id = self.resources.transaction_key_manager_service.import_key(key).await?;
-        Ok(key_id)
     }
 }

@@ -595,23 +595,27 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn encrypt_key(&self, key: PrivateKey) -> Result<Vec<u8>, KeyManagerServiceError> {
-        self.transaction_key_manager_inner.read().await.encrypt_key(key).await
-    }
-
-    async fn get_encrypted_key(&self, key_id: &TariKeyId) -> Result<Vec<u8>, KeyManagerServiceError> {
+    async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .get_encrypted_key(key_id)
+            .encrypted_key(key_id, encryption_key_id)
             .await
     }
 
-    async fn decrypt_key(&self, encrypted: Vec<u8>) -> Result<PrivateKey, KeyManagerServiceError> {
+    async fn decrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .decrypt_key(encrypted)
+            .decrypted_key(encrypted, encryption_key_id)
             .await
     }
 }

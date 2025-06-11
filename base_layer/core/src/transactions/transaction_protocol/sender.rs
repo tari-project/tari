@@ -979,7 +979,7 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => {
                 let mut keys = Vec::new();
                 for input in &info.inputs {
-                    let key = km.get_encrypted_key(&input.output.spending_key_id).await?;
+                    let key = km.encrypted_key(&input.output.spending_key_id, None).await?;
                     keys.push(key);
                 }
                 Ok(keys)
@@ -1003,7 +1003,7 @@ impl SenderTransactionProtocol {
                         .sender_offset_key_id
                         .clone()
                         .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
-                    let key = km.get_encrypted_key(&sender_offset_key_id).await?;
+                    let key = km.encrypted_key(&sender_offset_key_id, None).await?;
                     Ok(Some(key))
                 } else {
                     Ok(None)

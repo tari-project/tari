@@ -1705,14 +1705,24 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(CompressedPublicKey::new_from_pk(public_key))
     }
 
-    pub async fn prepare_cipher(&self) -> Result<XChaCha20Poly1305, KeyManagerServiceError> {
-        let view_key = self.get_private_view_key().await?;
-        let key_ga = Key::from_slice(&view_key.as_bytes());
+    async fn prepare_cipher(
+        &self,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<XChaCha20Poly1305, KeyManagerServiceError> {
+        let encryption_key = match encryption_key_id {
+            Some(key_id) => self.get_private_key(key_id).await?,
+            None => self.get_private_view_key().await?,
+        };
+        let key_ga = Key::from_slice(&encryption_key.as_bytes());
         Ok(XChaCha20Poly1305::new(key_ga))
     }
 
-    pub async fn encrypt_key(&self, key: PrivateKey) -> Result<Vec<u8>, KeyManagerServiceError> {
-        let cipher = self.prepare_cipher().await?;
+    async fn encrypt_key(
+        &self,
+        key: PrivateKey,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
+        let cipher = self.prepare_cipher(encryption_key_id).await?;
         let domain = b"key".to_vec();
 
         let encrypted = encrypt_bytes_integral_nonce(&cipher, domain.clone(), Hidden::hide(key.to_vec()))
@@ -1721,13 +1731,21 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(encrypted)
     }
 
-    pub async fn get_encrypted_key(&self, key_id: &TariKeyId) -> Result<Vec<u8>, KeyManagerServiceError> {
+    pub async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
         let key = self.get_private_key(key_id).await?;
-        self.encrypt_key(key).await
+        self.encrypt_key(key, encryption_key_id).await
     }
 
-    pub async fn decrypt_key(&self, encrypted: Vec<u8>) -> Result<PrivateKey, KeyManagerServiceError> {
-        let cipher = self.prepare_cipher().await?;
+    pub async fn decrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let cipher = self.prepare_cipher(encryption_key_id).await?;
         let domain = b"key".to_vec();
 
         let mut decrypted_data = decrypt_bytes_integral_nonce(&cipher, domain.clone(), &encrypted)
@@ -1738,6 +1756,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
         decrypted_data.zeroize();
 
-        Ok(key)
+        let imported_key = self.import_key(key).await?;
+        Ok(imported_key)
     }
 }
