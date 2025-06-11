@@ -11,13 +11,13 @@ class: subpage
 - [Proposed Integration Structure](#proposed-integration-structure)
 - [MinoTari Versions & Release Methodology](#minotari-versions--release-methodology)
 - [Setting up Minotari](#setting-up-minotari)
-- [Download the Minotari binaries](#download-the-minotari-binaries)
+  - [Download the Minotari Binaries and Set Up Your Base Node](#section-1-download-the-minotari-binaries-and-set-up-your-base-node)
 - [Create and Configure your Wallets](#create-and-configure-your-wallets)
-  - [Creating the Deposit/Main Wallet](#creating-the-depositmain-wallet)
-  - [Obtain the addresses of the Deposit/Main wallet](#obtain-the-addresses-of-the-depositmain-wallet)
-  - [Setting up a read-only wallet to monitor for transactions and receive deposits](#setting-up-a-read-only-wallet-to-monitor-for-transactions-and-receive-deposits)
-  - [Configuring the read-only wallet](#configuring-the-read-only-wallet)
-  - [Listening for incoming transactions](#listening-for-incoming-transactions)
+  - [Creating the Deposit/Main Wallet](#section-2-creating-the-depositmain-wallet)
+  - [Obtain the addresses of the Deposit/Main wallet](#section-3-obtain-the-addresses-of-the-depositmain-wallet)
+  - [Setting Up a Read-Only Wallet to Monitor for Transactions and Receive Deposits](#section-4-setting-up-a-read-only-wallet-to-monitor-for-transactions-and-receive-deposits)
+  - [Configuring the read-only wallet](#section-5-configuring-the-read-only-wallet)
+  - [Listening for incoming transactions](#section-6-listening-for-incoming-transactions)
 - [Descriptions of Common Activities](#descriptions-of-common-activities)
   - [Receiving funds / User Deposits](#receiving-funds--user-deposits)
   - [Performing withdrawals](#performing-withdrawals)
@@ -658,7 +658,7 @@ Payment References (PayRefs) are globally unique identifiers for individual tran
 
 PayRefs are generated using the formula:
 ```
-PayRef = Blake2b_256(block_hash || commitment)
+PayRef = Blake2b_256(block_hash || output_hash)
 ```
 
 This ensures:
