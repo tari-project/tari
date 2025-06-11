@@ -333,7 +333,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 
 #[cfg(test)]
 mod test {
-    use std::{iter, str::FromStr};
+    use std::str::FromStr;
 
     use monero::{
         blockdata::block::BlockHeader,
@@ -728,8 +728,7 @@ mod test {
         fn big_proof_construction() {
             // 65536 transactions is beyond what is reasonable to fit in a block
             let mut thread_rng = rand::thread_rng();
-            let tx_hashes = iter::repeat(())
-                .take(0x10000)
+            let tx_hashes = std::iter::repeat_n((), 0x10000)
                 .map(|_| {
                     let mut buf = [0u8; 32];
                     thread_rng.fill_bytes(&mut buf[..]);

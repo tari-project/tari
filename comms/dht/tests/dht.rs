@@ -974,7 +974,7 @@ fn count_messages_received(events: &[MessagingEvent], node_ids: &[&NodeId]) -> u
         .iter()
         .filter(|event| {
             unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &**event);
-            node_ids.iter().any(|n| recv_node_id == *n)
+            node_ids.contains(&recv_node_id)
         })
         .count()
 }

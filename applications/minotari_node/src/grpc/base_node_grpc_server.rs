@@ -233,6 +233,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     #[allow(clippy::too_many_lines)]
@@ -2942,12 +2943,128 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
         Ok(Response::new(rx))
     }
+
+    async fn search_payment_references(
+        &self,
+        request: Request<tari_rpc::SearchPaymentReferencesRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        self.check_method_enabled(GrpcMethod::SearchPaymentReferences)?;
+        let request = request.into_inner();
+        let report_error_flag = self.report_error_flag();
+
+        trace!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for SearchPaymentReferences: {} PayRefs",
+            request.payment_reference_hex.len()
+        );
+
+        let (mut tx, rx) = mpsc::channel(100);
+        let mut node_service = self.node_service.clone();
+
+        task::spawn(async move {
+            let mut payrefs = Vec::new();
+            for payref_hex in request.payment_reference_hex {
+                // Validate PayRef format (64 hex chars = 32 bytes)
+                if payref_hex.len() != 64 || !payref_hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                    let error = obscure_error_if_true(
+                        report_error_flag,
+                        Status::invalid_argument(format!("Invalid PayRef format: {}", payref_hex)),
+                    );
+                    if tx.send(Err(error)).await.is_err() {
+                        break;
+                    }
+                    continue;
+                }
+
+                // Convert hex to FixedHash
+                let payref_bytes = match FixedHash::from_hex(&payref_hex) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::invalid_argument(format!("Invalid PayRef hex: {}, {}", payref_hex, e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    },
+                };
+                payrefs.push(payref_bytes);
+            }
+            for payref_bytes in request.payment_reference_bytes {
+                let payref_fixed_hash = match FixedHash::try_from(payref_bytes.clone()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::invalid_argument(format!("Invalid PayRef bytes {}, {}", payref_bytes.to_hex(), e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                        continue;
+                    },
+                };
+                payrefs.push(payref_fixed_hash);
+            }
+            for payref in payrefs {
+                match node_service.fetch_output_by_payref(&payref).await {
+                    Ok(Some(output_info)) => {
+                        // Check if output is spent
+                        let output_hash = output_info.output.hash();
+                        let (is_spent, spent_height, spent_block_hash) = match node_service
+                            .check_output_spent_status(output_hash)
+                            .await
+                        {
+                            Ok(Some(input_info)) => (true, input_info.spent_height, input_info.header_hash.to_vec()),
+                            Ok(None) => (false, 0, vec![]),
+                            Err(_) => (false, 0, vec![]), // Default to not spent on error
+                        };
+
+                        let response = tari_rpc::PaymentReferenceResponse {
+                            payment_reference_hex: payref.to_hex(),
+                            block_height: output_info.mined_height,
+                            block_hash: output_info.header_hash.to_vec(),
+                            mined_timestamp: output_info.mined_timestamp,
+                            commitment: output_info.output.commitment.to_vec(),
+                            is_spent,
+                            spent_height,
+                            spent_block_hash,
+                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
+                        };
+
+                        if tx.send(Ok(response)).await.is_err() {
+                            return;
+                        }
+                    },
+                    Ok(None) => {
+                        // PayRef not found - no error, just no results for this PayRef
+                        continue;
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref, e);
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("PayRef lookup error: {}", e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                    },
+                }
+            }
+        });
+
+        Ok(Response::new(rx))
+    }
 }
 
 enum BlockGroupType {
     BlockFees,
     BlockSize,
 }
+
 async fn get_block_group(
     mut handler: LocalNodeCommsInterface,
     request: Request<tari_rpc::BlockGroupRequest>,

@@ -37,6 +37,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{
@@ -44,6 +45,7 @@ use tari_common_types::{
         CommitmentFactory,
         CompressedCommitment,
         CompressedPublicKey,
+        FixedHash,
         HashOutput,
         PrivateKey,
         Signature,
@@ -113,9 +115,10 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
             FeePerGramStatsResponse,
+            PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
             TransactionServiceRequest,
@@ -129,7 +132,7 @@ use crate::{
             transaction_validation_protocol::TransactionValidationProtocol,
         },
         storage::{
-            database::{TransactionBackend, TransactionDatabase},
+            database::{DbKey, TransactionBackend, TransactionDatabase},
             models::{
                 CompletedTransaction,
                 TxCancellationReason,
@@ -1014,6 +1017,17 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
+            TransactionServiceRequest::GetPaymentByReference(payref) => self
+                .get_payment_by_reference(payref)
+                .map(TransactionServiceResponse::PaymentDetails),
+            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
+                match self.get_transaction_with_payref(payref)? {
+                    Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
+                    None => Err(TransactionServiceError::TransactionStorageError(
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions),
+                    ))?,
+                }
+            },
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -1128,6 +1142,7 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn send_transaction(
         &mut self,
         destination: TariAddress,
@@ -1200,10 +1215,16 @@ where
             let _size = self
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            let all_outputs = transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.hash())
+                .collect::<Vec<HashOutput>>();
 
             self.submit_transaction(
                 transaction_broadcast_join_handles,
-                CompletedTransaction::new(
+                CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     self.resources.interactive_tari_address.clone(),
@@ -1216,6 +1237,9 @@ where
                     None,
                     None,
                     payment_id,
+                    vec![],
+                    all_outputs,
+                    vec![],
                 )?,
             )
             .await?;
@@ -1274,10 +1298,7 @@ where
             .await?
             .outputs
             .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
+            .filter_map(|o| o.try_into().ok())
             .collect();
         Ok(results)
     }
@@ -1338,7 +1359,13 @@ where
                 total_script_nonce,
                 shared_secret,
             )) => {
-                let completed_tx = CompletedTransaction::new(
+                let all_outputs = transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.hash())
+                    .collect::<Vec<HashOutput>>();
+                let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     recipient_address,
@@ -1351,6 +1378,9 @@ where
                     None,
                     None,
                     payment_id.clone(),
+                    all_outputs,
+                    vec![],
+                    vec![],
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -1390,7 +1420,13 @@ where
             .await
         {
             Ok((transaction, amount, fee)) => {
-                let completed_tx = CompletedTransaction::new(
+                let all_outputs = transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.hash())
+                    .collect::<Vec<HashOutput>>();
+                let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     recipient_address,
@@ -1403,6 +1439,9 @@ where
                     None,
                     None,
                     payment_id,
+                    all_outputs,
+                    vec![],
+                    vec![],
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -1691,6 +1730,15 @@ where
             .unwrap();
 
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output.clone(),
@@ -1737,9 +1785,10 @@ where
             .output_manager_service
             .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
+
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 destination,
@@ -1752,6 +1801,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -1943,6 +1995,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -1992,7 +2053,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
@@ -2005,6 +2066,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -2162,6 +2226,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let received_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2211,7 +2284,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address,
@@ -2224,6 +2297,9 @@ where
                 None,
                 None,
                 payment_id,
+                vec![],
+                received_hashes,
+                change_hashes,
             )?,
         )
         .await?;
@@ -2422,6 +2498,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2481,7 +2566,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 TariAddress::default(),
@@ -2494,6 +2579,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -3182,6 +3270,7 @@ where
                         let mut destination_address = None;
                         let mut payment_id = None;
                         let mut amount = None;
+                        let mut received_hashes = vec![];
                         for ro in recovered {
                             if source_address.is_none() {
                                 payment_id = Some(ro.output.payment_id.clone());
@@ -3238,8 +3327,10 @@ where
                                     _ => payment_id = Some(ro.output.payment_id.clone()),
                                 };
                             }
+                            received_hashes
+                                .push(ro.output.hash(&self.resources.transaction_key_manager_service).await?);
                         }
-                        let completed_transaction = CompletedTransaction::new(
+                        let completed_transaction = CompletedTransaction::new_with_output_hashes(
                             tx_id,
                             source_address.clone().unwrap_or_default(),
                             destination_address.clone().unwrap_or_default(),
@@ -3252,6 +3343,9 @@ where
                             None,
                             None,
                             payment_id.unwrap_or_default(),
+                            vec![],
+                            received_hashes,
+                            vec![], // no output hashes for completed transactions
                         )?;
                         self.db
                             .insert_completed_transaction(tx_id, completed_transaction.clone())?;
@@ -3451,6 +3545,7 @@ where
             self.resources.connectivity.clone(),
             self.resources.config.clone(),
             self.event_publisher.clone(),
+            self.resources.output_manager_service.clone(),
         );
 
         let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
@@ -3850,9 +3945,10 @@ where
         amount: MicroMinotari,
         payment_id: PaymentId,
     ) -> Result<(), TransactionServiceError> {
+        let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 self.resources.interactive_tari_address.clone(),
@@ -3865,6 +3961,9 @@ where
                 None,
                 None,
                 payment_id,
+                vec![],
+                all_outputs,
+                vec![],
             )?,
         )
         .await?;
@@ -3907,6 +4006,93 @@ where
             ));
         }
         Ok(())
+    }
+
+    /// Get payment details by PayRef
+    fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        let txn = match self.db.get_transaction_with_payref(&payref)? {
+            Some(txn) => txn,
+            None => return Ok(None), // No transaction found with the given PayRef
+        };
+
+        let block_hash = match txn.mined_in_block {
+            Some(hash) => hash,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let mined_height = match txn.mined_height {
+            Some(height) => height,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let confirmations = match txn.confirmations {
+            Some(confirmations) => confirmations,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let payment_id_bytes = txn.payment_id.user_data_as_bytes();
+
+        // Check if PayRef matches any sent output by generating proper PayRef
+        for output_hash in &txn.sent_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        // Check if PayRef matches any received output by generating proper PayRef
+        for output_hash in &txn.received_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        // Check if PayRef matches any change output by generating proper PayRef
+        for output_hash in &txn.change_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn get_transaction_with_payref(
+        &self,
+        payref: FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
+        let transactions = self.db.get_transaction_with_payref(&payref)?;
+
+        Ok(transactions)
     }
 }
 

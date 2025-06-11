@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.4.0](https://github.com/tari-project/tari/compare/v4.3.1...v4.4.0) (2025-06-11)
+
+
+### Features
+
+* full PayRef implementation ([#7154](https://github.com/tari-project/tari/issues/7154)) ([ea038a4](https://github.com/tari-project/tari/commit/ea038a426ef85096ef9eeccc1a2ef7caf4e2277a))
+* improve peer partial match resiliency ([#7166](https://github.com/tari-project/tari/issues/7166)) ([375f28d](https://github.com/tari-project/tari/commit/375f28d3842d9e4889523c83c303971e707529e7))
+* update base node proto to search bytes ([#7201](https://github.com/tari-project/tari/issues/7201)) ([af1203a](https://github.com/tari-project/tari/commit/af1203a1419f52e089d8bf4ac243ba7487ca7047))
+
+
+### Bug Fixes
+
+* **network-discovery:** add back idle event handling ([#7194](https://github.com/tari-project/tari/issues/7194)) ([1412179](https://github.com/tari-project/tari/commit/1412179c477415d2041eadf9a3955134654bfcfd))
+* payment_id deserialize ([#7187](https://github.com/tari-project/tari/issues/7187)) ([a049549](https://github.com/tari-project/tari/commit/a049549ac4234bf419f836e90339f6c0546b35be))
+* reduce threshold for flood ban ([#7171](https://github.com/tari-project/tari/issues/7171)) ([0d958de](https://github.com/tari-project/tari/commit/0d958dea1eb8cbc6f3832c37e6f10caf54429fef))
+* remove code for deleting stale peers ([#7184](https://github.com/tari-project/tari/issues/7184)) ([3b28a61](https://github.com/tari-project/tari/commit/3b28a61bd14f3c623344e87cca2e224f2c56783d))
+* transaction manager service unmined lookup ([#7192](https://github.com/tari-project/tari/issues/7192)) ([73af2d9](https://github.com/tari-project/tari/commit/73af2d91b9ebac413ef8b1f2a91ae2ddc21dd66b))
+* wallet ffi database name mismatch for mobile wallet ([#7191](https://github.com/tari-project/tari/issues/7191)) ([ed31974](https://github.com/tari-project/tari/commit/ed31974e6c911ae9e08f82359c3a2310adce2dd2))
+
 ### [4.3.1](https://github.com/tari-project/tari/compare/v4.3.0...v4.3.1) (2025-06-03)
 
 

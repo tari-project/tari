@@ -31,6 +31,7 @@ pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
 pub mod key_branches;
+pub mod payment_reference;
 pub mod serializers;
 pub mod tari_address;
 pub mod transaction;

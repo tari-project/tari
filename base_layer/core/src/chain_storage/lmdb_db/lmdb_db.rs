@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
+    payment_reference::generate_payment_reference,
     types::{
         BadBlock,
         BlockHash,
@@ -155,6 +156,7 @@ const LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX: &str = "deleted_txo_hash_to_head
 const LMDB_DB_UTXO_COMMITMENT_INDEX: &str = "utxo_commitment_index";
 const LMDB_DB_UNIQUE_ID_INDEX: &str = "unique_id_index";
 const LMDB_DB_CONTRACT_ID_INDEX: &str = "contract_index";
+const LMDB_DB_PAYREF_TO_OUTPUT_INDEX: &str = "payref_to_output_index";
 const LMDB_DB_ORPHANS: &str = "orphans";
 const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
 const LMDB_DB_MONERO_SEED_HEIGHT_INDEX: &str = "monero_seed_height_index";
@@ -208,6 +210,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
         .add_database(LMDB_DB_CONTRACT_ID_INDEX, flags)
+        .add_database(LMDB_DB_PAYREF_TO_OUTPUT_INDEX, flags)
         .add_database(LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
@@ -264,6 +267,8 @@ pub struct LMDBDatabase {
     /// Maps <contract_id, output_type> -> (block_hash, output_hash)
     /// and  <block_hash, output_type, contract_id> -> output_hash
     contract_index: DatabaseRef,
+    /// Maps payment_reference[32] -> output_hash[32] for fast PayRef lookup
+    payref_to_output_index: DatabaseRef,
     /// Maps output hash-> <block_hash, input_hash>
     deleted_txo_hash_to_header_index: DatabaseRef,
     /// Maps block_hash -> Block
@@ -320,6 +325,7 @@ impl LMDBDatabase {
             utxo_commitment_index: get_database(store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
             unique_id_index: get_database(store, LMDB_DB_UNIQUE_ID_INDEX)?,
             contract_index: get_database(store, LMDB_DB_CONTRACT_ID_INDEX)?,
+            payref_to_output_index: get_database(store, LMDB_DB_PAYREF_TO_OUTPUT_INDEX)?,
             deleted_txo_hash_to_header_index: get_database(store, LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX)?,
             orphans_db: get_database(store, LMDB_DB_ORPHANS)?,
             orphan_header_accumulated_data_db: get_database(store, LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA)?,
@@ -535,7 +541,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 31] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 32] {
         [
             (LMDB_DB_METADATA, &self.metadata_db),
             (LMDB_DB_HEADERS, &self.headers_db),
@@ -552,6 +558,7 @@ impl LMDBDatabase {
             (LMDB_DB_UTXO_COMMITMENT_INDEX, &self.utxo_commitment_index),
             (LMDB_DB_CONTRACT_ID_INDEX, &self.contract_index),
             (LMDB_DB_UNIQUE_ID_INDEX, &self.unique_id_index),
+            (LMDB_DB_PAYREF_TO_OUTPUT_INDEX, &self.payref_to_output_index),
             (
                 LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
                 &self.deleted_txo_hash_to_header_index,
@@ -599,6 +606,16 @@ impl LMDBDatabase {
             )?;
         }
 
+        // Generate PayRef and add to index
+        let payref = Self::generate_payment_reference_for_output(header_hash, &output_hash);
+        lmdb_insert(
+            txn,
+            &self.payref_to_output_index,
+            payref.as_slice(),
+            &output_hash,
+            "payref_to_output_index",
+        )?;
+
         lmdb_insert(
             txn,
             &self.txos_hash_to_index_db,
@@ -621,6 +638,12 @@ impl LMDBDatabase {
         )?;
 
         Ok(())
+    }
+
+    /// Generate payment reference (PayRef) for an output using shared utility
+    /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
+    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> FixedHash {
+        generate_payment_reference(header_hash, output_hash)
     }
 
     fn insert_kernel(
@@ -748,7 +771,37 @@ impl LMDBDatabase {
                 hash: &hash,
             },
             "inputs_db",
-        )
+        )?;
+
+        // Remove PayRef index when output is spent
+        // We need to find where this output was mined to calculate its PayRef
+        if let Ok(Some(output_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
+            // Generate the PayRef using the same method as in generate_payment_reference
+            let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_hash);
+
+            // Delete the PayRef index entry
+            match lmdb_delete(
+                txn,
+                &self.payref_to_output_index,
+                payref_bytes.as_slice(),
+                "payref_to_output_index",
+            ) {
+                Ok(()) => {
+                    debug!(target: LOG_TARGET, "Successfully deleted PayRef for output {}", output_hash.to_hex());
+                },
+                Err(ChainStorageError::ValueNotFound { .. }) => {
+                    // PayRef not found - this is acceptable as it might not have been created in older versions
+                    debug!(target: LOG_TARGET, "PayRef not found for output {} - likely from older version", output_hash.to_hex());
+                },
+                Err(e) => {
+                    // Actual database error - must fail the transaction
+                    error!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
+                    return Err(e);
+                },
+            }
+        }
+
+        Ok(())
     }
 
     fn set_metadata(
@@ -989,7 +1042,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
+        self.delete_block_inputs_outputs(write_txn, block_hash)?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
@@ -1017,15 +1070,17 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     fn delete_block_inputs_outputs(
         &self,
         txn: &WriteTransaction<'_>,
-        block_hash: &[u8],
-        // output_smt: &mut OutputSmt,
+        block_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
-        let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
+        let output_rows =
+            lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
-        let inputs = lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash)?;
+        let inputs =
+            lmdb_delete_keys_starting_with::<TransactionInputRowData>(txn, &self.inputs_db, block_hash.as_slice())?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)...", inputs.len());
 
         for (_, utxo) in &output_rows {
@@ -1038,6 +1093,34 @@ impl LMDBDatabase {
             )?;
 
             let output_hash = utxo.output.hash();
+
+            // Clean up PayRef index for this output during reorg
+            // Only clean PayRef if output was actually created (not spent in same block, not burned)
+            let should_cleanup_payref =
+                !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) && !utxo.output.is_burned();
+
+            if should_cleanup_payref {
+                let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
+                // Delete the PayRef index entry with proper error handling
+                match lmdb_delete(
+                    txn,
+                    &self.payref_to_output_index,
+                    payref_bytes.as_slice(),
+                    "payref_to_output_index",
+                ) {
+                    Ok(()) => {
+                        debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
+                    },
+                    Err(ChainStorageError::ValueNotFound { .. }) => {
+                        // Expected case for outputs that didn't have PayRefs
+                    },
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
+                        return Err(e);
+                    },
+                }
+            }
+
             // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
             // does not exist here
             if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
@@ -1047,19 +1130,6 @@ impl LMDBDatabase {
             if utxo.output.is_burned() {
                 continue;
             }
-            // Done outside of this
-            // let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
-            // match output_smt.delete(&smt_key)? {
-            //     DeleteResult::Deleted(_value_hash) => {},
-            //     DeleteResult::KeyNotFound => {
-            //         error!(
-            //             target: LOG_TARGET,
-            //             "Could not find input({}) in SMT",
-            //             utxo.output.commitment.to_hex(),
-            //         );
-            //         return Err(ChainStorageError::UnspendableInput);
-            //     },
-            // };
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -1108,17 +1178,17 @@ impl LMDBDatabase {
                 utxo_mined_info.output.metadata_signature,
                 rp_hash,
                 utxo_mined_info.output.minimum_value_promise,
-            );
-            // let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-            // let smt_node = ValueHash::try_from(input.smt_hash(utxo_mined_info.mined_height).as_slice())?;
-            // // if let Err(e) = output_smt.insert(smt_key, smt_node) {
-            //     error!(
-            //         target: LOG_TARGET,
-            //         "Output commitment({}) already in SMT",
-            //         input.commitment()?.to_hex(),
-            //     );
-            //     return Err(e.into());
-            // }
+            ); // Generate PayRef and add to index.
+
+            let payref =
+                Self::generate_payment_reference_for_output(&utxo_mined_info.header_hash, &input.output_hash());
+            lmdb_insert(
+                txn,
+                &self.payref_to_output_index,
+                payref.as_slice(),
+                &output_hash,
+                "payref_to_output_index",
+            )?;
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
@@ -1252,9 +1322,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header: &BlockHeader,
         body: AggregateBody,
-        // smt_writer: &mut LmdbTreeWriter,
     ) -> Result<(), ChainStorageError> {
-        // let smt_reader = LmdbTreeReader::new();
         let smt_reader = LmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
         if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
@@ -1839,6 +1907,22 @@ impl LMDBDatabase {
         }
     }
 
+    /// Fetch output by PayRef (Payment Reference)
+    /// Returns the OutputMinedInfo if found, None if not found
+    fn fetch_output_by_payref_in_txn(
+        &self,
+        txn: &ConstTransaction<'_>,
+        payref: &FixedHash,
+    ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        // Look up output hash by PayRef
+        if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
+            // Use existing fetch_output_in_txn method to get the full output info
+            self.fetch_output_in_txn(txn, output_hash.as_slice())
+        } else {
+            Ok(None)
+        }
+    }
+
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
     }
@@ -2259,6 +2343,11 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
+    }
+
+    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        self.fetch_output_by_payref_in_txn(&txn, payref)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
@@ -2877,7 +2966,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 2;
+    const MIGRATION_VERSION: u64 = 3;
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
@@ -3005,7 +3094,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
             txn.commit()?;
         }
-
         if migrate_from_version == 1 {
             let known_good_difficulties = get_correct_accumulated_difficulty();
             if known_good_difficulties.is_empty() {
@@ -3038,6 +3126,24 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
             // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
             rewind_to_height(db, last_correct_height)?;
+        }
+        if migrate_from_version == 2 {
+            // Verify database consistency before starting migration
+            info!(target: LOG_TARGET, "Starting PayRef migration");
+            let read_txn = db.read_transaction()?;
+            let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
+                Ok(v) => v,
+                Err(_) => {
+                    // No chain data, skip PayRef rebuild
+                    drop(read_txn);
+                    continue;
+                },
+            };
+            drop(read_txn);
+            for height in 0..=chain_height {
+                process_payref_for_height(db, height)?;
+            }
+            info!(target: LOG_TARGET, "PayRef index rebuild completed");
         }
     }
     if last_migrated_version != MIGRATION_VERSION {
@@ -3145,4 +3251,47 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     }
     #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     vec![]
+}
+
+/// Process a batch of blocks for PayRef migration with error handling
+fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
+    info!(target: LOG_TARGET, "Processing PayRef migration for  {}", height);
+    let read_txn = db.read_transaction()?;
+    let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
+    let header = read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "height",
+        value: height.to_string(),
+    })?;
+    let block_hash = header.hash();
+    // Get all outputs for this block
+    let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> =
+        lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
+    let mut payrefs = Vec::new();
+    for (_, output_data) in outputs {
+        let exist = lmdb_exists(
+            &read_txn,
+            &db.utxo_commitment_index,
+            output_data.output.commitment().as_bytes(),
+        )?;
+        if exist {
+            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
+            payrefs.push((payref, output_data.hash));
+        }
+    }
+    drop(read_txn);
+    let write_txn = db.write_transaction()?;
+    for (payref, output_hash) in payrefs {
+        lmdb_insert(
+            &write_txn,
+            &db.payref_to_output_index,
+            payref.as_slice(),
+            &output_hash,
+            "payref_to_output_index",
+        )?;
+    }
+    write_txn.commit()?;
+    // Commit the batch
+
+    Ok(())
 }

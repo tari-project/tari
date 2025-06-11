@@ -88,13 +88,13 @@ impl SocksTransport {
 
         client
             .with_authentication(socks_config.authentication.clone())
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+            .map_err(io::Error::other)?;
 
         client
             .connect(dest_addr)
             .await
             .map(|(socket, _)| socket)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+            .map_err(io::Error::other)
     }
 }
 

@@ -2711,6 +2711,132 @@ pub async fn command_runner(
                 println!("removing temp wallet in: {:?}", temp_path);
                 fs::remove_dir_all(temp_path)?;
             },
+            ShowPayRef(args) => {
+                // Show transaction details first
+                match transaction_service
+                    .get_any_transaction(args.transaction_id.into())
+                    .await
+                {
+                    Ok(Some(tx)) => {
+                        println!("Transaction ID: {}", args.transaction_id);
+                        let _status = match &tx {
+                            WalletTransaction::Completed(completed_tx) => {
+                                println!("Transaction status: Completed");
+                                println!("Amount: {}", completed_tx.amount);
+                                println!("Fee: {}", completed_tx.fee);
+                                println!("Direction: {:?}", completed_tx.direction);
+                                if let Some(height) = completed_tx.mined_height {
+                                    println!("Mined at height: {}", height);
+                                }
+                                if let Some(timestamp) = completed_tx.mined_timestamp {
+                                    println!("Mined timestamp: {}", timestamp);
+                                }
+                                if completed_tx.mined_in_block.is_some() {
+                                    println!("\nReceived PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_received_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nSent PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_sent_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nChange PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_change_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                } else {
+                                    println!("Payrefs: Transaction not mined yet.");
+                                }
+                                "Completed"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingInbound(_) => {
+                                println!("Transaction status: PendingInbound");
+                                "PendingInbound"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingOutbound(_) => {
+                                println!("Transaction status: PendingOutbound");
+                                "PendingOutbound"
+                            },
+                        };
+                    },
+                    Ok(None) => {
+                        println!("Transaction ID {} not found", args.transaction_id);
+                    },
+                    Err(e) => eprintln!("ShowPayRef error! {}", e),
+                }
+            },
+            FindPayRef(args) => match FixedHash::from_hex(&args.payment_reference_hex) {
+                Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
+                    Ok(Some(payment_details)) => {
+                        println!("Found PayRef: {}", args.payment_reference_hex);
+                        println!("Transaction ID: {}", payment_details.tx_id);
+                        println!("Amount: {}", payment_details.amount);
+                        println!("Direction: {:?}", payment_details.direction);
+                        println!("Block height: {}", payment_details.block_height);
+                        println!("Confirmations: {}", payment_details.confirmations);
+                        if let Some(timestamp) = payment_details.timestamp {
+                            println!("Timestamp: {}", timestamp);
+                        }
+                        if let Some(payment_id) = &payment_details.payment_id {
+                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                        }
+                    },
+                    Ok(None) => {
+                        println!("No payment found for PayRef: {}", args.payment_reference_hex);
+                    },
+                    Err(e) => eprintln!("FindPayRef error! {}", e),
+                },
+                Err(e) => {
+                    eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                },
+            },
+            ListTx => {
+                debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
+
+                match transaction_service.get_completed_transactions(None, None, None).await {
+                    Ok(txs) => {
+                        debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs.len());
+
+                        if txs.is_empty() {
+                            println!("No transactions.");
+                            continue;
+                        }
+                        println!("Found {} transaction(s)", txs.len());
+                        println!("{}", "=".repeat(80));
+
+                        for (i, tx) in txs.iter().enumerate() {
+                            println!("{}. Transaction ID: {}", i + 1, tx.tx_id);
+                            println!("   Amount: {}", tx.amount);
+                            println!("   Direction: {:?}", tx.direction);
+                            println!("   Status: {:?}", tx.status);
+                            if let Some(height) = tx.mined_height {
+                                println!("   Mined at height: {}", height);
+                            }
+                            if let Some(timestamp) = tx.mined_timestamp {
+                                println!("   Mined timestamp: {}", timestamp);
+                            }
+                            if tx.mined_in_block.is_some() {
+                                println!("\nReceived PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_received_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nSent PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_sent_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nChange PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_change_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                            } else {
+                                println!("Payrefs: Transaction not mined yet.");
+                            }
+                            println!();
+                        }
+                    },
+                    Err(e) => eprintln!("ListTxs error! {}", e),
+                }
+            },
         }
     }
     if unban_peer_manager_peers {

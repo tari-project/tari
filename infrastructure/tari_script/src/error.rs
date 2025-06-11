@@ -58,7 +58,7 @@ pub enum ScriptError {
 
 impl ScriptError {
     pub fn to_std_io_error(self) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Other, self.to_string())
+        std::io::Error::other(self.to_string())
     }
 }
 

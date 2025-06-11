@@ -85,8 +85,7 @@ impl Transport for TcpWithTorTransport {
                     let socket = transport.dial(addr).await?;
                     Ok(socket)
                 },
-                None => Err(io::Error::new(
-                    io::ErrorKind::Other,
+                None => Err(io::Error::other(
                     "Tor SOCKS proxy is not set for TCP transport. Cannot dial peer with onion addresses.".to_owned(),
                 )),
             }

@@ -118,6 +118,8 @@ struct TariCompletedTransactions;
 
 struct TariContacts;
 
+struct TariPaymentRecords;
+
 struct TariPendingInboundTransactions;
 
 struct TariPendingOutboundTransactions;
@@ -244,6 +246,17 @@ typedef struct Balance TariBalance;
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
+
+/**
+ * Payment Record FFI Types
+ */
+struct TariPaymentRecord {
+  unsigned char payment_reference[32];
+  unsigned long long amount;
+  unsigned long long block_height;
+  unsigned long long mined_timestamp;
+  unsigned int direction;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -4161,6 +4174,49 @@ bool wallet_cancel_pending_transaction(struct TariWallet *wallet,
                                        int *error_out);
 
 /**
+ * Get all PayRefs (payment references) for a specific transaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `transaction_id` - The transaction ID to get PayRefs for
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
+ *
+ * # Safety
+ * The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+ * leak
+ */
+struct TariPaymentRecords *wallet_get_transaction_payrefs(struct TariWallet *wallet,
+                                                          unsigned long long transaction_id,
+                                                          int *error_out);
+
+/**
+ * Get payment details for a specific PayRef (payment reference)
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `payref` - The 32-byte ByteVector of the payment reference
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut TariCompletedTransaction` - returns the transaction details for the PayRef,
+ * note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
+ *
+ * # Safety
+ * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+ * prevent a memory leak
+ * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
+ * prevent a memory leak
+ */
+TariCompletedTransaction *wallet_get_transaction_by_payref(struct TariWallet *wallet,
+                                                           struct ByteVector *payref,
+                                                           int *error_out);
+
+/**
  * This function will tell the wallet to query the set base node to confirm the status of transaction outputs
  * (TXOs).
  *
@@ -4708,6 +4764,42 @@ struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
  * None
  */
 void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
+
+/**
+ * Destroy TariPaymentRecords
+ * # Safety
+ * None
+ */
+void payment_records_destroy(struct TariPaymentRecords *records);
+
+/**
+ * Get length of TariPaymentRecords
+ * ## Returns
+ * `c_uint` - length of stats in TariFeePerGramStats
+ *
+ * # Safety
+ * None
+ */
+unsigned int payment_records_get_length(const struct TariPaymentRecords *records, int *error_out);
+
+/**
+ * Get TariPaymentRecord at index
+ * ## Returns
+ * `c_uint` - length of stats in TariFeePerGramStats
+ *
+ * # Safety
+ * None
+ */
+struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords *records,
+                                                 unsigned int index,
+                                                 int *error_out);
+
+/**
+ * Destroy TariPaymentRecord
+ * # Safety
+ * None
+ */
+void payment_record_destroy(struct TariPaymentRecord *record);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
