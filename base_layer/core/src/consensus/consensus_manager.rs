@@ -189,8 +189,11 @@ impl ConsensusManager {
     /// Get the total spendable block rewards and pre-mine at the specified height
     #[cfg(feature = "base_node")]
     pub fn total_tokens_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
-        Ok(self.block_rewards_spendable_at_height(height)? +
-            pre_mine_spendable_at_height(height, self.network().as_network())?)
+        let spendable_rewards = self.block_rewards_spendable_at_height(height)?;
+        let spendable_pre_mine = self.pre_mine_spendable_at_height(height)?;
+        spendable_rewards
+            .checked_add(spendable_pre_mine)
+            .ok_or_else(|| "total_tokens_spendable_at_height overflowed u128".to_string())
     }
 
     /// Get the total spendable pre-mine at the specified height
