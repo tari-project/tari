@@ -484,8 +484,8 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
-    OneSidedTransactionLocked(String),
-    SignedSidedTransaction(String),
+    OneSidedTransactionPreparedForSigning(String),
+    SignedOneSidedTransaction(String),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
