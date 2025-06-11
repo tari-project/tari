@@ -27,7 +27,6 @@ use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::transaction_components::encrypted_data::{PaymentId, TxType};
 use tari_integration_tests::{
-    get_port,
     wallet_ffi::{create_contact, create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
     TariWorld,
 };
@@ -78,14 +77,10 @@ async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
 async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
     let wallet = world.get_ffi_wallet(&wallet).unwrap();
     let emoji_id = wallet.get_emoji_id();
-    assert_eq!(
-        emoji_id.len(),
-        132,
-        "Emoji id {} is expected to be of length 132",
-        emoji_id
-    );
+    assert!(TariAddress::from_emoji_string(&emoji_id).is_ok());
 }
 
+#[when(expr = "I stop ffi wallet {word}")]
 #[then(expr = "I stop ffi wallet {word}")]
 async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
     let address = world.get_wallet_address(&wallet).await.unwrap();
@@ -619,9 +614,10 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
 
 #[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
 async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: String) {
-    let port = get_port(world, 18000..18499).unwrap();
-    let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
-    ffi_wallet.restart(port);
+    {
+        let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
+        ffi_wallet.restart(ffi_wallet.port);
+    }
     let base_node = world.get_node(&base_node).unwrap();
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.add_base_node(

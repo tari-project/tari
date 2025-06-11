@@ -25,10 +25,8 @@ use std::{
     path::PathBuf,
     ptr::null,
     sync::{Arc, Mutex},
-    time::SystemTime,
 };
 
-use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
@@ -58,6 +56,7 @@ pub struct WalletFFI {
     pub name: String,
     pub port: u64,
     pub base_dir: PathBuf,
+    pub log_path: String,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
 }
 
@@ -69,18 +68,19 @@ impl WalletFFI {
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
-        let log_path = base_dir_path
+        let log_path: String = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
             .as_os_str()
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        let wallet = ffi::Wallet::create(comms_config, log_path.clone(), seed_words_ptr);
         Self {
             name,
             port,
             base_dir: base_dir_path,
+            log_path,
             wallet,
         }
     }
@@ -181,11 +181,12 @@ impl WalletFFI {
         self.wallet.lock().unwrap().destroy();
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
-        self.wallet = ffi::Wallet::create(comms_config, log_path, null());
+        let comms_config = ffi::CommsConfig::create(
+            port,
+            transport_config,
+            self.base_dir.as_os_str().to_str().unwrap().into(),
+        );
+        self.wallet = ffi::Wallet::create(comms_config, self.log_path.clone(), null());
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
