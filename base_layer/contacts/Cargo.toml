@@ -21,7 +21,7 @@ tari_shutdown = { workspace = true }
 tari_utilities = { workspace = true }
 
 chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
-diesel = { version = "2.2.4", features = [
+diesel = { version = "2.2.10", features = [
     "sqlite",
     "serde_json",
     "chrono",

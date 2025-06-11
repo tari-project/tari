@@ -162,10 +162,7 @@ impl TestParams {
         params: UtxoTestParams,
         key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> Result<WalletOutput, String> {
-        let version = match params.output_version {
-            Some(v) => v,
-            None => TransactionOutputVersion::get_current_version(),
-        };
+        let version = params.output_version.unwrap_or_default();
         let input_data = params.input_data.unwrap_or_else(|| inputs!(self.script_key_pk.clone()));
 
         let output = WalletOutputBuilder::new(params.value, self.commitment_mask_key_id.clone())
@@ -751,10 +748,7 @@ pub async fn create_stx_protocol_internal(
             Some(data) => data.clone(),
             None => inputs!(script_public_key),
         };
-        let version = match schema.output_version {
-            Some(data) => data,
-            None => TransactionOutputVersion::get_current_version(),
-        };
+        let version = schema.output_version.unwrap_or_default();
         let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())

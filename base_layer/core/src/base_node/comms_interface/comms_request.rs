@@ -30,6 +30,7 @@ use tari_common_types::types::{
     BlockHash,
     CompressedCommitment,
     CompressedPublicKey,
+    FixedHash,
     HashOutput,
     PrivateKey,
     Signature,
@@ -83,6 +84,8 @@ pub enum NodeCommsRequest {
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
+    FetchOutputByPayRef(FixedHash),
+    CheckOutputSpentStatus(HashOutput),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,6 +139,12 @@ impl Display for NodeCommsRequest {
             },
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
+            },
+            FetchOutputByPayRef(payref) => {
+                write!(f, "FetchOutputByPayRef ({})", payref.to_hex())
+            },
+            CheckOutputSpentStatus(output_hash) => {
+                write!(f, "CheckOutputSpentStatus ({})", output_hash.to_hex())
             },
         }
     }

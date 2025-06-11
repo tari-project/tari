@@ -507,10 +507,7 @@ fn try_decode_sender_message(bytes: Vec<u8>) -> Option<TransactionSenderMessage>
         Ok(d) => d?,
     };
 
-    match TransactionSenderMessage::try_from(tx_sender_msg) {
-        Ok(msr) => Some(msr),
-        Err(_) => None,
-    }
+    TransactionSenderMessage::try_from(tx_sender_msg).ok()
 }
 
 // These are helpers functions to attempt to decode the various types of comms messages when using the Mock outbound
@@ -522,10 +519,7 @@ fn try_decode_transaction_reply_message(bytes: Vec<u8>) -> Option<RecipientSigne
         Ok(d) => d?,
     };
 
-    match RecipientSignedMessage::try_from(tx_reply_msg) {
-        Ok(msr) => Some(msr),
-        Err(_) => None,
-    }
+    RecipientSignedMessage::try_from(tx_reply_msg).ok()
 }
 
 fn try_decode_finalized_transaction_message(bytes: Vec<u8>) -> Option<proto::TransactionFinalizedMessage> {
@@ -3041,6 +3035,9 @@ async fn test_power_mode_updates() {
         mined_in_block: None,
         mined_timestamp: None,
         payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
 
     let source_address = TariAddress::new_dual_address_with_default_features(
@@ -3074,6 +3071,9 @@ async fn test_power_mode_updates() {
         mined_in_block: None,
         mined_timestamp: None,
         payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
 
     tx_backend
@@ -4283,6 +4283,7 @@ async fn test_restarting_transaction_protocols() {
         direct_send_success: false,
         send_count: 0,
         last_send_timestamp: None,
+        received_output_hashes: vec![],
     };
 
     alice_backend
@@ -4311,6 +4312,8 @@ async fn test_restarting_transaction_protocols() {
         direct_send_success: false,
         send_count: 0,
         last_send_timestamp: None,
+        change_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
@@ -4700,6 +4703,8 @@ async fn test_resend_on_startup() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
+        change_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
     let connection = make_wallet_database_memory_connection();
 
@@ -4834,6 +4839,7 @@ async fn test_resend_on_startup() {
         direct_send_success: false,
         send_count: 0,
         last_send_timestamp: Some(Utc::now()),
+        received_output_hashes: vec![],
     };
     let bob_connection = make_wallet_database_memory_connection();
 
@@ -5234,6 +5240,8 @@ async fn test_transaction_timeout_cancellation() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
+        change_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
     let bob_connection = make_wallet_database_memory_connection();
 
@@ -5788,6 +5796,9 @@ async fn broadcast_all_completed_transactions_on_startup() {
         mined_in_block: None,
         mined_timestamp: None,
         payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -6309,6 +6320,9 @@ fn create_mock_completed_transaction(
         mined_in_block: None,
         mined_timestamp: Utc::now().checked_add_days(Days::new(1)),
         payment_id: PaymentId::open_from_string(description, TxType::PaymentToOther),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
     }
 }
 

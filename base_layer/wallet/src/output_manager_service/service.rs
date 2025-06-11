@@ -118,7 +118,6 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
-
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -3086,7 +3085,7 @@ where
         let req = FetchMatchingUtxos {
             output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
         };
-        let results: Vec<TransactionOutput> = self
+        let outputs = self
             .resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
@@ -3096,13 +3095,18 @@ where
             })?
             .fetch_matching_utxos(req)
             .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
-            .collect();
+            .outputs;
+
+        let mut results = Vec::new();
+        for output in outputs {
+            match output.try_into() {
+                Ok(tx_output) => results.push(tx_output),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
+                    // Continue processing other outputs instead of failing completely
+                },
+            }
+        }
         Ok(results)
     }
 

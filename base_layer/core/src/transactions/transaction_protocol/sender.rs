@@ -70,7 +70,7 @@ use crate::{
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub(crate) struct OutputPair {
+pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
@@ -332,6 +332,19 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => {
                 Ok(info.change_output.as_ref().map(|output| output.output.clone()))
             },
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Returns the change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// is returned.
+    pub fn get_spent_inputs(&self) -> Result<Vec<OutputPair>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }

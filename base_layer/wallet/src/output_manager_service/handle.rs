@@ -56,7 +56,6 @@ use crate::output_manager_service::{
     storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
-
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {

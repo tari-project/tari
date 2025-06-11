@@ -434,6 +434,44 @@ service Wallet {
   // ```
   rpc GetBlockHeightTransactions (GetBlockHeightTransactionsRequest) returns (GetBlockHeightTransactionsResponse);
 
+  // Returns all PayRefs (payment references) for a specific transaction.
+  //
+  // The `GetTransactionPayRefs` call retrieves all PayRefs associated with the specified
+  // transaction ID. PayRefs are cryptographic references generated from output hashes
+  // that allow recipients to verify payments without revealing sensitive transaction details.
+  //
+  // ### Request Parameters:
+  //
+  // - `transaction_id` (required):
+  //   - **Type**: `uint64`
+  //   - **Description**: The transaction ID to retrieve PayRefs for.
+  //   - **Restrictions**:
+  //     - Must be a valid transaction ID that exists in the wallet.
+  //     - If the transaction ID is invalid or not found, an error will be returned.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   transaction_id: 12345
+  // };
+  // const response = await client.getTransactionPayRefs(request);
+  // console.log("PayRefs:", response.payment_references.map(ref => Buffer.from(ref).toString('hex')));
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "payment_references": [
+  //     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  //     "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
+  //   ]
+  // }
+  // ```
+  rpc GetTransactionPayRefs (GetTransactionPayRefsRequest) returns (GetTransactionPayRefsResponse);
+
+
   // Returns the wallet balance details.
   //
   // The `GetBalance` call retrieves the current balance status of the wallet,
@@ -1050,6 +1088,52 @@ service Wallet {
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
   rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
+
+  // Gets transaction information by payment reference (PayRef)
+  //
+  // The `GetPaymentByReference` call retrieves transaction information using a 32-byte payment reference hash.
+  // PayRefs are generated as Blake2b_256(block_hash || output_hash) and provide a stable way to look up
+  // transactions even after outputs are spent.
+  //
+  // ### Request Parameters:
+  //
+  // - `payment_reference` (required):
+  //   - **Type**: `bytes` (32 bytes)
+  //   - **Description**: The payment reference hash to look up
+  //   - **Restrictions**: Must be exactly 32 bytes representing a valid PayRef
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const payref = Buffer.from('a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890', 'hex');
+  // const request = { payment_reference: payref };
+  // client.getPaymentByReference(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log('Transaction found:', response.transaction);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "transaction": {
+  //     "tx_id": 12345,
+  //     "source_address": "0x1234abcd...",
+  //     "dest_address": "0x5678efgh...",
+  //     "status": "TRANSACTION_STATUS_MINED_CONFIRMED",
+  //     "direction": "TRANSACTION_DIRECTION_INBOUND",
+  //     "amount": 1000000,
+  //     "fee": 20,
+  //     "is_cancelled": false,
+  //     "excess_sig": "0xabcdef...",
+  //     "timestamp": 1681234567,
+  //     "payment_id": "0xdeadbeef...",
+  //     "mined_in_block_height": 150000
+  //   }
+  // }
+  // ```
+  rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
 }
 
 
@@ -1197,6 +1281,9 @@ message TransactionInfo {
   bytes user_payment_id = 14;
   repeated bytes input_commitments = 15;
   repeated bytes output_commitments = 16;
+  repeated bytes payment_references_sent = 17;
+  repeated bytes payment_references_received = 18;
+  repeated bytes payment_references_change = 19;
 }
 
 enum TransactionDirection {
@@ -1251,6 +1338,7 @@ message BlockHashHex {
 message GetCompletedTransactionsResponse {
   TransactionInfo transaction = 1;
 }
+
 
 // Request message for GetBalance RPC.
 message GetBalanceRequest {
@@ -1442,4 +1530,53 @@ message GetBlockHeightTransactionsRequest {
 message GetBlockHeightTransactionsResponse {
   // List of transactions mined at the specified block height
   repeated TransactionInfo transactions = 1;
+}
+
+// PayRef (Payment Reference) related messages and enums
+
+// Request message for GetTransactionPayRefs RPC.
+message GetTransactionPayRefsRequest {
+  // The transaction ID to retrieve PayRefs for.
+  uint64 transaction_id = 1;
+}
+
+// Response message for GetTransactionPayRefs RPC.
+message GetTransactionPayRefsResponse {
+  // List of PayRefs (32-byte payment references) for the transaction.
+  repeated bytes payment_references = 1;
+}
+
+
+// Response message for GetTransactionsWithPayRefs RPC.
+message GetTransactionsWithPayRefsResponse {
+  // The transaction information.
+  TransactionInfo transaction = 1;
+  // List of PayRefs associated with this transaction.
+  repeated bytes payment_references = 2;
+  // Number of unique recipients for this transaction.
+  uint64 recipient_count = 3;
+}
+
+// Request message for getting payment details by payment reference
+message GetPaymentByReferenceRequest {
+  // The 32-byte payment reference hash to look up
+  bytes payment_reference = 1;
+}
+
+// Response message containing transaction information for a payment reference
+message GetPaymentByReferenceResponse {
+  // The transaction information if PayRef is found (optional).
+  // Returns full transaction details
+  TransactionInfo transaction = 1;
+}
+
+
+// Enum for payment direction
+enum PaymentDirection {
+  // Unknown or unspecified direction
+  PAYMENT_DIRECTION_UNKNOWN = 0;
+  // Payment received by this wallet
+  PAYMENT_DIRECTION_INBOUND = 1;
+  // Payment sent from this wallet
+  PAYMENT_DIRECTION_OUTBOUND = 2;
 }

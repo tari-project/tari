@@ -111,6 +111,9 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
             version: output.version as u32,
             encrypted_data: output.encrypted_data.to_byte_vec(),
             minimum_value_promise: output.minimum_value_promise.into(),
+            // Payment reference will be populated when the output is included in a block
+            // and the block hash is available
+            payment_reference: vec![],
         })
     }
 }

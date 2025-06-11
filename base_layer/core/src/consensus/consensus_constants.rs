@@ -1133,7 +1133,7 @@ mod test {
                 .collect::<Vec<_>>();
             assert_eq!(entries.len(), 1);
             for range_proof_type in &range_proof_type_enums {
-                assert!(entries[0].1.iter().any(|&x| x == *range_proof_type));
+                assert!(entries[0].1.contains(range_proof_type));
             }
         }
     }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::ErrorKind, sync::Arc};
+use std::{io, sync::Arc};
 
 use log::*;
 use multiaddr::{multiaddr, Multiaddr, Protocol};
@@ -69,8 +69,7 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
 
     async fn initialize(&self, listen_addr: &Multiaddr) -> Result<(TcpInbound, Multiaddr), io::Error> {
         let mut inner_mut = self.inner.write().await;
-        let mut hs_ctl = inner_mut.hidden_service_ctl.take().ok_or(io::Error::new(
-            ErrorKind::Other,
+        let mut hs_ctl = inner_mut.hidden_service_ctl.take().ok_or(io::Error::other(
             "BUG: Hidden service controller not set in transport".to_string(),
         ))?;
 
@@ -80,7 +79,7 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
                 "Error initializing hidden transport service stack{}",
                 e
             );
-            io::Error::new(ErrorKind::Other, e.to_string())
+            io::Error::other(e.to_string())
         })?;
         let (inbound, listen_addr) = transport.listen(listen_addr).await?;
         inner_mut.socks_transport = Some(transport);
@@ -101,7 +100,7 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
                 "Error creating hidden service: {}",
                 err
             );
-            io::Error::new(ErrorKind::Other, err.to_string())
+            io::Error::other(err.to_string())
         })?;
 
         (self.after_init)(hidden_service.tor_identity().clone());
@@ -119,8 +118,7 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
             // For now, we only can listen on a single Tor hidden service. This behaviour is not technically correct as
             // per the Transport trait, but we only ever call listen once in practice. The fix for this is to
             // improve the tor client implementation to allow for multiple hidden services.
-            return Err(io::Error::new(
-                ErrorKind::Other,
+            return Err(io::Error::other(
                 "BUG: Hidden service transport already initialized".to_string(),
             ));
         }
@@ -131,10 +129,7 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         let inner = self.inner.read().await;
         let transport = inner.socks_transport.as_ref().ok_or_else(|| {
-            io::Error::new(
-                ErrorKind::Other,
-                "BUG: Hidden service transport not initialized before dialling".to_string(),
-            )
+            io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
         })?;
         transport.dial(addr).await
     }

@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
-    transaction::{ImportStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
@@ -208,6 +208,10 @@ pub enum TransactionServiceRequest {
     GetFeePerGramStatsPerBlock {
         count: usize,
     },
+    /// Get transaction details for a PayRef (enhanced with multiple recipients)
+    GetPaymentByReference(FixedHash),
+    /// Get all transactions with their PayRefs (for listing/filtering)
+    GetTransactionByPaymentReference(FixedHash),
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -397,6 +401,12 @@ impl fmt::Display for TransactionServiceRequest {
             TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
+            Self::GetPaymentByReference(payref) => {
+                write!(f, "GetPaymentByReference({})", payref)
+            },
+            Self::GetTransactionByPaymentReference(payref) => {
+                write!(f, "GetTransactionByPaymentReference({})", payref)
+            },
         }
     }
 }
@@ -442,6 +452,10 @@ pub enum TransactionServiceResponse {
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
+    /// Response containing PayRefs for a transaction
+    TransactionPayRefs(Vec<FixedHash>),
+    /// Response containing payment details for a PayRef
+    PaymentDetails(Option<PaymentDetails>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -585,6 +599,19 @@ impl From<proto::base_node::GetMempoolFeePerGramStatsResponse> for FeePerGramSta
             stats: value.stats.into_iter().map(Into::into).collect(),
         }
     }
+}
+
+/// Enhanced payment details for PayRef functionality
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentDetails {
+    pub payment_reference: FixedHash,
+    pub amount: MicroMinotari,
+    pub direction: TransactionDirection,
+    pub block_height: u64,
+    pub confirmations: u64,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub payment_id: Option<Vec<u8>>,
+    pub tx_id: TxId,
 }
 
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
@@ -1235,6 +1262,36 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::FeePerGramStatsPerBlock(resp) => Ok(resp),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get details for a PayRef (enhanced with multiple recipients)
+    pub async fn get_payment_by_reference(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetPaymentByReference(payref))
+            .await??
+        {
+            TransactionServiceResponse::PaymentDetails(details) => Ok(details),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get a transaction by PayRef
+    pub async fn get_transaction_by_payref(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<CompletedTransaction, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetTransactionByPaymentReference(payref))
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
