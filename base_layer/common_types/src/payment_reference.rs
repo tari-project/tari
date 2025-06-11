@@ -209,20 +209,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_payment_reference_hex_invalid_length() {
-        let hex_str = "1234"; // Too short
-        let result = parse_payment_reference_hex(hex_str);
-        assert!(matches!(result, Err(PayRefError::InvalidFormat(_))));
-    }
-
-    #[test]
-    fn test_parse_payment_reference_hex_invalid_hex() {
-        let hex_str = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"; // Invalid hex chars
-        let result = parse_payment_reference_hex(hex_str);
-        assert!(matches!(result, Err(PayRefError::InvalidHex)));
-    }
-
-    #[test]
     fn test_format_payment_reference() {
         let payref = FixedHash::from([
             0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34,

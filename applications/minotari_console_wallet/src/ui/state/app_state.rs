@@ -877,6 +877,15 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub fn should_we_trigger_tx_update_for_payref(&self) -> bool {
+        for tx in &self.data.completed_txs {
+            if tx.payment_reference_hex.is_none() {
+                return true;
+            }
+        }
+        false
+    }
+
     pub async fn refresh_single_confirmation_state(&mut self, tx_id: TxId, confirmations: u64) -> Result<(), UiError> {
         let stat = self.data.confirmations.entry(tx_id).or_insert(confirmations);
         *stat = confirmations;
