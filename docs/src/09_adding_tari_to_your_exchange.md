@@ -123,6 +123,8 @@ The two required for the exchange are the **minotari_node** and **minotari_conso
 ./minotari_node
 ```
 
+This can be run with a number of different arguments. The most notable are `--help` and `-b ./path`, where you specify the location of a custom base path. This command is particular useful if you want to create wallets with distinct configuration folders. 
+
 If a node has not yet been created, it will inform you that a node config file does not exist. You will also be asked if you wish to mine. Select `n` in this case.
 
 4. Next, you'll be asked if you wish to create a node identity. Select `y`. This is essential for generating the private/public key pair and getting the node recognised by the network.
@@ -146,8 +148,7 @@ Features: PeerFeatures(MESSAGE_PROPAGATION | DHT_STORE_FORWARD)
 
 6. Restart the node (Ctrl+C twice to quit, then typing `minotari_node` again).
 
-# Create and Configure Your Wallets
-## Section 2: Creating the Deposit/Main Wallet
+# Section 2: Creating the Deposit/Main Wallet
 In this section we'll create a wallet address for receiving funds. This wallet will serve as the main repository of your Tari coins.
 
 > NB: This is a crucial step in the process. Creating the wallet in secure environment and following the instructions is important to secure this wallet and prevent malicious actors being able to transfer Tari. Read the instructions carefully. If there is any doubt regarding ANY part of the process, please contact the Tari Community for clarification and assistance.
@@ -221,7 +222,7 @@ Type the word "confirm" to continue.
 
 > Note: The following sections deal with configuration of the wallet. While not necessary, an extra safety precaution would be to confirm that the seed words you copied can actually recover the wallet.
 
-## Section 3: Obtain the Addresses of the Deposit/Main Wallet
+# Section 3: Obtain the Addresses of the Deposit/Main Wallet
 
 Now that we have the wallet created, we will require the addresses - specifically, the `Tari Address one-sided` - to create the second wallet, which will be used to monitor transactions.
 
@@ -261,7 +262,7 @@ Press Enter to continue to the wallet, or type q (or quit) followed by Enter.
 
 > Note: Now is a good time to check your noted keys, seed words and addresses before remove the configuration data in the folder and/or destroying/wiping the device.
 
-## Section 4: Setting up a read-only wallet to monitor for transactions and receive deposits
+# Section 4: Setting Up a Read-Only Wallet to Monitor for Transactions and Receive Deposits
 In this section, we will create a second, read-only wallet that will watch for funds received at the address saved in the previous section. If you are integrating an exchange, this is how you can watch for received funds. This wallet will need to be able to access the Internet in some capacity.
 
 > NOTE: This second wallet will not have the ability to spend any funds. While this limits the security risk, it is good practice to maintain security best practices when configuring any system that has access to the chain and has some association with the the main wallet.
@@ -618,11 +619,11 @@ Sample response:
     "transaction": {
         "input_commitments": [],
         "output_commitments": [
-            "igTiN+vtpok6DA72aTJdrQ6lzTcYMoUSKlgc9ozt2To="
+            "igTiN+vtpok6DA72aTJdrQ6lzTcYMoUSKlgc9ozt2To=" //base64 encoded byte array
         ],
         "payment_references_sent": [],
         "payment_references_received": [
-            "26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk="
+            "26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk=" //base64 encoded byte array
         ],
         "payment_references_change": [],
         "tx_id": "14414927044058609657",

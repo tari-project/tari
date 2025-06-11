@@ -13,7 +13,7 @@ Below is documentation regarding various gRPC methods available for the Minotari
   - [Authentication with gRPC](#authentication-with-grpc)
 - [Base Node gRPC Methods](#grpc-base-node-methods)
   - [Get Max Height](#get-max-height)
-  - [Search for outputs associatged with one or more Payment References (SearchPaymentReferences)](#search-for-outputs-associatged-with-one-or-more-payment-references-searchpaymentreferences)
+  - [Search for outputs associated with one or more Payment References (SearchPaymentReferences)](#search-for-outputs-associated-with-one-or-more-payment-references-searchpaymentreferences)
 - [Wallet gRPC Methods](#grpc-wallet-methods)
   - [Get Balance](#get-balance)
   - [Get Address](#get-address)
@@ -328,7 +328,7 @@ const response = await client.getTipInfo();
 console.log('Max Height:', response.chain_height);
 ```
 
-## Search for outputs associatged with one or more Payment References (SearchPaymentReferences)
+## Search for outputs associated with one or more Payment References (SearchPaymentReferences)
 You can use the `SearchPaymentReferences` gRPC method to obtain information about outputs associated with one or more payment references ("PayRefs"). 
 
 - The `payment_reference_hex` field is defined as `repeated string`. Each entry must be a 64-character hex string (32 bytes), representing the PayRef to search for.
@@ -349,15 +349,9 @@ for await (const resp of payrefResponses) {
 **Example JSON Response**
 ```json
 {
-  "payment_reference_hex": "e3f6b7a...<64-chars>...",
-  "block_height": 123456,
-  "block_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-  "mined_timestamp": 1714328123,
-  "commitment": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-  "is_spent": true,
-  "spent_height": 123600,
-  "spent_block_hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "revealed_amount": 500000000
+    "include_spent": false,
+    "payment_reference_bytes": ["26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk="], //base64 encoded byte array
+    "payment_reference_hex": []
 }
 ```
 
@@ -670,7 +664,6 @@ else console.log('Transaction found:', response.transaction);
 
 * If the payment reference is not found, the method returns an internal error.
 * Input and output commitments are encoded as byte arrays.
-* `user_payment_id` may be empty or a user-defined identifier.
 * Be sure to handle optional fields like `mined_in_block_height`, which may be `0` if not mined yet.
 
 ### Get All Payment References Associated With a Transaction (GetTransactionPayRefs)
