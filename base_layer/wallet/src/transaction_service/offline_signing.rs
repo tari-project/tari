@@ -5,6 +5,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
+    types::FixedHash,
     wallet_types::WalletType,
 };
 use tari_core::{
@@ -102,6 +103,8 @@ pub struct SignedOneSidedTransactionResult {
     pub version: Version,
     pub request: PrepareOneSidedTransactionForSigningResult,
     pub stp: SenderTransactionProtocol,
+    pub sent_hashes: Vec<FixedHash>,
+    pub change_hashes: Vec<FixedHash>,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
@@ -371,6 +374,15 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let rtp = ReceiverTransactionProtocol::new(
@@ -395,6 +407,8 @@ where
             version: get_supported_version(),
             request,
             stp,
+            sent_hashes,
+            change_hashes,
         })
     }
 }

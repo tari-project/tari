@@ -4150,6 +4150,7 @@ where
         let tx_id = request.request.tx_id;
         let mut stp = request.stp;
         let dest_address = request.request.dest_address;
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
         let amount = request.request.amount;
         let payment_id = request.request.payment_id;
 
@@ -4189,7 +4190,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
@@ -4202,6 +4203,9 @@ where
                 None,
                 None,
                 payment_id,
+                request.sent_hashes,
+                vec![],
+                request.change_hashes,
             )?,
         )
         .await?;
