@@ -3130,6 +3130,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         if migrate_from_version == 2 {
             // Verify database consistency before starting migration
             info!(target: LOG_TARGET, "Starting PayRef migration");
+
             let read_txn = db.read_transaction()?;
             let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
                 Ok(v) => v,
@@ -3140,23 +3141,31 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 },
             };
             drop(read_txn);
+            // we need to clear the payref index first as they might now bw wrong
+            {
+                let txn = db.write_transaction()?;
+                lmdb_clear(&txn, &db.payref_to_output_index)?;
+                txn.commit()?;
+                info!(target: LOG_TARGET, "Cleared PayRef index");
+            }
             for height in 0..=chain_height {
                 process_payref_for_height(db, height)?;
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");
         }
-    }
-    if last_migrated_version != MIGRATION_VERSION {
-        let txn = db.write_transaction()?;
-        info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
-        lmdb_replace(
-            &txn,
-            &db.metadata_db,
-            &k.as_u32(),
-            &MetadataValue::MigrationVersion(MIGRATION_VERSION),
-            None,
-        )?;
-        txn.commit()?;
+        // lets update the migration version
+        {
+            let txn = db.write_transaction()?;
+            info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+            lmdb_replace(
+                &txn,
+                &db.metadata_db,
+                &k.as_u32(),
+                &MetadataValue::MigrationVersion(migrate_from_version + 1),
+                None,
+            )?;
+            txn.commit()?;
+        }
     }
 
     Ok(())
@@ -3282,12 +3291,12 @@ fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), Chain
     drop(read_txn);
     let write_txn = db.write_transaction()?;
     for (payref, output_hash) in payrefs {
-        lmdb_insert(
+        lmdb_replace(
             &write_txn,
             &db.payref_to_output_index,
             payref.as_slice(),
             &output_hash,
-            "payref_to_output_index",
+            None,
         )?;
     }
     write_txn.commit()?;
