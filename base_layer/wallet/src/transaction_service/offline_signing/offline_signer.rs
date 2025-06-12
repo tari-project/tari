@@ -1,11 +1,8 @@
 use log::*;
-use semver::Version;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    types::FixedHash,
     wallet_types::WalletType,
 };
 use tari_core::{
@@ -20,110 +17,37 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            TransactionMetadata,
-        },
+        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     },
 };
 use tari_script::{push_pubkey_script, TariScript};
 
-use super::service::TransactionServiceResources;
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::UtxoSelectionCriteria,
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
+        offline_signing::models::{
+            get_supported_version,
+            PrepareOneSidedTransactionForSigningResult,
+            SignedOneSidedTransactionResult,
+        },
+        service::TransactionServiceResources,
         storage::database::TransactionBackend,
     },
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::offline_signing";
-const SUPPORTED_VERSION: &str = "1.0.0";
 
-fn get_supported_version() -> Version {
-    Version::parse(SUPPORTED_VERSION).unwrap()
-}
-
-pub trait HasVersion {
-    fn get_version(&self) -> &Version;
-}
-
-pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
-    fn from_json(s: &str) -> Result<Self, TransactionServiceError> {
-        let deserialized_obj: Self =
-            serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
-
-        let version = deserialized_obj.get_version();
-        let supported_version = get_supported_version();
-        if version != &supported_version {
-            return Err(TransactionServiceError::SerializationError(format!(
-                "Unsupported version. Expected '{}', got '{}'",
-                supported_version.to_string(),
-                version.to_string(),
-            )));
-        }
-
-        Ok(deserialized_obj)
-    }
-
-    fn to_json(&self) -> Result<String, TransactionServiceError> {
-        serde_json::to_string(&self).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct PrepareOneSidedTransactionForSigningResult {
-    pub version: Version,
-    pub dest_address: TariAddress,
-    pub amount: MicroMinotari,
-    pub payment_id: PaymentId,
-    pub tx_id: TxId,
-    pub stp: SenderTransactionProtocol,
-    pub encrypted_commitment_mask_keys: Vec<Vec<u8>>,
-    pub script: TariScript,
-    pub use_stealth_address: bool,
-    pub output_features: OutputFeatures,
-    pub single_round_sender_data: SingleRoundSenderData,
-    pub encrypted_change_sender_offset_key: Option<Vec<u8>>,
-    pub last_seen_tip_height: Option<u64>,
-}
-
-impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
-
-impl HasVersion for PrepareOneSidedTransactionForSigningResult {
-    fn get_version(&self) -> &Version {
-        &self.version
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct SignedOneSidedTransactionResult {
-    pub version: Version,
-    pub request: PrepareOneSidedTransactionForSigningResult,
-    pub stp: SenderTransactionProtocol,
-    pub sent_hashes: Vec<FixedHash>,
-    pub change_hashes: Vec<FixedHash>,
-}
-
-impl TransactionResult for SignedOneSidedTransactionResult {}
-
-impl HasVersion for SignedOneSidedTransactionResult {
-    fn get_version(&self) -> &Version {
-        &self.version
-    }
-}
-
-pub struct OfflineSigning<TBackend, TWalletConnectivity, TKeyManagerInterface> {
+pub struct OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     consensus_manager: ConsensusManager,
     last_seen_tip_height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
-    OfflineSigning<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -134,7 +58,7 @@ where
         consensus_manager: ConsensusManager,
         last_seen_tip_height: Option<u64>,
     ) -> Self {
-        OfflineSigning {
+        OfflineSigner {
             resources,
             consensus_manager,
             last_seen_tip_height,

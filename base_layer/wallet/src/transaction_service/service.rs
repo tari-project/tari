@@ -103,7 +103,6 @@ use tokio::{
     task::JoinHandle,
 };
 
-use super::offline_signing::SignedOneSidedTransactionResult;
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
@@ -125,7 +124,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
-        offline_signing::OfflineSigning,
+        offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -672,7 +671,7 @@ where
             } => {
                 self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
                 let dest_pubkey = destination.public_spend_key().clone();
-                let mut offline_signing = OfflineSigning::new(
+                let mut offline_signing = OfflineSigner::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
                     self.last_seen_tip_height,
@@ -691,7 +690,7 @@ where
                     .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
-                let offline_signing = OfflineSigning::new(
+                let offline_signing = OfflineSigner::new(
                     self.resources.clone(),
                     self.consensus_manager.clone(),
                     self.last_seen_tip_height,

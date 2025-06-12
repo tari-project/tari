@@ -48,7 +48,7 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
-        offline_signing::{
+        offline_signing::models::{
             PrepareOneSidedTransactionForSigningResult,
             SignedOneSidedTransactionResult,
             TransactionResult,

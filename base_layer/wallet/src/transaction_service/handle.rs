@@ -62,7 +62,7 @@ use crate::{
     output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
-        offline_signing::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
+        offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
             CompletedTransaction,
             InboundTransaction,

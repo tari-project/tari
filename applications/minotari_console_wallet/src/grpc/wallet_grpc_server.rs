@@ -107,7 +107,7 @@ use minotari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
-        offline_signing::{SignedOneSidedTransactionResult, TransactionResult},
+        offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
