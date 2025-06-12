@@ -88,6 +88,7 @@ pub struct PrepareOneSidedTransactionForSigningResult {
     pub output_features: OutputFeatures,
     pub single_round_sender_data: SingleRoundSenderData,
     pub encrypted_change_sender_offset_key: Option<Vec<u8>>,
+    pub last_seen_tip_height: Option<u64>,
 }
 
 impl TransactionResult for PrepareOneSidedTransactionForSigningResult {}
@@ -254,6 +255,7 @@ where
             output_features,
             single_round_sender_data,
             encrypted_change_sender_offset_key,
+            last_seen_tip_height: self.last_seen_tip_height,
         })
     }
 
@@ -383,7 +385,9 @@ where
             ],
             None => vec![],
         };
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self
+            .last_seen_tip_height
+            .unwrap_or_else(|| request.last_seen_tip_height.unwrap_or(0));
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
