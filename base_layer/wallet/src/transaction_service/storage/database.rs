@@ -141,6 +141,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
     fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
@@ -786,6 +787,10 @@ where T: TransactionBackend + 'static
 
     pub fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         self.db.mark_all_non_coinbases_transactions_as_unvalidated()
+    }
+
+    pub fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        self.db.mark_all_rejected_transactions_as_unvalidated()
     }
 
     pub fn set_transaction_mined_height(

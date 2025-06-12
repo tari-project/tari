@@ -1012,6 +1012,10 @@ where
                 .start_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateRejectedTransactions => self
+                .start_rejected_transaction_revalidation(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -3521,6 +3525,16 @@ where
         >,
     ) -> Result<OperationId, TransactionServiceError> {
         self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
+        self.start_transaction_validation_protocol(join_handles).await
+    }
+
+    async fn start_rejected_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) -> Result<OperationId, TransactionServiceError> {
+        self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 
