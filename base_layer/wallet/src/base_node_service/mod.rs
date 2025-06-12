@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod config;
 pub mod error;
 pub mod handle;
 pub mod service;
@@ -38,9 +37,10 @@ use tari_service_framework::{
 use tokio::sync::broadcast;
 
 use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    base_node_service::{handle::BaseNodeServiceHandle, service::BaseNodeService},
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
+    utxo_scanner_service::service::DefaultHttpClientFactory,
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service";
@@ -48,15 +48,14 @@ const LOG_TARGET: &str = "wallet::base_node_service";
 pub struct BaseNodeServiceInitializer<T>
 where T: WalletBackend + 'static
 {
-    config: BaseNodeServiceConfig,
     db: WalletDatabase<T>,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
 where T: WalletBackend + 'static
 {
-    pub fn new(config: BaseNodeServiceConfig, db: WalletDatabase<T>) -> Self {
-        Self { config, db }
+    pub fn new(db: WalletDatabase<T>) -> Self {
+        Self { db }
     }
 }
 
@@ -69,21 +68,19 @@ where T: WalletBackend + 'static
 
         let (sender, request_stream) = reply_channel::unbounded();
 
-        let (event_publisher, _) = broadcast::channel(self.config.event_channel_size);
+        let (event_publisher, _) = broadcast::channel(1000);
 
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher.clone());
 
         // Register handle before waiting for handles to be ready
         context.register_handle(basenode_service_handle);
 
-        let config = self.config.clone();
         let db = self.db.clone();
 
         context.spawn_when_ready(move |handles| async move {
-            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<DefaultHttpClientFactory>>();
 
             let result = BaseNodeService::new(
-                config,
                 request_stream,
                 wallet_connectivity,
                 event_publisher,

@@ -153,6 +153,8 @@ pub enum OutputManagerError {
     StdIoError(#[from] std::io::Error),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Base node client error: `{0}`")]
+    BaseNodeClientError(String),
 }
 
 impl From<RangeProofError> for OutputManagerError {

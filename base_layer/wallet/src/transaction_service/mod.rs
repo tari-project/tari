@@ -63,7 +63,7 @@ use crate::{
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
     },
-    utxo_scanner_service::handle::UtxoScannerHandle,
+    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
 };
 
 pub mod config;
@@ -242,7 +242,8 @@ where
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
-            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let connectivity: WalletConnectivityHandle<DefaultHttpClientFactory> =
+                handles.expect_handle::<WalletConnectivityHandle<_>>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 

@@ -30,15 +30,6 @@ pub use handle::WalletConnectivityHandle;
 mod initializer;
 pub use initializer::WalletConnectivityInitializer;
 
-mod service;
-pub use service::OnlineStatus;
-
-#[cfg(test)]
-mod test;
-
-mod mock;
-pub use mock::{create as create_wallet_connectivity_mock, WalletConnectivityMock};
-
 mod interface;
 pub use interface::WalletConnectivityInterface;
 

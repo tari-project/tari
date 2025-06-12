@@ -19,11 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
+use std::{collections::HashMap, convert::TryInto, f32::consts::E, fmt, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -570,10 +571,16 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
+            .resources
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .fetch_utxo(output_hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?
+            .ok_or_else(|| {
+                OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
+            })?;
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .await
@@ -1366,16 +1373,14 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
-            UseOutput::FromBlockchain(output_hash) => self
-                .fetch_unspent_outputs_from_node(vec![output_hash])
-                .await?
-                .pop()
-                .ok_or_else(|| {
+            UseOutput::FromBlockchain(output_hash) => {
+                self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
                         "Output with hash {} not found in blockchain (TxId: {})",
                         output_hash, tx_id
                     ))
-                })?,
+                })?
+            },
             UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
@@ -1743,16 +1748,12 @@ where
         minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         // Fetch the output from the blockchain
-        let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| {
-                OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
-                ))
-            })?;
+        let output = self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
+            OutputManagerError::ServiceError(format!(
+                "Output with hash {} not found in blockchain (TxId: {})",
+                output_hash, tx_id
+            ))
+        })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",
@@ -3077,37 +3078,17 @@ where
         Ok(stp)
     }
 
-    async fn fetch_unspent_outputs_from_node(
+    async fn fetch_utxo_from_node(
         &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
-        // lets get the output from the blockchain
-        let req = FetchMatchingUtxos {
-            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
-        };
-        let outputs = self
-            .resources
+        hash: HashOutput,
+    ) -> Result<Option<TransactionOutput>, OutputManagerError> {
+        self.resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
-            .ok_or_else(|| {
-                OutputManagerError::InvalidResponseError("Could not connect to base node rpc client".to_string())
-            })?
-            .fetch_matching_utxos(req)
-            .await?
-            .outputs;
-
-        let mut results = Vec::new();
-        for output in outputs {
-            match output.try_into() {
-                Ok(tx_output) => results.push(tx_output),
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
-                    // Continue processing other outputs instead of failing completely
-                },
-            }
-        }
-        Ok(results)
+            .fetch_utxo(hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
     }
 
     #[allow(clippy::too_many_lines)]

@@ -32,7 +32,6 @@ use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
 
 use super::{
-    config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
     handle::{BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
 };
@@ -40,6 +39,7 @@ use crate::{
     base_node_service::monitor::BaseNodeMonitor,
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
+    utxo_scanner_service::service::HttpClientFactory,
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";
@@ -55,31 +55,32 @@ pub struct BaseNodeState {
 }
 
 /// The base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<T>
-where T: WalletBackend + 'static
+pub struct BaseNodeService<T, TClientFactory>
+where
+    T: WalletBackend + 'static,
+    TClientFactory: HttpClientFactory,
 {
-    config: BaseNodeServiceConfig,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
-    wallet_connectivity: WalletConnectivityHandle,
+    wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
     event_publisher: BaseNodeEventSender,
     shutdown_signal: ShutdownSignal,
     state: Arc<RwLock<BaseNodeState>>,
     db: WalletDatabase<T>,
 }
 
-impl<T> BaseNodeService<T>
-where T: WalletBackend + 'static
+impl<T, TClientFactory> BaseNodeService<T, TClientFactory>
+where
+    T: WalletBackend + 'static,
+    TClientFactory: HttpClientFactory,
 {
     pub fn new(
-        config: BaseNodeServiceConfig,
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
-        wallet_connectivity: WalletConnectivityHandle,
+        wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
     ) -> Self {
         Self {
-            config,
             request_stream: Some(request_stream),
             wallet_connectivity,
             event_publisher,
@@ -126,7 +127,7 @@ where T: WalletBackend + 'static
 
     fn spawn_monitor(&self) {
         let monitor = BaseNodeMonitor::new(
-            self.config.base_node_monitor_max_refresh_interval,
+            Duration::from_secs(60),
             self.state.clone(),
             self.db.clone(),
             self.wallet_connectivity.clone(),

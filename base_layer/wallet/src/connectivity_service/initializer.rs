@@ -30,21 +30,18 @@
 
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::mpsc;
+use url::Url;
 
-use super::{handle::WalletConnectivityHandle, service::WalletConnectivityService};
-use crate::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::service::OnlineStatus,
-    util::watch::Watch,
-};
+use super::handle::WalletConnectivityHandle;
+use crate::{util::watch::Watch, utxo_scanner_service::service::DefaultHttpClientFactory};
 
 pub struct WalletConnectivityInitializer {
-    config: BaseNodeServiceConfig,
+    http_node_url: Url,
 }
 
 impl WalletConnectivityInitializer {
-    pub fn new(config: BaseNodeServiceConfig) -> Self {
-        Self { config }
+    pub fn new(http_node_url: Url) -> Self {
+        Self { http_node_url }
     }
 }
 
@@ -53,21 +50,9 @@ impl ServiceInitializer for WalletConnectivityInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = mpsc::channel(5);
         let base_node_watch = Watch::new(None);
-        let online_status_watch = Watch::new(OnlineStatus::Offline);
-        context.register_handle(WalletConnectivityHandle::new(
-            sender,
-            base_node_watch.clone(),
-            online_status_watch.get_receiver(),
-        ));
 
-        let config = self.config.clone();
-
-        context.spawn_until_shutdown(move |handles| {
-            let connectivity = handles.expect_handle();
-            let service =
-                WalletConnectivityService::new(config, receiver, base_node_watch, online_status_watch, connectivity);
-            service.start()
-        });
+        let factory = DefaultHttpClientFactory::new(self.http_node_url.clone());
+        context.register_handle(WalletConnectivityHandle::new(sender, base_node_watch.clone(), factory));
 
         Ok(())
     }

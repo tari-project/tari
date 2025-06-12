@@ -43,14 +43,18 @@ use tokio::{
     time::{sleep, timeout},
 };
 
-use super::service::{WalletConnectivityService, CONNECTIVITY_WAIT};
 use crate::{
-    connectivity_service::{BaseNodePeerManager, OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    connectivity_service::{
+        handle::OnlineStatus,
+        BaseNodePeerManager,
+        WalletConnectivityHandle,
+        WalletConnectivityInterface,
+    },
     util::watch::Watch,
 };
 
 async fn setup() -> (
-    WalletConnectivityHandle,
+    WalletConnectivityHandle<HttpBaseNodeMock>,
     MockRpcServer<MockRpcImpl>,
     ConnectivityManagerMockState,
     Shutdown,
@@ -61,14 +65,7 @@ async fn setup() -> (
     let handle = WalletConnectivityHandle::new(tx, base_node_watch.clone(), online_status_watch.get_receiver());
     let (connectivity, mock) = create_connectivity_mock();
     let mock_state = mock.spawn();
-    // let peer_manager = create_peer_manager(tempdir().unwrap());
-    let service = WalletConnectivityService::new(
-        Default::default(),
-        rx,
-        base_node_watch,
-        online_status_watch,
-        connectivity,
-    );
+
     let shutdown = spawn_until_shutdown(service.start());
 
     let mock_svc = MockRpcImpl::new();

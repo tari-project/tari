@@ -3,9 +3,12 @@
 pub mod http;
 
 use anyhow::Error;
-use tari_core::base_node::rpc::{
-    models,
-    models::{BlockHeader, SyncUtxosByBlockResponse},
+use tari_core::{
+    base_node::{
+        proto::wallet_rpc::TxSubmissionResponse,
+        rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse},
+    },
+    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
@@ -27,4 +30,41 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         end_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error>;
+
+    async fn get_last_request_latency(&self) -> Option<std::time::Duration>;
+
+    async fn fetch_matching_utxos(&self, hashes: Vec<Vec<u8>>) -> Result<FetchMatchingUtxosResponse, Error>;
+
+    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error>;
+
+    async fn query_deleted_utxos(
+        &self,
+        hashes: Vec<Vec<u8>>,
+        must_include_header: Vec<u8>,
+    ) -> Result<Vec<DeletedUtxoInfo>, Error>;
+
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, Error>;
+
+    async fn transaction_query(
+        &self,
+        transaction_hash: Vec<u8>,
+    ) -> Result<Option<models::TransactionQueryResponse>, Error>;
+}
+
+pub struct DeletedUtxoInfo {
+    pub utxo_hash: Vec<u8>,
+    pub found_in_header: Option<(u64, Vec<u8>)>,
+}
+
+pub struct FetchMatchingUtxosResponse {
+    pub utxos: Vec<MinedUtxoInfo>,
+    pub best_block_hash: Vec<u8>,
+    pub best_block_height: u64,
+}
+
+pub struct MinedUtxoInfo {
+    pub utxo_hash: Vec<u8>,
+    pub mined_in_hash: Vec<u8>,
+    pub mined_in_height: u64,
+    pub mined_in_timestamp: u64,
 }

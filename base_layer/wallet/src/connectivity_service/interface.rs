@@ -20,20 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{any, time::Duration};
 
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_core::{
+    base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient},
+    transactions::transaction_components::Transaction,
+};
 use tokio::sync::watch;
 
-use crate::connectivity_service::{BaseNodePeerManager, OnlineStatus};
+use crate::connectivity_service::{handle::OnlineStatus, BaseNodePeerManager};
 
 #[async_trait::async_trait]
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
+    type BaseNodeClient: BaseNodeWalletClient;
+
     fn set_base_node(&mut self, base_node_peer: BaseNodePeerManager);
 
     fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>>;
@@ -44,17 +50,7 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>>;
-
-    async fn obtain_base_node_wallet_rpc_client_timeout(
-        &mut self,
-        timeout: Duration,
-    ) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
-        tokio::time::timeout(timeout, self.obtain_base_node_wallet_rpc_client())
-            .await
-            .ok()
-            .flatten()
-    }
+    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient;
 
     async fn disconnect_base_node(&mut self, node_id: NodeId);
 

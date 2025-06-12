@@ -4,21 +4,28 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
-use tari_core::base_node::rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse};
+use tari_core::{
+    base_node::{
+        proto::wallet_rpc::TxSubmissionResponse,
+        rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse},
+    },
+    proto::base_node::FetchMatchingUtxos,
+    transactions::transaction_components::TransactionOutput,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use url::Url;
 
-use crate::BaseNodeWalletClient;
+use crate::{BaseNodeWalletClient, DeletedUtxoInfo, FetchMatchingUtxosResponse};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
 /// HTTP client for the Base Node wallet service.
-#[derive(Clone)]
 pub struct Client {
     api_address: Url,
     http_client: reqwest::Client,
+    last_latency: RwLock<Option<std::time::Duration>>,
 }
 
 impl Client {
@@ -26,6 +33,17 @@ impl Client {
         Self {
             api_address,
             http_client: reqwest::Client::new(),
+            last_latency: RwLock::new(None),
+        }
+    }
+}
+
+impl Clone for Client {
+    fn clone(&self) -> Self {
+        Self {
+            api_address: self.api_address.clone(),
+            http_client: self.http_client.clone(),
+            last_latency: RwLock::new(None),
         }
     }
 }
@@ -33,6 +51,7 @@ impl Client {
 #[async_trait]
 impl BaseNodeWalletClient for Client {
     async fn get_tip_info(&self) -> Result<TipInfoResponse, anyhow::Error> {
+        let start_time = std::time::Instant::now();
         debug!(target: LOG_TARGET, "Requesting tip info from Base Node wallet service at {}", self.api_address);
         let res = self
             .http_client
@@ -40,7 +59,7 @@ impl BaseNodeWalletClient for Client {
             .send()
             .await?;
 
-        if res.status().is_client_error() || res.status().is_server_error() {
+        let res = if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
@@ -51,7 +70,10 @@ impl BaseNodeWalletClient for Client {
             ))
         } else {
             Ok(res.json::<TipInfoResponse>().await?)
-        }
+        };
+        let duration = start_time.elapsed();
+        *self.last_latency.write().await = Some(duration);
+        res
     }
 
     async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, anyhow::Error> {
@@ -190,5 +212,46 @@ impl BaseNodeWalletClient for Client {
         });
 
         Ok(resp_rx)
+    }
+
+    async fn get_last_request_latency(&self) -> Option<std::time::Duration> {
+        self.last_latency.read().await.clone()
+    }
+
+    async fn fetch_matching_utxos(&self, hashes: Vec<Vec<u8>>) -> Result<FetchMatchingUtxosResponse, anyhow::Error> {
+        todo!()
+    }
+
+    async fn query_deleted_utxos(
+        &self,
+        hashes: Vec<Vec<u8>>,
+        must_include_header: Vec<u8>,
+    ) -> Result<Vec<DeletedUtxoInfo>, anyhow::Error> {
+        todo!()
+    }
+
+    async fn fetch_utxo(&self, utxo: Vec<u8>) -> Result<Option<TransactionOutput>, anyhow::Error> {
+        debug!(target: LOG_TARGET, "Requesting UTXO with hash {} from Base Node wallet service at {}", utxo.to_hex(), self.api_address);
+        let mut target_url = self.api_address.join("/fetch_utxo")?;
+        target_url.set_query(Some(&format!("utxo={}", utxo.to_hex())));
+        let res = self.http_client.get(target_url).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
+        }
+        Ok(res.json::<Option<TransactionOutput>>().await?)
+    }
+
+    async fn submit_transaction(
+        &self,
+        transaction: tari_core::transactions::transaction_components::Transaction,
+    ) -> Result<TxSubmissionResponse, anyhow::Error> {
+        todo!()
     }
 }

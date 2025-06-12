@@ -28,11 +28,18 @@ use tari_comms::{
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::{mpsc, oneshot, watch};
 
-use super::service::OnlineStatus;
 use crate::{
     connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
     util::watch::Watch,
+    utxo_scanner_service::service::HttpClientFactory,
 };
+/// Connection status of the Base Node
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OnlineStatus {
+    Connecting,
+    Online,
+    Offline,
+}
 
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
@@ -41,28 +48,32 @@ pub enum WalletConnectivityRequest {
 }
 
 #[derive(Clone)]
-pub struct WalletConnectivityHandle {
+pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
     sender: mpsc::Sender<WalletConnectivityRequest>,
     base_node_watch: Watch<Option<BaseNodePeerManager>>,
-    online_status_rx: watch::Receiver<OnlineStatus>,
+    client_factory: TWalletClientFactory,
 }
 
-impl WalletConnectivityHandle {
+impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
     pub(super) fn new(
         sender: mpsc::Sender<WalletConnectivityRequest>,
         base_node_watch: Watch<Option<BaseNodePeerManager>>,
-        online_status_rx: watch::Receiver<OnlineStatus>,
+        client_factory: TWalletClientFactory,
     ) -> Self {
         Self {
             sender,
             base_node_watch,
-            online_status_rx,
+            client_factory,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl WalletConnectivityInterface for WalletConnectivityHandle {
+impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
+    for WalletConnectivityHandle<TWalletClientFactory>
+{
+    type BaseNodeClient = TWalletClientFactory::Client;
+
     fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
         if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
             if selected_peer.get_current_peer().public_key == base_node_peer_manager.get_current_peer().public_key {
@@ -86,21 +97,8 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        // Under what conditions do the (1) mpsc channel and (2) oneshot channel error?
-        // (1) when the receiver has been dropped
-        // (2) when the sender has been dropped
-        // When can this happen?
-        // Only when the service is shutdown (or there is a bug in the service that should be fixed)
-        // None is returned in these cases, which we say means that you will never ever get a client connection
-        // because the node is shutting down.
-        self.sender
-            .send(WalletConnectivityRequest::ObtainBaseNodeWalletRpcClient(reply_tx))
-            .await
-            .ok()?;
-
-        reply_rx.await.ok()
+    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient {
+        self.client_factory.create_http_client()
     }
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
@@ -111,11 +109,11 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
     }
 
     fn get_connectivity_status(&mut self) -> OnlineStatus {
-        *self.online_status_rx.borrow()
+        todo!()
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
-        self.online_status_rx.clone()
+        todo!()
     }
 
     fn get_current_base_node_peer(&self) -> Option<Peer> {

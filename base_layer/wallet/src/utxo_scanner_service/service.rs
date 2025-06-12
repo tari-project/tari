@@ -202,7 +202,7 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
     pub(crate) client_factory: THttpClientFactory,
 }
 
-pub trait HttpClientFactory: Clone {
+pub trait HttpClientFactory: Clone + Send + Sync + 'static {
     type Client: BaseNodeWalletClient;
     fn create_http_client(&self) -> Self::Client;
 }

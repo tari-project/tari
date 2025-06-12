@@ -63,7 +63,7 @@ use crate::{
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
     transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::handle::UtxoScannerHandle,
+    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
 };
 
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum
@@ -124,7 +124,8 @@ where
         let network = self.network.as_network();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
-            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let connectivity: WalletConnectivityHandle<DefaultHttpClientFactory> =
+                handles.expect_handle::<WalletConnectivityHandle<_>>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
             let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();

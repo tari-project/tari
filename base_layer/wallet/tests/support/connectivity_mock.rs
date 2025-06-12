@@ -82,6 +82,8 @@ impl WalletConnectivityMock {
 
 #[async_trait::async_trait]
 impl WalletConnectivityInterface for WalletConnectivityMock {
+    type BaseNodeClient = HttpBaseNodeMock;
+
     fn set_base_node(&mut self, base_node_peer: BaseNodePeerManager) {
         self.notify_base_node_set(base_node_peer);
     }

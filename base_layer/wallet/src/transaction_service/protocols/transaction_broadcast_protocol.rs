@@ -28,6 +28,7 @@ use std::{
 
 use futures::FutureExt;
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::Signature,
@@ -95,12 +96,7 @@ where
 
         // Main protocol loop
         loop {
-            let mut client = self
-                .resources
-                .connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or_else(|| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))?;
+            let mut client = self.resources.connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id) {
                 Ok(tx) => tx,
@@ -195,14 +191,9 @@ where
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client
-            .submit_transaction(tx.clone().try_into().map_err(|e| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
-            })?)
-            .await
-        {
+        let response = match client.submit_transaction(tx.clone()).await {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
                 Ok(r) => r,
                 Err(_) => {
@@ -315,7 +306,7 @@ where
     async fn transaction_query(
         &mut self,
         signature: Signature,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = match client.transaction_query(signature.into()).await {
             Ok(r) => match TxQueryResponse::try_from(r) {
@@ -405,7 +396,7 @@ where
     async fn query_or_submit_transaction(
         &mut self,
         completed_transaction: CompletedTransaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let signature = completed_transaction
             .transaction
