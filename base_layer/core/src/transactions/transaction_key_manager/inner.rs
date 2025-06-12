@@ -1713,7 +1713,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
             Some(key_id) => self.get_private_key(key_id).await?,
             None => self.get_private_view_key().await?,
         };
-        let key_ga = Key::from_slice(&encryption_key.as_bytes());
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("key_encryption");
+        let hash = hasher.chain(encryption_key.as_bytes()).finalize();
+        let key_ga = Key::from_slice(hash.as_ref());
         Ok(XChaCha20Poly1305::new(key_ga))
     }
 
