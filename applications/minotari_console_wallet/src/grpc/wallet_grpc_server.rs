@@ -1179,6 +1179,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
