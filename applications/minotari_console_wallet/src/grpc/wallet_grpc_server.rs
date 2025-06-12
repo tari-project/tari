@@ -1225,7 +1225,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             usize::MAX
         };
         let mut transactions: Vec<TransactionInfo> = Vec::new();
-        for txn in completed_transactions.into_iter().skip(offset).take(limit) {
+        for txn in completed_transactions
+            .into_iter()
+            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status.clone() as u32))) != 0)
+            .skip(offset)
+            .take(limit)
+        {
             let output_commitments: Vec<Vec<u8>> = txn
                 .transaction
                 .body
