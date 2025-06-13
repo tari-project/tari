@@ -337,6 +337,7 @@ mod tests {
         fn calculate_dial_count(needed: usize, success_rate: f32, multiplier: f32) -> usize {
             let base_count = needed as f32 * multiplier;
             let adjusted_count = base_count / success_rate.max(0.1);
+            #[allow(clippy::cast_possible_truncation)]
             let final_count = adjusted_count.ceil() as usize;
             const MAX_CONCURRENT_DIALS: usize = 20;
             final_count.min(MAX_CONCURRENT_DIALS).max(needed)
@@ -366,11 +367,11 @@ mod tests {
 
         // Test rate clamping behavior
         let test_rate = 1.5f32;
-        let clamped = test_rate.max(0.1).min(1.0);
+        let clamped = test_rate.clamp(0.1, 1.0);
         assert_eq!(clamped, 1.0);
-
+        
         let low_rate = 0.05f32;
-        let clamped_low = low_rate.max(0.1).min(1.0);
+        let clamped_low = low_rate.clamp(0.1, 1.0);
         assert_eq!(clamped_low, 0.1);
     }
 }
