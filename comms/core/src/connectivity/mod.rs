@@ -51,6 +51,8 @@ pub use manager::ConnectivityStatus;
 #[cfg(feature = "metrics")]
 mod metrics;
 
+pub mod proactive_dialing_metrics;
+
 mod requester;
 pub(crate) use requester::ConnectivityRequest;
 pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};

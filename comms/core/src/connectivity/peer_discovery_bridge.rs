@@ -24,7 +24,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 
-use super::{config::ConnectivityConfig, error::ConnectivityError};
+use super::{config::ConnectivityConfig, error::ConnectivityError, proactive_dialing_metrics};
 use crate::{peer_manager::PeerManager, utils::datetime::format_duration};
 
 const LOG_TARGET: &str = "comms::connectivity::peer_discovery_bridge";
@@ -110,6 +110,7 @@ impl PeerDiscoveryBridge {
         );
 
         self.last_discovery_attempt = Some(Instant::now());
+        proactive_dialing_metrics::increment_peer_discovery_attempts();
 
         // Get current peer count for comparison
         let initial_count = self.get_available_peer_count().await?;
@@ -120,6 +121,9 @@ impl PeerDiscoveryBridge {
 
         let final_count = self.get_available_peer_count().await?;
         let net_discovered = final_count.saturating_sub(initial_count);
+
+        // Update metrics
+        proactive_dialing_metrics::increment_peer_discovery_peers_found(net_discovered);
 
         info!(
             target: LOG_TARGET,
