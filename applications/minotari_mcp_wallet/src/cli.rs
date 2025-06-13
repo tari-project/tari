@@ -17,7 +17,7 @@ pub struct Cli {
     pub common: CommonCliArgs,
     
     /// Auto-launch console wallet if not already running
-    #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_WALLET")]
+    #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_WALLET", default_value = "true")]
     pub auto_launch_wallet: bool,
     
     /// Enable MCP server

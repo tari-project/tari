@@ -16,7 +16,7 @@ pub struct Cli {
     pub common: CommonCliArgs,
     
     /// Auto-launch base node if not already running
-    #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_NODE")]
+    #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_NODE", default_value = "true")]
     pub auto_launch_node: bool,
     
     /// Enable MCP server

@@ -26,7 +26,9 @@ impl WalletMcpServer {
     /// Create a new Wallet MCP server
     pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
+        log::info!("Auto-launch enabled: {}", config.should_auto_launch_wallet());
         if config.should_auto_launch_wallet() {
+            log::info!("Auto-launching wallet...");
             Self::ensure_wallet_running(&config, cli).await?;
         }
 
