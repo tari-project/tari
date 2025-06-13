@@ -37,6 +37,8 @@ pub use peer_health::{PeerHealthMetrics, CircuitBreakerState};
 
 mod proactive_dialer;
 
+mod peer_discovery_bridge;
+
 mod connection_pool;
 
 mod error;

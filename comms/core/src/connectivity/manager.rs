@@ -42,6 +42,7 @@ use super::{
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
+    peer_discovery_bridge::PeerDiscoveryBridge,
     proactive_dialer::ProactiveDialer,
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
@@ -100,6 +101,11 @@ impl ConnectivityManager {
             self.node_identity.clone(),
         );
 
+        let peer_discovery_bridge = PeerDiscoveryBridge::new(
+            self.config,
+            self.peer_manager.clone(),
+        );
+
         ConnectivityManagerActor {
             config: self.config,
             status: ConnectivityStatus::Initializing,
@@ -115,6 +121,7 @@ impl ConnectivityManager {
             uptime: Some(Instant::now()),
             allow_list: vec![],
             proactive_dialer,
+            peer_discovery_bridge,
         }
         .spawn()
     }
@@ -173,6 +180,7 @@ struct ConnectivityManagerActor {
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
     proactive_dialer: ProactiveDialer,
+    peer_discovery_bridge: PeerDiscoveryBridge,
 }
 
 impl ConnectivityManagerActor {
@@ -465,6 +473,16 @@ impl ConnectivityManagerActor {
         }
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
             self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
+        }
+
+        // Check if we need to discover more peers
+        if let Err(err) = self.check_and_trigger_peer_discovery(task_id).await {
+            warn!(
+                target: LOG_TARGET,
+                "({}) Peer discovery check failed: {:?}",
+                task_id,
+                err
+            );
         }
 
         // Execute proactive dialing logic
@@ -1128,6 +1146,44 @@ impl ConnectivityManagerActor {
             );
         }
         ban_result?;
+        Ok(())
+    }
+
+    async fn check_and_trigger_peer_discovery(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        if !self.config.proactive_dialing_enabled {
+            return Ok(());
+        }
+
+        // Get current peer and connection counts
+        let connected_count = self.pool.count_connected_nodes();
+        let all_peers = self.peer_manager.all(None).await
+            .map_err(|e| ConnectivityError::PeerManagerError(e))?;
+        let total_peer_count = all_peers.len();
+
+        // Check if discovery is needed
+        if self.peer_discovery_bridge.should_trigger_discovery(total_peer_count, connected_count, task_id).await? {
+            match self.peer_discovery_bridge.execute_discovery(task_id).await {
+                Ok(discovered) => {
+                    if discovered > 0 {
+                        debug!(
+                            target: LOG_TARGET,
+                            "({}) Peer discovery found {} new candidates",
+                            task_id,
+                            discovered
+                        );
+                    }
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "({}) Peer discovery failed: {:?}",
+                        task_id,
+                        err
+                    );
+                },
+            }
+        }
+
         Ok(())
     }
 
