@@ -28,7 +28,9 @@ pub mod ledger_wallet;
 mod test {
     use borsh::BorshSerialize;
     use minotari_ledger_wallet_common::{
-        get_public_spend_key_bytes_from_tari_dual_address, tari_dual_address_display, TARI_DUAL_ADDRESS_MIN_SIZE,
+        get_public_spend_key_bytes_from_tari_dual_address,
+        tari_dual_address_display,
+        TARI_DUAL_ADDRESS_MIN_SIZE,
     };
     use rand::rngs::OsRng;
     use tari_common_types::tari_address::TariAddress;
