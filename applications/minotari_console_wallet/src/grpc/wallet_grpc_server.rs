@@ -1232,7 +1232,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transactions: Vec<TransactionInfo> = Vec::new();
         for txn in completed_transactions
             .into_iter()
-            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status.clone() as u32))) != 0)
+            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status as u32))) != 0)
             .skip(offset)
             .take(limit)
         {
