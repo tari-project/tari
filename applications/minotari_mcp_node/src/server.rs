@@ -26,9 +26,7 @@ impl NodeMcpServer {
     /// Create a new Node MCP server
     pub async fn new(config: NodeMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch base node if configured and not running
-        log::info!("Auto-launch enabled: {}", config.should_auto_launch_node());
         if config.should_auto_launch_node() {
-            log::info!("Auto-launching base node...");
             Self::ensure_base_node_running(&config, cli).await?;
         }
 
