@@ -71,12 +71,10 @@ impl WalletEventMonitor {
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
         let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
-        let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
         let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
 
-        let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
         let mut utxo_scanner_events = self
             .app_state_inner
             .read()
@@ -185,30 +183,6 @@ impl WalletEventMonitor {
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
                 },
-                Ok(_) = connectivity_status.changed() => {
-                    trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
-                    self.trigger_peer_state_refresh().await;
-                },
-                    result = connectivity_events.recv() => {
-                        match result {
-                            Ok(msg) => {
-                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg
-                            );
-                            match msg {
-                                ConnectivityEvent::PeerConnected(_) |
-                                ConnectivityEvent::PeerDisconnected(..) => {
-                                    self.trigger_peer_state_refresh().await;
-                                },
-                                // Only the above variants trigger state refresh
-                                _ => (),
-                            }
-                        },
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Connectivity events", n);
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {}
-                    }
-                },
                 result = utxo_scanner_events.recv() => match result {
                         Ok(event) => {
                             match event {
@@ -274,26 +248,6 @@ impl WalletEventMonitor {
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
                 },
-                event = contacts_liveness_events.recv() => {
-                    match event {
-                        Ok(liveness_event) => {
-                            match liveness_event.deref() {
-                                ContactsLivenessEvent::StatusUpdated(data) => {
-                                    trace!(target: LOG_TARGET,
-                                        "Contacts Liveness Service event 'StatusUpdated': {}",
-                                        data.clone(),
-                                    );
-                                    self.trigger_contacts_refresh().await;
-                                }
-                                ContactsLivenessEvent::NetworkSilence => {},
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {}
-                    }
-                }
                 _ = shutdown_signal.wait() => {
                     info!(
                         target: LOG_TARGET,
