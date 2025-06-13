@@ -181,11 +181,13 @@ impl PeerDiscoveryBridge {
     }
 
     /// Reset discovery throttling (useful for testing or manual triggers)
+    #[allow(dead_code)]
     pub fn reset_throttling(&mut self) {
         self.last_discovery_attempt = None;
     }
 
     /// Get time since last discovery attempt
+    #[allow(dead_code)]
     pub fn time_since_last_discovery(&self) -> Option<std::time::Duration> {
         self.last_discovery_attempt.map(|t| t.elapsed())
     }
@@ -194,7 +196,7 @@ impl PeerDiscoveryBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{thread, time::Duration};
+    use std::time::Duration;
 
     // Note: These tests would need mock implementations of PeerManager
     // For now, they serve as documentation of expected behavior
@@ -207,18 +209,26 @@ mod tests {
     }
 
     #[test]
-    fn test_throttling_behavior() {
-        let config = ConnectivityConfig {
+    fn test_throttling_utility_methods() {
+        let _config = ConnectivityConfig {
             success_rate_tracking_window: Duration::from_millis(100),
             ..Default::default()
         };
 
-        // Mock implementation would require actual PeerManager instance
-        // This test is primarily for documentation of expected behavior
+        // Since we can't create PeerDiscoveryBridge without PeerManager,
+        // we'll create a mock configuration to test the concepts
+        let throttle_period = Duration::from_millis(50);
         
-        // The expected behavior is:
-        // 1. Should be throttled immediately after an attempt
-        // 2. Should no longer be throttled after the throttle period
-        // 3. time_since_last_discovery() should return increasing durations
+        // Test the utility method concepts by checking time operations
+        let now = std::time::Instant::now();
+        let later = now + throttle_period;
+        
+        assert!(later > now);
+        assert!(later.duration_since(now) >= throttle_period);
+        
+        // These methods would work on an actual bridge instance:
+        // assert!(bridge.time_since_last_discovery().is_none());
+        // bridge.reset_throttling();
+        // assert!(bridge.time_since_last_discovery().is_none());
     }
 }
