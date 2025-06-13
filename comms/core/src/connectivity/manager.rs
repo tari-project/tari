@@ -102,10 +102,7 @@ impl ConnectivityManager {
             self.node_identity.clone(),
         );
 
-        let peer_discovery_bridge = PeerDiscoveryBridge::new(
-            self.config,
-            self.peer_manager.clone(),
-        );
+        let peer_discovery_bridge = PeerDiscoveryBridge::new(self.config, self.peer_manager.clone());
 
         ConnectivityManagerActor {
             config: self.config,
@@ -660,7 +657,10 @@ impl ConnectivityManagerActor {
         Ok(conns.into_iter().cloned().collect())
     }
 
-    fn select_connections_with_health(&self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, ConnectivityError> {
+    fn select_connections_with_health(
+        &self,
+        selection: ConnectivitySelection,
+    ) -> Result<Vec<PeerConnection>, ConnectivityError> {
         trace!(target: LOG_TARGET, "Health-aware selection query: {:?}", selection);
         trace!(
             target: LOG_TARGET,
@@ -688,7 +688,7 @@ impl ConnectivityManagerActor {
     fn mark_connection_success(&mut self, node_id: NodeId) {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_success();
-        
+
         // Update proactive dialing success metrics
         proactive_dialing_metrics::increment_proactive_dials_successful();
     }
@@ -1160,12 +1160,19 @@ impl ConnectivityManagerActor {
 
         // Get current peer and connection counts
         let connected_count = self.pool.count_connected_nodes();
-        let all_peers = self.peer_manager.all(None).await
-            .map_err(|e| ConnectivityError::PeerManagerError(e))?;
+        let all_peers = self
+            .peer_manager
+            .all(None)
+            .await
+            .map_err(ConnectivityError::PeerManagerError)?;
         let total_peer_count = all_peers.len();
 
         // Check if discovery is needed
-        if self.peer_discovery_bridge.should_trigger_discovery(total_peer_count, connected_count, task_id).await? {
+        if self
+            .peer_discovery_bridge
+            .should_trigger_discovery(total_peer_count, connected_count, task_id)
+            .await?
+        {
             match self.peer_discovery_bridge.execute_discovery(task_id).await {
                 Ok(discovered) => {
                     if discovered > 0 {
@@ -1201,7 +1208,11 @@ impl ConnectivityManagerActor {
         self.update_circuit_breaker_metrics();
 
         // Execute proactive dialing logic
-        match self.proactive_dialer.execute_proactive_dialing(&self.pool, &self.connection_stats, task_id).await {
+        match self
+            .proactive_dialer
+            .execute_proactive_dialing(&self.pool, &self.connection_stats, task_id)
+            .await
+        {
             Ok(dialed_count) => {
                 if dialed_count > 0 {
                     debug!(
@@ -1226,16 +1237,18 @@ impl ConnectivityManagerActor {
     }
 
     fn update_circuit_breaker_metrics(&self) {
-        let circuit_breaker_open_count = self.connection_stats
+        let circuit_breaker_open_count = self
+            .connection_stats
             .values()
             .filter(|stats| stats.health_metrics().circuit_breaker_state().is_open())
             .count();
-        
+
         proactive_dialing_metrics::set_circuit_breaker_open_peers(circuit_breaker_open_count);
 
         // Calculate average peer health score
         if !self.connection_stats.is_empty() {
-            let total_health: f32 = self.connection_stats
+            let total_health: f32 = self
+                .connection_stats
                 .values()
                 .map(|stats| stats.health_score(self.config.success_rate_tracking_window))
                 .sum();

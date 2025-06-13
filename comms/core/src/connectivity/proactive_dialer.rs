@@ -68,7 +68,7 @@ impl ProactiveDialer {
         task_id: u64,
     ) -> Result<usize, ConnectivityError> {
         let start_time = std::time::Instant::now();
-        
+
         if !self.config.proactive_dialing_enabled {
             return Ok(0);
         }
@@ -120,7 +120,9 @@ impl ProactiveDialer {
         );
 
         // Select healthy peers for dialing
-        let candidates = self.select_healthy_dial_candidates(pool, connection_stats, dial_count, task_id).await?;
+        let candidates = self
+            .select_healthy_dial_candidates(pool, connection_stats, dial_count, task_id)
+            .await?;
 
         if candidates.is_empty() {
             warn!(
@@ -172,16 +174,17 @@ impl ProactiveDialer {
         }
 
         let average = total_stats.iter().sum::<f32>() / total_stats.len() as f32;
-        average.max(0.1).min(1.0) // Clamp between 10% and 100%
+        average.clamp(0.1, 1.0) // Clamp between 10% and 100%
     }
 
     /// Calculate how many peers to dial based on needed connections and success rate
     fn calculate_dial_count(&self, needed: usize, success_rate: f32) -> usize {
         let base_count = needed as f32 * self.config.dialing_multiplier;
         let adjusted_count = base_count / success_rate.max(0.1); // Prevent division by very small numbers
-        
+
+        #[allow(clippy::cast_possible_truncation)]
         let final_count = adjusted_count.ceil() as usize;
-        
+
         // Cap the dial count to prevent overwhelming the network
         const MAX_CONCURRENT_DIALS: usize = 20;
         final_count.min(MAX_CONCURRENT_DIALS).max(needed)
@@ -196,16 +199,23 @@ impl ProactiveDialer {
         task_id: u64,
     ) -> Result<Vec<Peer>, ConnectivityError> {
         // Get all known communication peers
-        let all_peers = self.peer_manager
+        let all_peers = self
+            .peer_manager
             .all(None)
             .await
-            .map_err(|e| ConnectivityError::PeerManagerError(e))?;
+            .map_err(ConnectivityError::PeerManagerError)?;
 
         // Filter for communication nodes not currently connected or connecting
         let mut candidates = Vec::new();
-        let currently_managed: HashSet<NodeId> = pool.all()
+        let currently_managed: HashSet<NodeId> = pool
+            .all()
             .iter()
-            .filter(|state| !matches!(state.status(), ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)))
+            .filter(|state| {
+                !matches!(
+                    state.status(),
+                    ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)
+                )
+            })
             .map(|state| state.node_id().clone())
             .collect();
 
@@ -243,11 +253,13 @@ impl ProactiveDialer {
 
         // Sort by health score if available, otherwise by distance
         candidates.sort_by(|a, b| {
-            let health_a = connection_stats.get(&a.node_id)
+            let health_a = connection_stats
+                .get(&a.node_id)
                 .map(|s| s.health_score(self.config.success_rate_tracking_window))
                 .unwrap_or(0.5); // Neutral score for unknown peers
-            
-            let health_b = connection_stats.get(&b.node_id)
+
+            let health_b = connection_stats
+                .get(&b.node_id)
                 .map(|s| s.health_score(self.config.success_rate_tracking_window))
                 .unwrap_or(0.5);
 
@@ -284,7 +296,7 @@ impl ProactiveDialer {
         }
 
         let mut successful_dials = 0;
-        
+
         for peer in peers {
             debug!(
                 target: LOG_TARGET,
@@ -319,7 +331,6 @@ impl ProactiveDialer {
 #[cfg(test)]
 mod tests {
 
-
     #[test]
     fn test_calculate_dial_count() {
         // Helper function to test dial count calculation without full struct
@@ -347,17 +358,17 @@ mod tests {
     fn test_calculate_recent_success_rate() {
         // Test success rate calculation with empty stats
         let _empty_stats: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
-        
+
         // With empty stats, should return optimistic default of 0.7
         // This logic is tested by ensuring the default behavior
         let default_rate = 0.7f32;
         assert_eq!(default_rate, 0.7);
-        
+
         // Test rate clamping behavior
         let test_rate = 1.5f32;
         let clamped = test_rate.max(0.1).min(1.0);
         assert_eq!(clamped, 1.0);
-        
+
         let low_rate = 0.05f32;
         let clamped_low = low_rate.max(0.1).min(1.0);
         assert_eq!(clamped_low, 0.1);

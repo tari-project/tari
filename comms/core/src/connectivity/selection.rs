@@ -92,7 +92,8 @@ impl ConnectivitySelection {
         }
     }
 
-    /// Select `n` peer connections ordered by health score and closeness to `node_id`, excluding the given `exclude` [NodeId]s.
+    /// Select `n` peer connections ordered by health score and closeness to `node_id`, excluding the given `exclude`
+    /// [NodeId]s.
     ///
     /// [NodeId](crate::peer_manager::NodeId)
     pub fn healthy_closest_to(node_id: NodeId, n: usize, exclude: Vec<NodeId>) -> Self {
@@ -104,7 +105,7 @@ impl ConnectivitySelection {
 
     /// Select peers from the pool according to the ConnectivitySelection
     pub fn select<'a>(&self, pool: &'a ConnectionPool) -> Vec<&'a PeerConnection> {
-        use SelectionMode::{AllNodes, ClosestTo, HealthyNodes, HealthyClosestTo, RandomNodes};
+        use SelectionMode::{AllNodes, ClosestTo, HealthyClosestTo, HealthyNodes, RandomNodes};
         match &self.selection_mode {
             AllNodes => select_connected_nodes(pool, &self.excluded_peers),
             RandomNodes(n) => select_random_nodes(pool, *n, &self.excluded_peers),
@@ -133,7 +134,7 @@ impl ConnectivitySelection {
         health_stats: &HashMap<NodeId, PeerConnectionStats>,
         health_window: Duration,
     ) -> Vec<&'a PeerConnection> {
-        use SelectionMode::{AllNodes, ClosestTo, HealthyNodes, HealthyClosestTo, RandomNodes};
+        use SelectionMode::{AllNodes, ClosestTo, HealthyClosestTo, HealthyNodes, RandomNodes};
         match &self.selection_mode {
             AllNodes => select_connected_nodes(pool, &self.excluded_peers),
             RandomNodes(n) => select_random_nodes(pool, *n, &self.excluded_peers),
@@ -148,7 +149,8 @@ impl ConnectivitySelection {
                 connections.to_vec()
             },
             HealthyClosestTo(dest_node_id, n) => {
-                let mut connections = select_healthy_closest(pool, dest_node_id, health_stats, health_window, &self.excluded_peers);
+                let mut connections =
+                    select_healthy_closest(pool, dest_node_id, health_stats, health_window, &self.excluded_peers);
                 connections.truncate(*n);
                 connections.to_vec()
             },
@@ -195,11 +197,13 @@ fn select_healthy_nodes<'a>(
 
     // Sort by health score (descending)
     nodes.sort_by(|a, b| {
-        let health_a = health_stats.get(a.peer_node_id())
+        let health_a = health_stats
+            .get(a.peer_node_id())
             .map(|s| s.health_score(health_window))
             .unwrap_or(0.5); // Neutral score for unknown peers
-        
-        let health_b = health_stats.get(b.peer_node_id())
+
+        let health_b = health_stats
+            .get(b.peer_node_id())
             .map(|s| s.health_score(health_window))
             .unwrap_or(0.5);
 
@@ -220,11 +224,13 @@ fn select_healthy_closest<'a>(
 
     // Sort by combined health score and distance
     nodes.sort_by(|a, b| {
-        let health_a = health_stats.get(a.peer_node_id())
+        let health_a = health_stats
+            .get(a.peer_node_id())
             .map(|s| s.health_score(health_window))
             .unwrap_or(0.5);
-        
-        let health_b = health_stats.get(b.peer_node_id())
+
+        let health_b = health_stats
+            .get(b.peer_node_id())
             .map(|s| s.health_score(health_window))
             .unwrap_or(0.5);
 
@@ -257,7 +263,7 @@ impl Display for ConnectivitySelection {
 
 impl Display for SelectionMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SelectionMode::{AllNodes, ClosestTo, HealthyNodes, HealthyClosestTo, RandomNodes};
+        use SelectionMode::{AllNodes, ClosestTo, HealthyClosestTo, HealthyNodes, RandomNodes};
         match self {
             AllNodes => write!(f, "AllNodes"),
             RandomNodes(n) => write!(f, "RandomNodes({})", n),

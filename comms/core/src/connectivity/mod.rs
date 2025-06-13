@@ -33,7 +33,7 @@ mod config;
 pub use config::ConnectivityConfig;
 
 mod peer_health;
-pub use peer_health::{PeerHealthMetrics, CircuitBreakerState};
+pub use peer_health::{CircuitBreakerState, PeerHealthMetrics};
 
 mod proactive_dialer;
 

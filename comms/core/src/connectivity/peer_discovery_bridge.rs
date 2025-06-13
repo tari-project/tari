@@ -139,16 +139,15 @@ impl PeerDiscoveryBridge {
 
     /// Get the current count of available (non-banned, non-connected) peer candidates
     async fn get_available_peer_count(&self) -> Result<usize, ConnectivityError> {
-        let all_peers = self.peer_manager
+        let all_peers = self
+            .peer_manager
             .all(None)
             .await
-            .map_err(|e| ConnectivityError::PeerManagerError(e))?;
+            .map_err(ConnectivityError::PeerManagerError)?;
 
         let available_count = all_peers
             .iter()
-            .filter(|peer| {
-                peer.features.is_node() && !peer.is_banned()
-            })
+            .filter(|peer| peer.features.is_node() && !peer.is_banned())
             .count();
 
         Ok(available_count)
@@ -195,8 +194,9 @@ impl PeerDiscoveryBridge {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::time::Duration;
+
+    use super::*;
 
     // Note: These tests would need mock implementations of PeerManager
     // For now, they serve as documentation of expected behavior
@@ -218,14 +218,14 @@ mod tests {
         // Since we can't create PeerDiscoveryBridge without PeerManager,
         // we'll create a mock configuration to test the concepts
         let throttle_period = Duration::from_millis(50);
-        
+
         // Test the utility method concepts by checking time operations
         let now = std::time::Instant::now();
         let later = now + throttle_period;
-        
+
         assert!(later > now);
         assert!(later.duration_since(now) >= throttle_period);
-        
+
         // These methods would work on an actual bridge instance:
         // assert!(bridge.time_since_last_discovery().is_none());
         // bridge.reset_throttling();

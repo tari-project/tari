@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{utils::datetime::format_duration, connectivity::peer_health::PeerHealthMetrics};
+use crate::{connectivity::peer_health::PeerHealthMetrics, utils::datetime::format_duration};
 
 /// Basic stats for peer connection attempts. Allows the connectivity manager to keep track of successful/failed
 /// connection attempts to allow it to mark peers as offline if necessary.

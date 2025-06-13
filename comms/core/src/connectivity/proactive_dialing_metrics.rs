@@ -22,7 +22,6 @@
 
 #[cfg(feature = "metrics")]
 use once_cell::sync::Lazy;
-
 #[cfg(feature = "metrics")]
 use tari_metrics::{Gauge, Histogram, IntCounter, IntGauge};
 
@@ -185,18 +184,31 @@ pub fn dialing_multiplier_applied() -> &'static Gauge {
 // Non-metrics versions for when metrics feature is disabled
 #[cfg(not(feature = "metrics"))]
 mod stubs {
+    #[allow(dead_code)]
     pub fn proactive_dials_attempted() {}
+    #[allow(dead_code)]
     pub fn proactive_dials_successful() {}
+    #[allow(dead_code)]
     pub fn proactive_dials_failed() {}
+    #[allow(dead_code)]
     pub fn circuit_breaker_state_changes() {}
+    #[allow(dead_code)]
     pub fn circuit_breaker_open_peers(_value: i64) {}
+    #[allow(dead_code)]
     pub fn target_connections_achieved(_value: i64) {}
+    #[allow(dead_code)]
     pub fn available_peer_candidates(_value: i64) {}
+    #[allow(dead_code)]
     pub fn average_peer_health_score(_value: f64) {}
+    #[allow(dead_code)]
     pub fn peer_discovery_attempts() {}
+    #[allow(dead_code)]
     pub fn peer_discovery_peers_found(_value: i64) {}
+    #[allow(dead_code)]
     pub fn proactive_dialing_execution_time(_duration: std::time::Duration) {}
+    #[allow(dead_code)]
     pub fn connection_success_rate(_value: f64) {}
+    #[allow(dead_code)]
     pub fn dialing_multiplier_applied(_value: f64) {}
 }
 
@@ -225,7 +237,9 @@ pub fn increment_circuit_breaker_state_changes() {
 
 #[cfg(feature = "metrics")]
 pub fn set_circuit_breaker_open_peers(count: usize) {
-    circuit_breaker_open_peers().set(count as i64);
+    #[allow(clippy::cast_possible_wrap)]
+    let value = count as i64;
+    circuit_breaker_open_peers().set(value);
 }
 
 #[cfg(feature = "metrics")]
@@ -235,12 +249,14 @@ pub fn set_target_connections_achieved(achieved: bool) {
 
 #[cfg(feature = "metrics")]
 pub fn set_available_peer_candidates(count: usize) {
-    available_peer_candidates().set(count as i64);
+    #[allow(clippy::cast_possible_wrap)]
+    let value = count as i64;
+    available_peer_candidates().set(value);
 }
 
 #[cfg(feature = "metrics")]
 pub fn set_average_peer_health_score(score: f32) {
-    average_peer_health_score().set(score as f64);
+    average_peer_health_score().set(f64::from(score));
 }
 
 #[cfg(feature = "metrics")]
@@ -260,12 +276,12 @@ pub fn observe_proactive_dialing_execution_time(duration: std::time::Duration) {
 
 #[cfg(feature = "metrics")]
 pub fn set_connection_success_rate(rate: f32) {
-    connection_success_rate().set(rate as f64);
+    connection_success_rate().set(f64::from(rate));
 }
 
 #[cfg(feature = "metrics")]
 pub fn set_dialing_multiplier_applied(multiplier: f32) {
-    dialing_multiplier_applied().set(multiplier as f64);
+    dialing_multiplier_applied().set(f64::from(multiplier));
 }
 
 // Non-feature implementations for when metrics are disabled
