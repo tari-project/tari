@@ -30,6 +30,8 @@ pub mod grpc_client_implementations;
 pub mod parameter_converter;
 pub mod method_implementations;
 pub mod conversion_registry_factory;
+pub mod health_checker;
+pub mod connection_manager;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -56,3 +58,5 @@ pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
 pub use parameter_converter::{ParameterConverter, ConversionRegistry, ConversionError, JsonParameterExtractor};
 pub use method_implementations::{create_node_converters, create_wallet_converters};
 pub use conversion_registry_factory::ConversionRegistryFactory;
+pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealthStatus, HealthConfig, GrpcHealthChecker};
+pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};

@@ -24,6 +24,8 @@ hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"
 tonic = { version = "0.13.1", default-features = false, features = ["transport", "tls-ring"] }
+tonic-health = "0.13.0"
+tower = { version = "0.5", features = ["timeout", "limit", "buffer"] }
 prost = "0.13.3"
 prost-types = "0.13.3"
 minotari_node_grpc_client = { workspace = true }

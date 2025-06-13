@@ -82,6 +82,22 @@ impl McpError {
         Self::ResourceAccessFailed(msg.into())
     }
 
+    pub fn server_error(msg: impl Into<String>) -> Self {
+        Self::ServerError(msg.into())
+    }
+
+    pub fn connection_failed(msg: impl Into<String>) -> Self {
+        Self::ToolExecutionFailed(format!("Connection failed: {}", msg.into()))
+    }
+
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self::ToolExecutionFailed(format!("Service unavailable: {}", msg.into()))
+    }
+
+    pub fn service_error(msg: impl Into<String>) -> Self {
+        Self::ToolExecutionFailed(format!("Service error: {}", msg.into()))
+    }
+
     pub fn is_permission_denied(&self) -> bool {
         matches!(self, Self::PermissionDenied(_))
     }

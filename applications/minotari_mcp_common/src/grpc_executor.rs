@@ -8,6 +8,8 @@ use crate::{
     grpc_error_mapper::GrpcErrorMapper,
     auto_registry::ServerType,
     parameter_converter::ConversionRegistry,
+    health_checker::HealthResult,
+    connection_manager::ConnectionManager,
     McpResult, McpError,
 };
 use serde_json::{Value, json};
@@ -26,6 +28,8 @@ pub struct GrpcExecutor {
     pub server_type: ServerType,
     /// Parameter conversion registry for JSON to protobuf conversion
     pub conversion_registry: Arc<ConversionRegistry>,
+    /// Connection manager for health monitoring and circuit breakers (optional)
+    pub connection_manager: Option<Arc<ConnectionManager>>,
 }
 
 /// Trait for node gRPC client operations
@@ -115,6 +119,24 @@ impl GrpcExecutor {
             error_mapper,
             server_type: ServerType::Node,
             conversion_registry,
+            connection_manager: None,
+        }
+    }
+    
+    /// Create a new gRPC executor for node operations with health monitoring
+    pub fn new_node_with_health(
+        client: Arc<dyn NodeGrpcClient>,
+        error_mapper: Arc<GrpcErrorMapper>,
+        conversion_registry: Arc<ConversionRegistry>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Self {
+        Self {
+            node_client: Some(client),
+            wallet_client: None,
+            error_mapper,
+            server_type: ServerType::Node,
+            conversion_registry,
+            connection_manager: Some(connection_manager),
         }
     }
     
@@ -130,6 +152,24 @@ impl GrpcExecutor {
             error_mapper,
             server_type: ServerType::Wallet,
             conversion_registry,
+            connection_manager: None,
+        }
+    }
+    
+    /// Create a new gRPC executor for wallet operations with health monitoring
+    pub fn new_wallet_with_health(
+        client: Arc<dyn WalletGrpcClient>,
+        error_mapper: Arc<GrpcErrorMapper>,
+        conversion_registry: Arc<ConversionRegistry>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Self {
+        Self {
+            node_client: None,
+            wallet_client: Some(client),
+            error_mapper,
+            server_type: ServerType::Wallet,
+            conversion_registry,
+            connection_manager: Some(connection_manager),
         }
     }
     
@@ -140,6 +180,28 @@ impl GrpcExecutor {
         parameters: Value,
     ) -> McpResult<Value> {
         log::debug!("Executing gRPC method: {} with parameters: {}", method_info.name, parameters);
+        
+        // Check health status if connection manager is available
+        if let Some(ref conn_manager) = self.connection_manager {
+            let service_name = match self.server_type {
+                ServerType::Node => "base_node",
+                ServerType::Wallet => "wallet",
+                _ => "unknown",
+            };
+            
+            // Get health status and check if service is healthy
+            let health_status = conn_manager.get_all_health_status();
+            if let Some(health) = health_status.get(service_name) {
+                if !health.is_healthy() {
+                    log::warn!(
+                        "Service {} is not healthy (status: {}), but proceeding with request",
+                        service_name, health.status
+                    );
+                    // Note: We log the warning but don't fail the request immediately
+                    // The circuit breaker in the connection manager will handle failures
+                }
+            }
+        }
         
         match self.server_type {
             ServerType::Node => {
@@ -354,10 +416,40 @@ impl GrpcExecutor {
     
     /// Get a status summary of the executor
     pub fn get_status(&self) -> ExecutorStatus {
+        let health_status = if let Some(ref conn_manager) = self.connection_manager {
+            let service_name = match self.server_type {
+                ServerType::Node => "base_node",
+                ServerType::Wallet => "wallet",
+                _ => "unknown",
+            };
+            conn_manager.get_all_health_status().get(service_name).cloned()
+        } else {
+            None
+        };
+
         ExecutorStatus {
             server_type: self.server_type,
             node_client_available: self.node_client.is_some(),
             wallet_client_available: self.wallet_client.is_some(),
+            health_monitoring_enabled: self.connection_manager.is_some(),
+            health_status,
+        }
+    }
+    
+    /// Get detailed health and circuit breaker status if available
+    pub fn get_detailed_status(&self) -> DetailedExecutorStatus {
+        let health_status = self.connection_manager.as_ref()
+            .map(|cm| cm.get_all_health_status())
+            .unwrap_or_default();
+        
+        let circuit_breaker_status = self.connection_manager.as_ref()
+            .map(|cm| cm.get_all_circuit_breaker_status())
+            .unwrap_or_default();
+
+        DetailedExecutorStatus {
+            basic_status: self.get_status(),
+            all_health_status: health_status,
+            circuit_breaker_status,
         }
     }
 }
@@ -368,16 +460,44 @@ pub struct ExecutorStatus {
     pub server_type: ServerType,
     pub node_client_available: bool,
     pub wallet_client_available: bool,
+    pub health_monitoring_enabled: bool,
+    pub health_status: Option<HealthResult>,
+}
+
+/// Detailed status including health and circuit breaker metrics
+#[derive(Debug, Clone)]
+pub struct DetailedExecutorStatus {
+    pub basic_status: ExecutorStatus,
+    pub all_health_status: std::collections::HashMap<String, HealthResult>,
+    pub circuit_breaker_status: std::collections::HashMap<String, crate::connection_manager::CircuitBreakerMetrics>,
 }
 
 impl ExecutorStatus {
     /// Check if the executor is ready for operations
     pub fn is_ready(&self) -> bool {
-        match self.server_type {
+        let client_available = match self.server_type {
             ServerType::Node => self.node_client_available,
             ServerType::Wallet => self.wallet_client_available,
             _ => false,
+        };
+
+        // If health monitoring is enabled, also check health status
+        if self.health_monitoring_enabled {
+            if let Some(ref health) = self.health_status {
+                client_available && health.is_healthy()
+            } else {
+                // Health monitoring enabled but no status available - not ready
+                false
+            }
+        } else {
+            // No health monitoring, just check client availability
+            client_available
         }
+    }
+    
+    /// Check if health monitoring is active and service is healthy
+    pub fn is_healthy(&self) -> Option<bool> {
+        self.health_status.as_ref().map(|h| h.is_healthy())
     }
 }
 

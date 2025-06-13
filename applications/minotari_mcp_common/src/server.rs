@@ -330,8 +330,4 @@ impl ServerMessageHandler {
     }
 }
 
-impl McpError {
-    pub fn server_error(msg: impl Into<String>) -> Self {
-        Self::ServerError(msg.into())
-    }
-}
+
