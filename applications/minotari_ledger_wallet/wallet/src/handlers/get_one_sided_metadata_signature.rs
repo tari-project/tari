@@ -55,6 +55,12 @@ use crate::{
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
+    // Validate minimum required data size early
+    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) + address_size(2) + min_address(67) + message(32) = 171
+    if data.len() < 171 {
+        return Err(AppSW::WrongApduLength);
+    }
+
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);
     let account = u64::from_le_bytes(account_bytes);
@@ -86,7 +92,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
 
     if address_size < TARI_DUAL_ADDRESS_MIN_SIZE || address_size > TARI_DUAL_ADDRESS_MAX_SIZE {
-        return Err(AppSW::MetadataSignatureFail);
+        return Err(AppSW::WrongApduLength);
     }
 
     let address_end = 74 + address_size;
