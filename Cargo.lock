@@ -4276,6 +4276,7 @@ dependencies = [
  "dirs",
  "hex",
  "log",
+ "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_mcp_common",
  "minotari_wallet_grpc_client",

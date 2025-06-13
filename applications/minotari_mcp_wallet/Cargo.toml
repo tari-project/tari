@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 minotari_mcp_common = { workspace = true }
 minotari_app_utilities = { workspace = true }
+minotari_app_grpc = { workspace = true }
 minotari_wallet_grpc_client = { workspace = true }
 tari_core = { workspace = true, features = ["transactions", "base_node_proto", "base_node"] }
 tari_common = { workspace = true }

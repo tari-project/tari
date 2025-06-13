@@ -259,8 +259,8 @@ impl StdioTransport {
         let comments = regex::Regex::new(r#"(//.*|/\*[\s\S]*?\*/)"#).ok()?;
         repaired = comments.replace_all(&repaired, "").to_string();
 
-        // 7. Fix leading zeros in numbers
-        let leading_zeros = regex::Regex::new(r#"(?<!\d)0+(\d+)"#).ok()?;
+        // 7. Fix leading zeros in numbers (simple pattern without lookbehind)
+        let leading_zeros = regex::Regex::new(r#"\b0+(\d+)\b"#).ok()?;
         repaired = leading_zeros.replace_all(&repaired, "$1").to_string();
 
         // Return the repaired JSON if it's different from input

@@ -192,10 +192,7 @@ impl ProcessSupervisor {
     async fn is_process_healthy(&self) -> bool {
         // For now, just check if we can connect to the port
         // In a full implementation, this would use gRPC health checks
-        match std::net::TcpStream::connect(format!("127.0.0.1:{}", self.port)) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        std::net::TcpStream::connect(format!("127.0.0.1:{}", self.port)).is_ok()
     }
 
     /// Wait for the process to exit
@@ -264,10 +261,7 @@ impl ProcessUtils {
 
     /// Check if a process is running on a specific port
     pub async fn is_service_running(port: u16) -> bool {
-        match std::net::TcpStream::connect(format!("127.0.0.1:{}", port)) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
     }
 
     /// Generate command arguments for launching Tari applications

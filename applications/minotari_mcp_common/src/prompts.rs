@@ -137,7 +137,7 @@ macro_rules! simple_prompt {
             struct SimplePrompt {
                 name: String,
                 description: String,
-                messages: Vec<crate::prompts::PromptMessage>,
+                messages: Vec<$crate::prompts::PromptMessage>,
             }
             
             impl McpPrompt for SimplePrompt {

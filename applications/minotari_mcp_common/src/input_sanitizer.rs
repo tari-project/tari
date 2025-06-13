@@ -42,11 +42,12 @@ impl Default for InputSanitizer {
 impl InputSanitizer {
     /// Create a new input sanitizer with custom limits
     pub fn new(max_string_length: usize, max_array_length: usize, max_object_depth: usize) -> Self {
-        let mut sanitizer = Self::default();
-        sanitizer.max_string_length = max_string_length;
-        sanitizer.max_array_length = max_array_length;
-        sanitizer.max_object_depth = max_object_depth;
-        sanitizer
+        Self {
+            max_string_length,
+            max_array_length,
+            max_object_depth,
+            ..Default::default()
+        }
     }
 
     /// Create a new input sanitizer from configuration
