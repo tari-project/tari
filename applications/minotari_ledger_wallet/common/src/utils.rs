@@ -148,7 +148,7 @@ mod tests {
                            // Public spend key at positions 34..66
         for i in 34..66 {
             if i < address.len() {
-                address[i] = (i - 34) as u8;
+                address[i] = u8::try_from(i - 34).expect("index within u8 range");
             }
         }
         // Add payment ID data if larger than min size
@@ -240,7 +240,7 @@ mod tests {
 
         // Verify the spend key matches our test data
         for (i, &byte) in spend_key.iter().enumerate() {
-            assert_eq!(byte, i as u8);
+            assert_eq!(byte, u8::try_from(i).expect("index within u8 range"));
         }
     }
 }
