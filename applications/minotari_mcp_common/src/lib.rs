@@ -22,6 +22,9 @@ pub mod cli_integration;
 pub mod startup_diagnostics;
 pub mod grpc_discovery;
 pub mod schema_generator;
+pub mod tool_metadata;
+pub mod grpc_error_mapper;
+pub mod auto_registry;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -40,3 +43,6 @@ pub use cli_integration::{LaunchCliConfig, CliConfigBuilder, CliConfigExtractor,
 pub use startup_diagnostics::{StartupDiagnostics, DiagnosticResult, DiagnosticStatus};
 pub use grpc_discovery::{ServiceDiscovery, GrpcMethodInfo, GrpcMethodCategory, base_node_methods, wallet_methods};
 pub use schema_generator::{SchemaGenerator, SchemaError};
+pub use tool_metadata::{ToolMetadata, ToolMetadataRegistry, ToolCategory, ToolRiskLevel, ToolExample, ParameterDoc, RateLimit, DeprecationInfo};
+pub use grpc_error_mapper::{GrpcErrorMapper, ErrorContext, ErrorCategory, ErrorSeverity};
+pub use auto_registry::{AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType, ToolOverride, RegistryStatistics};
