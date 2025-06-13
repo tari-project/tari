@@ -101,7 +101,7 @@ impl NodeMcpServer {
         // Extract port from gRPC address
         let port = config.node_grpc.address
             .split(':')
-            .last()
+            .next_back()
             .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(18142);
 
@@ -153,11 +153,8 @@ impl NodeMcpServer {
             // Check supervisor status
             if let Ok(status) = status_rx.try_recv() {
                 log::debug!("Supervisor status: {:?}", status);
-                match status {
-                    ProcessStatus::Failed(err) => {
-                        return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
-                    }
-                    _ => {}
+                if let ProcessStatus::Failed(err) = status {
+                    return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
                 }
             }
             

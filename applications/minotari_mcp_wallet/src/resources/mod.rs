@@ -14,6 +14,7 @@ pub struct WalletResourceRegistry;
 
 impl WalletResourceRegistry {
     /// Create a new wallet resource registry with all available resources
+    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> ResourceRegistry {
         let mut registry = ResourceRegistry::new();
 

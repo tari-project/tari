@@ -290,7 +290,7 @@ impl McpTool for WalletStateTool {
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         if let Some(timeout) = params.get("timeout_seconds") {
             if let Some(timeout_val) = timeout.as_f64() {
-                if timeout_val < 1.0 || timeout_val > 600.0 {
+                if !(1.0..=600.0).contains(&timeout_val) {
                     return Err(McpError::invalid_request("timeout_seconds must be between 1 and 600"));
                 }
             } else {

@@ -20,8 +20,9 @@ pub struct NodeToolRegistry;
 
 impl NodeToolRegistry {
     /// Create a new node tool registry with all available tools
+    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new(
-        grpc_client: Arc<BaseNodeGrpcClient<Channel>>, 
+    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
         control_enabled: bool
     ) -> ToolRegistry {
         let mut registry = ToolRegistry::new();

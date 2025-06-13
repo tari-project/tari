@@ -10,6 +10,7 @@ pub struct WalletPromptRegistry;
 
 impl WalletPromptRegistry {
     /// Create a new wallet prompt registry with all available prompts
+    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new() -> PromptRegistry {
         let mut registry = PromptRegistry::new();
 

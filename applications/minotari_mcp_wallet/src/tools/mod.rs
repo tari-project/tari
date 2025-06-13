@@ -16,8 +16,9 @@ pub struct WalletToolRegistry;
 
 impl WalletToolRegistry {
     /// Create a new wallet tool registry with all available tools
+    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new(
-        grpc_client: Arc<WalletGrpcClient<Channel>>, 
+    grpc_client: Arc<WalletGrpcClient<Channel>>,
         control_enabled: bool
     ) -> ToolRegistry {
         let mut registry = ToolRegistry::new();

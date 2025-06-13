@@ -28,6 +28,7 @@ pub struct NodeResourceRegistry;
 
 impl NodeResourceRegistry {
     /// Create a new node resource registry with all available resources
+    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> ResourceRegistry {
         let mut registry = ResourceRegistry::new();
 

@@ -78,7 +78,7 @@ impl WalletMcpServer {
         // Extract port from gRPC address
         let port = config.wallet_grpc.address
             .split(':')
-            .last()
+            .next_back()
             .and_then(|p| p.parse::<u16>().ok())
             .unwrap_or(18143);
 
@@ -137,11 +137,8 @@ impl WalletMcpServer {
             // Check supervisor status
             if let Ok(status) = status_rx.try_recv() {
                 log::debug!("Supervisor status: {:?}", status);
-                match status {
-                    ProcessStatus::Failed(err) => {
-                        return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
-                    }
-                    _ => {}
+                if let ProcessStatus::Failed(err) = status {
+                    return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
                 }
             }
             

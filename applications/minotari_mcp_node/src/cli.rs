@@ -163,13 +163,13 @@ impl Cli {
     /// Generate command line arguments for launching the base node
     #[allow(dead_code)]  // Will be used by auto-launch functionality in future versions
     pub fn generate_node_args(&self) -> Vec<String> {
-        let mut args = Vec::new();
-        
         // Add common args
-        args.push("--base-path".to_string());
-        args.push(self.common.base_path.clone());
-        args.push("--config".to_string());
-        args.push(self.common.config.clone());
+        let mut args = vec![
+            "--base-path".to_string(),
+            self.common.base_path.clone(),
+            "--config".to_string(),
+            self.common.config.clone(),
+        ];
         
         if let Some(ref network) = self.common.network {
             args.push("--network".to_string());
