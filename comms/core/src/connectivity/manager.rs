@@ -453,9 +453,9 @@ impl ConnectivityManagerActor {
     }
 
     async fn refresh_connection_pool(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
-        debug!(
+        info!(
             target: LOG_TARGET,
-            "Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
+            "CONNECTIVITY_REFRESH: Performing connection pool cleanup/refresh ({}). (#Peers = {}, #Connected={}, #Failed={}, #Disconnected={}, \
              #Clients={})",
             task_id,
             self.pool.count_entries(),
@@ -484,7 +484,20 @@ impl ConnectivityManagerActor {
         }
 
         // Execute proactive dialing logic (if enabled)
+        debug!(
+            target: LOG_TARGET,
+            "({}) Proactive dialing config check: enabled={}, target_connections={}",
+            task_id,
+            self.config.proactive_dialing_enabled,
+            self.config.target_connection_count
+        );
+        
         if self.config.proactive_dialing_enabled {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Executing proactive dialing logic",
+                task_id
+            );
             if let Err(err) = self.execute_proactive_dialing(task_id).await {
                 warn!(
                     target: LOG_TARGET,
@@ -493,6 +506,12 @@ impl ConnectivityManagerActor {
                     err
                 );
             }
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "({}) Proactive dialing disabled in configuration",
+                task_id
+            );
         }
 
         self.update_connectivity_status();
@@ -1201,6 +1220,14 @@ impl ConnectivityManagerActor {
     }
 
     async fn execute_proactive_dialing(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        debug!(
+            target: LOG_TARGET,
+            "({}) Starting proactive dialing execution - current connections: {}, target: {}",
+            task_id,
+            self.pool.count_connected_nodes(),
+            self.config.target_connection_count
+        );
+
         // First, clean up old health data to keep metrics accurate
         for stats in self.connection_stats.values_mut() {
             stats.cleanup_old_health_data(self.config.success_rate_tracking_window);
