@@ -145,35 +145,19 @@ where
         loop {
             let mut local_shutdown = Shutdown::new();
 
-            // No use to try scanning when we do not have a base node connection, typically at startup
-            if !self.is_base_node_connected() {
-                local_shutdown.trigger();
+            if self
+                .resources
+                .comms_connectivity
+                .get_connectivity_status()
+                .await?
+                .is_offline()
+            {
                 debug!(
                     target: LOG_TARGET,
-                    "{:?}: Base node is not connected - waiting for base node connection.",
+                    "{:?}: Comms connectivity is offline - waiting for connectivity.",
                     self.mode
                 );
-                tokio::select! {
-                    _ = main_shutdown.wait() => {
-                        info!(
-                            target: LOG_TARGET,
-                            "{:?}: UTXO scanning service shutting down because it received the shutdown signal",
-                            self.mode
-                        );
-                        return Ok(());
-                    }
-                    _ = self.resources.current_base_node_watcher.changed() => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "{:?}: Base node change detected waiting for initial connection.",
-                            self.mode
-                        );
-                        let selected_peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                        if let Some(peer) = selected_peer {
-                            self.peer_seeds = vec![peer.get_current_peer().public_key];
-                        }
-                    },
-                }
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
 
@@ -304,15 +288,6 @@ where
             // Nothing here
         }
         should_trigger_scanning
-    }
-
-    fn is_base_node_connected(&self) -> bool {
-        self.resources
-            .current_base_node_watcher
-            .borrow()
-            .as_ref()
-            .cloned()
-            .is_some()
     }
 }
 
