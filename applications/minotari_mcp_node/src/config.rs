@@ -23,6 +23,9 @@ pub struct NodeGrpcConfig {
     
     /// Maximum number of retries for failed requests
     pub max_retries: u32,
+    
+    /// Whether to auto-launch the base node
+    pub auto_launch: bool,
 }
 
 impl NodeMcpConfig {
@@ -48,6 +51,7 @@ impl NodeMcpConfig {
             address: cli.node_grpc_address.clone(),
             timeout_secs: cli.node_grpc_timeout,
             max_retries: 3,
+            auto_launch: cli.auto_launch_node,
         };
 
         let config = Self {
@@ -79,6 +83,11 @@ impl NodeMcpConfig {
         Ok(())
     }
 
+    /// Check if auto-launch is enabled
+    pub fn should_auto_launch_node(&self) -> bool {
+        self.node_grpc.auto_launch
+    }
+
     /// Get the node gRPC endpoint URL
     pub fn node_grpc_url(&self) -> String {
         if self.node_grpc.address.starts_with("http://") || self.node_grpc.address.starts_with("https://") {
@@ -95,6 +104,7 @@ impl Default for NodeGrpcConfig {
             address: "127.0.0.1:18142".to_string(),
             timeout_secs: 30,
             max_retries: 3,
+            auto_launch: false,
         }
     }
 }

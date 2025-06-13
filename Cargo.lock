@@ -4261,6 +4261,7 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "uuid",
+ "which",
 ]
 
 [[package]]
@@ -4286,6 +4287,7 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "uuid",
+ "which",
 ]
 
 [[package]]

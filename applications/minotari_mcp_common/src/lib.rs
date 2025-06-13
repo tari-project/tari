@@ -13,6 +13,7 @@ pub mod prompts;
 pub mod security;
 pub mod transport;
 pub mod stdio_transport;
+pub mod process_manager;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -22,3 +23,4 @@ pub use prompts::{McpPrompt, PromptRegistry, MessageRole, PromptMessage, PromptC
 pub use security::{SecurityContext, PermissionLevel};
 pub use config::McpConfig;
 pub use stdio_transport::StdioTransport;
+pub use process_manager::{ProcessSupervisor, ProcessType, ProcessStatus, ProcessUtils};

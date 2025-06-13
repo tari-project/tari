@@ -26,6 +26,9 @@ pub struct WalletGrpcConfig {
     
     /// Maximum number of retries for failed requests
     pub max_retries: u32,
+    
+    /// Whether to auto-launch the wallet
+    pub auto_launch: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,6 +66,7 @@ impl WalletMcpConfig {
             address: cli.wallet_grpc_address.clone(),
             timeout_secs: cli.wallet_grpc_timeout,
             max_retries: 3,
+            auto_launch: cli.auto_launch_wallet,
         };
 
         let security_config = WalletSecurityConfig {
@@ -106,6 +110,11 @@ impl WalletMcpConfig {
         Ok(())
     }
 
+    /// Check if auto-launch is enabled
+    pub fn should_auto_launch_wallet(&self) -> bool {
+        self.wallet_grpc.auto_launch
+    }
+
     /// Get the wallet gRPC endpoint URL
     pub fn wallet_grpc_url(&self) -> String {
         if self.wallet_grpc.address.starts_with("http://") || self.wallet_grpc.address.starts_with("https://") {
@@ -122,6 +131,7 @@ impl Default for WalletGrpcConfig {
             address: "127.0.0.1:18143".to_string(),
             timeout_secs: 30,
             max_retries: 3,
+            auto_launch: false,
         }
     }
 }

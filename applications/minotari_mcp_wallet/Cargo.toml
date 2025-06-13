@@ -30,3 +30,4 @@ uuid = { version = "1.0", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 dirs = "5.0"
+which = "4.0"
