@@ -53,21 +53,13 @@ impl McpConfig {
     /// Validate the configuration
     pub fn validate(&self) -> Result<(), String> {
         if self.enabled {
-            // Enforce local-only binding for security
-            if !self.bind_address.is_loopback() {
-                return Err("MCP server must bind to loopback address only (127.0.0.1 or ::1) for security".into());
-            }
-
-            if self.port == 0 {
-                return Err("Port must be specified".into());
-            }
-
-            if self.max_connections == 0 {
-                return Err("Max connections must be greater than 0".into());
-            }
-
+            // Basic validation for stdio transport
             if self.request_timeout_secs == 0 {
                 return Err("Request timeout must be greater than 0".into());
+            }
+
+            if self.rate_limit_per_minute == 0 {
+                return Err("Rate limit must be greater than 0".into());
             }
         }
 

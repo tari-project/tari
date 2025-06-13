@@ -12,6 +12,7 @@ pub mod resources;
 pub mod prompts;
 pub mod security;
 pub mod transport;
+pub mod stdio_transport;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -20,3 +21,4 @@ pub use resources::{McpResource, ResourceRegistry};
 pub use prompts::{McpPrompt, PromptRegistry, MessageRole, PromptMessage, PromptContent, text_message, resource_message};
 pub use security::{SecurityContext, PermissionLevel};
 pub use config::McpConfig;
+pub use stdio_transport::StdioTransport;

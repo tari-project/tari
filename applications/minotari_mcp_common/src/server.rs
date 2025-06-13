@@ -7,12 +7,12 @@ use crate::tools::{ToolRegistry, ToolInfo};
 use crate::resources::{ResourceRegistry, ResourceInfo};
 use crate::prompts::{PromptRegistry, PromptInfo};
 use crate::transport::{
-    JsonRpcTransport, MessageHandler, McpMessage, McpResponse, Transport,
+    MessageHandler, McpMessage, McpResponse,
     ToolCallParams, ResourceReadParams, PromptGetParams, InitializeParams,
 };
+use crate::stdio_transport::StdioTransport;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -32,8 +32,6 @@ pub struct McpServerImpl {
     tool_registry: Arc<ToolRegistry>,
     resource_registry: Arc<ResourceRegistry>,
     prompt_registry: Arc<PromptRegistry>,
-    #[allow(dead_code)]
-    transport: Option<Box<dyn Transport>>,
     running: Arc<RwLock<bool>>,
 }
 
@@ -87,7 +85,6 @@ impl McpServerBuilder {
             tool_registry: Arc::new(self.tool_registry),
             resource_registry: Arc::new(self.resource_registry),
             prompt_registry: Arc::new(self.prompt_registry),
-            transport: None,
             running: Arc::new(RwLock::new(false)),
         })
     }
@@ -106,10 +103,6 @@ impl McpServer for McpServerImpl {
             return Err(McpError::server_error("Server is already running"));
         }
 
-        let addr: SocketAddr = self.config.bind_address()
-            .parse()
-            .map_err(|e| McpError::config_error(format!("Invalid bind address: {}", e)))?;
-
         // Create message handler
         let handler = ServerMessageHandler {
             security_context: self.security_context.clone(),
@@ -118,16 +111,21 @@ impl McpServer for McpServerImpl {
             prompt_registry: self.prompt_registry.clone(),
         };
 
-        // Create transport
-        let transport = JsonRpcTransport::new(Arc::new(handler));
+        // Create stdio transport
+        let transport = StdioTransport::new(Arc::new(handler));
 
-        log::info!("Starting MCP server on {}", addr);
+        log::info!("Starting MCP server with stdio transport");
         log::info!("Control operations enabled: {}", self.config.are_control_operations_enabled());
 
-        // Start listening
-        transport.listen(addr).await?;
-
         *running = true;
+        
+        // Start the stdio transport (this will block until shutdown)
+        transport.start().await?;
+
+        // When we get here, the transport has shut down
+        let mut running = self.running.write().await;
+        *running = false;
+        
         Ok(())
     }
 
