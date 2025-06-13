@@ -103,6 +103,7 @@ use url::Url;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    client::http_client_factory::HttpClientFactory,
     config::WalletConfig,
     connectivity_service::{
         BaseNodePeerManager,
@@ -128,12 +129,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::{
-        handle::UtxoScannerHandle,
-        initializer::UtxoScannerServiceInitializer,
-        service::{DefaultHttpClientFactory, HttpClientFactory},
-        RECOVERY_KEY,
-    },
+    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet";

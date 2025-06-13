@@ -28,6 +28,7 @@ use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
@@ -36,7 +37,7 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
-        service::{HttpClientFactory, UtxoScannerResources, UtxoScannerService},
+        service::{UtxoScannerResources, UtxoScannerService},
     },
     WalletKeyManager,
     WalletSqlite,

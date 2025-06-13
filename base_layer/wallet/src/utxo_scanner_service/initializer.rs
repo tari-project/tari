@@ -33,13 +33,14 @@ use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::DefaultHttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
-        service::{DefaultHttpClientFactory, UtxoScannerService},
+        service::UtxoScannerService,
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };

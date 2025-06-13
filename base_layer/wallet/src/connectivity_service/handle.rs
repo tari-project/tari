@@ -30,9 +30,9 @@ use tari_core::base_node::sync::rpc::BaseNodeSyncRpcClient;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::{
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
     util::watch::Watch,
-    utxo_scanner_service::service::HttpClientFactory,
 };
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

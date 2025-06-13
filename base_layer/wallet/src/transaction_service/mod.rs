@@ -54,6 +54,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -63,7 +64,7 @@ use crate::{
         service::TransactionService,
         storage::database::{TransactionBackend, TransactionDatabase},
     },
-    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
 pub mod config;

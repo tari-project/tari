@@ -31,6 +31,7 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
@@ -38,7 +39,7 @@ use minotari_wallet::{
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
     util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
+    utxo_scanner_service::handle::UtxoScannerHandle,
     WalletConfig,
     WalletSqlite,
 };

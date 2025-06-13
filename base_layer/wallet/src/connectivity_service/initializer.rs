@@ -33,7 +33,7 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use super::handle::WalletConnectivityHandle;
-use crate::{util::watch::Watch, utxo_scanner_service::service::DefaultHttpClientFactory};
+use crate::{client::http_client_factory::DefaultHttpClientFactory, util::watch::Watch};
 
 pub struct WalletConnectivityInitializer {
     http_node_url: Url,

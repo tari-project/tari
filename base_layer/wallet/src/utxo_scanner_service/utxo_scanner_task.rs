@@ -51,12 +51,13 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
 
 use crate::{
+    client::http_client_factory::HttpClientFactory,
     error::WalletError,
     storage::database::WalletBackend,
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
-        service::{HttpClientFactory, ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
+        service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
         uxto_scanner_service_builder::UtxoScannerMode,
         RECOVERY_KEY,
     },

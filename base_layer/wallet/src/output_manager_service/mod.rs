@@ -55,6 +55,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -63,7 +64,7 @@ use crate::{
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
     transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
+    utxo_scanner_service::handle::UtxoScannerHandle,
 };
 
 /// The maximum number of transaction inputs that can be created in a single transaction, slightly less than the maximum

@@ -10,6 +10,7 @@
 #[macro_use]
 mod macros;
 pub mod base_node_service;
+pub mod client;
 pub mod connectivity_service;
 pub mod error;
 mod operation_id;
@@ -41,10 +42,10 @@ use tari_core::transactions::transaction_key_manager::{
 pub use wallet::Wallet;
 
 use crate::{
+    client::http_client_factory::DefaultHttpClientFactory,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{sqlite_db::wallet::WalletSqliteDatabase, sqlite_utilities::WalletDbConnection},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
-    utxo_scanner_service::service::DefaultHttpClientFactory,
 };
 
 mod consts {

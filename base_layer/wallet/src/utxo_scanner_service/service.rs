@@ -37,6 +37,7 @@ use url::Url;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    client::http_client_factory::HttpClientFactory,
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -200,30 +201,6 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
     pub(crate) one_sided_payment_message: String,
     pub(crate) birthday_offset: u16,
     pub(crate) client_factory: THttpClientFactory,
-}
-
-pub trait HttpClientFactory: Clone + Send + Sync + 'static {
-    type Client: BaseNodeWalletClient;
-    fn create_http_client(&self) -> Self::Client;
-}
-
-#[derive(Clone)]
-pub struct DefaultHttpClientFactory {
-    node_url: Url,
-}
-
-impl DefaultHttpClientFactory {
-    pub fn new(node_url: Url) -> Self {
-        Self { node_url }
-    }
-}
-
-impl HttpClientFactory for DefaultHttpClientFactory {
-    type Client = minotari_node_wallet_client::http::Client;
-
-    fn create_http_client(&self) -> Self::Client {
-        minotari_node_wallet_client::http::Client::new(self.node_url.clone())
-    }
 }
 
 #[derive(Debug, Clone)]

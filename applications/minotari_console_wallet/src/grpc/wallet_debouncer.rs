@@ -25,16 +25,14 @@ use std::sync::Arc;
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::Balance,
     },
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
-    utxo_scanner_service::{
-        handle::{UtxoScannerEvent, UtxoScannerHandle},
-        service::DefaultHttpClientFactory,
-    },
+    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;

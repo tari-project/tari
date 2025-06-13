@@ -37,9 +37,9 @@ use super::{
 };
 use crate::{
     base_node_service::monitor::BaseNodeMonitor,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
-    utxo_scanner_service::service::HttpClientFactory,
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";

@@ -28,13 +28,11 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use minotari_wallet::{
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     error::WalletError,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
-    utxo_scanner_service::{
-        handle::UtxoScannerEvent,
-        service::{DefaultHttpClientFactory, UtxoScannerService},
-    },
+    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletKeyManager,
     WalletSqlite,
 };

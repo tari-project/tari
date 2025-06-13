@@ -39,9 +39,9 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, service::BaseNodeService},
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
-    utxo_scanner_service::service::DefaultHttpClientFactory,
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service";
