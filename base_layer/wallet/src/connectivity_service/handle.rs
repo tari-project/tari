@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
@@ -36,9 +37,9 @@ use crate::{
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {
-    Connecting,
-    Online,
-    Offline,
+    Connecting = 0,
+    Online = 1,
+    Offline = 2,
 }
 
 pub enum WalletConnectivityRequest {
@@ -50,6 +51,7 @@ pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
     sender: mpsc::Sender<WalletConnectivityRequest>,
     base_node_watch: Watch<Option<BaseNodePeerManager>>,
     client_factory: TWalletClientFactory,
+    online_status_watch: watch::Sender<OnlineStatus>,
 }
 
 impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
@@ -58,10 +60,12 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletCl
         base_node_watch: Watch<Option<BaseNodePeerManager>>,
         client_factory: TWalletClientFactory,
     ) -> Self {
+        let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
         Self {
             sender,
             base_node_watch,
             client_factory,
+            online_status_watch,
         }
     }
 }
@@ -106,12 +110,16 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
             .await;
     }
 
-    fn get_connectivity_status(&mut self) -> OnlineStatus {
-        todo!()
+    fn get_connectivity_status(&self) -> OnlineStatus {
+        if self.client_factory.create_http_client().is_online() {
+            OnlineStatus::Online
+        } else {
+            OnlineStatus::Offline
+        }
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
-        todo!()
+        self.online_status_watch.subscribe()
     }
 
     fn get_current_base_node_peer(&self) -> Option<Peer> {

@@ -38,6 +38,7 @@ use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 
 use crate::{
+    base_node_service::config::BaseNodeServiceConfig,
     output_manager_service::config::OutputManagerServiceConfig,
     transaction_service::config::TransactionServiceConfig,
 };
@@ -64,6 +65,9 @@ pub struct WalletConfig {
     pub buffer_size: usize,
     /// Selected network
     pub network: Network,
+    /// The base_node_service_config config settings
+    #[serde(rename = "base_node")]
+    pub base_node_service_config: BaseNodeServiceConfig,
     /// The relative path to store persistent data
     pub data_dir: PathBuf,
     /// The relative path to the config directory
@@ -137,6 +141,7 @@ impl Default for WalletConfig {
             output_manager_service_config: Default::default(),
             buffer_size: 50_000,
             network: Default::default(),
+            base_node_service_config: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             config_dir: PathBuf::from_str("config/wallet").unwrap(),
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),

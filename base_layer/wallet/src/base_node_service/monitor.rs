@@ -151,7 +151,7 @@ where
                 .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
 
             let timer = Instant::now();
-            let latency = match client.get_last_request_latency().await {
+            let latency = match client.get_last_request_latency() {
                 Some(latency) => latency,
                 None => {
                     sleep(error_sleep_duration); // wait a bit for the latency to be set

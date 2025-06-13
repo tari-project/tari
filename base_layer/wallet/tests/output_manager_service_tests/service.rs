@@ -135,7 +135,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let mut wallet_connectivity_mock = todo!();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     wallet_connectivity_mock
@@ -177,7 +176,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         Network::LocalNet,
-        wallet_connectivity_mock.clone(),
         key_manager.clone(),
         scanner_handle,
         ts_handle.clone(),

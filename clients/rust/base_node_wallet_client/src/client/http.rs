@@ -1,5 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
+use std::{sync::RwLock, time::Instant};
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
@@ -18,7 +20,7 @@ use tari_core::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::mpsc;
 use url::Url;
 
 use crate::{BaseNodeWalletClient, DeletedUtxoInfo, FetchMatchingUtxosResponse};
@@ -29,7 +31,7 @@ const LOG_TARGET: &str = "tari::wallet::client::http";
 pub struct Client {
     api_address: Url,
     http_client: reqwest::Client,
-    last_latency: RwLock<Option<std::time::Duration>>,
+    last_latency: RwLock<Option<(std::time::Duration, Instant)>>,
 }
 
 impl Client {
@@ -54,6 +56,14 @@ impl Clone for Client {
 
 #[async_trait]
 impl BaseNodeWalletClient for Client {
+    fn is_online(&self) -> bool {
+        self.last_latency
+            .read()
+            .expect("rwlock poisoned")
+            .map(|latency| latency.1.elapsed() < std::time::Duration::from_secs(10))
+            .unwrap_or(false)
+    }
+
     async fn get_tip_info(&self) -> Result<TipInfoResponse, anyhow::Error> {
         let start_time = std::time::Instant::now();
         debug!(target: LOG_TARGET, "Requesting tip info from Base Node wallet service at {}", self.api_address);
@@ -76,7 +86,8 @@ impl BaseNodeWalletClient for Client {
             Ok(res.json::<TipInfoResponse>().await?)
         };
         let duration = start_time.elapsed();
-        *self.last_latency.write().await = Some(duration);
+        let mut lock = *self.last_latency.write().expect("rwlock poisoned");
+        lock = Some((duration, Instant::now()));
         res
     }
 
@@ -218,12 +229,32 @@ impl BaseNodeWalletClient for Client {
         Ok(resp_rx)
     }
 
-    async fn get_last_request_latency(&self) -> Option<std::time::Duration> {
-        self.last_latency.read().await.clone()
+    fn get_last_request_latency(&self) -> Option<std::time::Duration> {
+        self.last_latency
+            .read()
+            .expect("rwlock poisoned")
+            .map(|(duration, _)| duration)
     }
 
     async fn fetch_matching_utxos(&self, hashes: Vec<Vec<u8>>) -> Result<FetchMatchingUtxosResponse, anyhow::Error> {
-        todo!()
+        debug!(target: LOG_TARGET, "Requesting matching UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
+        let mut target_url = self.api_address.join("/fetch_matching_utxos")?;
+        target_url.set_query(Some(&format!(
+            "hashes={}",
+            hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(",")
+        )));
+        let res = self.http_client.get(target_url).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
+        }
+        Ok(res.json::<FetchMatchingUtxosResponse>().await?)
     }
 
     async fn query_deleted_utxos(

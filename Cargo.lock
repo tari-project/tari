@@ -4439,6 +4439,7 @@ dependencies = [
  "async-trait",
  "log",
  "reqwest 0.12.17",
+ "serde",
  "serde_json",
  "tari_core",
  "tari_shutdown",
