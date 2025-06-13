@@ -32,6 +32,9 @@ mod connection_stats;
 mod config;
 pub use config::ConnectivityConfig;
 
+mod peer_health;
+pub use peer_health::{PeerHealthMetrics, CircuitBreakerState};
+
 mod connection_pool;
 
 mod error;

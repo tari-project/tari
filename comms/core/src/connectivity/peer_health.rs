@@ -1,0 +1,364 @@
+//  Copyright 2020, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    collections::VecDeque,
+    fmt,
+    time::{Duration, Instant},
+};
+
+use crate::utils::datetime::format_duration;
+
+/// Circuit breaker state for peer connections
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CircuitBreakerState {
+    /// Normal operation - connections are allowed
+    Closed,
+    /// Failures exceeded threshold - connections are blocked
+    Open { opened_at: Instant },
+    /// Testing phase - limited connections allowed to test recovery
+    HalfOpen,
+}
+
+impl CircuitBreakerState {
+    pub fn is_open(&self) -> bool {
+        matches!(self, CircuitBreakerState::Open { .. })
+    }
+
+    pub fn is_half_open(&self) -> bool {
+        matches!(self, CircuitBreakerState::HalfOpen)
+    }
+
+    pub fn is_closed(&self) -> bool {
+        matches!(self, CircuitBreakerState::Closed)
+    }
+}
+
+impl Default for CircuitBreakerState {
+    fn default() -> Self {
+        CircuitBreakerState::Closed
+    }
+}
+
+/// Connection attempt result for tracking success rates
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionAttemptResult {
+    Success,
+    Failure,
+}
+
+/// Time-windowed connection attempt record
+#[derive(Debug, Clone)]
+struct ConnectionAttempt {
+    timestamp: Instant,
+    result: ConnectionAttemptResult,
+}
+
+/// Health metrics for a peer connection
+#[derive(Debug, Clone)]
+pub struct PeerHealthMetrics {
+    /// Circuit breaker state
+    circuit_breaker_state: CircuitBreakerState,
+    /// Last connection attempt timestamp
+    last_attempt: Option<Instant>,
+    /// Consecutive failures count
+    consecutive_failures: usize,
+    /// Rolling window of connection attempts for success rate calculation
+    connection_attempts: VecDeque<ConnectionAttempt>,
+    /// Optional average latency for connection establishment
+    avg_connection_latency: Option<Duration>,
+}
+
+impl Default for PeerHealthMetrics {
+    fn default() -> Self {
+        Self {
+            circuit_breaker_state: CircuitBreakerState::default(),
+            last_attempt: None,
+            consecutive_failures: 0,
+            connection_attempts: VecDeque::new(),
+            avg_connection_latency: None,
+        }
+    }
+}
+
+impl PeerHealthMetrics {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a successful connection attempt
+    pub fn record_success(&mut self, latency: Option<Duration>) {
+        self.last_attempt = Some(Instant::now());
+        self.consecutive_failures = 0;
+        self.add_attempt(ConnectionAttemptResult::Success);
+        
+        if let Some(latency) = latency {
+            self.update_latency(latency);
+        }
+
+        // Transition circuit breaker state on successful connection
+        match self.circuit_breaker_state {
+            CircuitBreakerState::HalfOpen => {
+                self.circuit_breaker_state = CircuitBreakerState::Closed;
+            },
+            _ => {},
+        }
+    }
+
+    /// Record a failed connection attempt
+    pub fn record_failure(&mut self, failure_threshold: usize) {
+        self.last_attempt = Some(Instant::now());
+        self.consecutive_failures += 1;
+        self.add_attempt(ConnectionAttemptResult::Failure);
+
+        // Transition to open state if threshold exceeded
+        if self.consecutive_failures >= failure_threshold {
+            self.circuit_breaker_state = CircuitBreakerState::Open { 
+                opened_at: Instant::now() 
+            };
+        }
+    }
+
+    /// Check if connection attempts should be allowed
+    pub fn should_allow_connection(&self, retry_interval: Duration) -> bool {
+        match &self.circuit_breaker_state {
+            CircuitBreakerState::Closed => true,
+            CircuitBreakerState::HalfOpen => true,
+            CircuitBreakerState::Open { opened_at } => {
+                opened_at.elapsed() >= retry_interval
+            },
+        }
+    }
+
+    /// Transition from open to half-open state for testing
+    pub fn try_half_open(&mut self, retry_interval: Duration) -> bool {
+        if let CircuitBreakerState::Open { opened_at } = &self.circuit_breaker_state {
+            if opened_at.elapsed() >= retry_interval {
+                self.circuit_breaker_state = CircuitBreakerState::HalfOpen;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Calculate success rate within the given time window
+    pub fn success_rate(&self, window: Duration) -> f32 {
+        let cutoff = Instant::now() - window;
+        
+        let recent_attempts: Vec<_> = self.connection_attempts
+            .iter()
+            .filter(|attempt| attempt.timestamp > cutoff)
+            .collect();
+
+        if recent_attempts.is_empty() {
+            return 1.0; // Default to optimistic success rate if no data
+        }
+
+        let successes = recent_attempts
+            .iter()
+            .filter(|attempt| attempt.result == ConnectionAttemptResult::Success)
+            .count();
+
+        successes as f32 / recent_attempts.len() as f32
+    }
+
+    /// Get the circuit breaker state
+    pub fn circuit_breaker_state(&self) -> &CircuitBreakerState {
+        &self.circuit_breaker_state
+    }
+
+    /// Get consecutive failures count
+    pub fn consecutive_failures(&self) -> usize {
+        self.consecutive_failures
+    }
+
+    /// Get last attempt timestamp
+    pub fn last_attempt(&self) -> Option<Instant> {
+        self.last_attempt
+    }
+
+    /// Get average connection latency if available
+    pub fn avg_connection_latency(&self) -> Option<Duration> {
+        self.avg_connection_latency
+    }
+
+    /// Clean up old connection attempts outside the window
+    pub fn cleanup_old_attempts(&mut self, window: Duration) {
+        let cutoff = Instant::now() - window;
+        while let Some(front) = self.connection_attempts.front() {
+            if front.timestamp <= cutoff {
+                self.connection_attempts.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Calculate a health score for peer selection (0.0 = unhealthy, 1.0 = healthy)
+    pub fn health_score(&self, window: Duration) -> f32 {
+        if self.circuit_breaker_state.is_open() {
+            return 0.0;
+        }
+
+        let success_rate = self.success_rate(window);
+        let failure_penalty = if self.consecutive_failures > 0 {
+            0.1 * self.consecutive_failures as f32
+        } else {
+            0.0
+        };
+
+        (success_rate - failure_penalty).max(0.0).min(1.0)
+    }
+
+    fn add_attempt(&mut self, result: ConnectionAttemptResult) {
+        self.connection_attempts.push_back(ConnectionAttempt {
+            timestamp: Instant::now(),
+            result,
+        });
+
+        // Limit queue size to prevent unbounded growth
+        const MAX_ATTEMPTS_HISTORY: usize = 100;
+        if self.connection_attempts.len() > MAX_ATTEMPTS_HISTORY {
+            self.connection_attempts.pop_front();
+        }
+    }
+
+    fn update_latency(&mut self, new_latency: Duration) {
+        match self.avg_connection_latency {
+            Some(current_avg) => {
+                // Simple exponential moving average
+                const ALPHA: f32 = 0.3;
+                let new_avg_millis = (1.0 - ALPHA) * current_avg.as_millis() as f32 
+                    + ALPHA * new_latency.as_millis() as f32;
+                self.avg_connection_latency = Some(Duration::from_millis(new_avg_millis as u64));
+            },
+            None => {
+                self.avg_connection_latency = Some(new_latency);
+            },
+        }
+    }
+}
+
+impl fmt::Display for PeerHealthMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Health(state: {:?}", self.circuit_breaker_state)?;
+        
+        if self.consecutive_failures > 0 {
+            write!(f, ", failures: {}", self.consecutive_failures)?;
+        }
+        
+        if let Some(latency) = self.avg_connection_latency {
+            write!(f, ", latency: {}", format_duration(latency))?;
+        }
+        
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for CircuitBreakerState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CircuitBreakerState::Closed => write!(f, "Closed"),
+            CircuitBreakerState::Open { opened_at } => {
+                write!(f, "Open({})", format_duration(opened_at.elapsed()))
+            },
+            CircuitBreakerState::HalfOpen => write!(f, "HalfOpen"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    #[test]
+    fn test_circuit_breaker_transitions() {
+        let mut metrics = PeerHealthMetrics::new();
+        let failure_threshold = 3;
+        let retry_interval = Duration::from_millis(100);
+        
+        // Start in closed state
+        assert!(metrics.circuit_breaker_state.is_closed());
+        assert!(metrics.should_allow_connection(retry_interval));
+        
+        // Record failures to trigger open state
+        for _ in 0..failure_threshold {
+            metrics.record_failure(failure_threshold);
+        }
+        
+        assert!(metrics.circuit_breaker_state.is_open());
+        assert!(!metrics.should_allow_connection(retry_interval));
+        
+        // Wait for retry interval
+        thread::sleep(retry_interval + Duration::from_millis(10));
+        
+        // Should allow connection after retry interval
+        assert!(metrics.should_allow_connection(retry_interval));
+        
+        // Transition to half-open
+        assert!(metrics.try_half_open(retry_interval));
+        assert!(metrics.circuit_breaker_state.is_half_open());
+        
+        // Success should close the circuit
+        metrics.record_success(Some(Duration::from_millis(50)));
+        assert!(metrics.circuit_breaker_state.is_closed());
+    }
+
+    #[test]
+    fn test_success_rate_calculation() {
+        let mut metrics = PeerHealthMetrics::new();
+        let window = Duration::from_secs(60);
+        
+        // Record mixed results
+        metrics.record_success(None);
+        metrics.record_success(None);
+        metrics.record_failure(5);
+        metrics.record_success(None);
+        
+        let success_rate = metrics.success_rate(window);
+        assert_eq!(success_rate, 0.75); // 3 successes out of 4 attempts
+    }
+
+    #[test]
+    fn test_health_score() {
+        let mut metrics = PeerHealthMetrics::new();
+        let window = Duration::from_secs(60);
+        
+        // Perfect health initially
+        assert_eq!(metrics.health_score(window), 1.0);
+        
+        // Record some failures
+        metrics.record_failure(5);
+        metrics.record_failure(5);
+        
+        let score = metrics.health_score(window);
+        assert!(score < 1.0);
+        assert!(score > 0.0);
+        
+        // Circuit breaker open should result in 0 score
+        metrics.record_failure(5);
+        metrics.record_failure(5);
+        metrics.record_failure(5);
+        assert_eq!(metrics.health_score(window), 0.0);
+    }
+}
