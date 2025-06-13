@@ -483,14 +483,16 @@ impl ConnectivityManagerActor {
             );
         }
 
-        // Execute proactive dialing logic
-        if let Err(err) = self.execute_proactive_dialing(task_id).await {
-            warn!(
-                target: LOG_TARGET,
-                "({}) Proactive dialing failed: {:?}",
-                task_id,
-                err
-            );
+        // Execute proactive dialing logic (if enabled)
+        if self.config.proactive_dialing_enabled {
+            if let Err(err) = self.execute_proactive_dialing(task_id).await {
+                warn!(
+                    target: LOG_TARGET,
+                    "({}) Proactive dialing failed: {:?}",
+                    task_id,
+                    err
+                );
+            }
         }
 
         self.update_connectivity_status();
