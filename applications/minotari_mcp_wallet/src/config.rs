@@ -53,13 +53,12 @@ impl WalletMcpConfig {
         let mcp_config = McpConfig {
             enabled: cli.mcp_enabled,
             control_enabled: cli.mcp_control_enabled,
-            bind_address: "127.0.0.1".parse().unwrap(), // Not used for stdio but required for config
-            port: 0, // Not used for stdio
-            max_connections: 1, // Stdio only supports single connection
             request_timeout_secs: cli.mcp_timeout,
             rate_limit_per_minute: cli.mcp_rate_limit,
             audit_logging: cli.mcp_audit_logging,
-            audit_log_path: cli.mcp_audit_log_path.clone(),
+            audit_log_path: cli.mcp_audit_log_path.clone().map(|s| s.into()),
+            auto_launch: minotari_mcp_common::config::AutoLaunchConfig::default(),
+            input_sanitization: minotari_mcp_common::config::InputSanitizationConfig::default(),
         };
 
         let wallet_grpc_config = WalletGrpcConfig {
