@@ -32,6 +32,7 @@ pub mod method_implementations;
 pub mod conversion_registry_factory;
 pub mod health_checker;
 pub mod connection_manager;
+pub mod response_converter;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -60,3 +61,4 @@ pub use method_implementations::{create_node_converters, create_wallet_converter
 pub use conversion_registry_factory::ConversionRegistryFactory;
 pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealthStatus, HealthConfig, GrpcHealthChecker};
 pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};
+pub use response_converter::{ResponseConverter, ResponseConverterRegistry, ResponseConverterFactory, GenericJsonConverter, NodeResponseConverter, WalletResponseConverter};

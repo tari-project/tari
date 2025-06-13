@@ -43,6 +43,10 @@ pub enum ErrorCategory {
     Timeout,
     Internal,
     External,
+    HealthCheck,
+    CircuitBreaker,
+    ParameterConversion,
+    ResponseConversion,
 }
 
 impl ErrorCategory {
@@ -58,6 +62,10 @@ impl ErrorCategory {
             Self::Timeout => "Operation timeout errors",
             Self::Internal => "Internal service errors",
             Self::External => "External dependency errors",
+            Self::HealthCheck => "Health check failure",
+            Self::CircuitBreaker => "Circuit breaker protection",
+            Self::ParameterConversion => "Parameter conversion error",
+            Self::ResponseConversion => "Response conversion error",
         }
     }
 }
