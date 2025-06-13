@@ -484,12 +484,13 @@ impl ConnectivityManagerActor {
 
     async fn maintain_n_closest_peer_connections_only(&mut self, threshold: usize, task_id: u64) {
         let start = Instant::now();
-        // Select all active peer connections (that are communication nodes)
-        let mut connections = match self.select_connections(ConnectivitySelection::closest_to(
+        // Select all active peer connections (that are communication nodes) with health-aware selection
+        let selection = ConnectivitySelection::healthy_closest_to(
             self.node_identity.node_id().clone(),
             self.pool.count_connected_nodes(),
             vec![],
-        )) {
+        );
+        let mut connections = match self.select_connections_with_health(selection) {
             Ok(peers) => peers,
             Err(e) => {
                 warn!(
@@ -636,6 +637,24 @@ impl ConnectivityManagerActor {
 
         let conns = selection.select(&self.pool);
         debug!(target: LOG_TARGET, "Selected {} connections(s)", conns.len());
+
+        Ok(conns.into_iter().cloned().collect())
+    }
+
+    fn select_connections_with_health(&self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, ConnectivityError> {
+        trace!(target: LOG_TARGET, "Health-aware selection query: {:?}", selection);
+        trace!(
+            target: LOG_TARGET,
+            "Selecting from {} connected node peers with health metrics",
+            self.pool.count_connected_nodes()
+        );
+
+        let conns = selection.select_with_health(
+            &self.pool,
+            &self.connection_stats,
+            self.config.success_rate_tracking_window,
+        );
+        debug!(target: LOG_TARGET, "Selected {} healthy connections(s)", conns.len());
 
         Ok(conns.into_iter().cloned().collect())
     }
