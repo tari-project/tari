@@ -9,7 +9,7 @@ use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
     ServiceHealthMonitors, TariProcessLauncher,
     ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
-    StartupDiagnostics
+    StartupDiagnostics, ProcessLauncher
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use std::sync::Arc;
@@ -20,15 +20,18 @@ use tonic::transport::Channel;
 pub struct WalletMcpServer {
     inner: Box<dyn McpServer>,
     _grpc_client: Arc<WalletGrpcClient<Channel>>,
+    launched_process: Option<Arc<ProcessLauncher>>,
 }
 
 impl WalletMcpServer {
     /// Create a new Wallet MCP server
     pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
-        if config.should_auto_launch_wallet() {
-            Self::ensure_wallet_running(&config, cli).await?;
-        }
+        let launched_process = if config.should_auto_launch_wallet() {
+            Self::ensure_wallet_running(&config, cli).await?
+        } else {
+            None
+        };
 
         // Create gRPC client connection to wallet
         let grpc_client = Self::create_grpc_client(&config).await?;
@@ -53,13 +56,31 @@ impl WalletMcpServer {
         Ok(Self {
             inner: Box::new(server),
             _grpc_client: grpc_client,
+            launched_process,
         })
     }
 
     /// Start the MCP server
-    pub async fn start(self) -> McpResult<()> {
+    pub async fn start(&self) -> McpResult<()> {
         log::info!("Starting Minotari Wallet MCP Server");
         self.inner.start().await
+    }
+
+    /// Stop the MCP server
+    #[allow(dead_code)]
+    pub async fn stop(&self) -> McpResult<()> {
+        log::info!("Stopping Minotari Wallet MCP Server");
+        
+        // First, stop any launched processes
+        if let Some(ref process_launcher) = self.launched_process {
+            log::info!("Stopping launched wallet process...");
+            if let Err(e) = process_launcher.stop().await {
+                log::warn!("Failed to stop launched wallet: {}", e);
+            }
+        }
+        
+        // Then stop the MCP server
+        self.inner.stop().await
     }
 
     /// Create gRPC client connection to wallet
@@ -78,7 +99,7 @@ impl WalletMcpServer {
     }
 
     /// Ensure wallet is running, auto-launch if needed
-    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<()> {
+    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address)
             .unwrap_or(18143);
@@ -87,7 +108,7 @@ impl WalletMcpServer {
         let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
         if health_monitor.is_service_ready().await {
             log::info!("Wallet already running and healthy on port {}", port);
-            return Ok(());
+            return Ok(None); // No process launched by us
         }
 
         log::info!("Wallet not detected, auto-launching...");
@@ -115,14 +136,17 @@ impl WalletMcpServer {
             wallet_args,
         ).await?;
 
+        let launcher = Arc::new(launcher);
+        let launcher_for_background = launcher.clone();
+
         // Start launcher in background
         let launcher_handle = tokio::spawn(async move {
-            match launcher.launch().await {
+            match launcher_for_background.launch().await {
                 Ok(result) => {
                     log::info!("Wallet launched successfully: {:?}", result);
                     // Keep the launcher alive to maintain the process
                     loop {
-                        if !launcher.is_running().await {
+                        if !launcher_for_background.is_running().await {
                             log::warn!("Wallet process has stopped");
                             break;
                         }
@@ -146,7 +170,7 @@ impl WalletMcpServer {
             // Check if the service is ready using proper health check
             if launched_health_monitor.is_service_ready().await {
                 log::info!("Wallet is now running and healthy on port {}", available_port);
-                return Ok(());
+                return Ok(Some(launcher));
             }
             
             // Check launcher status

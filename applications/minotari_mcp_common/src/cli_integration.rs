@@ -167,16 +167,18 @@ impl NodeArgumentBuilder {
     pub fn build(self) -> Vec<String> {
         let mut args = Vec::new();
 
-        // Add base arguments
-        args.push("--base-path".to_string());
-        args.push(self.config.base_path);
-        args.push("--config".to_string());
-        args.push(self.config.config_path);
+        // Add base arguments only if requested
+        if self.include_base_args {
+            args.push("--base-path".to_string());
+            args.push(self.config.base_path);
+            args.push("--config".to_string());
+            args.push(self.config.config_path);
 
-        // Add network if specified
-        if let Some(network) = self.config.network {
-            args.push("--network".to_string());
-            args.push(network);
+            // Add network if specified
+            if let Some(network) = self.config.network {
+                args.push("--network".to_string());
+                args.push(network);
+            }
         }
 
         // Add log config if specified

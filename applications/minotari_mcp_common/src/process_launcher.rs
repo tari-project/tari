@@ -10,9 +10,11 @@ use crate::executable_finder::TariExecutables;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, RwLock};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
 /// Process launch configuration
@@ -77,6 +79,7 @@ pub struct ProcessLauncher {
     process: RwLock<Option<Child>>,
     health_monitor: Option<HealthMonitor>,
     status_tx: mpsc::UnboundedSender<ProcessLaunchStatus>,
+    output_buffer: Arc<RwLock<Vec<String>>>,
 }
 
 impl ProcessLauncher {
@@ -98,6 +101,7 @@ impl ProcessLauncher {
                 process: RwLock::new(None),
                 health_monitor,
                 status_tx,
+                output_buffer: Arc::new(RwLock::new(Vec::new())),
             },
             status_rx,
         )
@@ -136,15 +140,42 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        let child = command.spawn()
+        let mut child = command.spawn()
             .map_err(|e| McpError::server_error(format!("Failed to launch process: {}", e)))?;
 
         let pid = child.id();
+        
+        // Capture stdout and stderr
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
         
         // Store the process
         *self.process.write().await = Some(child);
 
         log::info!("Process launched with PID: {:?}", pid);
+
+        // Start output capture tasks
+        if let Some(stdout) = stdout {
+            let output_buffer = self.output_buffer.clone();
+            tokio::spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    output_buffer.write().await.push(format!("STDOUT: {}", line));
+                }
+            });
+        }
+        
+        if let Some(stderr) = stderr {
+            let output_buffer = self.output_buffer.clone();
+            tokio::spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    output_buffer.write().await.push(format!("STDERR: {}", line));
+                }
+            });
+        }
 
         // Wait for process to become healthy
         let health_result = self.wait_for_health().await;
@@ -156,7 +187,16 @@ impl ProcessLauncher {
             },
             Err(e) => {
                 log::error!("Process failed health checks: {}", e);
-                let error_msg = format!("Health check failed: {}", e);
+                
+                // Get captured output for error reporting
+                let output = self.get_captured_output().await;
+                let output_summary = if output.is_empty() {
+                    "No output captured".to_string()
+                } else {
+                    output.join("\n")
+                };
+                
+                let error_msg = format!("Health check failed: {}\nProcess output:\n{}", e, output_summary);
                 let _ = self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone()));
                 return Err(McpError::server_error(error_msg));
             }
@@ -209,17 +249,50 @@ impl ProcessLauncher {
         let _ = self.status_tx.send(ProcessLaunchStatus::Stopping);
 
         if let Some(child) = self.process.write().await.as_mut() {
-            log::info!("Stopping launched process");
+            log::info!("Stopping launched process with PID: {:?}", child.id());
 
             // Try graceful shutdown first (SIGTERM)
-            child.kill().await
-                .map_err(|e| McpError::server_error(format!("Failed to send SIGTERM: {}", e)))?;
+            match child.kill().await {
+                Ok(_) => log::info!("Sent SIGTERM to process"),
+                Err(e) => log::warn!("Failed to send SIGTERM: {}", e),
+            }
 
-            // Wait for graceful shutdown
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            // Wait for graceful shutdown with periodic checks
+            let mut attempts = 0;
+            while attempts < 10 { // 5 seconds total
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        log::info!("Process exited with status: {:?}", status);
+                        break;
+                    }
+                    Ok(None) => {
+                        // Still running, continue waiting
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        attempts += 1;
+                    }
+                    Err(e) => {
+                        log::warn!("Error checking process status: {}", e);
+                        break;
+                    }
+                }
+            }
 
             // Force kill if still running
-            let _ = child.kill().await;
+            match child.try_wait() {
+                Ok(None) => {
+                    log::warn!("Process did not exit gracefully, force killing");
+                    let _ = child.kill().await;
+                    
+                    // Wait a bit more for force kill to take effect
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Ok(Some(_)) => {
+                    // Process has already exited
+                }
+                Err(e) => {
+                    log::warn!("Error checking process status for force kill: {}", e);
+                }
+            }
             
             log::info!("Process stopped");
         }
@@ -244,6 +317,11 @@ impl ProcessLauncher {
         } else {
             None
         }
+    }
+
+    /// Get captured output from the process
+    pub async fn get_captured_output(&self) -> Vec<String> {
+        self.output_buffer.read().await.clone()
     }
 }
 
@@ -318,6 +396,20 @@ impl LaunchConfigBuilder {
 pub struct TariProcessLauncher;
 
 impl TariProcessLauncher {
+    /// Convert IP:PORT format to multiaddr format
+    fn convert_to_multiaddr(address: &str) -> String {
+        if address.starts_with("/ip4/") {
+            // Already in multiaddr format
+            address.to_string()
+        } else if let Some((ip, port)) = address.split_once(':') {
+            // Convert IP:PORT to /ip4/IP/tcp/PORT
+            format!("/ip4/{}/tcp/{}", ip, port)
+        } else {
+            // Assume it's just a port, use localhost
+            format!("/ip4/127.0.0.1/tcp/{}", address)
+        }
+    }
+
     /// Launch a base node with the given configuration
     pub async fn launch_node(
         base_path: String,
@@ -326,12 +418,17 @@ impl TariProcessLauncher {
         grpc_address: String,
         additional_args: Vec<String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
+        // Convert IP:PORT format to multiaddr format
+        let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
+        
         let mut args = vec![
             "--base-path".to_string(),
             base_path,
             "--config".to_string(),
             config_path,
             "--grpc-enabled".to_string(),
+            "--grpc-address".to_string(),
+            multiaddr_format,
             "--non-interactive-mode".to_string(),
         ];
 
@@ -367,6 +464,9 @@ impl TariProcessLauncher {
         grpc_address: String,
         additional_args: Vec<String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
+        // Convert IP:PORT format to multiaddr format
+        let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
+        
         let mut args = vec![
             "--base-path".to_string(),
             base_path,
@@ -374,7 +474,7 @@ impl TariProcessLauncher {
             config_path,
             "--grpc-enabled".to_string(),
             "--grpc-address".to_string(),
-            grpc_address.clone(),
+            multiaddr_format,
             "--non-interactive-mode".to_string(),
         ];
 

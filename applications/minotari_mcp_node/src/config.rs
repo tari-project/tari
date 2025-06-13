@@ -36,7 +36,7 @@ impl NodeMcpConfig {
             .map_err(McpError::config_error)?;
 
         let mcp_config = McpConfig {
-            enabled: cli.mcp_enabled,
+            enabled: true,
             control_enabled: cli.mcp_control_enabled,
             request_timeout_secs: cli.mcp_timeout,
             rate_limit_per_minute: cli.mcp_rate_limit,

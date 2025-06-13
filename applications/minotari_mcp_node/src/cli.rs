@@ -19,10 +19,6 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_NODE", default_value = "true")]
     pub auto_launch_node: bool,
     
-    /// Enable MCP server
-    #[clap(long, env = "MINOTARI_MCP_ENABLED")]
-    pub mcp_enabled: bool,
-    
     /// Enable MCP control operations (potentially dangerous)
     /// When disabled, only read-only operations are allowed
     #[clap(long, env = "MINOTARI_MCP_CONTROL_ENABLED")]
@@ -91,9 +87,7 @@ impl ConfigOverrideProvider for Cli {
         let mut overrides = self.common.get_config_property_overrides(network);
         
         // MCP-specific overrides
-        if self.mcp_enabled {
-            overrides.push(("mcp.enabled".to_string(), "true".to_string()));
-        }
+        overrides.push(("mcp.enabled".to_string(), "true".to_string()));
         if self.mcp_control_enabled {
             overrides.push(("mcp.control_enabled".to_string(), "true".to_string()));
         }
@@ -145,19 +139,17 @@ impl Cli {
     
     /// Validate CLI arguments
     pub fn validate(&self) -> Result<(), String> {
-        if self.mcp_enabled {
-            if self.mcp_timeout == 0 {
-                return Err("MCP timeout must be greater than 0".into());
-            }
+        if self.mcp_timeout == 0 {
+            return Err("MCP timeout must be greater than 0".into());
+        }
 
-            if self.mcp_rate_limit == 0 {
-                return Err("MCP rate limit must be greater than 0".into());
-            }
+        if self.mcp_rate_limit == 0 {
+            return Err("MCP rate limit must be greater than 0".into());
+        }
 
-            if self.mcp_control_enabled {
-                log::warn!("MCP control operations are ENABLED - this allows AI agents to modify blockchain state");
-                log::warn!("Only enable control operations in trusted environments");
-            }
+        if self.mcp_control_enabled {
+            log::warn!("MCP control operations are ENABLED - this allows AI agents to modify blockchain state");
+            log::warn!("Only enable control operations in trusted environments");
         }
 
         Ok(())

@@ -71,8 +71,6 @@ async fn main() {
         }
     };
 
-
-
     // Create and start the MCP server
     let server = match WalletMcpServer::new(config, &cli).await {
         Ok(server) => server,
@@ -81,8 +79,39 @@ async fn main() {
         }
     };
 
-    // Start the server
-    if server.start().await.is_err() {
-        process::exit(1);
+    // Set up signal handling for graceful shutdown
+    let server_for_signal = server;
+    
+    // Handle Ctrl+C gracefully
+    tokio::select! {
+        result = server_for_signal.start() => {
+            if result.is_err() {
+                process::exit(1);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            log::info!("Received shutdown signal, stopping server...");
+            
+            // Set a timeout for shutdown to prevent hanging
+            let shutdown_result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                server_for_signal.stop()
+            ).await;
+            
+            match shutdown_result {
+                Ok(Ok(_)) => {
+                    log::info!("Server stopped successfully");
+                }
+                Ok(Err(e)) => {
+                    log::error!("Error during shutdown: {}", e);
+                }
+                Err(_) => {
+                    log::warn!("Shutdown timed out after 5 seconds, forcing exit");
+                }
+            }
+            
+            // Force exit to ensure clean termination
+            process::exit(0);
+        }
     }
 }

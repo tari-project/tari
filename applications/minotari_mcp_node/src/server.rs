@@ -9,7 +9,7 @@ use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
     ServiceHealthMonitors, TariProcessLauncher,
     ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
-    StartupDiagnostics
+    StartupDiagnostics, ProcessLauncher
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use std::sync::Arc;
@@ -20,15 +20,18 @@ use tonic::transport::{Channel, Endpoint};
 pub struct NodeMcpServer {
     inner: Box<dyn McpServer>,
     _grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    launched_process: Option<Arc<ProcessLauncher>>,
 }
 
 impl NodeMcpServer {
     /// Create a new Node MCP server
     pub async fn new(config: NodeMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch base node if configured and not running
-        if config.should_auto_launch_node() {
-            Self::ensure_base_node_running(&config, cli).await?;
-        }
+        let launched_process = if config.should_auto_launch_node() {
+            Self::ensure_base_node_running(&config, cli).await?
+        } else {
+            None
+        };
 
         // Create gRPC client connection to base node
         let grpc_client = Self::create_grpc_client(&config).await?;
@@ -53,6 +56,7 @@ impl NodeMcpServer {
         Ok(Self {
             inner: Box::new(server),
             _grpc_client: grpc_client,
+            launched_process,
         })
     }
 
@@ -66,6 +70,16 @@ impl NodeMcpServer {
     #[allow(dead_code)]
     pub async fn stop(&self) -> McpResult<()> {
         log::info!("Stopping Minotari Node MCP Server");
+        
+        // First, stop any launched processes
+        if let Some(ref process_launcher) = self.launched_process {
+            log::info!("Stopping launched base node process...");
+            if let Err(e) = process_launcher.stop().await {
+                log::warn!("Failed to stop launched base node: {}", e);
+            }
+        }
+        
+        // Then stop the MCP server
         self.inner.stop().await
     }
 
@@ -101,7 +115,7 @@ impl NodeMcpServer {
     }
 
     /// Ensure base node is running, auto-launch if needed
-    async fn ensure_base_node_running(config: &NodeMcpConfig, cli: &Cli) -> McpResult<()> {
+    async fn ensure_base_node_running(config: &NodeMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address)
             .unwrap_or(18142);
@@ -110,7 +124,7 @@ impl NodeMcpServer {
         let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
         if health_monitor.is_service_ready().await {
             log::info!("Base node already running and healthy on port {}", port);
-            return Ok(());
+            return Ok(None); // No process launched by us
         }
 
         log::info!("Base node not detected, auto-launching...");
@@ -119,8 +133,8 @@ impl NodeMcpServer {
         let launch_config = cli.extract_launch_config();
         let node_args = cli.extract_node_args();
 
-        log::debug!("Launching base node with config: {:?}", launch_config);
-        log::debug!("Node arguments: {:?}", node_args);
+        log::info!("Launching base node with config: {:?}", launch_config);
+        log::info!("Node arguments: {:?}", node_args);
 
         // Create process launcher using TariProcessLauncher
         let (launcher, mut status_rx) = TariProcessLauncher::launch_node(
@@ -131,14 +145,17 @@ impl NodeMcpServer {
             node_args,
         ).await?;
 
+        let launcher = Arc::new(launcher);
+        let launcher_for_background = launcher.clone();
+
         // Start launcher in background
         let launcher_handle = tokio::spawn(async move {
-            match launcher.launch().await {
+            match launcher_for_background.launch().await {
                 Ok(result) => {
                     log::info!("Base node launched successfully: {:?}", result);
                     // Keep the launcher alive to maintain the process
                     loop {
-                        if !launcher.is_running().await {
+                        if !launcher_for_background.is_running().await {
                             log::warn!("Base node process has stopped");
                             break;
                         }
@@ -159,7 +176,7 @@ impl NodeMcpServer {
             // Check if the service is ready using proper health check
             if health_monitor.is_service_ready().await {
                 log::info!("Base node is now running and healthy");
-                return Ok(());
+                return Ok(Some(launcher));
             }
             
             // Check launcher status
