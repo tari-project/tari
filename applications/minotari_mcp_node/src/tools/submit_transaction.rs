@@ -92,8 +92,7 @@ impl McpTool for SubmitTransactionTool {
         };
 
         // Submit transaction to mempool
-        let mut client = self.grpc_client.clone().as_ref().clone();
-        let response = client
+        let response = self.grpc_client.clone()
             .submit_transaction(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit transaction: {}", e)))?;

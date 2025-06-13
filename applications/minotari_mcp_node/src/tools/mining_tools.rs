@@ -54,7 +54,7 @@ impl McpTool for GetNewBlockTemplateTool {
         };
         
         let request = Request::new(NewBlockTemplateRequest {
-            algo: pow_algo as i32,
+            algo: Some(pow_algo),
             max_weight,
         });
         
@@ -71,10 +71,9 @@ impl McpTool for GetNewBlockTemplateTool {
                     "version": template.header.as_ref().map(|h| h.version).unwrap_or(0),
                     "height": template.header.as_ref().map(|h| h.height).unwrap_or(0),
                     "prev_hash": template.header.as_ref()
-                        .and_then(|h| h.prev_hash.as_ref())
-                        .map(|hash| hex::encode(hash))
+                        .map(|h| hex::encode(&h.prev_hash))
                         .unwrap_or_default(),
-                    "timestamp": template.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
+                    "timestamp": 0, // Timestamp not available in NewBlockHeaderTemplate
                 },
                 "body": {
                     "inputs": template.body.as_ref().map(|b| b.inputs.len()).unwrap_or(0),
@@ -84,10 +83,10 @@ impl McpTool for GetNewBlockTemplateTool {
             },
             "initial_sync_achieved": response.initial_sync_achieved,
             "miner_data": response.miner_data.as_ref().map(|md| json!({
-                "algo": match md.algo {
-                    0 => "SHA3X",
-                    1 => "MONERO", 
-                    2 => "TARI",
+                "algo": match md.pow_algo {
+                    Some(0) => "SHA3X",
+                    Some(1) => "MONERO", 
+                    Some(2) => "TARI",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -218,7 +217,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
         }
         
         let request = Request::new(GetNewBlockTemplateWithCoinbasesRequest {
-            algo: pow_algo as i32,
+            algo: Some(pow_algo),
             max_weight,
             coinbases,
         });
@@ -228,16 +227,13 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .into_inner();
         
         Ok(json!({
-            "block_hash": response.block_hash.as_ref()
-                .map(|hash| hex::encode(hash))
-                .unwrap_or_default(),
+            "block_hash": hex::encode(&response.block_hash),
             "block": response.block.as_ref().map(|block| json!({
                 "header": {
                     "version": block.header.as_ref().map(|h| h.version).unwrap_or(0),
                     "height": block.header.as_ref().map(|h| h.height).unwrap_or(0),
                     "prev_hash": block.header.as_ref()
-                        .and_then(|h| h.prev_hash.as_ref())
-                        .map(|hash| hex::encode(hash))
+                        .map(|h| hex::encode(&h.prev_hash))
                         .unwrap_or_default(),
                     "timestamp": block.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
                 },
@@ -247,17 +243,13 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
                     "kernels": block.body.as_ref().map(|b| b.kernels.len()).unwrap_or(0),
                 }
             })),
-            "merge_mining_hash": response.merge_mining_hash.as_ref()
-                .map(|hash| hex::encode(hash))
-                .unwrap_or_default(),
-            "tari_unique_id": response.tari_unique_id.as_ref()
-                .map(|id| hex::encode(id))
-                .unwrap_or_default(),
+            "merge_mining_hash": hex::encode(&response.merge_mining_hash),
+            "tari_unique_id": hex::encode(&response.tari_unique_id),
             "miner_data": response.miner_data.as_ref().map(|md| json!({
-                "algo": match md.algo {
-                    0 => "SHA3X",
-                    1 => "MONERO",
-                    2 => "TARI", 
+                "algo": match md.pow_algo {
+                    Some(0) => "SHA3X",
+                    Some(1) => "MONERO",
+                    Some(2) => "TARI", 
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -342,7 +334,7 @@ impl McpTool for MiningAnalysisTool {
             };
             
             match self.grpc_client.clone().get_new_block_template(Request::new(NewBlockTemplateRequest {
-                algo: pow_algo as i32,
+                algo: Some(pow_algo),
                 max_weight: 19500,
             })).await {
                 Ok(response) => {

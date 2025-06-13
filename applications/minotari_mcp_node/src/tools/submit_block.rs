@@ -78,8 +78,7 @@ impl McpTool for SubmitBlockTool {
         };
 
         // Submit block to node
-        let mut client = self.grpc_client.clone().as_ref().clone();
-        let response = client
+        let response = self.grpc_client.clone()
             .submit_block(block)  // Submit the block directly
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit block: {}", e)))?;

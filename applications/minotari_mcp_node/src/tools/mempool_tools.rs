@@ -96,9 +96,7 @@ impl McpTool for GetMempoolTransactionsTool {
             
             if let Some(transaction) = tx_response.transaction {
                 let tx_info = json!({
-                    "offset": transaction.offset.as_ref()
-                        .map(|offset| hex::encode(offset))
-                        .unwrap_or_default(),
+                    "offset": hex::encode(&transaction.offset),
                     "body": {
                         "inputs": transaction.body.as_ref()
                             .map(|body| body.inputs.len())

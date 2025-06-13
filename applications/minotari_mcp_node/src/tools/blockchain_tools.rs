@@ -68,8 +68,7 @@ impl McpTool for ListHeadersTool {
             headers.push(json!({
                 "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
                 "hash": header_response.header.as_ref()
-                    .and_then(|h| h.hash.as_ref())
-                    .map(|hash| hex::encode(hash))
+                    .map(|h| hex::encode(&h.hash))
                     .unwrap_or_default(),
                 "confirmations": header_response.confirmations,
                 "reward": header_response.reward,
@@ -134,12 +133,10 @@ impl McpTool for GetHeaderByHashTool {
             "header": {
                 "height": response.header.as_ref().map(|h| h.height).unwrap_or(0),
                 "hash": response.header.as_ref()
-                    .and_then(|h| h.hash.as_ref())
-                    .map(|hash| hex::encode(hash))
+                    .map(|h| hex::encode(&h.hash))
                     .unwrap_or_default(),
                 "prev_hash": response.header.as_ref()
-                    .and_then(|h| h.prev_hash.as_ref())
-                    .map(|hash| hex::encode(hash))
+                    .map(|h| hex::encode(&h.prev_hash))
                     .unwrap_or_default(),
                 "timestamp": response.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
                 "version": response.header.as_ref().map(|h| h.version).unwrap_or(0),
@@ -200,12 +197,10 @@ impl McpTool for GetBlocksTool {
                 blocks.push(json!({
                     "height": block.header.as_ref().map(|h| h.height).unwrap_or(0),
                     "hash": block.header.as_ref()
-                        .and_then(|h| h.hash.as_ref())
-                        .map(|hash| hex::encode(hash))
+                        .map(|h| hex::encode(&h.hash))
                         .unwrap_or_default(),
                     "prev_hash": block.header.as_ref()
-                        .and_then(|h| h.prev_hash.as_ref())
-                        .map(|hash| hex::encode(hash))
+                        .map(|h| hex::encode(&h.prev_hash))
                         .unwrap_or_default(),
                     "timestamp": block.header.as_ref().map(|h| h.timestamp).unwrap_or(0),
                     "num_inputs": block.body.as_ref().map(|b| b.inputs.len()).unwrap_or(0),
@@ -257,12 +252,10 @@ impl McpTool for GetTipInfoTool {
         Ok(json!({
             "tip_height": metadata.map(|m| m.best_block_height).unwrap_or(0),
             "tip_hash": metadata
-                .and_then(|m| m.best_block_hash.as_ref())
-                .map(|hash| hex::encode(hash))
+                .map(|m| hex::encode(&m.best_block_hash))
                 .unwrap_or_default(),
             "accumulated_difficulty": metadata
-                .and_then(|m| m.accumulated_difficulty.as_ref())
-                .map(|diff| hex::encode(diff))
+                .map(|m| hex::encode(&m.accumulated_difficulty))
                 .unwrap_or_default(),
             "pruned_height": metadata.map(|m| m.pruned_height).unwrap_or(0),
             "timestamp": metadata.map(|m| m.timestamp).unwrap_or(0),
@@ -493,12 +486,10 @@ impl McpTool for GetNetworkStateTool {
             "metadata": {
                 "best_block_height": metadata.map(|m| m.best_block_height).unwrap_or(0),
                 "best_block_hash": metadata
-                    .and_then(|m| m.best_block_hash.as_ref())
-                    .map(|hash| hex::encode(hash))
+                    .map(|m| hex::encode(&m.best_block_hash))
                     .unwrap_or_default(),
                 "accumulated_difficulty": metadata
-                    .and_then(|m| m.accumulated_difficulty.as_ref())
-                    .map(|diff| hex::encode(diff))
+                    .map(|m| hex::encode(&m.accumulated_difficulty))
                     .unwrap_or_default(),
                 "pruned_height": metadata.map(|m| m.pruned_height).unwrap_or(0),
                 "timestamp": metadata.map(|m| m.timestamp).unwrap_or(0),
