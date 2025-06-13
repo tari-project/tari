@@ -173,6 +173,7 @@ impl WalletMcpServer {
     }
 
     /// Run startup diagnostics for troubleshooting
+    #[allow(dead_code)]
     pub async fn run_diagnostics(config: &WalletMcpConfig, cli: &Cli) -> String {
         let launch_config = cli.extract_launch_config();
         

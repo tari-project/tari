@@ -103,7 +103,7 @@ impl Default for NodeGrpcConfig {
             address: "127.0.0.1:18142".to_string(),
             timeout_secs: 30,
             max_retries: 3,
-            auto_launch: false,
+            auto_launch: true,
         }
     }
 }

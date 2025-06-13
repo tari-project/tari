@@ -41,11 +41,7 @@ async fn main() {
         }
     };
 
-    // Check if MCP server is enabled
-    if !config.mcp.enabled {
-        info!("MCP server is disabled. Use --mcp-enabled to enable it.");
-        return;
-    }
+
 
     // Create and start the MCP server
     let server = match WalletMcpServer::new(config, &cli).await {
