@@ -8,7 +8,8 @@ use crate::cli::Cli;
 use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
     ServiceHealthMonitors, TariProcessLauncher,
-    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils
+    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
+    StartupDiagnostics
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use std::sync::Arc;
@@ -184,5 +185,17 @@ impl NodeMcpServer {
         Err(McpError::server_error("Base node failed to become healthy within timeout"))
     }
 
+    /// Run startup diagnostics for troubleshooting
+    pub async fn run_diagnostics(config: &NodeMcpConfig, cli: &Cli) -> String {
+        let launch_config = cli.extract_launch_config();
+        
+        let diagnostics = StartupDiagnostics::new()
+            .with_base_path(launch_config.base_path)
+            .with_config_path(launch_config.config_path)
+            .with_node_grpc_address(config.node_grpc.address.clone());
+
+        let results = diagnostics.run_diagnostics().await;
+        diagnostics.format_diagnostic_report(&results)
+    }
 
 }

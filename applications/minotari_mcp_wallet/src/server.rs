@@ -8,7 +8,8 @@ use crate::cli::Cli;
 use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
     ServiceHealthMonitors, TariProcessLauncher,
-    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils
+    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
+    StartupDiagnostics
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use std::sync::Arc;
@@ -171,5 +172,17 @@ impl WalletMcpServer {
         Err(McpError::server_error("Wallet failed to become healthy within timeout"))
     }
 
+    /// Run startup diagnostics for troubleshooting
+    pub async fn run_diagnostics(config: &WalletMcpConfig, cli: &Cli) -> String {
+        let launch_config = cli.extract_launch_config();
+        
+        let diagnostics = StartupDiagnostics::new()
+            .with_base_path(launch_config.base_path)
+            .with_config_path(launch_config.config_path)
+            .with_wallet_grpc_address(config.wallet_grpc.address.clone());
+
+        let results = diagnostics.run_diagnostics().await;
+        diagnostics.format_diagnostic_report(&results)
+    }
 
 }

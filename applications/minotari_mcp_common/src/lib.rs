@@ -19,6 +19,7 @@ pub mod health_monitor;
 pub mod executable_finder;
 pub mod process_launcher;
 pub mod cli_integration;
+pub mod startup_diagnostics;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -34,3 +35,4 @@ pub use health_monitor::{HealthMonitor, HealthStatus, HealthCheckResult, Service
 pub use executable_finder::{ExecutableFinder, TariExecutables};
 pub use process_launcher::{ProcessLauncher, LaunchConfig, LaunchConfigBuilder, LaunchResult, ProcessLaunchStatus, HealthCheckConfig, TariProcessLauncher};
 pub use cli_integration::{LaunchCliConfig, CliConfigBuilder, CliConfigExtractor, NodeArgumentBuilder, WalletArgumentBuilder, CliIntegrationUtils};
+pub use startup_diagnostics::{StartupDiagnostics, DiagnosticResult, DiagnosticStatus};
