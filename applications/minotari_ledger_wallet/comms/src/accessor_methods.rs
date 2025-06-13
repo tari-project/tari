@@ -609,7 +609,12 @@ pub fn ledger_get_one_sided_metadata_signature(
 
     // Add address size prefix and address data
     let address_bytes = receiver_address.to_vec();
-    let address_size = address_bytes.len() as u16;
+    let address_size = u16::try_from(address_bytes.len()).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "Address size {} exceeds maximum u16 value",
+            address_bytes.len()
+        ))
+    })?;
     data.extend_from_slice(&address_size.to_le_bytes());
     data.extend_from_slice(&address_bytes);
 
