@@ -122,7 +122,16 @@ impl ParameterConverter for GetPeersConverter {
     }
 }
 
-/// Factory function to create all node method converters
+/// Register all node method converters in the provided registry
+pub fn register_node_converters(registry: &mut crate::parameter_converter::ConversionRegistry) {
+    registry.register(GetTipInfoConverter);
+    registry.register(GetBlocksConverter);
+    registry.register(GetVersionConverter);
+    registry.register(GetPeersConverter);
+}
+
+/// Factory function to create all node method converters (deprecated)
+#[deprecated(note = "Use register_node_converters instead")]
 pub fn create_node_converters() -> Vec<Box<dyn ParameterConverter>> {
     vec![
         Box::new(GetTipInfoConverter),
@@ -152,7 +161,14 @@ impl ParameterConverter for GetBalanceConverter {
     }
 }
 
-/// Factory function to create all wallet method converters
+/// Register all wallet method converters in the provided registry
+pub fn register_wallet_converters(registry: &mut crate::parameter_converter::ConversionRegistry) {
+    registry.register(GetBalanceConverter);
+    // TODO: Add more wallet converters as needed
+}
+
+/// Factory function to create all wallet method converters (deprecated)
+#[deprecated(note = "Use register_wallet_converters instead")]
 pub fn create_wallet_converters() -> Vec<Box<dyn ParameterConverter>> {
     vec![
         Box::new(GetBalanceConverter),

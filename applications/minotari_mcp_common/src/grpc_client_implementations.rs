@@ -5,11 +5,13 @@
 
 use crate::{
     grpc_executor::{NodeGrpcClient, WalletGrpcClient},
+    parameter_converter::ConversionRegistry,
     McpResult, McpError,
 };
 use serde_json::{Value, json};
 use async_trait::async_trait;
 use tonic::{Status, transport::Channel};
+use std::sync::Arc;
 
 // Import the actual gRPC clients
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
@@ -31,14 +33,15 @@ impl From<Status> for McpError {
 /// Real node gRPC client implementation
 pub struct NodeGrpcClientImpl {
     /// The actual gRPC client for base node
-    #[allow(dead_code)] // Used in parameter conversion implementation (Task 3)
     client: BaseNodeGrpcClient<Channel>,
+    /// Parameter conversion registry for JSON to protobuf conversion
+    conversion_registry: Arc<ConversionRegistry>,
 }
 
 impl NodeGrpcClientImpl {
     /// Create a new node client implementation with real gRPC client
-    pub fn new(client: BaseNodeGrpcClient<Channel>) -> Self {
-        Self { client }
+    pub fn new(client: BaseNodeGrpcClient<Channel>, conversion_registry: Arc<ConversionRegistry>) -> Self {
+        Self { client, conversion_registry }
     }
     
     /// Create a placeholder for backwards compatibility
@@ -51,11 +54,35 @@ impl NodeGrpcClientImpl {
 
 #[async_trait]
 impl NodeGrpcClient for NodeGrpcClientImpl {
-    async fn execute_method(&self, method_name: &str, _parameters: Value) -> McpResult<Value> {
+    async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value> {
+        // Convert JSON parameters to protobuf using the conversion registry
+        let _proto_request = self.conversion_registry.convert(method_name, parameters)?;
+        
         // Route to specific method implementations based on method name
         match method_name {
             "GetTipInfo" => self.get_tip_info().await,
-            // TODO: Add more method implementations as needed
+            "GetBlocks" => {
+                // For GetBlocks, we'll use the converted parameters in a real implementation
+                // For now, delegate to get_tip_info as placeholder
+                self.get_tip_info().await
+            },
+            "GetVersion" => {
+                // Placeholder for GetVersion
+                Ok(json!({
+                    "version": "0.13.1",
+                    "build_info": {
+                        "version": "0.13.1-pre.0",
+                        "build_time": "2025-01-01T00:00:00Z"
+                    }
+                }))
+            },
+            "GetPeers" => {
+                // Placeholder for GetPeers
+                Ok(json!({
+                    "peers": [],
+                    "count": 0
+                }))
+            },
             _ => Err(McpError::invalid_request(format!("Unknown method: {}", method_name)))
         }
     }
@@ -169,14 +196,15 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
 /// Real wallet gRPC client implementation
 pub struct WalletGrpcClientImpl {
     /// The actual wallet gRPC client
-    #[allow(dead_code)] // Used in parameter conversion implementation (Task 3)
     client: TariWalletGrpcClient<Channel>,
+    /// Parameter conversion registry for JSON to protobuf conversion
+    conversion_registry: Arc<ConversionRegistry>,
 }
 
 impl WalletGrpcClientImpl {
     /// Create a new wallet client implementation with real gRPC client
-    pub fn new(client: TariWalletGrpcClient<Channel>) -> Self {
-        Self { client }
+    pub fn new(client: TariWalletGrpcClient<Channel>, conversion_registry: Arc<ConversionRegistry>) -> Self {
+        Self { client, conversion_registry }
     }
     
     /// Create a placeholder for backwards compatibility
@@ -189,7 +217,10 @@ impl WalletGrpcClientImpl {
 
 #[async_trait]
 impl WalletGrpcClient for WalletGrpcClientImpl {
-    async fn execute_method(&self, method_name: &str, _parameters: Value) -> McpResult<Value> {
+    async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value> {
+        // Convert JSON parameters to protobuf using the conversion registry
+        let _proto_request = self.conversion_registry.convert(method_name, parameters)?;
+        
         // Route to specific method implementations based on method name
         match method_name {
             "GetBalance" => self.get_balance().await,

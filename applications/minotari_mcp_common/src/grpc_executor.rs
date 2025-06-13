@@ -459,4 +459,41 @@ mod tests {
         assert!(status.node_client_available);
         assert!(!status.wallet_client_available);
     }
+    
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_parameter_conversion_integration() {
+        use crate::ConversionRegistryFactory;
+        use crate::grpc_discovery::{GrpcMethodInfo, GrpcMethodCategory};
+        use serde_json::json;
+        
+        // Create a real conversion registry with node converters
+        let conversion_registry = ConversionRegistryFactory::create_node_registry();
+        
+        // Create executor with conversion registry
+        let client = Arc::new(MockNodeClient);
+        let error_mapper = Arc::new(GrpcErrorMapper::new());
+        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
+        
+        // Create a mock method info
+        let method_info = GrpcMethodInfo {
+            name: "GetTipInfo".to_string(),
+            service: "BaseNode".to_string(),
+            full_name: "tari.rpc.BaseNode/GetTipInfo".to_string(),
+            description: "Get tip info".to_string(),
+            category: GrpcMethodCategory::Blockchain,
+            is_control_operation: false,
+            is_streaming: false,
+            input_schema: json!({}),
+            output_schema: json!({}),
+        };
+        
+        // Test that parameter conversion is working in the executor
+        let result = executor.execute_method(&method_info, json!({})).await;
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        // The response comes from MockNodeClient.get_tip_info()
+        assert_eq!(response["height"], 12345);
+        assert_eq!(response["hash"], "abc123");
+    }
 }
