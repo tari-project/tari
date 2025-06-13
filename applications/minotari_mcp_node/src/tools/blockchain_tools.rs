@@ -58,12 +58,12 @@ impl McpTool for ListHeadersTool {
         });
         
         let mut response_stream = self.grpc_client.list_headers(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to list headers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to list headers: {}", e)))?
             .into_inner();
         
         let mut headers = Vec::new();
         while let Some(header_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read header stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read header stream: {}", e)))? {
             
             headers.push(json!({
                 "height": header_response.header.as_ref().map(|h| h.height).unwrap_or(0),
@@ -120,14 +120,14 @@ impl McpTool for GetHeaderByHashTool {
         let hash_hex = get_required_string_param(&params, "hash")?;
         
         let hash_bytes = hex::decode(&hash_hex)
-            .map_err(|e| McpError::InvalidParameter(format!("Invalid hex hash: {}", e)))?;
+            .map_err(|e| McpError::invalid_request(format!("Invalid hex hash: {}", e)))?;
         
         let request = Request::new(GetHeaderByHashRequest {
             hash: hash_bytes,
         });
         
         let response = self.grpc_client.get_header_by_hash(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get header: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get header: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -177,24 +177,24 @@ impl McpTool for GetBlocksTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let heights: Vec<u64> = params.get("heights")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::InvalidParameter("heights array is required".to_string()))?
+            .ok_or_else(|| McpError::invalid_request("heights array is required".to_string()))?
             .iter()
             .filter_map(|v| v.as_u64())
             .collect();
         
         if heights.is_empty() {
-            return Err(McpError::InvalidParameter("At least one height is required".to_string()));
+            return Err(McpError::invalid_request("At least one height is required".to_string()));
         }
         
         let request = Request::new(GetBlocksRequest { heights });
         
         let mut response_stream = self.grpc_client.get_blocks(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get blocks: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get blocks: {}", e)))?
             .into_inner();
         
         let mut blocks = Vec::new();
         while let Some(historical_block) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read block stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read block stream: {}", e)))? {
             
             if let Some(block) = historical_block.block {
                 blocks.push(json!({
@@ -249,7 +249,7 @@ impl McpTool for GetTipInfoTool {
         let request = Request::new(Empty {});
         
         let response = self.grpc_client.get_tip_info(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get tip info: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tip info: {}", e)))?
             .into_inner();
         
         let metadata = response.metadata.as_ref();
@@ -308,7 +308,7 @@ impl McpTool for GetSyncInfoTool {
         let request = Request::new(Empty {});
         
         let response = self.grpc_client.get_sync_info(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get sync info: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get sync info: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -366,12 +366,12 @@ impl McpTool for GetNetworkDifficultyTool {
         });
         
         let mut response_stream = self.grpc_client.get_network_difficulty(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get network difficulty: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network difficulty: {}", e)))?
             .into_inner();
         
         let mut difficulties = Vec::new();
         while let Some(difficulty_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read difficulty stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read difficulty stream: {}", e)))? {
             
             difficulties.push(json!({
                 "height": difficulty_response.height,
@@ -422,24 +422,24 @@ impl McpTool for GetTokensInCirculationTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let heights: Vec<u64> = params.get("heights")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::InvalidParameter("heights array is required".to_string()))?
+            .ok_or_else(|| McpError::invalid_request("heights array is required".to_string()))?
             .iter()
             .filter_map(|v| v.as_u64())
             .collect();
         
         if heights.is_empty() {
-            return Err(McpError::InvalidParameter("At least one height is required".to_string()));
+            return Err(McpError::invalid_request("At least one height is required".to_string()));
         }
         
         let request = Request::new(GetBlocksRequest { heights: heights.clone() });
         
         let mut response_stream = self.grpc_client.get_tokens_in_circulation(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get tokens in circulation: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tokens in circulation: {}", e)))?
             .into_inner();
         
         let mut circulation_data = Vec::new();
         while let Some(value_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read circulation stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read circulation stream: {}", e)))? {
             
             circulation_data.push(json!({
                 "height": value_response.height,
@@ -484,7 +484,7 @@ impl McpTool for GetNetworkStateTool {
         let request = Request::new(GetNetworkStateRequest {});
         
         let response = self.grpc_client.get_network_state(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get network state: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network state: {}", e)))?
             .into_inner();
         
         let metadata = response.metadata.as_ref();

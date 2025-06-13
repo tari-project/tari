@@ -12,7 +12,7 @@ use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
     NewBlockTemplateRequest, NewBlockTemplate, GetNewBlockWithCoinbasesRequest,
-    GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, PowAlgo,
+    GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, pow_algo::PowAlgos,
 };
 
 /// Tool for getting a new block template (existing implementation, enhanced)
@@ -40,17 +40,17 @@ impl McpTool for GetNewBlockTemplateTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let algo = params.get("algo")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::InvalidParameter("algo is required (0=SHA3X, 1=MONERO, 2=TARI)".to_string()))?;
+            .ok_or_else(|| McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string()))?;
         
         let max_weight = params.get("max_weight")
             .and_then(|v| v.as_u64())
             .unwrap_or(19500); // Default max weight for blocks
         
         let pow_algo = match algo {
-            0 => PowAlgo::Sha3x,
-            1 => PowAlgo::Monero,
-            2 => PowAlgo::Tari,
-            _ => return Err(McpError::InvalidParameter("Invalid algo: must be 0 (SHA3X), 1 (MONERO), or 2 (TARI)".to_string())),
+            0 => PowAlgos::Sha3x,
+            1 => PowAlgos::Randomxm,
+            2 => PowAlgos::Randomxt,
+            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
         };
         
         let request = Request::new(NewBlockTemplateRequest {
@@ -59,11 +59,11 @@ impl McpTool for GetNewBlockTemplateTool {
         });
         
         let response = self.grpc_client.get_new_block_template(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get block template: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {}", e)))?
             .into_inner();
         
         let template = response.new_block_template.as_ref()
-            .ok_or_else(|| McpError::ToolExecution("No block template in response".to_string()))?;
+            .ok_or_else(|| McpError::tool_execution_failed("No block template in response".to_string()))?;
         
         Ok(json!({
             "block_template": {
@@ -127,7 +127,7 @@ impl McpTool for GetNewBlockTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         // This is a simplified implementation - in reality, we'd need to properly
         // construct the NewBlockTemplate from the parameters
-        return Err(McpError::InvalidParameter(
+        return Err(McpError::invalid_request(
             "This tool requires a complete block template structure. Use get_new_block_template first.".to_string()
         ));
         
@@ -163,32 +163,32 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let algo = params.get("algo")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::InvalidParameter("algo is required (0=SHA3X, 1=MONERO, 2=TARI)".to_string()))?;
+            .ok_or_else(|| McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string()))?;
         
         let max_weight = params.get("max_weight")
             .and_then(|v| v.as_u64())
             .unwrap_or(19500);
         
         let pow_algo = match algo {
-            0 => PowAlgo::Sha3x,
-            1 => PowAlgo::Monero,
-            2 => PowAlgo::Tari,
-            _ => return Err(McpError::InvalidParameter("Invalid algo: must be 0 (SHA3X), 1 (MONERO), or 2 (TARI)".to_string())),
+            0 => PowAlgos::Sha3x,
+            1 => PowAlgos::Randomxm,
+            2 => PowAlgos::Randomxt,
+            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
         };
         
         // Parse coinbase recipients
         let coinbases: Vec<NewBlockCoinbase> = params.get("coinbases")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::InvalidParameter("coinbases array is required".to_string()))?
+            .ok_or_else(|| McpError::invalid_request("coinbases array is required".to_string()))?
             .iter()
             .map(|coinbase| -> Result<NewBlockCoinbase, McpError> {
                 let address = coinbase.get("address")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| McpError::InvalidParameter("coinbase address is required".to_string()))?;
+                    .ok_or_else(|| McpError::invalid_request("coinbase address is required".to_string()))?;
                 
                 let value = coinbase.get("value")
                     .and_then(|v| v.as_u64())
-                    .ok_or_else(|| McpError::InvalidParameter("coinbase value is required".to_string()))?;
+                    .ok_or_else(|| McpError::invalid_request("coinbase value is required".to_string()))?;
                 
                 let stealth_payment = coinbase.get("stealth_payment")
                     .and_then(|v| v.as_bool())
@@ -214,7 +214,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .collect::<Result<Vec<_>, _>>()?;
         
         if coinbases.is_empty() {
-            return Err(McpError::InvalidParameter("At least one coinbase output is required".to_string()));
+            return Err(McpError::invalid_request("At least one coinbase output is required".to_string()));
         }
         
         let request = Request::new(GetNewBlockTemplateWithCoinbasesRequest {
@@ -224,7 +224,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
         });
         
         let response = self.grpc_client.get_new_block_template_with_coinbases(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get block template with coinbases: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -293,7 +293,7 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // This would require a complete block template structure
         // For now, return an informational message
-        return Err(McpError::InvalidParameter(
+        return Err(McpError::invalid_request(
             "This tool requires a complete block template and coinbase configuration. Use get_new_block_template_with_coinbases for most use cases.".to_string()
         ));
     }
@@ -335,9 +335,9 @@ impl McpTool for MiningAnalysisTool {
         
         for algo in 0..3 {
             let pow_algo = match algo {
-                0 => PowAlgo::Sha3x,
-                1 => PowAlgo::Monero,
-                2 => PowAlgo::Tari,
+                0 => PowAlgos::Sha3x,
+                1 => PowAlgos::Randomxm,
+                2 => PowAlgos::Randomxt,
                 _ => continue,
             };
             

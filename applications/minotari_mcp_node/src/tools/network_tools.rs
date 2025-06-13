@@ -39,7 +39,7 @@ impl McpTool for GetNetworkStatusTool {
         let request = Request::new(Empty {});
         
         let response = self.grpc_client.get_network_status(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get network status: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
         
         let status = if response.num_node_connections >= 8 {
@@ -105,7 +105,7 @@ impl McpTool for ListConnectedPeersTool {
         let request = Request::new(Empty {});
         
         let response = self.grpc_client.list_connected_peers(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to list connected peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to list connected peers: {}", e)))?
             .into_inner();
         
         let connected_peers: Vec<Value> = response.connected_peers.iter().map(|peer| {
@@ -211,14 +211,14 @@ impl McpTool for GetAllPeersTool {
         let request = Request::new(GetPeersRequest {});
         
         let mut response_stream = self.grpc_client.get_peers(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get peers: {}", e)))?
             .into_inner();
         
         let mut all_peers = Vec::new();
         let mut count = 0;
         
         while let Some(peer_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read peer stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read peer stream: {}", e)))? {
             
             if count >= limit {
                 break;
@@ -320,7 +320,7 @@ impl McpTool for GetNodeIdentityTool {
         let request = Request::new(Empty {});
         
         let response = self.grpc_client.identify(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get node identity: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -362,19 +362,19 @@ impl McpTool for NetworkDiagnosticsTool {
         // Get network status
         let status_request = Request::new(Empty {});
         let network_status = self.grpc_client.get_network_status(status_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get network status: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
         
         // Get connected peers
         let peers_request = Request::new(Empty {});
         let connected_peers = self.grpc_client.list_connected_peers(peers_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get connected peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get connected peers: {}", e)))?
             .into_inner();
         
         // Get node identity
         let identity_request = Request::new(Empty {});
         let node_identity = self.grpc_client.identify(identity_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get node identity: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
         
         // Analyze network health
