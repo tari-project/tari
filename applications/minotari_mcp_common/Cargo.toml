@@ -23,3 +23,5 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"
+tonic = { version = "0.9", default-features = false, features = ["transport", "tls"] }
+which = "5.0"

@@ -15,6 +15,9 @@ pub mod transport;
 pub mod stdio_transport;
 pub mod process_manager;
 pub mod input_sanitizer;
+pub mod health_monitor;
+pub mod executable_finder;
+pub mod process_launcher;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -26,3 +29,6 @@ pub use config::McpConfig;
 pub use stdio_transport::StdioTransport;
 pub use process_manager::{ProcessSupervisor, ProcessType, ProcessStatus, ProcessUtils};
 pub use input_sanitizer::{InputSanitizer, ValidationPatterns, sanitize_tool_input};
+pub use health_monitor::{HealthMonitor, HealthStatus, HealthCheckResult, ServiceHealthMonitors};
+pub use executable_finder::{ExecutableFinder, TariExecutables};
+pub use process_launcher::{ProcessLauncher, LaunchConfig, LaunchConfigBuilder, LaunchResult, ProcessLaunchStatus, HealthCheckConfig, TariProcessLauncher};
