@@ -9,12 +9,51 @@ use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
     ServiceHealthMonitors, TariProcessLauncher,
     ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
-    StartupDiagnostics, ProcessLauncher
+    StartupDiagnostics, ProcessLauncher,
+    AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType,
+    ServiceDiscovery, SchemaGenerator, GrpcErrorMapper,
+    GrpcExecutor, NodeGrpcClientImpl, ConversionRegistryFactory,
+    ConnectionManager, CircuitBreakerConfig, ConnectionPoolConfig, HealthConfig
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::transport::{Channel, Endpoint};
+use async_trait::async_trait;
+
+/// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
+struct ArcToolWrapper {
+    tool: Arc<dyn minotari_mcp_common::McpTool>,
+}
+
+impl ArcToolWrapper {
+    fn new(tool: Arc<dyn minotari_mcp_common::McpTool>) -> Self {
+        Self { tool }
+    }
+}
+
+#[async_trait::async_trait]
+impl minotari_mcp_common::McpTool for ArcToolWrapper {
+    fn name(&self) -> &str {
+        self.tool.name()
+    }
+
+    fn description(&self) -> &str {
+        self.tool.description()
+    }
+
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        self.tool.permission_level()
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        self.tool.input_schema()
+    }
+
+    async fn execute(&self, args: serde_json::Value) -> minotari_mcp_common::McpResult<serde_json::Value> {
+        self.tool.execute(args).await
+    }
+}
 
 /// Minotari Node MCP Server
 pub struct NodeMcpServer {
@@ -37,8 +76,65 @@ impl NodeMcpServer {
         let grpc_client = Self::create_grpc_client(&config).await?;
         let grpc_client = Arc::new(grpc_client);
 
-        // Create tool registry with node-specific tools
-        let tool_registry = NodeToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
+        // Create connection manager with health monitoring
+        let connection_manager = Self::create_connection_manager(&config).await?;
+        
+        // Create health-aware gRPC executor
+        let conversion_registry = ConversionRegistryFactory::create_node_registry();
+        let error_mapper = Arc::new(GrpcErrorMapper::new());
+        let node_client_impl = Arc::new(NodeGrpcClientImpl::new(grpc_client.clone(), conversion_registry.clone()));
+        let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
+            node_client_impl,
+            error_mapper.clone(),
+            conversion_registry,
+            connection_manager.clone(),
+        ));
+
+        // Create auto-discovery registry with health monitoring
+        let auto_discovery_config = AutoDiscoveryConfig {
+            enabled: true,
+            allowed_methods: config.allowed_methods(),
+            control_enabled: config.mcp.control_enabled,
+            server_type: ServerType::Node,
+            rate_limits: std::collections::HashMap::new(),
+            tool_overrides: std::collections::HashMap::new(),
+        };
+
+        let service_discovery = Arc::new(ServiceDiscovery::new());
+        let schema_generator = Arc::new(SchemaGenerator::new());
+        
+        let auto_discovery = AutoDiscoveryRegistry::new_with_executor(
+            auto_discovery_config,
+            service_discovery,
+            schema_generator,
+            error_mapper,
+            grpc_executor,
+        );
+
+        // Initialize auto-discovery
+        auto_discovery.initialize().await?;
+
+        // Get tools from auto-discovery (use healthy tools only)
+        let discovered_tools = auto_discovery.get_healthy_tools().await;
+        
+        // Create tool registry and populate with auto-discovered tools
+        let mut tool_registry = minotari_mcp_common::ToolRegistry::new();
+        
+        // Convert Arc<dyn McpTool> to Box<dyn McpTool> for registration
+        for (name, arc_tool) in discovered_tools {
+            log::info!("Registering auto-discovered tool: {}", name);
+            
+            // Create a wrapper that clones the Arc for each execution
+            let arc_clone = arc_tool.clone();
+            let boxed_tool = Box::new(ArcToolWrapper::new(arc_clone));
+            tool_registry.register(boxed_tool);
+        }
+        
+        // If no auto-discovered tools, fall back to manual tools
+        if tool_registry.list_tools().is_empty() {
+            log::warn!("No auto-discovered tools available, falling back to manual registration");
+            tool_registry = NodeToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
+        }
 
         // Create resource registry with node-specific resources
         let resource_registry = NodeResourceRegistry::new(grpc_client.clone());
@@ -112,6 +208,27 @@ impl NodeMcpServer {
         
         log::info!("Base node client created (connection test skipped)");
         Ok(client)
+    }
+
+    /// Create connection manager with health monitoring
+    async fn create_connection_manager(config: &NodeMcpConfig) -> McpResult<Arc<ConnectionManager>> {
+        let pool_config = ConnectionPoolConfig::default();
+        let circuit_config = CircuitBreakerConfig::default();
+        let health_config = HealthConfig::default();
+        
+        let conn_manager = ConnectionManager::new(pool_config, circuit_config, health_config);
+        
+        // Add the base node service endpoint
+        let endpoint_url = config.node_grpc_url();
+        let endpoint = Endpoint::from_shared(endpoint_url)
+            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {}", e)))?
+            .timeout(Duration::from_secs(config.node_grpc.timeout_secs))
+            .connect_timeout(Duration::from_secs(5));
+            
+        conn_manager.add_service("base_node".to_string(), endpoint).await?;
+        conn_manager.start_maintenance().await?;
+        
+        Ok(Arc::new(conn_manager))
     }
 
     /// Ensure base node is running, auto-launch if needed

@@ -86,6 +86,13 @@ impl NodeMcpConfig {
     pub fn should_auto_launch_node(&self) -> bool {
         self.node_grpc.auto_launch
     }
+    
+    /// Get allowed gRPC methods for auto-discovery
+    pub fn allowed_methods(&self) -> std::collections::HashSet<String> {
+        // For now, allow all methods (empty set means all allowed)
+        // In the future, this could be configurable via CLI or config file
+        std::collections::HashSet::new()
+    }
 
     /// Get the node gRPC endpoint URL
     pub fn node_grpc_url(&self) -> String {

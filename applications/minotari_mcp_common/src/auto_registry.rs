@@ -437,6 +437,37 @@ impl AutoDiscoveryRegistry {
     pub async fn get_tools(&self) -> HashMap<String, Arc<dyn McpTool>> {
         self.tools_cache.read().await.clone()
     }
+    
+    /// Get healthy tools only (filters out tools for unhealthy services)
+    pub async fn get_healthy_tools(&self) -> HashMap<String, Arc<dyn McpTool>> {
+        let tools_cache = self.tools_cache.read().await;
+        let tool_status = self.tool_status.read().await;
+        
+        // Check if we have health monitoring via the executor
+        if let Some(ref executor) = self.grpc_executor {
+            let status = executor.get_status();
+            
+            // If health monitoring is enabled, filter based on health
+            if status.health_monitoring_enabled {
+                if let Some(is_healthy) = status.is_healthy() {
+                    if !is_healthy {
+                        log::warn!("Service is unhealthy, returning empty tool list");
+                        return HashMap::new();
+                    }
+                }
+            }
+        }
+        
+        // Return all tools if service is healthy or no health monitoring
+        tools_cache.iter()
+            .filter(|(name, _tool)| {
+                tool_status.get(*name)
+                    .map(|status| status.enabled)
+                    .unwrap_or(true)
+            })
+            .map(|(name, tool)| (name.clone(), tool.clone()))
+            .collect()
+    }
 
     /// Get tool by name
     pub async fn get_tool(&self, name: &str) -> Option<Arc<dyn McpTool>> {
@@ -469,6 +500,25 @@ impl AutoDiscoveryRegistry {
             total_errors,
             categories: metadata.get_category_summary(),
             risk_distribution: metadata.get_risk_distribution(),
+        }
+    }
+    
+    /// Get detailed health status for the registry
+    pub async fn get_health_status(&self) -> Option<crate::grpc_executor::DetailedExecutorStatus> {
+        self.grpc_executor.as_ref().map(|executor| executor.get_detailed_status())
+    }
+    
+    /// Check if the registry's backend service is healthy
+    pub async fn is_service_healthy(&self) -> bool {
+        if let Some(ref executor) = self.grpc_executor {
+            let status = executor.get_status();
+            if status.health_monitoring_enabled {
+                status.is_healthy().unwrap_or(false)
+            } else {
+                status.is_ready()
+            }
+        } else {
+            true // No executor means no health checking, assume healthy
         }
     }
 
