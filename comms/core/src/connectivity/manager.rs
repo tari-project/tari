@@ -42,6 +42,7 @@ use super::{
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
+    proactive_dialer::ProactiveDialer,
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
     ConnectivityEventTx,
@@ -92,6 +93,13 @@ pub struct ConnectivityManager {
 
 impl ConnectivityManager {
     pub fn spawn(self) -> JoinHandle<()> {
+        let proactive_dialer = ProactiveDialer::new(
+            self.config,
+            self.connection_manager.clone(),
+            self.peer_manager.clone(),
+            self.node_identity.clone(),
+        );
+
         ConnectivityManagerActor {
             config: self.config,
             status: ConnectivityStatus::Initializing,
@@ -106,6 +114,7 @@ impl ConnectivityManager {
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
             allow_list: vec![],
+            proactive_dialer,
         }
         .spawn()
     }
@@ -163,6 +172,7 @@ struct ConnectivityManagerActor {
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
+    proactive_dialer: ProactiveDialer,
 }
 
 impl ConnectivityManagerActor {
@@ -456,6 +466,17 @@ impl ConnectivityManagerActor {
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
             self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
         }
+
+        // Execute proactive dialing logic
+        if let Err(err) = self.execute_proactive_dialing(task_id).await {
+            warn!(
+                target: LOG_TARGET,
+                "({}) Proactive dialing failed: {:?}",
+                task_id,
+                err
+            );
+        }
+
         self.update_connectivity_status();
         self.update_connectivity_metrics();
         Ok(())
@@ -632,8 +653,9 @@ impl ConnectivityManagerActor {
     }
 
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
+        let threshold = self.config.circuit_breaker_failure_threshold;
         let entry = self.get_connection_stat_mut(node_id);
-        entry.set_connection_failed();
+        entry.set_connection_failed_with_threshold(threshold);
 
         entry.failed_attempts()
     }
@@ -1088,6 +1110,37 @@ impl ConnectivityManagerActor {
         }
         ban_result?;
         Ok(())
+    }
+
+    async fn execute_proactive_dialing(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
+        // First, clean up old health data to keep metrics accurate
+        for stats in self.connection_stats.values_mut() {
+            stats.cleanup_old_health_data(self.config.success_rate_tracking_window);
+        }
+
+        // Execute proactive dialing logic
+        match self.proactive_dialer.execute_proactive_dialing(&self.pool, &self.connection_stats, task_id).await {
+            Ok(dialed_count) => {
+                if dialed_count > 0 {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Proactive dialing initiated {} peer connections",
+                        task_id,
+                        dialed_count
+                    );
+                }
+                Ok(())
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "({}) Proactive dialing failed: {:?}",
+                    task_id,
+                    err
+                );
+                Err(err)
+            },
+        }
     }
 
     fn cleanup_connection_stats(&mut self) {
