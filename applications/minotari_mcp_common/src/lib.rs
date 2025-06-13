@@ -34,7 +34,7 @@ pub mod health_checker;
 pub mod connection_manager;
 pub mod response_converter;
 pub mod protobuf_reflector_simple;
-pub mod protobuf_integration;
+// pub mod protobuf_integration; // Disabled pending API compatibility fixes
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -65,4 +65,4 @@ pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealth
 pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};
 pub use response_converter::{ResponseConverter, ResponseConverterRegistry, ResponseConverterFactory, GenericJsonConverter, NodeResponseConverter, WalletResponseConverter};
 pub use protobuf_reflector_simple::ProtobufReflector;
-pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec};
+// pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec}; // Disabled pending API compatibility fixes
