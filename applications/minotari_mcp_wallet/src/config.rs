@@ -50,9 +50,9 @@ impl WalletMcpConfig {
         let mcp_config = McpConfig {
             enabled: cli.mcp_enabled,
             control_enabled: cli.mcp_control_enabled,
-            bind_address: cli.mcp_bind_address,
-            port: cli.mcp_port,
-            max_connections: cli.mcp_max_connections,
+            bind_address: "127.0.0.1".parse().unwrap(), // Not used for stdio but required for config
+            port: 0, // Not used for stdio
+            max_connections: 1, // Stdio only supports single connection
             request_timeout_secs: cli.mcp_timeout,
             rate_limit_per_minute: cli.mcp_rate_limit,
             audit_logging: cli.mcp_audit_logging,
@@ -61,7 +61,7 @@ impl WalletMcpConfig {
 
         let wallet_grpc_config = WalletGrpcConfig {
             address: cli.wallet_grpc_address.clone(),
-            timeout_secs: 30,
+            timeout_secs: cli.wallet_grpc_timeout,
             max_retries: 3,
         };
 
