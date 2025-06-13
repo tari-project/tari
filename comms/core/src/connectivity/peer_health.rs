@@ -332,13 +332,14 @@ mod tests {
         // Perfect health initially
         assert_eq!(metrics.health_score(window), 1.0);
 
-        // Record some failures
-        metrics.record_failure(5);
-        metrics.record_failure(5);
+        // Record some successes and failures to have a mixed success rate
+        metrics.record_success(None);
+        metrics.record_success(None);
+        metrics.record_failure(5); // This will reset consecutive successes, add failure
 
         let score = metrics.health_score(window);
-        assert!(score < 1.0);
-        assert!(score > 0.0);
+        assert!(score < 1.0); // Should be less than perfect due to failure penalty
+        assert!(score > 0.0); // But should still be positive due to successes
 
         // Circuit breaker open should result in 0 score
         metrics.record_failure(5);
